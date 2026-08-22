@@ -56,10 +56,13 @@ jobs:
 
     deploy:
         needs: build
+        # The github-pages environment only accepts deployments from the default
+        # branch; PRs and topic branches verify the docs build without deploying.
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
         runs-on: ubuntu-latest
         environment:
             name: github-pages
-            url: ${ steps.deployment.outputs.page_url }
+            url: ${{ steps.deployment.outputs.page_url }}
     
         steps:
           - name: Deploy to GitHub Pages

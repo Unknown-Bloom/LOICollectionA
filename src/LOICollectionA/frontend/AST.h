@@ -84,13 +84,14 @@ namespace LOICollection::frontend {
     };
 
     struct ASTNode {
-        enum class Type { 
+        enum class Type {
             Value, Compare, Logical, If, Expr,
             Arithmetic, Unary, Function, Macro, Variable, Assignment,
             Class, Return, New, MemberAccess, MethodCall, This,
             Super, SuperCall, InstanceOf, FunctionDef, FuncCall, Lambda,
             Array, Index, Program, Block, Using,
-            While, For, Break, Continue
+            While, For, Break, Continue,
+            CompoundAssign, ForIn, Range, Coalesce
         };
         [[nodiscard]] virtual Type getType() const = 0;
         
@@ -102,6 +103,7 @@ namespace LOICollection::frontend {
     struct ExprNode : ASTNode {
         TypeInfo type;
         bool preserveOptional = false;
+        bool parenthesized = false;
 
         [[nodiscard]] Type getType() const override {
             return Type::Expr;
@@ -168,6 +170,59 @@ namespace LOICollection::frontend {
         }
     };
 
+    struct CompoundAssignNode : ExprNode {
+        SourceLocation loc;
+        std::unique_ptr<ExprNode> target;
+        std::unique_ptr<ExprNode> value;
+        std::string op;
+
+        CompoundAssignNode(SourceLocation location, auto&& t, auto&& val, std::string o)
+            : loc(location),
+              target(std::forward<decltype(t)>(t)),
+              value(std::forward<decltype(val)>(val)),
+              op(std::move(o)) {}
+
+        [[nodiscard]] Type getType() const override { return Type::CompoundAssign; }
+
+        void accept(ASTVisitor& visitor) override {
+            visitor.visit(*this);
+        }
+    };
+
+    struct RangeNode : ExprNode {
+        SourceLocation loc;
+        std::unique_ptr<ExprNode> start;
+        std::unique_ptr<ExprNode> end;
+
+        RangeNode(SourceLocation location, auto&& s, auto&& e)
+            : loc(location),
+              start(std::forward<decltype(s)>(s)),
+              end(std::forward<decltype(e)>(e)) {}
+
+        [[nodiscard]] Type getType() const override { return Type::Range; }
+
+        void accept(ASTVisitor& visitor) override {
+            visitor.visit(*this);
+        }
+    };
+
+    struct CoalesceNode : ExprNode {
+        SourceLocation loc;
+        std::unique_ptr<ExprNode> left;
+        std::unique_ptr<ExprNode> right;
+
+        CoalesceNode(SourceLocation location, auto&& l, auto&& r)
+            : loc(location),
+              left(std::forward<decltype(l)>(l)),
+              right(std::forward<decltype(r)>(r)) {}
+
+        [[nodiscard]] Type getType() const override { return Type::Coalesce; }
+
+        void accept(ASTVisitor& visitor) override {
+            visitor.visit(*this);
+        }
+    };
+
     struct IfNode : ExprNode {
         SourceLocation loc;
         std::unique_ptr<ExprNode> condition;
@@ -225,6 +280,24 @@ namespace LOICollection::frontend {
               body(std::forward<decltype(b)>(b)) {}
 
         [[nodiscard]] Type getType() const override { return Type::For; }
+
+        void accept(ASTVisitor& visitor) override {
+            visitor.visit(*this);
+        }
+    };
+
+    struct ForInNode : ExprNode {
+        SourceLocation loc;
+        std::string indexVar;
+        std::string elementVar;
+        bool hasIndexVar = false;
+        std::unique_ptr<ExprNode> iterable;
+        std::unique_ptr<ASTNode> body;
+
+        ForInNode(SourceLocation location, std::string element)
+            : loc(location), elementVar(std::move(element)) {}
+
+        [[nodiscard]] Type getType() const override { return Type::ForIn; }
 
         void accept(ASTVisitor& visitor) override {
             visitor.visit(*this);
@@ -522,6 +595,7 @@ namespace LOICollection::frontend {
         std::string memberName;
         bool isStaticAccess = false;
         std::string staticClassName;
+        bool isSafe = false;
         MemberKind memberKind = MemberKind::Normal;
 
         MemberAccessNode(SourceLocation location, auto&& t, std::string member)
@@ -593,6 +667,7 @@ namespace LOICollection::frontend {
         SourceLocation loc;
         std::unique_ptr<ExprNode> target;
         std::unique_ptr<ExprNode> index;
+        bool isSafe = false;
 
         IndexAccessNode(SourceLocation location, auto&& t, auto&& i)
             : loc(location),

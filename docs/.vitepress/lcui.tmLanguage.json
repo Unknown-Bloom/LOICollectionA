@@ -22,8 +22,22 @@
     },
     "strings": {
       "patterns": [
-        { "begin": "\"", "end": "\"", "name": "string.quoted.double.lcui" },
-        { "begin": "'", "end": "'", "name": "string.quoted.single.lcui" }
+        {
+          "begin": "\"",
+          "end": "\"",
+          "name": "string.quoted.double.lcui",
+          "patterns": [
+            { "match": "\\\\(?:[ntr\\\\\"'])", "name": "constant.character.escape.lcui" }
+          ]
+        },
+        {
+          "begin": "'",
+          "end": "'",
+          "name": "string.quoted.single.lcui",
+          "patterns": [
+            { "match": "\\\\(?:[ntr\\\\\"'])", "name": "constant.character.escape.lcui" }
+          ]
+        }
       ]
     },
     "numbers": {
@@ -31,8 +45,16 @@
       "name": "constant.numeric.lcui"
     },
     "keywords": {
-      "match": "\\b(?:new|func|class|extends|super|this|return|if|else|for|while|break|continue|using|static|None|true|false|instanceof)\\b",
-      "name": "keyword.control.lcui"
+      "patterns": [
+        {
+          "match": "\\b(?:new|func|class|extends|super|this|return|if|else|for|while|break|continue|using|static|None|true|false|instanceof)\\b",
+          "name": "keyword.control.lcui"
+        },
+        {
+          "match": "(?<=for\\s*\\([^)]*?)\\bin\\b",
+          "name": "keyword.control.lcui"
+        }
+      ]
     },
     "types": {
       "match": "\\b(?:int|float|string|bool|void|optional|variant|any)\\b",
@@ -43,7 +65,7 @@
       "name": "support.function.builtin.lcui"
     },
     "operators": {
-      "match": "->|\\+\\+|--|==|!=|<=|>=|&&|\\|\\||[=+\\-*/%<>!?:;,.()\\[\\]{}|]",
+      "match": "->|\\+\\+|--|\\+=|-=|\\*=|/=|%=|==|!=|<=|>=|&&|\\|\\||\\?\\?|\\?\\.|\\.\\.|[=+\\-*/%<>!?:;,.()\\[\\]{}|]",
       "name": "keyword.operator.lcui"
     },
     "classNames": {

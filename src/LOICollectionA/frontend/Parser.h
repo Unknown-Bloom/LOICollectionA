@@ -14,7 +14,8 @@ namespace LOICollection::frontend {
     class Parser {
         Lexer& lexer;
         Token currentToken;
-        
+        std::vector<Token> lookaheadBuffer;
+
         DiagnosticEngine& diagnostics;
 
     public:
@@ -24,7 +25,8 @@ namespace LOICollection::frontend {
     private:
         std::unique_ptr<IfNode> parseIfStatement();
         std::unique_ptr<WhileNode> parseWhileStatement();
-        std::unique_ptr<ForNode> parseForStatement();
+        std::unique_ptr<ASTNode> parseForStatement();
+        std::unique_ptr<ForInNode> parseForInStatement(SourceLocation loc, bool hasIndex);
         std::unique_ptr<BreakNode> parseBreakStatement();
         std::unique_ptr<ContinueNode> parseContinueStatement();
         std::unique_ptr<UsingNode> parseUsing();
@@ -38,7 +40,7 @@ namespace LOICollection::frontend {
         std::unique_ptr<MethodDecl> parseConstructor(const std::string& className, bool isPrivate);
 
         std::vector<MethodParam> parseParams();
-        
+
         std::unique_ptr<ReturnNode> parseReturn();
 
         std::unique_ptr<ExprNode> parseForClause();
@@ -49,10 +51,11 @@ namespace LOICollection::frontend {
         std::vector<std::unique_ptr<ExprNode>> parseArgs(TokenType delimiterToken = TokenType::TOKEN_COMMA, TokenType stopToken = TokenType::TOKEN_RPAREN);
 
         std::unique_ptr<ASTNode> parseStatement();
-        
+
         std::unique_ptr<ExprNode> parseBaseExpression();
 
         std::unique_ptr<ExprNode> parseBoolExpression();
+        std::unique_ptr<ExprNode> parseCoalesceExpression();
         std::unique_ptr<ExprNode> parseOrExpression();
         std::unique_ptr<ExprNode> parseAndExpression();
 
@@ -67,6 +70,7 @@ namespace LOICollection::frontend {
         std::unique_ptr<ValueNode> parseValue();
 
         TokenType peek();
+        Token peekToken(size_t offset);
 
         void advance();
         bool eat(TokenType expected);

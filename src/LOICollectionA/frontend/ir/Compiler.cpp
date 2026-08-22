@@ -45,6 +45,26 @@ namespace LOICollection::frontend::ir {
             countNode(*node.value);
         }
 
+        void visit(CompoundAssignNode& node) override {
+            countNode(*node.target);
+            countNode(*node.value);
+        }
+
+        void visit(ForInNode& node) override {
+            countNode(*node.iterable);
+            countBody(node.body);
+        }
+
+        void visit(RangeNode& node) override {
+            countNode(*node.start);
+            countNode(*node.end);
+        }
+
+        void visit(CoalesceNode& node) override {
+            countNode(*node.left);
+            countNode(*node.right);
+        }
+
         void visit(IfNode& node) override {
             countNode(*node.condition);
             countBody(node.trueBranch);
@@ -311,6 +331,288 @@ namespace LOICollection::frontend::ir {
                 this->diagnostics.addError(node.loc, "Invalid assignment target");
                 break;
         }
+    }
+
+    void Compiler::visit(CompoundAssignNode& node) {
+        switch (node.target->getType()) {
+            case ASTNode::Type::Variable: {
+                auto& var = static_cast<VariableNode&>(*node.target);
+                int idx = var.isStaticField
+                    ? this->addConstant(var.staticClassName + "::" + var.name)
+                    : this->addConstant(var.name);
+
+                this->current.get().emit(OpCode::LOAD_VAR, idx, node.loc);
+                if (var.type.kind == TypeKind::Optional && !var.preserveOptional)
+                    this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+
+                this->compileValue(*node.value, node.loc);
+                this->emitArithmeticOp(node.op, node.loc);
+
+                this->current.get().emit(OpCode::DUP, 0, node.loc);
+                this->current.get().emit(OpCode::STORE_VAR, idx, node.loc);
+                break;
+            }
+            case ASTNode::Type::MemberAccess: {
+                auto& member = static_cast<MemberAccessNode&>(*node.target);
+                if (member.isStaticAccess) {
+                    int idx = this->addConstant(member.staticClassName + "::" + member.memberName);
+
+                    this->current.get().emit(OpCode::LOAD_VAR, idx, node.loc);
+                    if (member.type.kind == TypeKind::Optional && !member.preserveOptional)
+                        this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+
+                    this->compileValue(*node.value, node.loc);
+                    this->emitArithmeticOp(node.op, node.loc);
+
+                    this->current.get().emit(OpCode::DUP, 0, node.loc);
+                    this->current.get().emit(OpCode::STORE_VAR, idx, node.loc);
+                    break;
+                }
+
+                this->compileValue(*member.target, node.loc);
+                this->current.get().emit(OpCode::DUP, 0, node.loc);
+
+                int idx = this->addConstant(member.memberName);
+                this->current.get().emit(OpCode::LOAD_FIELD, idx, node.loc);
+                if (member.type.kind == TypeKind::Optional && !member.preserveOptional)
+                    this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+
+                this->compileValue(*node.value, node.loc);
+                this->emitArithmeticOp(node.op, node.loc);
+
+                this->current.get().emit(OpCode::DUP, 0, node.loc);
+                this->current.get().emit(OpCode::ROT3, 0, node.loc);
+                this->current.get().emit(OpCode::STORE_FIELD, idx, node.loc);
+                break;
+            }
+            case ASTNode::Type::Index: {
+                auto& indexNode = static_cast<IndexAccessNode&>(*node.target);
+
+                this->compileValue(*indexNode.target, node.loc);
+                this->compileValue(*indexNode.index, node.loc);
+
+                this->current.get().emit(OpCode::DUP2, 0, node.loc);
+                this->current.get().emit(OpCode::LOAD_INDEX, 0, node.loc);
+
+                this->compileValue(*node.value, node.loc);
+                this->emitArithmeticOp(node.op, node.loc);
+
+                this->current.get().emit(OpCode::DUP, 0, node.loc);
+                this->current.get().emit(OpCode::SWAP2, 0, node.loc);
+                this->current.get().emit(OpCode::STORE_INDEX, 0, node.loc);
+                break;
+            }
+            default:
+                this->diagnostics.addError(node.loc, "Invalid compound assignment target");
+                break;
+        }
+    }
+
+    void Compiler::visit(CoalesceNode& node) {
+        this->compileValue(*node.left, node.loc);
+
+        this->current.get().emit(OpCode::DUP, 0, node.loc);
+        this->current.get().emit(OpCode::IS_NONE, 0, node.loc);
+
+        size_t jmpSkipIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+
+        this->current.get().emit(OpCode::POP, 0, node.loc);
+        this->compileValue(*node.right, node.loc);
+
+        size_t jmpEndIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+
+        int skipTarget = static_cast<int>(this->current.get().currentIP());
+        this->current.get().patchJump(jmpSkipIdx, skipTarget - static_cast<int>(jmpSkipIdx) - 1);
+
+        int endPos = static_cast<int>(this->current.get().currentIP());
+        this->current.get().patchJump(jmpEndIdx, endPos - static_cast<int>(jmpEndIdx) - 1);
+    }
+
+    void Compiler::visit(RangeNode& node) {
+        this->diagnostics.addError(node.loc, "Range expression is only allowed as a for-in iterable");
+    }
+
+    void Compiler::visit(ForInNode& node) {
+        size_t uid = this->forInCounter++;
+
+        if (node.iterable->getType() == ASTNode::Type::Range)
+            this->compileForInRange(node, uid);
+        else
+            this->compileForInArray(node, uid);
+    }
+
+    void Compiler::compileForInArray(ForInNode& node, size_t uid) {
+        int seqIdx = this->addConstant("__forin_seq_" + std::to_string(uid));
+        int idxIdx = this->addConstant("__forin_idx_" + std::to_string(uid));
+
+        /* Loop variables live in the frame's locals so each iteration rebinds
+         * them: a lambda created inside the body snapshots the current value
+         * instead of following a shared slot after the loop ends. */
+        int elemIdx = this->addConstant(node.elementVar);
+        this->current.get().emit(OpCode::DECLARE_LOCAL, elemIdx, node.loc);
+        if (node.hasIndexVar) {
+            int indexVarIdx = this->addConstant(node.indexVar);
+            this->current.get().emit(OpCode::DECLARE_LOCAL, indexVarIdx, node.loc);
+        }
+
+        this->compileValue(*node.iterable, node.loc);
+        this->current.get().emit(OpCode::STORE_VAR, seqIdx, node.loc);
+
+        int zeroIdx = this->addConstant(0);
+        this->current.get().emit(OpCode::PUSH_INT, zeroIdx, node.loc);
+        this->current.get().emit(OpCode::STORE_VAR, idxIdx, node.loc);
+
+        size_t loopStart = this->current.get().currentIP();
+
+        this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
+        this->current.get().emit(OpCode::LOAD_VAR, seqIdx, node.loc);
+        int lengthIdx = this->addConstant(std::string("length"));
+        this->current.get().emit(OpCode::LOAD_FIELD, lengthIdx, node.loc);
+        this->current.get().emit(OpCode::CMP_LT, 0, node.loc);
+
+        size_t jmpFalseIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+
+        this->loopStack.push_back(LoopContext{});
+        this->loopStack.back().continueTarget = loopStart;
+
+        this->current.get().emit(OpCode::LOAD_VAR, seqIdx, node.loc);
+        this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
+        this->current.get().emit(OpCode::LOAD_INDEX, 0, node.loc);
+        this->current.get().emit(OpCode::STORE_VAR, elemIdx, node.loc);
+
+        if (node.hasIndexVar) {
+            int indexVarIdx = this->addConstant(node.indexVar);
+            this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
+            this->current.get().emit(OpCode::STORE_VAR, indexVarIdx, node.loc);
+        }
+
+        int oneIdx = this->addConstant(1);
+        this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
+        this->current.get().emit(OpCode::PUSH_INT, oneIdx, node.loc);
+        this->current.get().emit(OpCode::ADD, 0, node.loc);
+        this->current.get().emit(OpCode::STORE_VAR, idxIdx, node.loc);
+
+        node.body->accept(*this);
+        this->current.get().emit(OpCode::POP, 0, node.loc);
+
+        size_t jmpBackIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        this->current.get().patchJump(jmpBackIdx, static_cast<int>(loopStart) - static_cast<int>(jmpBackIdx) - 1);
+
+        size_t exitPos = this->current.get().currentIP();
+        this->current.get().patchJump(jmpFalseIdx, static_cast<int>(exitPos) - static_cast<int>(jmpFalseIdx) - 1);
+
+        for (size_t idx : this->loopStack.back().breakJumps)
+            this->current.get().patchJump(idx, static_cast<int>(exitPos) - static_cast<int>(idx) - 1);
+        for (size_t idx : this->loopStack.back().continueJumps)
+            this->current.get().patchJump(idx, static_cast<int>(loopStart) - static_cast<int>(idx) - 1);
+
+        this->loopStack.pop_back();
+
+        int emptyIdx = this->addConstant(std::string(""));
+        this->current.get().emit(OpCode::PUSH_STR, emptyIdx, node.loc);
+    }
+
+    void Compiler::compileForInRange(ForInNode& node, size_t uid) {
+        auto& range = static_cast<RangeNode&>(*node.iterable);
+
+        int idxIdx = this->addConstant("__forin_idx_" + std::to_string(uid));
+        int endIdx = this->addConstant("__forin_end_" + std::to_string(uid));
+        int dirIdx = this->addConstant("__forin_dir_" + std::to_string(uid));
+
+        /* Same per-iteration binding as the array form: see compileForInArray. */
+        int elemIdx = this->addConstant(node.elementVar);
+        this->current.get().emit(OpCode::DECLARE_LOCAL, elemIdx, node.loc);
+        if (node.hasIndexVar) {
+            int indexVarIdx = this->addConstant(node.indexVar);
+            this->current.get().emit(OpCode::DECLARE_LOCAL, indexVarIdx, node.loc);
+        }
+
+        this->compileValue(*range.start, node.loc);
+        this->current.get().emit(OpCode::STORE_VAR, idxIdx, node.loc);
+
+        this->compileValue(*range.end, node.loc);
+        this->current.get().emit(OpCode::STORE_VAR, endIdx, node.loc);
+
+        this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
+        this->current.get().emit(OpCode::LOAD_VAR, endIdx, node.loc);
+        this->current.get().emit(OpCode::CMP_LE, 0, node.loc);
+
+        size_t jmpDescIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+
+        int ascIdx = this->addConstant(1);
+        this->current.get().emit(OpCode::PUSH_INT, ascIdx, node.loc);
+
+        size_t jmpDirEndIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+
+        int descStart = static_cast<int>(this->current.get().currentIP());
+        this->current.get().patchJump(jmpDescIdx, descStart - static_cast<int>(jmpDescIdx) - 1);
+
+        int descIdx = this->addConstant(-1);
+        this->current.get().emit(OpCode::PUSH_INT, descIdx, node.loc);
+
+        int dirEndPos = static_cast<int>(this->current.get().currentIP());
+        this->current.get().patchJump(jmpDirEndIdx, dirEndPos - static_cast<int>(jmpDirEndIdx) - 1);
+
+        this->current.get().emit(OpCode::STORE_VAR, dirIdx, node.loc);
+
+        size_t loopStart = this->current.get().currentIP();
+
+        this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
+        this->current.get().emit(OpCode::LOAD_VAR, endIdx, node.loc);
+        this->current.get().emit(OpCode::SUB, 0, node.loc);
+        this->current.get().emit(OpCode::LOAD_VAR, dirIdx, node.loc);
+        this->current.get().emit(OpCode::MUL, 0, node.loc);
+        int zeroIdx = this->addConstant(0);
+        this->current.get().emit(OpCode::PUSH_INT, zeroIdx, node.loc);
+        this->current.get().emit(OpCode::CMP_LT, 0, node.loc);
+
+        size_t jmpFalseIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+
+        this->loopStack.push_back(LoopContext{});
+        this->loopStack.back().continueTarget = loopStart;
+
+        this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
+        this->current.get().emit(OpCode::STORE_VAR, elemIdx, node.loc);
+
+        if (node.hasIndexVar) {
+            int indexVarIdx = this->addConstant(node.indexVar);
+            this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
+            this->current.get().emit(OpCode::STORE_VAR, indexVarIdx, node.loc);
+        }
+
+        this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
+        this->current.get().emit(OpCode::LOAD_VAR, dirIdx, node.loc);
+        this->current.get().emit(OpCode::ADD, 0, node.loc);
+        this->current.get().emit(OpCode::STORE_VAR, idxIdx, node.loc);
+
+        node.body->accept(*this);
+        this->current.get().emit(OpCode::POP, 0, node.loc);
+
+        size_t jmpBackIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        this->current.get().patchJump(jmpBackIdx, static_cast<int>(loopStart) - static_cast<int>(jmpBackIdx) - 1);
+
+        size_t exitPos = this->current.get().currentIP();
+        this->current.get().patchJump(jmpFalseIdx, static_cast<int>(exitPos) - static_cast<int>(jmpFalseIdx) - 1);
+
+        for (size_t idx : this->loopStack.back().breakJumps)
+            this->current.get().patchJump(idx, static_cast<int>(exitPos) - static_cast<int>(idx) - 1);
+        for (size_t idx : this->loopStack.back().continueJumps)
+            this->current.get().patchJump(idx, static_cast<int>(loopStart) - static_cast<int>(idx) - 1);
+
+        this->loopStack.pop_back();
+
+        int emptyIdx = this->addConstant(std::string(""));
+        this->current.get().emit(OpCode::PUSH_STR, emptyIdx, node.loc);
+    }
+
+    void Compiler::emitArithmeticOp(const std::string& op, const SourceLocation& loc) {
+        if (op == "+") this->current.get().emit(OpCode::ADD, 0, loc);
+        else if (op == "-") this->current.get().emit(OpCode::SUB, 0, loc);
+        else if (op == "*") this->current.get().emit(OpCode::MUL, 0, loc);
+        else if (op == "/") this->current.get().emit(OpCode::DIV, 0, loc);
+        else if (op == "%") this->current.get().emit(OpCode::MOD, 0, loc);
+        else
+            this->diagnostics.addError(loc, "Unknown compound assignment op: " + op);
     }
 
     void Compiler::visit(IfNode& node) {
@@ -802,6 +1104,46 @@ namespace LOICollection::frontend::ir {
             return;
         }
 
+        if (node.isSafe) {
+            this->compileValue(*node.target, node.loc);
+
+            this->current.get().emit(OpCode::DUP, 0, node.loc);
+            this->current.get().emit(OpCode::IS_NONE, 0, node.loc);
+
+            size_t jmpSkipIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+
+            this->current.get().emit(OpCode::POP, 0, node.loc);
+            int noneIdx = this->addConstant(std::monostate{});
+            this->current.get().emit(OpCode::PUSH_NONE, noneIdx, node.loc);
+
+            size_t jmpEndIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+
+            int skipTarget = static_cast<int>(this->current.get().currentIP());
+            this->current.get().patchJump(jmpSkipIdx, skipTarget - static_cast<int>(jmpSkipIdx) - 1);
+
+            switch (node.memberKind) {
+                case MemberAccessNode::MemberKind::TypeOf:
+                    this->current.get().emit(OpCode::TYPE_OF, 0, node.loc);
+                    break;
+                case MemberAccessNode::MemberKind::HasValue:
+                    this->current.get().emit(OpCode::HAS_VALUE, 0, node.loc);
+                    break;
+                case MemberAccessNode::MemberKind::Value:
+                    // The target is known to be non-None here: unwrapping is an identity.
+                    this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+                    break;
+                default: {
+                    int idx = this->addConstant(node.memberName);
+                    this->current.get().emit(OpCode::LOAD_FIELD, idx, node.loc);
+                    break;
+                }
+            }
+
+            int endPos = static_cast<int>(this->current.get().currentIP());
+            this->current.get().patchJump(jmpEndIdx, endPos - static_cast<int>(jmpEndIdx) - 1);
+            return;
+        }
+
         switch (node.memberKind) {
             case MemberAccessNode::MemberKind::TypeOf:
                 node.target->accept(*this);
@@ -838,6 +1180,30 @@ namespace LOICollection::frontend::ir {
 
     void Compiler::visit(IndexAccessNode& node) {
         this->compileValue(*node.target, node.loc);
+
+        if (node.isSafe) {
+            this->current.get().emit(OpCode::DUP, 0, node.loc);
+            this->current.get().emit(OpCode::IS_NONE, 0, node.loc);
+
+            size_t jmpSkipIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+
+            this->current.get().emit(OpCode::POP, 0, node.loc);
+            int noneIdx = this->addConstant(std::monostate{});
+            this->current.get().emit(OpCode::PUSH_NONE, noneIdx, node.loc);
+
+            size_t jmpEndIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+
+            int skipTarget = static_cast<int>(this->current.get().currentIP());
+            this->current.get().patchJump(jmpSkipIdx, skipTarget - static_cast<int>(jmpSkipIdx) - 1);
+
+            this->compileValue(*node.index, node.loc);
+            this->current.get().emit(OpCode::LOAD_INDEX, 0, node.loc);
+
+            int endPos = static_cast<int>(this->current.get().currentIP());
+            this->current.get().patchJump(jmpEndIdx, endPos - static_cast<int>(jmpEndIdx) - 1);
+            return;
+        }
+
         this->compileValue(*node.index, node.loc);
         this->current.get().emit(OpCode::LOAD_INDEX, 0, node.loc);
     }

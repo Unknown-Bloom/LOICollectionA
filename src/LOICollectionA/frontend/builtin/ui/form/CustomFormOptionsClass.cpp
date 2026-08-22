@@ -5,11 +5,11 @@
 
 #include "LOICollectionA/frontend/Callback.h"
 
-#include "LOICollectionA/frontend/builtin/ui/base/UIRawMessageClass.h"
-#include "LOICollectionA/frontend/builtin/ui/base/ObservableBooleanClass.h"
-#include "LOICollectionA/frontend/builtin/ui/base/ObservableNumberClass.h"
-#include "LOICollectionA/frontend/builtin/ui/base/ObservableStringClass.h"
-#include "LOICollectionA/frontend/builtin/ui/base/ObservableUIRawMessageClass.h"
+#include "LOICollectionA/frontend/stdlib/UIRawMessageClass.h"
+#include "LOICollectionA/frontend/stdlib/ObservableBooleanClass.h"
+#include "LOICollectionA/frontend/stdlib/ObservableNumberClass.h"
+#include "LOICollectionA/frontend/stdlib/ObservableStringClass.h"
+#include "LOICollectionA/frontend/stdlib/ObservableUIRawMessageClass.h"
 
 #include "LOICollectionA/frontend/builtin/ui/form/CustomFormOptionsClass.h"
 

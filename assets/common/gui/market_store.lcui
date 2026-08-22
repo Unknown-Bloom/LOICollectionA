@@ -297,12 +297,12 @@ func buildReviewForm(storeId: string) -> void {
     ratingIndex = new ObservableNumber(0.0, true);
     ratingItems = [];
 
-    for (i = 1; i <= 5; i = i + 1) [
+    for (i in 1..6) [
         ratingItem = new DropdownItem();
         ratingItem.label = "" + i;
         ratingItem.value = i - 1;
 
-        ratingItems[i - 1] = ratingItem;
+        ratingItems.push(ratingItem);
     ]
 
     reviewContent = new ObservableString("", true);

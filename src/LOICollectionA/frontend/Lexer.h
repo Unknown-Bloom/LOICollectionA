@@ -17,7 +17,10 @@ namespace LOICollection::frontend {
         TOKEN_FUNC, TOKEN_NEW, TOKEN_THIS, TOKEN_SUPER, TOKEN_RETURN,
         TOKEN_PUBLIC, TOKEN_PRIVATE, TOKEN_EXTENDS, TOKEN_INSTANCEOF,
         TOKEN_STATIC, TOKEN_USING, TOKEN_NONE, TOKEN_EOF,
-        TOKEN_WHILE, TOKEN_FOR, TOKEN_BREAK, TOKEN_CONTINUE
+        TOKEN_WHILE, TOKEN_FOR, TOKEN_BREAK, TOKEN_CONTINUE,
+        TOKEN_PLUS_ASSIGN, TOKEN_MINUS_ASSIGN, TOKEN_MULTIPLY_ASSIGN,
+        TOKEN_DIVIDE_ASSIGN, TOKEN_MOD_ASSIGN, TOKEN_INCREMENT,
+        TOKEN_DECREMENT, TOKEN_RANGE, TOKEN_COALESCE, TOKEN_QUESTION_DOT
     };
     
     struct Token {
@@ -56,5 +59,6 @@ namespace LOICollection::frontend {
         char peekChar() const;
 
         Token makeToken(TokenType type);
+        Token makeTwoCharToken(TokenType type);
     };
 }

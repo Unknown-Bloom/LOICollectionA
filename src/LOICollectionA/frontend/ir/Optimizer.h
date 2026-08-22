@@ -18,5 +18,6 @@ namespace LOICollection::frontend::ir {
 
     private:
         Stats optimizeChunk(BytecodeChunk& chunk);
+        Stats optimizeChunkOnce(BytecodeChunk& chunk);
     };
 }

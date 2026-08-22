@@ -10,6 +10,27 @@
 #include "LOICollectionA/frontend/Parser.h"
 
 namespace LOICollection::frontend {
+    namespace {
+        std::string getCompoundAssignOp(TokenType type) {
+            switch (type) {
+                case TokenType::TOKEN_PLUS_ASSIGN: return "+";
+                case TokenType::TOKEN_MINUS_ASSIGN: return "-";
+                case TokenType::TOKEN_MULTIPLY_ASSIGN: return "*";
+                case TokenType::TOKEN_DIVIDE_ASSIGN: return "/";
+                case TokenType::TOKEN_MOD_ASSIGN: return "%";
+                default: return {};
+            }
+        }
+
+        bool isAssignableExpr(const ExprNode* expr) {
+            ASTNode::Type type = expr->getType();
+
+            return type == ASTNode::Type::Variable ||
+                   type == ASTNode::Type::MemberAccess ||
+                   type == ASTNode::Type::Index;
+        }
+    }
+
     Parser::Parser(Lexer& l, DiagnosticEngine& diag) : lexer(l), diagnostics(diag) {
         currentToken = lexer.getNextToken();
     }
@@ -116,13 +137,28 @@ namespace LOICollection::frontend {
         return std::make_unique<WhileNode>(loc, std::move(cond), std::move(body));
     }
 
-    std::unique_ptr<ForNode> Parser::parseForStatement() {
+    std::unique_ptr<ASTNode> Parser::parseForStatement() {
         SourceLocation loc = currentToken.loc;
 
         if (!eat(TokenType::TOKEN_FOR)) return nullptr;
         if (!eat(TokenType::TOKEN_LPAREN)) {
             synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
             return nullptr;
+        }
+
+        if (currentToken.type == TokenType::TOKEN_IDENT) {
+            Token first = peekToken(0);
+
+            if (first.type == TokenType::TOKEN_IDENT && first.value == "in")
+                return parseForInStatement(loc, false);
+
+            Token second = peekToken(1);
+            Token third = peekToken(2);
+
+            if (first.type == TokenType::TOKEN_COMMA &&
+                second.type == TokenType::TOKEN_IDENT &&
+                third.type == TokenType::TOKEN_IDENT && third.value == "in")
+                return parseForInStatement(loc, true);
         }
 
         std::unique_ptr<ExprNode> init;
@@ -176,6 +212,70 @@ namespace LOICollection::frontend {
         return std::make_unique<ForNode>(loc, std::move(init), std::move(cond), std::move(step), std::move(body));
     }
 
+    std::unique_ptr<ForInNode> Parser::parseForInStatement(SourceLocation loc, bool hasIndex) {
+        auto node = std::make_unique<ForInNode>(loc, currentToken.value);
+
+        if (!eat(TokenType::TOKEN_IDENT)) return nullptr;
+
+        if (hasIndex) {
+            if (!eat(TokenType::TOKEN_COMMA)) {
+                synchronize({ TokenType::TOKEN_RPAREN, TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
+                return nullptr;
+            }
+
+            node->indexVar = node->elementVar;
+            node->elementVar = currentToken.value;
+            node->hasIndexVar = true;
+
+            if (!eat(TokenType::TOKEN_IDENT)) {
+                synchronize({ TokenType::TOKEN_RPAREN, TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
+                return nullptr;
+            }
+        }
+
+        if (currentToken.type != TokenType::TOKEN_IDENT || currentToken.value != "in") {
+            diagnostics.addError(currentToken.loc, "Expected 'in' in for-in loop");
+            synchronize({ TokenType::TOKEN_RPAREN, TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+        if (!eat(TokenType::TOKEN_IDENT)) return nullptr;
+
+        auto iterable = parseBaseExpression();
+        if (!iterable) {
+            synchronize({ TokenType::TOKEN_RPAREN, TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        if (currentToken.type == TokenType::TOKEN_RANGE) {
+            SourceLocation rangeLoc = currentToken.loc;
+
+            if (!eat(TokenType::TOKEN_RANGE)) return nullptr;
+
+            auto end = parseBaseExpression();
+            if (!end) {
+                synchronize({ TokenType::TOKEN_RPAREN, TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
+                return nullptr;
+            }
+
+            iterable = std::make_unique<RangeNode>(rangeLoc, std::move(iterable), std::move(end));
+        }
+
+        if (!eat(TokenType::TOKEN_RPAREN) || !eat(TokenType::TOKEN_LBRCKET)) {
+            synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        node->iterable = std::move(iterable);
+        node->body = parseBlock(TokenType::TOKEN_RBRCKET, false);
+
+        if (!eat(TokenType::TOKEN_RBRCKET)) {
+            synchronize({ TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        return node;
+    }
+
     std::unique_ptr<BreakNode> Parser::parseBreakStatement() {
         SourceLocation loc = currentToken.loc;
 
@@ -207,6 +307,17 @@ namespace LOICollection::frontend {
                 return nullptr;
 
             return std::make_unique<AssignmentNode>(loc, std::move(expr), std::move(right));
+        }
+
+        std::string op = getCompoundAssignOp(currentToken.type);
+        if (!op.empty()) {
+            if (!eat(currentToken.type)) return nullptr;
+
+            auto right = parseBaseExpression();
+            if (!right)
+                return nullptr;
+
+            return std::make_unique<CompoundAssignNode>(loc, std::move(expr), std::move(right), op);
         }
 
         return expr;
@@ -1037,15 +1148,53 @@ namespace LOICollection::frontend {
             return std::make_unique<AssignmentNode>(exprLoc, std::move(expr), std::move(right));
         }
 
+        std::string op = getCompoundAssignOp(currentToken.type);
+        if (!op.empty()) {
+            if (!eat(currentToken.type)) return nullptr;
+
+            auto right = parseBaseExpression();
+            if (!right)
+                return nullptr;
+
+            return std::make_unique<CompoundAssignNode>(exprLoc, std::move(expr), std::move(right), op);
+        }
+
         return expr;
     }
 
     std::unique_ptr<ExprNode> Parser::parseBaseExpression() {
-        return parseBoolExpression();
+        return parseCoalesceExpression();
     }
 
     std::unique_ptr<ExprNode> Parser::parseBoolExpression() {
-        return parseOrExpression();
+        return parseCoalesceExpression();
+    }
+
+    std::unique_ptr<ExprNode> Parser::parseCoalesceExpression() {
+        auto left = parseOrExpression();
+        if (!left)
+            return nullptr;
+
+        while (currentToken.type == TokenType::TOKEN_COALESCE) {
+            SourceLocation loc = currentToken.loc;
+
+            if (!eat(TokenType::TOKEN_COALESCE)) return nullptr;
+
+            auto right = parseOrExpression();
+            if (!right)
+                return nullptr;
+
+            auto isBareLogical = [](const ExprNode& expr) -> bool {
+                return !expr.parenthesized && expr.getType() == ASTNode::Type::Logical;
+            };
+
+            if (isBareLogical(*left) || isBareLogical(*right))
+                diagnostics.addError(loc, "'??' cannot be mixed with '&&' or '||' without parentheses");
+
+            left = std::make_unique<CoalesceNode>(loc, std::move(left), std::move(right));
+        }
+
+        return left;
     }
 
     std::unique_ptr<ExprNode> Parser::parseOrExpression() {
@@ -1202,6 +1351,26 @@ namespace LOICollection::frontend {
     }
 
     std::unique_ptr<ExprNode> Parser::parseUnaryExpression() {
+        if (currentToken.type == TokenType::TOKEN_INCREMENT || currentToken.type == TokenType::TOKEN_DECREMENT) {
+            SourceLocation loc = currentToken.loc;
+            std::string op = currentToken.type == TokenType::TOKEN_INCREMENT ? "+" : "-";
+
+            advance();
+
+            auto operand = parseUnaryExpression();
+            if (!operand)
+                return nullptr;
+
+            if (!isAssignableExpr(operand.get())) {
+                diagnostics.addError(loc, "Operand of prefix '++'/'--' must be a variable, field or index");
+                return nullptr;
+            }
+
+            return std::make_unique<CompoundAssignNode>(
+                loc, std::move(operand), std::make_unique<ValueNode>(loc, 1), op
+            );
+        }
+
         if ((currentToken.type == TokenType::TOKEN_OP && currentToken.value == "!") ||
             currentToken.type == TokenType::TOKEN_PLUS || currentToken.type == TokenType::TOKEN_MINUS) {
             SourceLocation loc = currentToken.loc;
@@ -1262,6 +1431,46 @@ namespace LOICollection::frontend {
                 continue;
             }
 
+            if (currentToken.type == TokenType::TOKEN_QUESTION_DOT) {
+                SourceLocation loc = currentToken.loc;
+
+                if (!eat(TokenType::TOKEN_QUESTION_DOT)) return nullptr;
+
+                if (currentToken.type == TokenType::TOKEN_LBRCKET) {
+                    if (!eat(TokenType::TOKEN_LBRCKET)) return nullptr;
+
+                    auto index = parseBaseExpression();
+                    if (!index)
+                        return nullptr;
+
+                    if (!eat(TokenType::TOKEN_RBRCKET)) return nullptr;
+
+                    auto access = std::make_unique<IndexAccessNode>(
+                        loc, std::move(expr), std::move(index)
+                    );
+                    access->isSafe = true;
+                    expr = std::move(access);
+
+                    continue;
+                }
+
+                if (currentToken.type != TokenType::TOKEN_IDENT) {
+                    diagnostics.addError(currentToken.loc, "Expected member name after '?.'");
+                    return nullptr;
+                }
+
+                std::string member = currentToken.value;
+                if (!eat(TokenType::TOKEN_IDENT)) return nullptr;
+
+                auto access = std::make_unique<MemberAccessNode>(
+                    loc, std::move(expr), std::move(member)
+                );
+                access->isSafe = true;
+                expr = std::move(access);
+
+                continue;
+            }
+
             if (currentToken.type == TokenType::TOKEN_LBRCKET) {
                 SourceLocation loc = currentToken.loc;
 
@@ -1276,6 +1485,24 @@ namespace LOICollection::frontend {
                 expr = std::make_unique<IndexAccessNode>(
                     loc, std::move(expr), std::move(index)
                 );
+                continue;
+            }
+
+            if (currentToken.type == TokenType::TOKEN_INCREMENT || currentToken.type == TokenType::TOKEN_DECREMENT) {
+                SourceLocation loc = currentToken.loc;
+                std::string op = currentToken.type == TokenType::TOKEN_INCREMENT ? "+" : "-";
+
+                advance();
+
+                if (!isAssignableExpr(expr.get())) {
+                    diagnostics.addError(loc, "Operand of '++'/'--' must be a variable, field or index");
+                    return nullptr;
+                }
+
+                expr = std::make_unique<CompoundAssignNode>(
+                    loc, std::move(expr), std::make_unique<ValueNode>(loc, 1), op
+                );
+
                 continue;
             }
 
@@ -1346,12 +1573,13 @@ namespace LOICollection::frontend {
                 return parseLambda();
             case TokenType::TOKEN_LPAREN: {
                 if (!eat(TokenType::TOKEN_LPAREN)) return nullptr;
-                
+
                 auto expr = parseBaseExpression();
                 if (!expr)
                     return nullptr;
 
                 if (!eat(TokenType::TOKEN_RPAREN)) return nullptr;
+                expr->parenthesized = true;
                 return expr;
             }
             case TokenType::TOKEN_IDENT: {
@@ -1444,10 +1672,23 @@ namespace LOICollection::frontend {
     }
 
     TokenType Parser::peek() {
-        return lexer.peekNextToken().type;
+        return peekToken(0).type;
+    }
+
+    Token Parser::peekToken(size_t offset) {
+        while (lookaheadBuffer.size() <= offset)
+            lookaheadBuffer.push_back(lexer.getNextToken());
+
+        return lookaheadBuffer[offset];
     }
 
     void Parser::advance() {
+        if (!lookaheadBuffer.empty()) {
+            currentToken = std::move(lookaheadBuffer.front());
+            lookaheadBuffer.erase(lookaheadBuffer.begin());
+            return;
+        }
+
         currentToken = lexer.getNextToken();
     }
 
@@ -1543,6 +1784,16 @@ namespace LOICollection::frontend {
             case TokenType::TOKEN_USING: return "USING";
             case TokenType::TOKEN_NONE: return "NONE";
             case TokenType::TOKEN_EOF: return "EOF";
+            case TokenType::TOKEN_PLUS_ASSIGN: return "+=";
+            case TokenType::TOKEN_MINUS_ASSIGN: return "-=";
+            case TokenType::TOKEN_MULTIPLY_ASSIGN: return "*=";
+            case TokenType::TOKEN_DIVIDE_ASSIGN: return "/=";
+            case TokenType::TOKEN_MOD_ASSIGN: return "%=";
+            case TokenType::TOKEN_INCREMENT: return "++";
+            case TokenType::TOKEN_DECREMENT: return "--";
+            case TokenType::TOKEN_RANGE: return "..";
+            case TokenType::TOKEN_COALESCE: return "??";
+            case TokenType::TOKEN_QUESTION_DOT: return "?.";
             default: return "UNKNOWN";
         }
     }

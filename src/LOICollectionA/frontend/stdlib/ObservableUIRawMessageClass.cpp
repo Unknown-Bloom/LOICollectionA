@@ -12,9 +12,9 @@
 
 #include "LOICollectionA/frontend/ir/VM.h"
 
-#include "LOICollectionA/frontend/builtin/ui/base/UIRawMessageClass.h"
+#include "LOICollectionA/frontend/stdlib/UIRawMessageClass.h"
 
-#include "LOICollectionA/frontend/builtin/ui/base/ObservableUIRawMessageClass.h"
+#include "LOICollectionA/frontend/stdlib/ObservableUIRawMessageClass.h"
 
 using namespace LOICollection::frontend;
 

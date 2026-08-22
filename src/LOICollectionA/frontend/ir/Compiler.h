@@ -44,15 +44,20 @@ namespace LOICollection::frontend::ir {
         };
 
         std::vector<LoopContext> loopStack;
-        
+
         size_t methodCount = 0;
+        size_t forInCounter = 0;
 
         void visit(ValueNode& node) override;
         void visit(VariableNode& node) override;
         void visit(AssignmentNode& node) override;
+        void visit(CompoundAssignNode& node) override;
         void visit(IfNode& node) override;
         void visit(WhileNode& node) override;
         void visit(ForNode& node) override;
+        void visit(ForInNode& node) override;
+        void visit(RangeNode& node) override;
+        void visit(CoalesceNode& node) override;
         void visit(BreakNode& node) override;
         void visit(ContinueNode& node) override;
         void visit(CompareNode& node) override;
@@ -85,6 +90,10 @@ namespace LOICollection::frontend::ir {
         void compileFunctionBody(FunctionDefNode& node);
         void compileSequence(SequenceNode& node);
         void compileValue(ExprNode& node, const SourceLocation& loc);
+
+        void compileForInArray(ForInNode& node, size_t uid);
+        void compileForInRange(ForInNode& node, size_t uid);
+        void emitArithmeticOp(const std::string& op, const SourceLocation& loc);
 
         [[nodiscard]] std::optional<ValueNode::ValueType> constantValue(ExprNode& node) const;
 

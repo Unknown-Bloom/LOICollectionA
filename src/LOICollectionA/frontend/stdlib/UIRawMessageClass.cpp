@@ -9,7 +9,7 @@
 
 #include "LOICollectionA/frontend/Callback.h"
 
-#include "LOICollectionA/frontend/builtin/ui/base/UIRawMessageClass.h"
+#include "LOICollectionA/frontend/stdlib/UIRawMessageClass.h"
 
 using namespace LOICollection::frontend;
 

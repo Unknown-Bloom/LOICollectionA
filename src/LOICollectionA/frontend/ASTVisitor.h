@@ -6,9 +6,13 @@ namespace LOICollection::frontend {
     struct ValueNode;
     struct VariableNode;
     struct AssignmentNode;
+    struct CompoundAssignNode;
     struct IfNode;
     struct WhileNode;
     struct ForNode;
+    struct ForInNode;
+    struct RangeNode;
+    struct CoalesceNode;
     struct BreakNode;
     struct ContinueNode;
     struct CompareNode;
@@ -42,9 +46,13 @@ namespace LOICollection::frontend {
         virtual void visit(ValueNode& node) = 0;
         virtual void visit(VariableNode& node) = 0;
         virtual void visit(AssignmentNode& node) = 0;
+        virtual void visit(CompoundAssignNode& node) = 0;
         virtual void visit(IfNode& node) = 0;
         virtual void visit(WhileNode& node) = 0;
         virtual void visit(ForNode& node) = 0;
+        virtual void visit(ForInNode& node) = 0;
+        virtual void visit(RangeNode& node) = 0;
+        virtual void visit(CoalesceNode& node) = 0;
         virtual void visit(BreakNode& node) = 0;
         virtual void visit(ContinueNode& node) = 0;
         virtual void visit(CompareNode& node) = 0;

@@ -9,7 +9,7 @@
 
 #include "LOICollectionA/utils/core/MathUtils.h"
 
-#include "LOICollectionA/frontend/builtin/MathBuiltin.h"
+#include "LOICollectionA/frontend/stdlib/MathBuiltin.h"
 
 using namespace LOICollection::frontend;
 

@@ -525,6 +525,26 @@ namespace LOICollection::frontend {
                     checkStatement(*forNode.body, scope);
                 return;
             }
+            case ASTNode::Type::ForIn: {
+                auto& forIn = static_cast<ForInNode&>(node);
+                TypeInfo iterableType = checkExpr(*forIn.iterable, scope);
+
+                bool isRange = forIn.iterable->getType() == ASTNode::Type::Range;
+                if (!isRange && iterableType.kind != TypeKind::Unknown &&
+                    iterableType.kind != TypeKind::Array) {
+                    this->diagnostics.addError(forIn.loc, "for-in iterable must be an array");
+                }
+
+                if (forIn.hasIndexVar)
+                    this->globalTypes[forIn.indexVar] = { TypeKind::Int };
+                this->globalTypes[forIn.elementVar] = isRange
+                    ? TypeInfo{ TypeKind::Int }
+                    : TypeInfo{};
+
+                if (forIn.body)
+                    checkStatement(*forIn.body, scope);
+                return;
+            }
             case ASTNode::Type::Break:
             case ASTNode::Type::Continue:
                 return;
@@ -555,6 +575,56 @@ namespace LOICollection::frontend {
         switch (node.getType()) {
             case ASTNode::Type::Assignment:
                 return checkAssignment(static_cast<AssignmentNode&>(node), scope);
+
+            case ASTNode::Type::CompoundAssign: {
+                auto& assign = static_cast<CompoundAssignNode&>(node);
+                TypeInfo target = checkExpr(*assign.target, scope);
+                TypeInfo value = checkExpr(*assign.value, scope);
+
+                if (assign.op == "+" && (target.kind == TypeKind::String || value.kind == TypeKind::String))
+                    return { TypeKind::String };
+
+                if (isNumeric(target) && isNumeric(value)) {
+                    if (target.kind == TypeKind::Int && value.kind == TypeKind::Int)
+                        return { TypeKind::Int };
+
+                    return { TypeKind::Float };
+                }
+
+                return {};
+            }
+
+            case ASTNode::Type::Coalesce: {
+                auto& coalesce = static_cast<CoalesceNode&>(node);
+                TypeInfo left = checkExpr(*coalesce.left, scope);
+                TypeInfo right = checkExpr(*coalesce.right, scope);
+
+                // None / empty optional is meaningful for '??': keep the raw value.
+                coalesce.left->preserveOptional = true;
+
+                while (left.kind == TypeKind::Optional)
+                    left = *left.optionalInner;
+
+                if (left.kind == TypeKind::Unknown || right.kind == TypeKind::Unknown)
+                    return {};
+                if (left.kind == right.kind)
+                    return left;
+
+                return {};
+            }
+
+            case ASTNode::Type::Range: {
+                auto& range = static_cast<RangeNode&>(node);
+                TypeInfo start = checkExpr(*range.start, scope);
+                TypeInfo end = checkExpr(*range.end, scope);
+
+                if (start.kind != TypeKind::Unknown && start.kind != TypeKind::Int)
+                    this->diagnostics.addError(range.loc, "Range start must be an int");
+                if (end.kind != TypeKind::Unknown && end.kind != TypeKind::Int)
+                    this->diagnostics.addError(range.loc, "Range end must be an int");
+
+                return { TypeKind::Int };
+            }
 
             case ASTNode::Type::Value:
                 return typeOfValue(static_cast<ValueNode&>(node).value);
@@ -872,9 +942,9 @@ namespace LOICollection::frontend {
                 }
 
                 if (rhs.kind == TypeKind::None) {
-                    this->diagnostics.addError(node.loc,
-                        std::string("'None' is only allowed when assigning to an optional value ") +
-                        "(variable '" + var.name + "')");
+                    // Dynamic variables may hold 'None' (e.g. before a '??' fallback);
+                    // the inferred type stays dynamic so later assignments remain valid.
+                    globalTypes[var.name] = TypeInfo{};
                     return rhs;
                 }
 
@@ -1057,6 +1127,30 @@ namespace LOICollection::frontend {
 
         TypeInfo targetType = checkExpr(*node.target, scope);
 
+        bool safeMaybeNone = false;
+        if (node.isSafe) {
+            // None / empty optional short-circuits a safe chain: keep the raw target.
+            node.target->preserveOptional = true;
+            safeMaybeNone = targetType.kind == TypeKind::Optional ||
+                            targetType.kind == TypeKind::Unknown;
+        }
+
+        TypeInfo result = this->checkMemberAccessImpl(node, scope, targetType);
+
+        if (!node.isSafe || !safeMaybeNone)
+            return result;
+
+        if (result.kind == TypeKind::Unknown || result.kind == TypeKind::None)
+            return {};
+
+        node.preserveOptional = true;
+        TypeInfo optional;
+        optional.kind = TypeKind::Optional;
+        optional.optionalInner = std::make_shared<TypeInfo>(result);
+        return optional;
+    }
+
+    TypeInfo SemanticAnalyzer::checkMemberAccessImpl(MemberAccessNode& node, MethodScope& scope, TypeInfo targetType) {
         if (targetType.kind == TypeKind::Unknown)
             return {};
 
@@ -1111,6 +1205,14 @@ namespace LOICollection::frontend {
                 return { TypeKind::Int };
 
             diagnostics.addError(node.loc, "Array has no member '" + node.memberName + "'");
+            return {};
+        }
+
+        if (targetType.kind == TypeKind::String) {
+            if (node.memberName == "length")
+                return { TypeKind::Int };
+
+            diagnostics.addError(node.loc, "String has no member '" + node.memberName + "'");
             return {};
         }
 
@@ -1213,6 +1315,43 @@ namespace LOICollection::frontend {
 
         while (targetType.kind == TypeKind::Optional)
             targetType = *targetType.optionalInner;
+
+        if (targetType.kind == TypeKind::Array || targetType.kind == TypeKind::String) {
+            const std::string& className = targetType.kind == TypeKind::Array ? "Array" : "String";
+            std::vector<CallbackTypeArgs> signatures =
+                ClassCall::getInstance().getValueMethodSignatures(className, node.methodName);
+
+            for (const auto& signature : signatures) {
+                if (matchesNativeSignature(signature, argTypes)) {
+                    node.className = className;
+                    node.methodOrdinal = -1;
+                    return {};
+                }
+            }
+
+            diagnostics.addError(node.loc,
+                "No matching method '" + node.methodName + "' with " +
+                std::to_string(argCount) + " argument(s) on " + className + " values");
+            return {};
+        }
+
+        if (targetType.kind == TypeKind::Unknown) {
+            /* Dynamically typed target (e.g. a member read of an object or native
+             * instance): defer the value-method dispatch to the VM, which selects
+             * the value class by the runtime type of the receiver. */
+            for (const char* className : { "Array", "String" }) {
+                std::vector<CallbackTypeArgs> signatures =
+                    ClassCall::getInstance().getValueMethodSignatures(className, node.methodName);
+
+                for (const auto& signature : signatures) {
+                    if (matchesNativeSignature(signature, argTypes)) {
+                        node.className = className;
+                        node.methodOrdinal = -1;
+                        return {};
+                    }
+                }
+            }
+        }
 
         if (targetType.kind != TypeKind::Object) {
             diagnostics.addError(node.loc, "Method call target is not an object");
@@ -1764,9 +1903,13 @@ namespace LOICollection::frontend {
         }
 
         if (!this->isAssignableTo(target, from)) {
+            std::string hint = from.kind == TypeKind::Optional && target.kind != TypeKind::Optional
+                ? " (consider using '??' to provide a default value)"
+                : "";
+
             diagnostics.addError(loc,
                 "Type mismatch for " + what + ": expected " +
-                typeToString(target) + ", got " + typeToString(from));
+                typeToString(target) + ", got " + typeToString(from) + hint);
         }
     }
 

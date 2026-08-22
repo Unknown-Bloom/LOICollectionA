@@ -25,7 +25,7 @@ TEST(ParserEvalTest, Arithmetic) {
 
 TEST(ParserEvalTest, Unary) {
     EXPECT_EQ(eval("-5"), "-5");
-    EXPECT_EQ(eval("--3"), "3");
+    EXPECT_EQ(eval("-(-3)"), "3");
     EXPECT_EQ(eval("!true"), "false");
     EXPECT_EQ(eval("!false"), "true");
 }
@@ -143,7 +143,7 @@ TEST(ParserEvalTest, MixedNumericArithmetic) {
 TEST(ParserEvalTest, MoreUnary) {
     EXPECT_EQ(eval("+5"), "5");
     EXPECT_EQ(eval("-2.5"), "-2.5");
-    EXPECT_EQ(eval("--5"), "5");
+    EXPECT_EQ(eval("-(-5)"), "5");
     EXPECT_EQ(eval("!0"), "true");
     EXPECT_EQ(eval("!\"false\""), "true");
     EXPECT_EQ(eval("!!true"), "true");

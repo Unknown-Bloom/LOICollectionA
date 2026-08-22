@@ -167,8 +167,8 @@ items = [1, "a", true];
 items[0];       // 1
 items.length;   // 3
 
-items[3] = 2;   // Appends an element when the index equals the current length
-items[1] = "b"; // Modifies an existing element
+items.push(2);  // Appends an element and returns the new length
+items[1] = "b"; // Modifies an existing element (assigning at index == length also appends)
 ```
 
 Array indices start at `0`; out-of-bounds reads and negative indices raise an error. Array `==`/`!=` compares references (whether they are the same array), not contents. An array field of a class is isolated between instances (it is copied when an instance is created); modifying the array of one instance does not affect other instances.
@@ -261,7 +261,7 @@ total = if (flag) [ 1 : 2 ] + 5;
 ```lcui
 i = 0;
 while (i < 5) [
-    i = i + 1;
+    i++;
 ]
 ```
 
@@ -269,9 +269,9 @@ while (i < 5) [
 
 ```lcui
 s = 0;
-for (i = 0; i < 10; i = i + 1) [
+for (i = 0; i < 10; i++) [
     if (i % 2 == 0) [ continue; ];
-    s = s + i;
+    s += i;
 ]
 ```
 
@@ -391,7 +391,7 @@ public:
     static total = 0;
 
     static func inc() -> int {
-        total = total + 1;
+        total += 1;
         return total;
     }
 }

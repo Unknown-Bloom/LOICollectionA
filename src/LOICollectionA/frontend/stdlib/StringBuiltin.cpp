@@ -4,7 +4,7 @@
 
 #include "LOICollectionA/frontend/Callback.h"
 
-#include "LOICollectionA/frontend/builtin/StringBuiltin.h"
+#include "LOICollectionA/frontend/stdlib/StringBuiltin.h"
 
 using namespace LOICollection::frontend;
 

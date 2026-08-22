@@ -2722,8 +2722,8 @@ actions.value = [];
 emptyAction = func () -> void {};
 
 func registerAction(name, callback) -> void {
-    actions.value[actions.value.length] = name;
-    actions.value[actions.value.length] = callback;
+    actions.value.push(name);
+    actions.value.push(callback);
 }
 
 func findAction(name) {
@@ -2732,13 +2732,13 @@ func findAction(name) {
         if (actions.value[i] == name) [
             return actions.value[i + 1];
         ]
-        i = i + 2;
+        i += 2;
     ]
     return emptyAction;
 }
 ```
 
-`actions.value[actions.value.length] = ...` 用的是数组"按下标追加"的语义（第五部分的 `STORE_INDEX`：`i == size` 时追加）。找不到名字时返回一个空动作，保证调用方永远拿得到函数，不会在运行期炸掉。
+`actions.value.push(...)` 把"名字、函数"成对追加到数组末尾（`push` 就是数组的标准追加方法，底层等价于第五部分 `STORE_INDEX` 在 `i == size` 处写入）。找不到名字时返回一个空动作，保证调用方永远拿得到函数，不会在运行期炸掉。
 
 然后写渲染器。它只做四件事：建表单、遍历条目、按类型分派、注册 show 回调：
 
@@ -2746,10 +2746,7 @@ func findAction(name) {
 func renderMenu(declaration) -> void {
     form = new CustomForm(declaration.id, declaration.title);
 
-    i = 0;
-    while (i < declaration.items.length) [
-        item = declaration.items[i];
-
+    for (item in declaration.items) [
         if (item.type == "open") [
             form.button(item.text, func () -> void {
                 GUIManager::switchTo(item.target, item.formType);
@@ -2771,8 +2768,6 @@ func renderMenu(declaration) -> void {
                 ]
             ]
         ]
-
-        i = i + 1;
     ]
 
     form.show(func (result) -> void {

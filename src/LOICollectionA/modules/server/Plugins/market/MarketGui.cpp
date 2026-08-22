@@ -10,6 +10,9 @@
 #include <ll/api/Expected.h>
 #include <ll/api/service/Bedrock.h>
 
+#include <mc/deps/nbt/Tag.h>
+#include <mc/deps/nbt/CompoundTag.h>
+
 #include <mc/world/level/Level.h>
 #include <mc/world/actor/player/Player.h>
 #include <mc/world/actor/player/PlayerInventory.h>
@@ -29,6 +32,8 @@
 #include "LOICollectionA/ConfigPlugin.h"
 
 #include "LOICollectionA/frontend/AST.h"
+
+#include "LOICollectionA/include/CallbackUtils.h"
 
 #include "LOICollectionA/include/form/GUIManager.h"
 

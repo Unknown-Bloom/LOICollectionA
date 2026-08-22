@@ -25,6 +25,15 @@ namespace LOICollection::frontend::ir {
             fieldName = name.substr(pos + 2);
             return !className.empty() && !fieldName.empty();
         }
+
+        std::string valueClassNameOf(const ValueNode::ValueType& val) {
+            if (std::holds_alternative<ArrayRef>(val))
+                return "Array";
+            if (std::holds_alternative<std::string>(val))
+                return "String";
+
+            return {};
+        }
     }
 
     std::string VM::valueToString(const ValueNode::ValueType& val) {
@@ -102,6 +111,42 @@ namespace LOICollection::frontend::ir {
     }
 
     ValueNode::ValueType VM::applyArithmetic(const ValueNode::ValueType& left, const ValueNode::ValueType& right, const std::string& op, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
+        if (auto leftObj = std::get_if<ObjectRef>(&left)) {
+            if (ClassCall::getInstance().hasOperator((*leftObj)->className, op)) {
+                auto result = ClassCall::getInstance().callOperator(
+                    (*leftObj)->className, op, left, right, diagnostics, loc
+                );
+
+                if (!result.has_value()) {
+                    diagnostics.addError(loc,
+                        "Operator '" + op + "' failed for class '" + (*leftObj)->className +
+                        "': " + result.error().message());
+                    return 0;
+                }
+
+                return result.value();
+            }
+        }
+
+        /* Fall back to the right operand's operator so "literal + observable"
+         * works like "observable + literal" instead of silently stringifying. */
+        if (auto rightObj = std::get_if<ObjectRef>(&right)) {
+            if (ClassCall::getInstance().hasOperator((*rightObj)->className, op)) {
+                auto result = ClassCall::getInstance().callOperator(
+                    (*rightObj)->className, op, left, right, diagnostics, loc
+                );
+
+                if (!result.has_value()) {
+                    diagnostics.addError(loc,
+                        "Operator '" + op + "' failed for class '" + (*rightObj)->className +
+                        "': " + result.error().message());
+                    return 0;
+                }
+
+                return result.value();
+            }
+        }
+
         return std::visit([&op, &diagnostics, &loc](auto&& l, auto&& r) -> ValueNode::ValueType {
             using T = std::decay_t<decltype(l)>;
             using U = std::decay_t<decltype(r)>;
@@ -228,6 +273,42 @@ namespace LOICollection::frontend::ir {
     }
 
     bool VM::applyComparison(const ValueNode::ValueType& left, const ValueNode::ValueType& right, const std::string& op, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
+        if (auto leftObj = std::get_if<ObjectRef>(&left)) {
+            if (ClassCall::getInstance().hasOperator((*leftObj)->className, op)) {
+                auto result = ClassCall::getInstance().callOperator(
+                    (*leftObj)->className, op, left, right, diagnostics, loc
+                );
+
+                if (!result.has_value()) {
+                    diagnostics.addError(loc,
+                        "Operator '" + op + "' failed for class '" + (*leftObj)->className +
+                        "': " + result.error().message());
+                    return false;
+                }
+
+                return VM::valueToBool(result.value());
+            }
+        }
+
+        /* Mirror the arithmetic fallback: "literal == observable" dispatches on
+         * the right operand's operator. */
+        if (auto rightObj = std::get_if<ObjectRef>(&right)) {
+            if (ClassCall::getInstance().hasOperator((*rightObj)->className, op)) {
+                auto result = ClassCall::getInstance().callOperator(
+                    (*rightObj)->className, op, left, right, diagnostics, loc
+                );
+
+                if (!result.has_value()) {
+                    diagnostics.addError(loc,
+                        "Operator '" + op + "' failed for class '" + (*rightObj)->className +
+                        "': " + result.error().message());
+                    return false;
+                }
+
+                return VM::valueToBool(result.value());
+            }
+        }
+
         return std::visit([&op, &diagnostics, &loc](auto&& l, auto&& r) -> bool {
             using T = std::decay_t<decltype(l)>;
             using U = std::decay_t<decltype(r)>;
@@ -398,6 +479,47 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
+                case OpCode::DUP2: {
+                    if (this->stack.size() < 2) {
+                        this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP2");
+                        break;
+                    }
+
+                    auto second = this->stack[this->stack.size() - 2];
+                    this->stack.push_back(second);
+                    this->stack.push_back(this->stack[this->stack.size() - 2]);
+                    break;
+                }
+
+                case OpCode::ROT3: {
+                    if (this->stack.size() < 3) {
+                        this->diagnostics.addError(this->currentLoc, "Stack underflow during ROT3");
+                        break;
+                    }
+
+                    auto bottom = std::move(this->stack[this->stack.size() - 3]);
+                    this->stack.erase(this->stack.end() - 3);
+                    this->stack.push_back(std::move(bottom));
+                    break;
+                }
+
+                case OpCode::SWAP2: {
+                    if (this->stack.size() < 4) {
+                        this->diagnostics.addError(this->currentLoc, "Stack underflow during SWAP2");
+                        break;
+                    }
+
+                    std::swap(this->stack[this->stack.size() - 4], this->stack[this->stack.size() - 2]);
+                    std::swap(this->stack[this->stack.size() - 3], this->stack[this->stack.size() - 1]);
+                    break;
+                }
+
+                case OpCode::IS_NONE: {
+                    auto value = this->pop();
+                    this->push(std::holds_alternative<std::monostate>(value));
+                    break;
+                }
+
                 case OpCode::UNWRAP: {
                     auto value = this->pop();
                     if (std::holds_alternative<std::monostate>(value)) {
@@ -484,6 +606,15 @@ namespace LOICollection::frontend::ir {
                     this->push(globalIt->second);
                     break;
                 }
+                case OpCode::DECLARE_LOCAL: {
+                    /* Pins a for-in loop variable to the current frame so each
+                     * iteration rebinds it; lambdas snapshot frame.locals when
+                     * created, capturing the value of their own iteration. */
+                    const auto& name = std::get<std::string>(cur.constants[instr.operand]);
+                    frame.locals.try_emplace(name, std::monostate{});
+                    break;
+                }
+
                 case OpCode::STORE_VAR: {
                     const auto& name = std::get<std::string>(cur.constants[instr.operand]);
 
@@ -543,6 +674,16 @@ namespace LOICollection::frontend::ir {
                         }
 
                         this->diagnostics.addError(this->currentLoc, "Array has no field: " + name);
+                        break;
+                    }
+
+                    if (std::holds_alternative<std::string>(objValue)) {
+                        if (name == "length") {
+                            this->push(static_cast<int>(std::get<std::string>(objValue).size()));
+                            break;
+                        }
+
+                        this->diagnostics.addError(this->currentLoc, "String has no field: " + name);
                         break;
                     }
 
@@ -907,7 +1048,28 @@ namespace LOICollection::frontend::ir {
 
                     auto receiver = this->pop();
                     if (!std::holds_alternative<ObjectRef>(receiver)) {
-                        this->diagnostics.addError(this->currentLoc, "Native method call target is not an object");
+                        std::string valueClassName = valueClassNameOf(receiver);
+                        if (valueClassName.empty()) {
+                            this->diagnostics.addError(this->currentLoc, "Native method call target is not an object");
+                            break;
+                        }
+
+                        std::vector<ValueNode::ValueType> args(meta.argCount);
+                        for (int i = 0; i < meta.argCount; ++i)
+                            args[meta.argCount - 1 - i] = this->pop();
+
+                        auto result = ClassCall::getInstance().callValueMethod(
+                            valueClassName, meta.name, receiver, args, this->diagnostics, this->currentLoc
+                        );
+
+                        if (!result.has_value()) {
+                            this->diagnostics.addError(this->currentLoc,
+                                "Native value method call failed '" + valueClassName + "::" + meta.name +
+                                "': " + result.error().message());
+                            break;
+                        }
+
+                        this->push(result.value());
                         break;
                     }
 

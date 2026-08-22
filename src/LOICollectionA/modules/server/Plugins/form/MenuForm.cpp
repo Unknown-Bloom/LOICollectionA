@@ -15,9 +15,9 @@
 
 #include "LOICollectionA/frontend/builtin/ui/form/ScriptFormClass.h"
 #include "LOICollectionA/frontend/builtin/ui/form/CustomFormOptionsClass.h"
-#include "LOICollectionA/frontend/builtin/ui/base/ObservableBooleanClass.h"
-#include "LOICollectionA/frontend/builtin/ui/base/ObservableNumberClass.h"
-#include "LOICollectionA/frontend/builtin/ui/base/ObservableStringClass.h"
+#include "LOICollectionA/frontend/stdlib/ObservableBooleanClass.h"
+#include "LOICollectionA/frontend/stdlib/ObservableNumberClass.h"
+#include "LOICollectionA/frontend/stdlib/ObservableStringClass.h"
 
 #include "LOICollectionA/include/form/GUIManager.h"
 #include "LOICollectionA/include/server/Plugins/form/MenuData.h"

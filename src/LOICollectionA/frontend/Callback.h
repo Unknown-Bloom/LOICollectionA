@@ -40,6 +40,8 @@ namespace LOICollection::frontend {
     using NativeMethodCombination = std::function<ll::Expected<TypedValue>(const ObjectRef&, const CallbackTypeValues&, const CallbackTypePlaces&)>;
     using NativeStaticMethod = std::function<ll::Expected<TypedValue>(const CallbackTypeValues&)>;
     using NativeStaticMethodCombination = std::function<ll::Expected<TypedValue>(const CallbackTypeValues&, const CallbackTypePlaces&)>;
+    using NativeValueMethod = std::function<ll::Expected<TypedValue>(const TypedValue&, const CallbackTypeValues&)>;
+    using NativeOperator = std::function<ll::Expected<TypedValue>(const TypedValue&, const TypedValue&)>;
 
     struct Signature {
         std::string name;
@@ -121,19 +123,23 @@ namespace LOICollection::frontend {
         LOICOLLECTION_A_API   void registerField(const std::string& className, const std::string& field, const TypedValue& defaultValue);
         LOICOLLECTION_A_API   void registerStaticField(const std::string& className, const std::string& field);
         LOICOLLECTION_A_API   void registerStaticField(const std::string& className, const std::string& field, const TypedValue& defaultValue);
+        LOICOLLECTION_A_API   void registerValueMethod(const std::string& className, const std::string& method, NativeValueMethod callback, const CallbackTypeArgs& args);
+        LOICOLLECTION_A_API   void registerOperator(const std::string& className, const std::string& op, NativeOperator callback);
 
         LOICOLLECTION_A_NDAPI bool isRegistered(const std::string& name) const;
         LOICOLLECTION_A_NDAPI bool hasField(const std::string& name, const std::string& field) const;
         LOICOLLECTION_A_NDAPI bool hasStaticField(const std::string& name, const std::string& field) const;
+        LOICOLLECTION_A_NDAPI bool hasOperator(const std::string& className, const std::string& op) const;
 
         LOICOLLECTION_A_NDAPI std::vector<std::string> getFields(const std::string& name) const;
         LOICOLLECTION_A_NDAPI std::vector<std::string> getStaticFields(const std::string& name) const;
         LOICOLLECTION_A_NDAPI std::vector<CallbackTypeArgs> getConstructorSignatures(const std::string& name) const;
         LOICOLLECTION_A_NDAPI std::vector<CallbackTypeArgs> getMethodSignatures(const std::string& className, const std::string& method) const;
         LOICOLLECTION_A_NDAPI std::vector<CallbackTypeArgs> getStaticMethodSignatures(const std::string& className, const std::string& method) const;
+        LOICOLLECTION_A_NDAPI std::vector<CallbackTypeArgs> getValueMethodSignatures(const std::string& className, const std::string& method) const;
 
         LOICOLLECTION_A_NDAPI ll::Expected<TypedValue> getStaticField(const std::string& className, const std::string& field) const;
-        
+
         LOICOLLECTION_A_API   void setStaticField(const std::string& className, const std::string& field, const TypedValue& value);
 
         LOICOLLECTION_A_NDAPI ll::Expected<ObjectRef> create(
@@ -146,6 +152,14 @@ namespace LOICollection::frontend {
         LOICOLLECTION_A_NDAPI ll::Expected<TypedValue> callStaticMethod(
             const std::string& className, const std::string& method, const CallbackTypeValues& args,
             const CallbackTypePlaces& placeholders, DiagnosticEngine& diagnostics, const SourceLocation& loc = {}
+        );
+        LOICOLLECTION_A_NDAPI ll::Expected<TypedValue> callValueMethod(
+            const std::string& className, const std::string& method, const TypedValue& self, const CallbackTypeValues& args,
+            DiagnosticEngine& diagnostics, const SourceLocation& loc = {}
+        );
+        LOICOLLECTION_A_NDAPI ll::Expected<TypedValue> callOperator(
+            const std::string& className, const std::string& op, const TypedValue& left, const TypedValue& right,
+            DiagnosticEngine& diagnostics, const SourceLocation& loc = {}
         );
 
     private:

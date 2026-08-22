@@ -264,12 +264,36 @@ raw = new ObservableUIRawMessage(UIRawMessage.text("hello"), true);
 | --- | --- |
 | `isClientWritable()` | 返回客户端是否可写 |
 | `getData()` | 获取当前值 |
-| `setData(value)` | 设置当前值 |
+| `setData(value)` | 设置当前值（`ObservableNumber` 支持 `int` / `float`） |
 | `subscribe(callback)` | 订阅变化，`callback` 接收一个参数（变化后的新值），返回订阅 ID |
 | `unsubscribe(id)` | 通过订阅 ID 取消订阅 |
 
-> [!NOTE]
-> `ObservableNumber::setData` 当前注册的参数类型与其实现存在不一致（注册为布尔类型），若调用异常请以源码为准。
+### Observable 运算符
+
+`ObservableNumber` / `ObservableString` / `ObservableBoolean` 重载了常用运算符，操作数可以是同类型 Observable 或对应的原生值，且原生值在运算符**任意一侧**均可（`num + 3` 与 `3 + num` 等价），按当前值参与运算并返回普通值：
+
+```lcui
+num = new ObservableNumber(2, false);
+num + 3;        // 5
+3 + num;        // 5
+num * 2 - 1;    // 3
+num > 2;        // true
+5 == num + 3;   // true
+
+text = new ObservableString("ab", false);
+text + "cd";    // "abcd"
+"x" + text;     // "xab"
+text == "ab";   // true
+
+flag = new ObservableBoolean(true, false);
+flag == false;  // false
+```
+
+| 类 | 支持的运算符 |
+| --- | --- |
+| `ObservableNumber` | `+ - * / % ^` 与 `== != > < >= <=` |
+| `ObservableString` | `+`（拼接）与 `== != > < >= <=` |
+| `ObservableBoolean` | `== !=` |
 
 ### Observable 示例
 

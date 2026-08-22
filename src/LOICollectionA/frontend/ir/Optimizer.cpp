@@ -1,5 +1,7 @@
+#include <cmath>
 #include <vector>
 #include <variant>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "LOICollectionA/frontend/ir/VM.h"
@@ -71,7 +73,86 @@ namespace LOICollection::frontend::ir {
         }
     }
 
+    // Opcodes that may execute script code (function bodies, lambdas, constructors) or
+    // create object fields; any of these can rebind what a later LOAD_VAR resolves to.
+    bool canWriteVariables(OpCode op) {
+        switch (op) {
+            case OpCode::CALL:
+            case OpCode::CALL_MACRO:
+            case OpCode::CALL_METHOD:
+            case OpCode::CALL_METHOD_VIRTUAL:
+            case OpCode::CALL_FUNC:
+            case OpCode::CALL_LAMBDA:
+            case OpCode::CALL_SUPER_CTOR:
+            case OpCode::NEW:
+            case OpCode::STORE_FIELD:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    // `kept op identity == kept`, applicable when the kept operand is a known number of a
+    // compatible kind. Divided by type-promotion rules: `x / 1` and `x ^ 1` always produce
+    // floats, and float `x + 0.0` flips -0.0, so those combinations stay untouched.
+    bool identityEligible(OpCode op, const StackEntry& kept, const StackEntry& identity) {
+        if (!isKnown(kept) || !isKnown(identity) || !knownValue(identity).removable)
+            return false;
+
+        const auto& keptValue = knownValue(kept).value;
+        const auto& identityValue = knownValue(identity).value;
+
+        bool keptIsInt = std::holds_alternative<int>(keptValue);
+        bool keptIsFloat = std::holds_alternative<float>(keptValue);
+        bool identityIntZero = std::holds_alternative<int>(identityValue) && std::get<int>(identityValue) == 0;
+        bool identityIntOne = std::holds_alternative<int>(identityValue) && std::get<int>(identityValue) == 1;
+        bool identityFloatOne = std::holds_alternative<float>(identityValue) && std::get<float>(identityValue) == 1.0f;
+
+        switch (op) {
+            case OpCode::ADD: // x + 0 / 0 + x
+                return keptIsInt && identityIntZero;
+            case OpCode::SUB: // x - 0
+                return keptIsInt && identityIntZero;
+            case OpCode::MUL: // x * 1 / 1 * x
+                return (keptIsInt && identityIntOne) || (keptIsFloat && (identityIntOne || identityFloatOne));
+            case OpCode::DIV: // x / 1
+                return keptIsFloat && (identityIntOne || identityFloatOne);
+            case OpCode::POW: // x ^ 1
+                return keptIsFloat && (identityIntOne || identityFloatOne);
+            default:
+                return false;
+        }
+    }
+
+    // ValueType holds non-comparable alternatives, so scalar equality is checked per kind.
+    // Floats compare bitwise-sign aware: `+0.0 == -0.0` under IEEE754, but they are
+    // observably different values (`to_string` and `1/x` disagree), so pool dedup must
+    // never conflate them.
+    bool sameScalar(const ValueNode::ValueType& a, const ValueNode::ValueType& b) {
+        if (a.index() != b.index() || !isScalarValue(a))
+            return false;
+
+        switch (a.index()) {
+            case 0: return std::get<int>(a) == std::get<int>(b);
+            case 1: {
+                const float fa = std::get<float>(a);
+                const float fb = std::get<float>(b);
+                return fa == fb && std::signbit(fa) == std::signbit(fb);
+            }
+            case 2: return std::get<std::string>(a) == std::get<std::string>(b);
+            case 3: return std::get<bool>(a) == std::get<bool>(b);
+            default: return true;
+        }
+    }
+
     int addConstant(BytecodeChunk& chunk, const ValueNode::ValueType& value) {
+        if (isScalarValue(value)) {
+            for (size_t i = 0; i < chunk.constants.size(); ++i) {
+                if (sameScalar(chunk.constants[i], value))
+                    return static_cast<int>(i);
+            }
+        }
+
         chunk.constants.push_back(value);
         return static_cast<int>(chunk.constants.size() - 1);
     }
@@ -110,7 +191,25 @@ namespace LOICollection::frontend::ir {
         return total;
     }
 
+    // Repeat the single pass until it stops making progress: each round's rewrites
+    // (forwarded loads, folded branches, dropped operands) expose new opportunities
+    // for the next round. A pass that changes nothing means the chunk is stable.
     Optimizer::Stats Optimizer::optimizeChunk(BytecodeChunk& chunk) {
+        Stats total;
+
+        for (int pass = 0; pass < 16; ++pass) {
+            Stats once = this->optimizeChunkOnce(chunk);
+            total.folded += once.folded;
+            total.removed += once.removed;
+
+            if (once.folded == 0 && once.removed == 0)
+                break;
+        }
+
+        return total;
+    }
+
+    Optimizer::Stats Optimizer::optimizeChunkOnce(BytecodeChunk& chunk) {
         Stats stats;
 
         const auto& code = chunk.code;
@@ -135,13 +234,23 @@ namespace LOICollection::frontend::ir {
         std::vector<bool> dropped(code.size(), false);
         std::vector<StackEntry> stack{ std::monostate{} };
 
+        // Straight-line scalar constants per variable name (the pool may hold the same
+        // name at several indices, so keying by the string is the only stable identity).
+        // Entries are dropped at merge points and around ops that can execute script
+        // code, so a forwarded LOAD_VAR always reproduces the stored value.
+        std::unordered_map<std::string, ValueNode::ValueType> varSlots;
+
         for (size_t i = 0; i < code.size(); ++i) {
             const auto& instr = code[i];
             const int oldIdx = static_cast<int>(i);
             int emittedAt = -1;
 
-            if (targets.contains(oldIdx))
+            if (targets.contains(oldIdx)) {
                 stack.assign(1, std::monostate{});
+                varSlots.clear();
+            } else if (canWriteVariables(instr.op)) {
+                varSlots.clear();
+            }
 
             switch (instr.op) {
                 case OpCode::PUSH_INT:
@@ -224,6 +333,62 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
+                case OpCode::IS_NONE: {
+                    StackEntry operand = popEntry(stack);
+
+                    if (isKnown(operand) && knownValue(operand).removable) {
+                        dropped[knownValue(operand).producer] = true;
+
+                        bool result = std::holds_alternative<std::monostate>(
+                            knownValue(operand).value);
+                        emitPush(chunk, foldedCode, result, instr.loc);
+                        emittedAt = static_cast<int>(foldedCode.size()) - 1;
+                        stack.emplace_back(TrackedValue{
+                            result, emittedAt, !targets.contains(oldIdx)
+                        });
+                        stats.folded++;
+                    } else {
+                        emittedAt = static_cast<int>(foldedCode.size());
+                        foldedCode.push_back(instr);
+                        stack.emplace_back(std::monostate{});
+                    }
+
+                    break;
+                }
+
+                case OpCode::LOAD_VAR: {
+                    const std::string& name = std::get<std::string>(chunk.constants[instr.operand]);
+                    auto slot = varSlots.find(name);
+
+                    if (slot != varSlots.end()) {
+                        emitPush(chunk, foldedCode, slot->second, instr.loc);
+                        emittedAt = static_cast<int>(foldedCode.size()) - 1;
+                        stack.emplace_back(TrackedValue{ slot->second, emittedAt, true });
+                        stats.folded++;
+                    } else {
+                        emittedAt = static_cast<int>(foldedCode.size());
+                        foldedCode.push_back(instr);
+                        stack.emplace_back(std::monostate{});
+                    }
+
+                    break;
+                }
+
+                case OpCode::STORE_VAR: {
+                    StackEntry value = popEntry(stack);
+                    const std::string& name = std::get<std::string>(chunk.constants[instr.operand]);
+
+                    if (isKnown(value) && isScalarValue(knownValue(value).value))
+                        varSlots[name] = knownValue(value).value;
+                    else
+                        varSlots.erase(name);
+
+                    emittedAt = static_cast<int>(foldedCode.size());
+                    foldedCode.push_back(instr);
+
+                    break;
+                }
+
                 case OpCode::POP: {
                     if (!targets.contains(oldIdx) && stack.size() > 1 &&
                         isKnown(stack.back()) && knownValue(stack.back()).removable) {
@@ -240,11 +405,10 @@ namespace LOICollection::frontend::ir {
                 }
 
                 case OpCode::DUP: {
-                    StackEntry top = stack.back();
-                    if (auto* known = std::get_if<TrackedValue>(&top))
+                    if (auto* known = std::get_if<TrackedValue>(&stack.back()))
                         known->removable = false;
 
-                    stack.push_back(top);
+                    stack.push_back(stack.back());
                     emittedAt = static_cast<int>(foldedCode.size());
                     foldedCode.push_back(instr);
 
@@ -279,6 +443,20 @@ namespace LOICollection::frontend::ir {
                             foldedCode.push_back(instr);
                             stack.emplace_back(std::monostate{});
                         }
+                    } else if (identityEligible(instr.op, left, right)) {
+                        // x op identity -> x: drop the identity operand, keep the other side
+                        dropped[knownValue(right).producer] = true;
+                        stack.emplace_back(TrackedValue{
+                            knownValue(left).value, knownValue(left).producer, knownValue(left).removable
+                        });
+                        stats.folded++;
+                    } else if ((instr.op == OpCode::ADD || instr.op == OpCode::MUL) &&
+                               identityEligible(instr.op, right, left)) {
+                        dropped[knownValue(left).producer] = true;
+                        stack.emplace_back(TrackedValue{
+                            knownValue(right).value, knownValue(right).producer, knownValue(right).removable
+                        });
+                        stats.folded++;
                     } else {
                         emittedAt = static_cast<int>(foldedCode.size());
                         foldedCode.push_back(instr);
@@ -525,6 +703,19 @@ namespace LOICollection::frontend::ir {
                             stats.folded++;
                             folded = true;
                         }
+                    } else if (i > 0 && code[i - 1].op == OpCode::NOT &&
+                               !targets.contains(oldIdx) && !targets.contains(oldIdx - 1) &&
+                               !foldedCode.empty() && foldedCode.back().op == OpCode::NOT) {
+                        // Fuse a preceding untargeted NOT into the branch: invert the
+                        // condition instead of computing its negation at runtime.
+                        dropped[static_cast<int>(foldedCode.size()) - 1] = true;
+
+                        OpCode fused = (instr.op == OpCode::JMP_IF_FALSE)
+                            ? OpCode::JMP_IF_TRUE : OpCode::JMP_IF_FALSE;
+
+                        emittedAt = static_cast<int>(foldedCode.size());
+                        foldedCode.push_back({ fused, instr.operand, instr.loc });
+                        stats.folded++;
                     } else {
                         emittedAt = static_cast<int>(foldedCode.size());
                         foldedCode.push_back(instr);

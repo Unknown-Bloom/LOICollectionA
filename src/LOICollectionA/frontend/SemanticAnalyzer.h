@@ -92,6 +92,7 @@ namespace LOICollection::frontend {
         TypeInfo checkExprImpl(ExprNode& node, MethodScope& scope);
         TypeInfo checkAssignment(AssignmentNode& node, MethodScope& scope);
         TypeInfo checkMemberAccess(MemberAccessNode& node, MethodScope& scope);
+        TypeInfo checkMemberAccessImpl(MemberAccessNode& node, MethodScope& scope, TypeInfo targetType);
         TypeInfo checkMethodCall(MethodCallNode& node, MethodScope& scope);
         TypeInfo checkFuncCall(FuncCallNode& node, MethodScope& scope);
         TypeInfo checkNew(NewNode& node, MethodScope& scope);

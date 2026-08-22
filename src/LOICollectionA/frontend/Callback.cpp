@@ -199,6 +199,8 @@ namespace LOICollection::frontend {
             std::unordered_map<Signature, NativeMethodCombination, SignatureHasher> methodCombinations;
             std::unordered_map<Signature, NativeStaticMethod, SignatureHasher> staticMethods;
             std::unordered_map<Signature, NativeStaticMethodCombination, SignatureHasher> staticMethodCombinations;
+            std::unordered_map<Signature, NativeValueMethod, SignatureHasher> valueMethods;
+            std::unordered_map<std::string, NativeOperator> operators;
         };
 
         std::unordered_map<std::string, NativeClassInfo> classes;
@@ -275,8 +277,25 @@ namespace LOICollection::frontend {
         info.staticFieldValues[field] = defaultValue;
     }
 
+    void ClassCall::registerValueMethod(const std::string& className, const std::string& method, NativeValueMethod callback, const CallbackTypeArgs& args) {
+        Signature sig{ method, args.size(), args, false };
+        this->mImpl->classes[className].valueMethods[sig] = std::move(callback);
+    }
+
+    void ClassCall::registerOperator(const std::string& className, const std::string& op, NativeOperator callback) {
+        this->mImpl->classes[className].operators[op] = std::move(callback);
+    }
+
     bool ClassCall::isRegistered(const std::string& name) const {
         return this->mImpl->classes.find(name) != this->mImpl->classes.end();
+    }
+
+    bool ClassCall::hasOperator(const std::string& className, const std::string& op) const {
+        auto it = this->mImpl->classes.find(className);
+        if (it == this->mImpl->classes.end())
+            return false;
+
+        return it->second.operators.find(op) != it->second.operators.end();
     }
 
     bool ClassCall::hasField(const std::string& name, const std::string& field) const {
@@ -352,6 +371,20 @@ namespace LOICollection::frontend {
         }
 
         for (const auto& [sig, callback] : it->second.staticMethodCombinations) {
+            if (sig.name == method)
+                result.push_back(sig.args);
+        }
+
+        return result;
+    }
+
+    std::vector<CallbackTypeArgs> ClassCall::getValueMethodSignatures(const std::string& className, const std::string& method) const {
+        std::vector<CallbackTypeArgs> result;
+        auto it = this->mImpl->classes.find(className);
+        if (it == this->mImpl->classes.end())
+            return result;
+
+        for (const auto& [sig, callback] : it->second.valueMethods) {
             if (sig.name == method)
                 result.push_back(sig.args);
         }
@@ -492,5 +525,51 @@ namespace LOICollection::frontend {
         }
 
         return ll::makeErrorCodeError(std::make_error_code(std::errc::invalid_argument));
+    }
+
+    ll::Expected<TypedValue> ClassCall::callValueMethod(
+        const std::string& className, const std::string& method, const TypedValue& self, const CallbackTypeValues& args,
+        DiagnosticEngine& diagnostics, const SourceLocation& loc
+    ) {
+        auto it = this->mImpl->classes.find(className);
+        if (it == this->mImpl->classes.end())
+            return ll::makeErrorCodeError(std::make_error_code(std::errc::invalid_argument));
+
+        auto& info = it->second;
+        std::vector<ParamType> argTypes = valuesToTypes(args, diagnostics, loc);
+
+        Signature sig{ method, argTypes.size(), std::move(argTypes), false };
+        auto methodIt = info.valueMethods.find(sig);
+        if (methodIt == info.valueMethods.end())
+            return ll::makeErrorCodeError(std::make_error_code(std::errc::invalid_argument));
+
+        auto result = methodIt->second(self, args);
+        if (!result.has_value())
+            return ll::makeStringError("Value method callback threw: " + result.error().message());
+
+        return result;
+    }
+
+    ll::Expected<TypedValue> ClassCall::callOperator(
+        const std::string& className, const std::string& op, const TypedValue& left, const TypedValue& right,
+        DiagnosticEngine& diagnostics, const SourceLocation& loc
+    ) {
+        auto it = this->mImpl->classes.find(className);
+        if (it == this->mImpl->classes.end()) {
+            diagnostics.addError(loc, "Unknown class in operator overload: " + className);
+            return ll::makeErrorCodeError(std::make_error_code(std::errc::invalid_argument));
+        }
+
+        auto opIt = it->second.operators.find(op);
+        if (opIt == it->second.operators.end()) {
+            diagnostics.addError(loc, "Class '" + className + "' has no overload for operator '" + op + "'");
+            return ll::makeErrorCodeError(std::make_error_code(std::errc::invalid_argument));
+        }
+
+        auto result = opIt->second(left, right);
+        if (!result.has_value())
+            return ll::makeStringError("Operator callback threw: " + result.error().message());
+
+        return result;
     }
 }

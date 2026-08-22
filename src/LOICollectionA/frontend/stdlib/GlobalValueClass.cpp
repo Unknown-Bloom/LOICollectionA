@@ -5,7 +5,7 @@
 
 #include "LOICollectionA/frontend/Callback.h"
 
-#include "LOICollectionA/frontend/builtin/GlobalValueClass.h"
+#include "LOICollectionA/frontend/stdlib/GlobalValueClass.h"
 
 using namespace LOICollection::frontend;
 

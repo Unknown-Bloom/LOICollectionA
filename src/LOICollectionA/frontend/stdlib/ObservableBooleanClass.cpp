@@ -1,4 +1,5 @@
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <ll/api/Expected.h>
@@ -11,11 +12,23 @@
 
 #include "LOICollectionA/frontend/ir/VM.h"
 
-#include "LOICollectionA/frontend/builtin/ui/base/ObservableBooleanClass.h"
+#include "LOICollectionA/frontend/stdlib/ObservableBooleanClass.h"
 
 using namespace LOICollection::frontend;
 
 namespace ObservableBooleanClass {
+    namespace {
+        std::optional<bool> boolOperand(const TypedValue& value) {
+            if (const auto* flag = std::get_if<bool>(&value))
+                return *flag;
+            if (const auto* obj = std::get_if<ObjectRef>(&value)) {
+                if ((*obj)->className == "ObservableBoolean" && (*obj)->native)
+                    return static_cast<ObservableBooleanHandle*>((*obj)->native.get())->base->getData();
+            }
+
+            return std::nullopt;
+        }
+    }
     ll::Expected<ObjectRef> makeObservableBoolean(const CallbackTypeValues& args) {
         auto handle = std::make_shared<ObservableBooleanHandle>();
         handle->base = std::make_unique<ll::ui::ObservableBoolean>(
@@ -75,6 +88,17 @@ namespace ObservableBooleanClass {
         classes.registerMethod("ObservableBoolean", "setData", setData, { ParamType::BOOL });
         classes.registerMethod("ObservableBoolean", "subscribe", subscribe, { ParamType::FUNCTION });
         classes.registerMethod("ObservableBoolean", "unsubscribe", unsubscribe, { ParamType::INT });
+
+        // "obs == x" mirrors "getData() == x".
+        for (const std::string& op : { "==", "!=" })
+            classes.registerOperator("ObservableBoolean", op, [op](const TypedValue& left, const TypedValue& right) -> ll::Expected<TypedValue> {
+                auto l = boolOperand(left);
+                auto r = boolOperand(right);
+                if (!l || !r)
+                    return ll::makeStringError("ObservableBoolean operators require bool operands");
+
+                return (op == "==") == (*l == *r);
+            });
     }
 }
 

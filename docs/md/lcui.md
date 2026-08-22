@@ -53,7 +53,7 @@ form.show();
 | 空值 | `None` | 仅可用于 `optional` 上下文 |
 | 数组 | `[1, "a", true]` | 可混合元素类型 |
 
-字符串没有转义符，引号内的内容原样保留。若字符串中需要包含某种引号，可以使用另一种引号包裹，例如 `'say "hi"'`；字符串也允许跨行。
+字符串支持转义序列：`\n`（换行）、`\t`（制表符）、`\r`（回车）、`\\`（反斜杠）、`\"`（双引号）、`\'`（单引号）。未知转义（如 `\x`）保持字面量并产生编译期警告。若字符串中需要包含某种引号，也可以使用另一种引号包裹，例如 `'say "hi"'`；字符串也允许跨行。
 
 ### 语句分隔
 
@@ -128,7 +128,7 @@ empty.value;        // 报错：optional 为空
 | `value` | 当前值，为空时访问报错 |
 | `type` | 当前值的类型名；为空时为 `none` |
 
-`None` 只能出现在 `optional` 上下文中（例如 optional 变量的初始值、optional 参数、optional 返回值），在其他位置使用会报错。空 `optional` 直接参与算术、比较等运算也会报错，建议先用 `if (value)` 或 `has_value` 判断。
+`None` 只能出现在 `optional` 上下文中（例如 optional 变量的初始值、optional 参数、optional 返回值），在其他位置使用会报错。空 `optional` 直接参与算术、比较等运算也会报错，建议先用 `if (value)` 或 `has_value` 判断，或使用空值安全操作符 `??` / `?.` 提供默认值（见「空值安全操作符」）。
 
 ### variant（联合值）
 
@@ -167,11 +167,84 @@ items = [1, "a", true];
 items[0];       // 1
 items.length;   // 3
 
-items[3] = 2;   // 索引等于当前长度时追加元素
-items[1] = "b"; // 修改已有元素
+items.push(2);  // 追加元素，返回新长度
+items[1] = "b"; // 修改已有元素（索引等于当前长度时同样会追加）
 ```
 
 数组索引从 `0` 开始，越界读取、负数索引会报错。数组的 `==`/`!=` 比较的是引用（是否为同一个数组），而非内容。类的数组字段在每个实例中相互隔离（创建实例时会拷贝），修改一个实例的数组不会影响其他实例。
+
+### 数组方法
+
+数组自带以下方法（无需引入，直接以 `数组.方法(...)` 调用）：
+
+| 方法 | 签名 | 说明 |
+| --- | --- | --- |
+| `push` | `arr.push(v)` | 追加元素，返回新长度 |
+| `pop` | `arr.pop()` | 弹出并返回末元素；空数组报错 |
+| `contains` | `arr.contains(v)` | 是否包含相等的元素（`==` 语义） |
+| `indexOf` | `arr.indexOf(v)` | 首次出现的索引；找不到返回 `-1` |
+| `join` | `arr.join(sep)` | 元素全部转字符串后用 `sep` 拼接 |
+| `slice` | `arr.slice(start, end)` | 半开区间切片，返回新数组；越界自动裁剪 |
+| `sort` | `arr.sort([cmp])` | 原地排序；`cmp` 为 `func(a, b) -> int`，省略时要求元素两两可比较 |
+
+```lcui
+items = [3, 1, 2];
+items.push(4);        // items = [3, 1, 2, 4]，返回 4
+items.sort();         // items = [1, 2, 3, 4]
+names = items.join(",");   // "1,2,3,4"
+
+words = ["b", "a"];
+words.sort(func (a, b) -> int {
+    return if (a < b) [ -1 : 1 ];
+});
+```
+
+`sort` 无参数版本遇到不可比较的元素对（例如数字与字符串混合）会运行时报错；`slice` 的索引为负数时报错。
+
+### 字符串方法
+
+字符串同样以 `字符串.方法(...)` 调用：
+
+| 方法 | 签名 | 说明 |
+| --- | --- | --- |
+| `split` | `s.split(sep)` | 按分隔符拆分为数组；`sep` 为空串时按字符拆分 |
+| `contains` | `s.contains(sub)` | 是否包含子串 |
+| `startsWith` / `endsWith` | `s.startsWith(sub)` | 前缀 / 后缀判断 |
+| `indexOf` | `s.indexOf(sub)` | 首次出现位置；找不到返回 `-1` |
+| `toInt` / `toFloat` | `s.toInt()` | 解析为 `optional<int>` / `optional<float>`，失败时为空 |
+
+```lcui
+"a,b,c".split(",");         // ["a", "b", "c"]
+"hello".startsWith("he");   // true
+
+value: optional<int> = "42".toInt();
+value.has_value;            // true
+value.value;                // 42
+
+bad: optional<int> = "abc".toInt();
+bad.has_value;              // false
+```
+
+### Map
+
+`Map` 是保持插入序的键值容器，键支持 `int` / `float` / `string` / `bool`（值相等即同键）：
+
+```lcui
+m = new Map();
+m.set("apple", 3);
+m.set("banana", 5);
+m.get("apple");         // 3
+m.has("banana");        // true
+m.remove("apple");
+m.length;               // 1
+m.keys;                 // ["banana"]，插入序
+
+for (k in m.keys) [
+    println(k + " = " + m.get(k));
+]
+```
+
+`get` 在键不存在时返回 `None`，适合搭配空值安全操作符（见下文）。
 
 ## 运算符
 
@@ -196,6 +269,54 @@ items[1] = "b"; // 修改已有元素
 ```
 
 字符串与数值、布尔等类型使用 `+` 时都会转换为字符串拼接。`%` 只能用于整数，除数为零、整数溢出、取模非整数类型都会报错。
+
+### 复合赋值与自增自减
+
+`=` 可与算术运算符组合为复合赋值，左侧只求值一次（对 `arr[i] += 1`、`obj.field += 1` 尤为重要）：
+
+```lcui
+a = 10;
+a += 5;    // 15
+a -= 3;    // 12
+a *= 2;    // 24
+a /= 4;    // 6
+a %= 4;    // 2
+
+arr = [1, 2, 3];
+arr[1] += 10;   // arr = [1, 12, 3]
+```
+
+`++` / `--` 为自增 / 自减，前后缀语义一致，等价于 `+= 1` / `-= 1`：
+
+```lcui
+i = 0;
+i++;      // i = 1
+++i;      // i = 2
+i--;      // i = 1
+```
+
+> [!WARNING]
+> `++` / `--` 作为表达式参与运算时返回的是**更新后的新值**（前缀语义），与 C/C++ 的后缀 `i++` 返回旧值不同：`i = 5; j = i++;` 得到 `j == 6` 而不是 `5`。如需旧值，请先保存再自增。
+
+> 历史版本中 `++i` 会被解析为双重一元正号（值不变），引入前缀自增后语义改变；实际脚本中几乎不会出现这种写法，但属于已知的破坏性变更。
+
+### 空值安全操作符
+
+`??`（空值合并）在左侧为 `None` 或空 `optional` 时取右侧的值，否则取左侧；`0`、`""`、`false` **不会**触发合并（与真值规则无关）：
+
+```lcui
+name = value ?? "默认";
+count = 0 ?? 10;    // 0：0 不是 None，不触发合并
+```
+
+`?.`（安全访问）在左侧为 `None` 或空 `optional` 时使整个访问链短路，结果为 `None`，支持字段与索引两种形式：
+
+```lcui
+len = maybeArr?.length ?? 0;
+item = obj?.data?.[0];
+```
+
+`??` 的优先级高于赋值、低于比较运算，且不能与 `&&` / `||` 无括号混用（直接报错，避免歧义）。`x?.y` 的结果可能为 `None`，赋给 `T` 类型标注变量会报错，需搭配 `??` 或使用 `optional<T>`。
 
 ### 比较运算符
 
@@ -261,7 +382,7 @@ total = if (flag) [ 1 : 2 ] + 5;
 ```lcui
 i = 0;
 while (i < 5) [
-    i = i + 1;
+    i++;
 ]
 ```
 
@@ -269,13 +390,54 @@ while (i < 5) [
 
 ```lcui
 s = 0;
-for (i = 0; i < 10; i = i + 1) [
+for (i = 0; i < 10; i++) [
     if (i % 2 == 0) [ continue; ];
-    s = s + i;
+    s += i;
 ]
 ```
 
 `for (;;)` 可以省略三个子句，配合 `break` 使用。
+
+### for-in 遍历
+
+`for-in` 用于遍历数组，可同时获得索引与元素：
+
+```lcui
+items = ["a", "b", "c"];
+for (item in items) [
+    println(item);
+]
+
+for (i, item in items) [
+    println(i + ": " + item);
+]
+
+for (k in new Map().keys) [
+    println(k);
+]
+```
+
+- `for (item in arr)` 遍历元素；`for (i, item in arr)` 中 `i` 为索引、`item` 为元素。
+- 只支持数组（`Map` 可通过 `m.keys` 遍历键）。
+- 循环体中 `continue` 不会跳过步进；每轮会重新读取 `length`，遍历期间追加的元素也会被遍历到。
+- 元素变量在每轮迭代中是独立副本：迭代内创建的 lambda 捕获的是当轮的值。
+- `in` 仅在 `for (` 之后识别为关键字，其他位置仍可用作普通标识符。
+
+### 区间
+
+`a..b` 生成整数区间（仅 `int`），配合 for-in 使用。区间为半开 `[a, b)`，端点在循环开始前求值一次：
+
+```lcui
+for (i in 0..5) [
+    println(i);      // 依次输出 0、1、2、3、4
+]
+
+for (i in 5..0) [    // 降序：5、4、3、2、1
+    println(i);
+]
+```
+
+`5..5` 为空区间（不执行循环体）。
 
 ### break / continue
 
@@ -391,7 +553,7 @@ public:
     static total = 0;
 
     static func inc() -> int {
-        total = total + 1;
+        total += 1;
         return total;
     }
 }
@@ -484,6 +646,7 @@ raw = $custom content};
 | --- | --- | --- |
 | `GlobalValue` | 全局值容器，字段 `value` | [api.md](./api.md) |
 | `CtxValue` | 读取 `GUIManager::open` 传入的 `ctx` 数组，字段 `value` | 见下文 |
+| `Map` | 保持插入序的键值容器 | 见上文「Map」 |
 | `ObservableString` / `ObservableNumber` / `ObservableBoolean` / `ObservableUIRawMessage` | 可观察数据，用于控件双向绑定 | [native-ui.md](./native-ui.md) |
 | `UIRawMessage` | 构造富文本 / 翻译文本 | [native-ui.md](./native-ui.md) |
 | `CustomForm` / `MessageBox` / `PaginatedForm` | 原生表单 | [native-ui.md](./native-ui.md) |
@@ -553,7 +716,8 @@ form.show();
 - `None` 只能用于 `optional` 上下文；空 `optional` 直接读取、算术或比较会报错。
 - `%` 仅支持整数；除零、整数溢出会报错。
 - 数组索引必须为 `int`，越界读取或负数索引会报错；索引等于长度时表示追加。
-- 字符串没有转义符，需要包含引号时请使用另一种引号包裹。
+- 字符串未知转义（如 `\x`）保持字面量并产生警告；需要包含引号时也可使用另一种引号包裹。
+- `??` 只在 `None` / 空 `optional` 时触发，`0`、`""`、`false` 不会；`??` 与 `&&`/`||` 混用必须加括号。
 - 函数调用的参数最多支持 100 个，超出会解析失败。
 - 不同模块注册的 `GUIManager::value` / `request` / `callback` ID 各有不同，具体以对应模块的 `.lcui` 文件为准。
 
