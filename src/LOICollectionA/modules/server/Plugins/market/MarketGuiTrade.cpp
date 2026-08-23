@@ -8,12 +8,15 @@
 #include <ll/api/Expected.h>
 #include <ll/api/service/Bedrock.h>
 
+#include <mc/deps/nbt/CompoundTag.h>
+
 #include <mc/world/actor/player/Player.h>
 #include <mc/world/actor/player/PlayerInventory.h>
 #include <mc/world/actor/player/Inventory.h>
 #include <mc/world/item/ItemStack.h>
 #include <mc/world/item/SaveContext.h>
 #include <mc/world/item/SaveContextFactory.h>
+#include <mc/world/level/Level.h>
 
 #include "LOICollectionA/include/server/Plugins/LanguagePlugin.h"
 

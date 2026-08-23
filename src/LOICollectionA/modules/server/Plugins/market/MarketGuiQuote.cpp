@@ -15,6 +15,8 @@
 
 #include "LOICollectionA/utils/I18nUtils.h"
 
+#include "LOICollectionA/ConfigPlugin.h"
+
 #include "LOICollectionA/frontend/AST.h"
 
 #include "LOICollectionA/include/form/GUIManager.h"
