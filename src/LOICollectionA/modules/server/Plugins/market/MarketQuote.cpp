@@ -27,10 +27,18 @@ namespace LOICollection::server::Plugins {
         constexpr long long WINDOW_7D = 7LL * DAY_SECONDS;
         constexpr long long WINDOW_30D = 30LL * DAY_SECONDS;
 
+        // 仅支持 7/30 天窗口，其余按 30 天处理
+        int normalizeDays(int days) {
+            return days <= 7 ? 7 : 30;
+        }
+
         struct QuoteStat {
             int count7d = 0;
             int count30d = 0;
+            long long volume7d = 0;
             long long volume30d = 0;
+            long long tax7d = 0;
+            long long tax30d = 0;
             int validCount7d = 0;
             long long validSum7d = 0;
             int validCount30d = 0;
@@ -49,8 +57,8 @@ namespace LOICollection::server::Plugins {
         TimerManager& timerManager;
 
         std::unordered_map<std::string, QuoteStat> stats;
-        long long totalTurnover = 0;
-        std::unordered_set<std::string> activeSellers;
+        std::unordered_set<std::string> activeSellers7d;
+        std::unordered_set<std::string> activeSellers30d;
 
         bool isOutlier(const QuoteStat& stat, int price) const {
             double ratio = this->options.StorePriceOutlierRatio;
@@ -63,9 +71,16 @@ namespace LOICollection::server::Plugins {
                     static_cast<double>(price) < average / ratio);
         }
 
-        void mergeStat(QuoteStat& stat, int price, long long time, bool outlier) const {
+        void mergeStat(QuoteStat& stat, int price, int tax, long long time, bool outlier, bool within7d) const {
             stat.count30d++;
             stat.volume30d += price;
+            stat.tax30d += tax;
+
+            if (within7d) {
+                stat.count7d++;
+                stat.volume7d += price;
+                stat.tax7d += tax;
+            }
 
             if (stat.min30d <= 0 || price < stat.min30d)
                 stat.min30d = price;
@@ -82,8 +97,10 @@ namespace LOICollection::server::Plugins {
             if (!outlier) {
                 stat.validCount30d++;
                 stat.validSum30d += price;
-                stat.validCount7d++;
-                stat.validSum7d += price;
+                if (within7d) {
+                    stat.validCount7d++;
+                    stat.validSum7d += price;
+                }
             }
         }
     };
@@ -130,8 +147,8 @@ namespace LOICollection::server::Plugins {
                 return loadTable("StoreSale")
                     .transform([this, owners](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> sales) mutable -> void {
                         std::unordered_map<std::string, QuoteStat> rebuilt;
-                        long long turnover = 0;
-                        std::unordered_set<std::string> sellers;
+                        std::unordered_set<std::string> sellers7d;
+                        std::unordered_set<std::string> sellers30d;
 
                         std::string nowTime = SystemUtils::getNowTime();
 
@@ -142,34 +159,14 @@ namespace LOICollection::server::Plugins {
 
                             const std::string& itemName = row.at("item_name");
                             int price = SystemUtils::toInt(row.at("price"), 0);
+                            // schemaless 扩展：旧成交记录无 tax 列，读取时带默认值兜底
+                            int tax = SystemUtils::toInt(row.contains("tax") ? row.at("tax") : "0", 0);
                             long long time = SystemUtils::toLongLong(key, 0);
+                            bool within7d = age <= WINDOW_7D;
 
                             QuoteStat& stat = rebuilt[itemName];
-                            stat.count30d++;
-                            stat.volume30d += price;
-                            turnover += price;
-                            if (time > stat.lastTime) {
-                                stat.lastTime = time;
-                                stat.lastPrice = price;
-                            }
-
-                            if (stat.min30d <= 0 || price < stat.min30d)
-                                stat.min30d = price;
-                            if (price > stat.max30d)
-                                stat.max30d = price;
-
-                            if (age <= WINDOW_7D)
-                                stat.count7d++;
-
                             bool outlier = this->mImpl->isOutlier(stat, price);
-                            if (!outlier) {
-                                stat.validCount30d++;
-                                stat.validSum30d += price;
-                                if (age <= WINDOW_7D) {
-                                    stat.validCount7d++;
-                                    stat.validSum7d += price;
-                                }
-                            }
+                            this->mImpl->mergeStat(stat, price, tax, time, outlier, within7d);
 
                             std::string seller = row.contains("seller_uuid") ? row.at("seller_uuid") : "";
                             if (seller.empty()) {
@@ -177,27 +174,31 @@ namespace LOICollection::server::Plugins {
                                 if (it != owners.end())
                                     seller = it->second;
                             }
-                            if (!seller.empty())
-                                sellers.insert(seller);
+                            if (seller.empty())
+                                continue;
+
+                            if (within7d)
+                                sellers7d.insert(seller);
+                            sellers30d.insert(seller);
                         }
 
                         this->mImpl->stats = std::move(rebuilt);
-                        this->mImpl->totalTurnover = turnover;
-                        this->mImpl->activeSellers = std::move(sellers);
+                        this->mImpl->activeSellers7d = std::move(sellers7d);
+                        this->mImpl->activeSellers30d = std::move(sellers30d);
                     });
             });
     }
 
-    void MarketQuote::onItemSold(const std::string& itemName, int price, long long time, const std::string& sellerUuid) {
+    void MarketQuote::onItemSold(const std::string& itemName, int price, int tax, long long time, const std::string& sellerUuid) {
         QuoteStat& stat = this->mImpl->stats[itemName];
 
         bool outlier = this->mImpl->isOutlier(stat, price);
-        this->mImpl->mergeStat(stat, price, time, outlier);
-
-        this->mImpl->totalTurnover += price;
+        this->mImpl->mergeStat(stat, price, tax, time, outlier, true);
 
         if (!sellerUuid.empty())
-            this->mImpl->activeSellers.insert(sellerUuid);
+            this->mImpl->activeSellers7d.insert(sellerUuid);
+        if (!sellerUuid.empty())
+            this->mImpl->activeSellers30d.insert(sellerUuid);
     }
 
     ll::Expected<std::optional<QuoteInfo>> MarketQuote::getQuote(const std::string& itemName) const {
@@ -217,36 +218,13 @@ namespace LOICollection::server::Plugins {
         return info;
     }
 
-    ll::Expected<std::vector<std::string>> MarketQuote::getTopVolume(int limit) const {
-        std::vector<std::string> items;
-        items.reserve(this->mImpl->stats.size());
-        for (const auto& [itemName, stat] : this->mImpl->stats)
-            items.emplace_back(itemName);
+    ll::Expected<std::vector<std::pair<std::string, long long>>> MarketQuote::getTopVolume(int limit, int days) const {
+        int window = normalizeDays(days);
 
-        std::sort(items.begin(), items.end(), [this](const std::string& left, const std::string& right) -> bool {
-            const QuoteStat& a = this->mImpl->stats.at(left);
-            const QuoteStat& b = this->mImpl->stats.at(right);
-            if (a.count30d != b.count30d)
-                return a.count30d > b.count30d;
-            if (a.volume30d != b.volume30d)
-                return a.volume30d > b.volume30d;
-
-            return left < right;
-        });
-
-        if (limit <= 0 || static_cast<int>(items.size()) <= limit)
-            return items;
-
-        items.resize(limit);
-
-        return items;
-    }
-
-    ll::Expected<std::vector<std::pair<std::string, long long>>> MarketQuote::getTopTurnover(int limit) const {
         std::vector<std::pair<std::string, long long>> items;
         items.reserve(this->mImpl->stats.size());
         for (const auto& [itemName, stat] : this->mImpl->stats)
-            items.emplace_back(itemName, stat.volume30d);
+            items.emplace_back(itemName, window == 7 ? stat.count7d : stat.count30d);
 
         std::sort(items.begin(), items.end(), [](const auto& left, const auto& right) -> bool {
             if (left.second != right.second)
@@ -261,12 +239,48 @@ namespace LOICollection::server::Plugins {
         return items;
     }
 
-    ll::Expected<long long> MarketQuote::getTotalTurnover() const {
-        return this->mImpl->totalTurnover;
+    ll::Expected<std::vector<std::pair<std::string, long long>>> MarketQuote::getTopTurnover(int limit, int days) const {
+        int window = normalizeDays(days);
+
+        std::vector<std::pair<std::string, long long>> items;
+        items.reserve(this->mImpl->stats.size());
+        for (const auto& [itemName, stat] : this->mImpl->stats)
+            items.emplace_back(itemName, window == 7 ? stat.volume7d : stat.volume30d);
+
+        std::sort(items.begin(), items.end(), [](const auto& left, const auto& right) -> bool {
+            if (left.second != right.second)
+                return left.second > right.second;
+
+            return left.first < right.first;
+        });
+
+        if (limit > 0 && static_cast<int>(items.size()) > limit)
+            items.resize(limit);
+
+        return items;
     }
 
-    ll::Expected<long long> MarketQuote::getActiveSellers() const {
-        return static_cast<long long>(this->mImpl->activeSellers.size());
+    ll::Expected<QuoteReport> MarketQuote::getReport(int days) const {
+        int window = normalizeDays(days);
+
+        QuoteReport report;
+        for (const auto& [itemName, stat] : this->mImpl->stats) {
+            if (window == 7) {
+                report.count += stat.count7d;
+                report.turnover += stat.volume7d;
+                report.tax += stat.tax7d;
+            } else {
+                report.count += stat.count30d;
+                report.turnover += stat.volume30d;
+                report.tax += stat.tax30d;
+            }
+        }
+
+        report.activeSellers = window == 7
+            ? static_cast<long long>(this->mImpl->activeSellers7d.size())
+            : static_cast<long long>(this->mImpl->activeSellers30d.size());
+
+        return report;
     }
 
     MarketQuote::MarketQuote(

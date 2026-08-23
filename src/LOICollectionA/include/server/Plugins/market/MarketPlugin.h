@@ -3,6 +3,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <optional>
+#include <utility>
 #include <unordered_map>
 
 #include <ll/api/Expected.h>
@@ -13,6 +15,7 @@
 #include "LOICollectionA/include/ModManager.h"
 
 #include "LOICollectionA/include/server/Plugins/market/MarketType.h"
+#include "LOICollectionA/include/server/Plugins/market/MarketQuote.h"
 
 class Player;
 class ItemStack;
@@ -156,6 +159,11 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getReviews(const std::string& storeId, MarketStoreReviewStatus status);
         LOICOLLECTION_A_NDAPI ll::Expected<std::unordered_map<std::string, std::string>> getReviewData(const std::string& id);
 
+        LOICOLLECTION_A_NDAPI ll::Expected<std::optional<QuoteInfo>> getQuote(const std::string& itemName);
+        LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<std::string, long long>>> getTopVolume(int limit, int days = 30);
+        LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<std::string, long long>>> getTopTurnover(int limit, int days = 30);
+        LOICOLLECTION_A_NDAPI ll::Expected<QuoteReport> getReport(int days);
+
         LOICOLLECTION_A_API   void clearStoreRankCache();
         LOICOLLECTION_A_API   void startStoreRankRefresh();
 
@@ -190,6 +198,7 @@ namespace LOICollection::server::Plugins {
 
         struct TradeEntry;
         struct StoreRankData;
+        struct operation;
 
         struct Impl;
         std::unique_ptr<Impl> mImpl;

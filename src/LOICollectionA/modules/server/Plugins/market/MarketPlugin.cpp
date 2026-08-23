@@ -70,6 +70,8 @@
 #include "LOICollectionA/include/server/Plugins/market/MarketPlugin.h"
 #include "LOICollectionA/include/server/Plugins/market/MarketGui.h"
 #include "LOICollectionA/include/server/Plugins/market/MarketStore.h"
+#include "LOICollectionA/include/server/Plugins/market/MarketQuote.h"
+#include "LOICollectionA/include/server/Events/modules/MarketItemSoldEvent.h"
 
 using I18nUtilsTools::tr;
 
@@ -79,6 +81,10 @@ namespace LOICollection::server::Plugins {
         std::string target;
 
         MarketTradeType type = MarketTradeType::sell;
+    };
+
+    struct MarketPlugin::operation {
+        int Days = 0;
     };
 
 
@@ -105,8 +111,10 @@ namespace LOICollection::server::Plugins {
         std::string mGuiStorePath;
 
         ll::event::ListenerPtr PlayerJoinEventListener;
+        ll::event::ListenerPtr MarketItemSoldEventListener;
 
         std::unique_ptr<MarketStore> mStore;
+        std::unique_ptr<MarketQuote> mQuote;
         std::unique_ptr<MarketGui> mGui;
 
         Impl() : mTimerManager(std::make_shared<TimerManager>(ll::thread::ServerThreadExecutor::getDefault())),
@@ -166,6 +174,23 @@ namespace LOICollection::server::Plugins {
                 })
                 .or_else(modules::defaultErrorHandler<MarketPlugin>);
         });
+        command.overload<operation>().text("report").optional("Days").execute(
+            [this](CommandOrigin const& origin, CommandOutput& output, operation const& param) -> void {
+                if (origin.getPermissionsLevel() < CommandPermissionLevel::GameDirectors)
+                    return output.error(tr(origin.getLocaleCode(), "commands.generic.permission"));
+
+                int days = param.Days > 0 ? param.Days : 7;
+
+                this->getReport(days)
+                    .transform([&origin, &output, days](QuoteReport report) -> void {
+                        output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.market.report.header")), days);
+                        output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.market.report.count")), report.count);
+                        output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.market.report.turnover")), report.turnover);
+                        output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.market.report.tax")), report.tax);
+                        output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.market.report.sellers")), report.activeSellers);
+                    })
+                    .or_else(modules::defaultErrorHandler<MarketPlugin>);
+            });
     }
 
 
@@ -227,11 +252,24 @@ namespace LOICollection::server::Plugins {
                 })
                 .or_else(modules::defaultErrorHandler<MarketPlugin>);
         });
+        this->mImpl->MarketItemSoldEventListener = eventBus.emplaceListener<LOICollection::server::Events::MarketItemSoldEvent>([this](LOICollection::server::Events::MarketItemSoldEvent& event) mutable -> void {
+            if (!this->mImpl->mQuote)
+                return;
+
+            this->mImpl->mQuote->onItemSold(
+                event.getItemName(),
+                event.getPrice(),
+                event.getTax(),
+                event.getTime(),
+                event.getSellerUuid()
+            );
+        });
     }
 
     void MarketPlugin::unlistenEvent() {
         ll::event::EventBus& eventBus = ll::event::EventBus::getInstance();
         eventBus.removeListener(this->mImpl->PlayerJoinEventListener);
+        eventBus.removeListener(this->mImpl->MarketItemSoldEventListener);
 
         this->mImpl->mTimerManager->cancelAll();
     }
@@ -887,6 +925,34 @@ namespace LOICollection::server::Plugins {
         return MarketStore::computeStoreScore(input, options);
     }
 
+    ll::Expected<std::optional<QuoteInfo>> MarketPlugin::getQuote(const std::string& itemName) {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
+
+        return this->mImpl->mQuote->getQuote(itemName);
+    }
+
+    ll::Expected<std::vector<std::pair<std::string, long long>>> MarketPlugin::getTopVolume(int limit, int days) {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
+
+        return this->mImpl->mQuote->getTopVolume(limit, days);
+    }
+
+    ll::Expected<std::vector<std::pair<std::string, long long>>> MarketPlugin::getTopTurnover(int limit, int days) {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
+
+        return this->mImpl->mQuote->getTopTurnover(limit, days);
+    }
+
+    ll::Expected<QuoteReport> MarketPlugin::getReport(int days) {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
+
+        return this->mImpl->mQuote->getReport(days);
+    }
+
     void MarketPlugin::clearStoreRankCache() {
         if (this->mImpl->mStore)
             this->mImpl->mStore->clearRankCache();
@@ -948,6 +1014,12 @@ namespace LOICollection::server::Plugins {
                 return this->getBlacklist(target);
             }
         );
+        this->mImpl->mQuote = std::make_unique<MarketQuote>(
+            this->mImpl->db,
+            this->mImpl->options,
+            this->mImpl->logger,
+            *this->mImpl->mTimerManager
+        );
         this->mImpl->mGui = std::make_unique<MarketGui>();
 
         return true;
@@ -958,6 +1030,7 @@ namespace LOICollection::server::Plugins {
             return false;
 
         this->mImpl->mStore.reset();
+        this->mImpl->mQuote.reset();
         this->mImpl->mGui.reset();
 
         this->mImpl->db.reset();
@@ -979,6 +1052,10 @@ namespace LOICollection::server::Plugins {
             ctor("name");
             ctor("score");
         }).and_then([this]() -> ll::Expected<void> {
+            return this->mImpl->db2->create("MarketTax", [](SQLiteStorage::ColumnCallback ctor) -> void {
+                ctor("total");
+            });
+        }).and_then([this]() -> ll::Expected<void> {
             return this->getDatabase()->create("Item", [](SQLiteStorage::ColumnCallback ctor) -> void {
                 ctor("name");
                 ctor("icon");
@@ -997,6 +1074,8 @@ namespace LOICollection::server::Plugins {
             });
         }).and_then([this]() -> ll::Expected<void> {
             return this->mImpl->mStore->createTables();
+        }).and_then([this]() -> ll::Expected<void> {
+            return this->mImpl->mQuote->start();
         }).and_then([this]() -> ll::Expected<void> {
             return this->registeryUI();
         }).transform([this]() -> bool {

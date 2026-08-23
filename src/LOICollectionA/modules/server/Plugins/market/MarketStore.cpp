@@ -563,10 +563,14 @@ namespace LOICollection::server::Plugins {
                                         });
                                 }
 
+                                // 交易税：买家支付 = 标价（不变），卖家实收 = 标价 - 税
+                                int tax = static_cast<int>(std::floor(mScore * this->mImpl->options.StoreTransactionTaxRate));
+                                int sellerAmount = mScore - tax;
+
                                 // 事务提交是唯一不可逆点：先摘牌再写成交，提交前不触碰任何游戏状态；
                                 // 提交失败直接返回，买家余额与挂单均未变化，无损。
-                                return this->commitStoreSale(player, id, data, storeId, ownerUuid)
-                                    .and_then([this, id, &player, data, ownerUuid, mScore, mScoreboard](const std::string& saleKey) -> ll::Expected<bool> {
+                                return this->commitStoreSale(player, id, data, storeId, ownerUuid, tax)
+                                    .and_then([this, id, &player, data, ownerUuid, mScore, sellerAmount, tax, mScoreboard](const std::string& saleKey) -> ll::Expected<bool> {
                                         // 余额与背包空间已在提交前校验，买家扣钱/给物品失败概率极低；
                                         // 一旦发生，恢复挂单并删除成交记录（新事务补偿），彻底关闭双卖窗口。
                                         auto compensate = [this, id, &player, data, saleKey]() -> ll::Expected<void> {
@@ -582,19 +586,34 @@ namespace LOICollection::server::Plugins {
 
                                         player.refreshInventory();
 
-                                        return this->settleSeller(ownerUuid, data.at("name"), mScore, mScoreboard)
+                                        return this->settleSeller(ownerUuid, data.at("name"), sellerAmount, mScoreboard)
                                             .or_else([&compensate](ll::Error e) -> ll::Expected<bool> {
                                                 return compensate().and_then([e]() -> ll::Expected<bool> {
                                                     return ll::Unexpected(e);
                                                 });
                                             })
-                                            .transform([this, &player, data, ownerUuid, saleKey]() -> bool {
+                                            .and_then([this, tax]() -> ll::Expected<bool> {
+                                                // 税收入账：累计税额计入 MarketTax 表（默认税率 0 时跳过）
+                                                if (tax <= 0)
+                                                    return true;
+
+                                                return this->mImpl->settingsDb->get("MarketTax", "total", "0")
+                                                    .and_then([this, tax](const std::string& value) -> ll::Expected<bool> {
+                                                        long long total = SystemUtils::toLongLong(value, 0) + tax;
+
+                                                        return this->mImpl->settingsDb->set("MarketTax", "total", std::to_string(total))
+                                                            .transform([]() -> bool {
+                                                                return true;
+                                                            });
+                                                    });
+                                            })
+                                            .transform([this, &player, data, ownerUuid, saleKey, tax]() -> bool {
                                                 this->getLogger()->info(fmt::runtime(tr({}, "market.log13")), data.at("name"));
 
                                                 ll::event::EventBus::getInstance().publish(LOICollection::server::Events::MarketItemSoldEvent(
                                                     data.at("name"),
                                                     SystemUtils::toInt(data.at("score"), 0),
-                                                    0,
+                                                    tax,
                                                     player.getUuid().asString(),
                                                     ownerUuid,
                                                     SystemUtils::toLongLong(saleKey, 0)
@@ -613,7 +632,8 @@ namespace LOICollection::server::Plugins {
         const std::string& id,
         const std::unordered_map<std::string, std::string>& data,
         const std::string& storeId,
-        const std::string& ownerUuid
+        const std::string& ownerUuid,
+        int tax
     ) {
         auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
         if (!transaction.has_value())
@@ -626,6 +646,7 @@ namespace LOICollection::server::Plugins {
             { "store_id", storeId },
             { "item_name", data.at("name") },
             { "price", data.at("score") },
+            { "tax", std::to_string(tax) },
             { "buyer_uuid", player.getUuid().asString() },
             { "buyer_name", player.getRealName() },
             { "seller_uuid", ownerUuid },

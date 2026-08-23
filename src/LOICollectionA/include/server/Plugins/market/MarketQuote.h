@@ -35,6 +35,13 @@ namespace LOICollection::server::Plugins {
         int lastPrice = 0;
     };
 
+    struct QuoteReport {
+        long long count = 0;         // 区间成交笔数
+        long long turnover = 0;      // 区间成交总额
+        long long tax = 0;           // 区间税收总额
+        long long activeSellers = 0; // 活跃卖家数
+    };
+
     class MarketQuote {
     public:
         MarketQuote(
@@ -56,17 +63,15 @@ namespace LOICollection::server::Plugins {
 
         LOICOLLECTION_A_NDAPI ll::Expected<void> rebuild();
 
-        LOICOLLECTION_A_API void onItemSold(const std::string& itemName, int price, long long time, const std::string& sellerUuid);
+        LOICOLLECTION_A_API void onItemSold(const std::string& itemName, int price, int tax, long long time, const std::string& sellerUuid);
 
         LOICOLLECTION_A_NDAPI ll::Expected<std::optional<QuoteInfo>> getQuote(const std::string& itemName) const;
 
-        LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getTopVolume(int limit) const;
+        LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<std::string, long long>>> getTopVolume(int limit, int days = 30) const;
 
-        LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<std::string, long long>>> getTopTurnover(int limit) const;
+        LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<std::string, long long>>> getTopTurnover(int limit, int days = 30) const;
 
-        LOICOLLECTION_A_NDAPI ll::Expected<long long> getTotalTurnover() const;
-
-        LOICOLLECTION_A_NDAPI ll::Expected<long long> getActiveSellers() const;
+        LOICOLLECTION_A_NDAPI ll::Expected<QuoteReport> getReport(int days) const;
 
     private:
         struct Impl;

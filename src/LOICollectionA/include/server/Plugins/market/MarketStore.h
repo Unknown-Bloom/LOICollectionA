@@ -77,7 +77,7 @@ namespace LOICollection::server::Plugins {
     private:
         bool isValid() const;
 
-        ll::Expected<std::string> commitStoreSale(Player& player, const std::string& id, const std::unordered_map<std::string, std::string>& data, const std::string& storeId, const std::string& ownerUuid);
+        ll::Expected<std::string> commitStoreSale(Player& player, const std::string& id, const std::unordered_map<std::string, std::string>& data, const std::string& storeId, const std::string& ownerUuid, int tax);
         ll::Expected<void> restoreStoreSale(const std::string& id, const std::unordered_map<std::string, std::string>& data, const std::string& saleKey);
         ll::Expected<void> settleSeller(const std::string& ownerUuid, const std::string& itemName, int score, const std::string& scoreboard);
 
