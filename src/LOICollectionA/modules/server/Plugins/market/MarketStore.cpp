@@ -182,14 +182,37 @@ namespace LOICollection::server::Plugins {
 
                 std::unordered_map<std::string, int> saleCount;
                 std::unordered_map<std::string, long long> saleVolume;
+                // 对敲检测：同一买卖双方在窗口内成交超过限额的部分不计入排名权重
+                std::unordered_map<std::string, int> pairTradeCount;
                 for (const auto& [key, row] : data.sales) {
                     long long t = SystemUtils::toInt(SystemUtils::getTimeSpan(nowTime, row.at("time"), ""), 0);
                     if (t > txWindow)
                         continue;
 
                     const std::string& storeId = row.at("store_id");
+                    int price = SystemUtils::toInt(row.at("price"), 0);
+
+                    // 自买：buyer 与 store owner 相同，成交有效但不计入排名权重
+                    std::string seller = row.contains("seller_uuid") ? row.at("seller_uuid") : "";
+                    if (seller.empty()) {
+                        auto ownerIt = data.stores.find(storeId);
+                        if (ownerIt != data.stores.end())
+                            seller = ownerIt->second.at("owner_uuid");
+                    }
+                    std::string buyer = row.contains("buyer_uuid") ? row.at("buyer_uuid") : "";
+                    if (!seller.empty() && !buyer.empty() && seller == buyer)
+                        continue;
+
+                    // 对敲：同一买卖双方超出限额的成交不计入排名权重（默认 3，设极大值即等效关闭）
+                    int repeatLimit = std::max(0, options.StoreRepeatTradeLimit);
+                    if (repeatLimit > 0 && !seller.empty() && !buyer.empty()) {
+                        std::string pair = buyer + "|" + seller;
+                        if (++pairTradeCount[pair] > repeatLimit)
+                            continue;
+                    }
+
                     saleCount[storeId]++;
-                    saleVolume[storeId] += SystemUtils::toInt(row.at("price"), 0);
+                    saleVolume[storeId] += price;
                 }
 
                 std::unordered_map<std::string, int> approvedCount;
@@ -525,23 +548,26 @@ namespace LOICollection::server::Plugins {
             });
     }
 
-    ll::Expected<bool> MarketStore::buyStoreItem(Player& player, const std::string& id) {
+    ll::Expected<bool> MarketStore::buyStoreItem(Player& player, const std::string& id, int count) {
         if (!this->isValid())
             return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::Invalid));
 
         if (!this->mImpl->options.StoreEnabled)
             return false;
 
+        if (count <= 0 || (count > 1 && !this->mImpl->options.StorePartialBuyEnabled))
+            return false;
+
         return this->getStoreItemData(id)
-            .and_then([this, id, &player](std::unordered_map<std::string, std::string> data) -> ll::Expected<bool> {
+            .and_then([this, id, count, &player](std::unordered_map<std::string, std::string> data) -> ll::Expected<bool> {
                 std::string storeId = data.at("store_id");
 
                 return this->getStore(storeId)
-                    .and_then([this, id, &player, data, storeId](std::unordered_map<std::string, std::string> store) -> ll::Expected<bool> {
+                    .and_then([this, id, count, &player, data, storeId](std::unordered_map<std::string, std::string> store) -> ll::Expected<bool> {
                         std::string ownerUuid = store.at("owner_uuid");
 
                         return this->mImpl->blacklistProvider(ownerUuid)
-                            .and_then([this, id, &player, data, storeId, ownerUuid](const std::vector<std::string>& blacklists) -> ll::Expected<bool> {
+                            .and_then([this, id, count, &player, data, storeId, ownerUuid](const std::vector<std::string>& blacklists) -> ll::Expected<bool> {
                                 if (std::find(blacklists.begin(), blacklists.end(), player.getUuid().asString()) != blacklists.end()) {
                                     return LanguagePlugin::getShared()->getLanguage(player)
                                         .transform([&player](const std::string& language) -> bool {
@@ -551,7 +577,24 @@ namespace LOICollection::server::Plugins {
                                         });
                                 }
 
-                                int mScore = SystemUtils::toInt(data.at("score"), 0);
+                                // 标价为整组价格；拆分购买按比例线性折算，不引入阶梯定价
+                                int unitScore = SystemUtils::toInt(data.at("score"), 0);
+                                ItemStack mFullStack = ItemStack::fromTag(CompoundTag::fromSnbt(data.at("data"))->mTags);
+                                int stackCount = static_cast<int>(mFullStack.mCount);
+                                if (count > stackCount)
+                                    return false;
+
+                                bool isFull = count == stackCount;
+                                int mScore = isFull
+                                    ? unitScore
+                                    : static_cast<int>(static_cast<long long>(unitScore) * count / stackCount);
+
+                                std::string remainingData;
+                                if (!isFull) {
+                                    mFullStack.mCount = static_cast<unsigned char>(stackCount - count);
+                                    remainingData = mFullStack.save(*SaveContextFactory::createCloneSaveContext())->toSnbt(SnbtFormat::Minimize, 0);
+                                }
+
                                 std::string mScoreboard = this->mImpl->options.TargetScoreboard;
 
                                 if (ScoreboardUtils::getScore(player, mScoreboard) < mScore) {
@@ -567,10 +610,10 @@ namespace LOICollection::server::Plugins {
                                 int tax = static_cast<int>(std::floor(mScore * this->mImpl->options.StoreTransactionTaxRate));
                                 int sellerAmount = mScore - tax;
 
-                                // 事务提交是唯一不可逆点：先摘牌再写成交，提交前不触碰任何游戏状态；
+                                // 事务提交是唯一不可逆点：先摘牌/重写剩余再写成交，提交前不触碰任何游戏状态；
                                 // 提交失败直接返回，买家余额与挂单均未变化，无损。
-                                return this->commitStoreSale(player, id, data, storeId, ownerUuid, tax)
-                                    .and_then([this, id, &player, data, ownerUuid, mScore, sellerAmount, tax, mScoreboard](const std::string& saleKey) -> ll::Expected<bool> {
+                                return this->commitStoreSale(player, id, data, storeId, ownerUuid, tax, remainingData)
+                                    .and_then([this, id, count, &player, data, ownerUuid, mScore, sellerAmount, tax, mScoreboard](const std::string& saleKey) -> ll::Expected<bool> {
                                         // 余额与背包空间已在提交前校验，买家扣钱/给物品失败概率极低；
                                         // 一旦发生，恢复挂单并删除成交记录（新事务补偿），彻底关闭双卖窗口。
                                         auto compensate = [this, id, &player, data, saleKey]() -> ll::Expected<void> {
@@ -582,7 +625,7 @@ namespace LOICollection::server::Plugins {
                                         ScoreboardUtils::reduceScore(player, mScoreboard, mScore);
 
                                         ItemStack mItemStack = ItemStack::fromTag(CompoundTag::fromSnbt(data.at("data"))->mTags);
-                                        InventoryUtils::giveItem(player, mItemStack, static_cast<int>(mItemStack.mCount));
+                                        InventoryUtils::giveItem(player, mItemStack, count);
 
                                         player.refreshInventory();
 
@@ -633,7 +676,8 @@ namespace LOICollection::server::Plugins {
         const std::unordered_map<std::string, std::string>& data,
         const std::string& storeId,
         const std::string& ownerUuid,
-        int tax
+        int tax,
+        const std::string& remainingData
     ) {
         auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
         if (!transaction.has_value())
@@ -657,9 +701,18 @@ namespace LOICollection::server::Plugins {
         if (!setResult.has_value())
             return ll::Unexpected(setResult.error());
 
-        auto delResult = this->mImpl->db->del(conn, "StoreItem", id);
-        if (!delResult.has_value())
-            return ll::Unexpected(delResult.error());
+        // 整组售出：删除挂单（先摘牌，杜绝并发双卖）；
+        // 部分售出：把剩余数量重写回 StoreItem.data（改 NBT count），挂单内容变更而非删除。
+        bool isPartial = !remainingData.empty();
+        std::unordered_map<std::string, std::string> updated = data;
+        if (isPartial)
+            updated["data"] = remainingData;
+
+        auto updateResult = isPartial
+            ? this->mImpl->db->set(conn, "StoreItem", id, updated)
+            : this->mImpl->db->del(conn, "StoreItem", id);
+        if (!updateResult.has_value())
+            return ll::Unexpected(updateResult.error());
 
         auto commitResult = transaction.value().commit();
         if (!commitResult.has_value())

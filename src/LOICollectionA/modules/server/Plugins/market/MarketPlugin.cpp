@@ -71,6 +71,8 @@
 #include "LOICollectionA/include/server/Plugins/market/MarketGui.h"
 #include "LOICollectionA/include/server/Plugins/market/MarketStore.h"
 #include "LOICollectionA/include/server/Plugins/market/MarketQuote.h"
+#include "LOICollectionA/include/server/Plugins/market/MarketWanted.h"
+#include "LOICollectionA/include/server/Plugins/market/MarketAuction.h"
 #include "LOICollectionA/include/server/Events/modules/MarketItemSoldEvent.h"
 
 using I18nUtilsTools::tr;
@@ -109,12 +111,17 @@ namespace LOICollection::server::Plugins {
         std::string mGuiPath;
         std::string mGuiTradePath;
         std::string mGuiStorePath;
+        std::string mGuiQuotePath;
+        std::string mGuiWantedPath;
+        std::string mGuiAuctionPath;
 
         ll::event::ListenerPtr PlayerJoinEventListener;
         ll::event::ListenerPtr MarketItemSoldEventListener;
 
         std::unique_ptr<MarketStore> mStore;
         std::unique_ptr<MarketQuote> mQuote;
+        std::unique_ptr<MarketWanted> mWanted;
+        std::unique_ptr<MarketAuction> mAuction;
         std::unique_ptr<MarketGui> mGui;
 
         Impl() : mTimerManager(std::make_shared<TimerManager>(ll::thread::ServerThreadExecutor::getDefault())),
@@ -169,6 +176,15 @@ namespace LOICollection::server::Plugins {
                 .and_then([this]() -> ll::Expected<void> {
                     return form::GUIManager::getInstance().load("market.store", this->mImpl->mGuiStorePath);
                 })
+                .and_then([this]() -> ll::Expected<void> {
+                    return form::GUIManager::getInstance().load("market.quote", this->mImpl->mGuiQuotePath);
+                })
+                .and_then([this]() -> ll::Expected<void> {
+                    return form::GUIManager::getInstance().load("market.wanted", this->mImpl->mGuiWantedPath);
+                })
+                .and_then([this]() -> ll::Expected<void> {
+                    return form::GUIManager::getInstance().load("market.auction", this->mImpl->mGuiAuctionPath);
+                })
                 .transform([&origin, &output]() -> void {
                     output.success(tr(origin.getLocaleCode(), "commands.generic.reload.success"));
                 })
@@ -201,6 +217,15 @@ namespace LOICollection::server::Plugins {
             })
             .and_then([this]() -> ll::Expected<void> {
                 return form::GUIManager::getInstance().load("market.store", this->mImpl->mGuiStorePath);
+            })
+            .and_then([this]() -> ll::Expected<void> {
+                return form::GUIManager::getInstance().load("market.quote", this->mImpl->mGuiQuotePath);
+            })
+            .and_then([this]() -> ll::Expected<void> {
+                return form::GUIManager::getInstance().load("market.wanted", this->mImpl->mGuiWantedPath);
+            })
+            .and_then([this]() -> ll::Expected<void> {
+                return form::GUIManager::getInstance().load("market.auction", this->mImpl->mGuiAuctionPath);
             })
             .and_then([this]() -> ll::Expected<void> {
                 return this->mImpl->mGui->registerAll(*this);
@@ -261,7 +286,8 @@ namespace LOICollection::server::Plugins {
                 event.getPrice(),
                 event.getTax(),
                 event.getTime(),
-                event.getSellerUuid()
+                event.getSellerUuid(),
+                event.getBuyerUuid()
             );
         });
     }
@@ -900,11 +926,11 @@ namespace LOICollection::server::Plugins {
         return this->mImpl->mStore->offshelfStoreItem(player, id, returnItem);
     }
 
-    ll::Expected<bool> MarketPlugin::buyStoreItem(Player& player, const std::string& id) {
+    ll::Expected<bool> MarketPlugin::buyStoreItem(Player& player, const std::string& id, int count) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
 
-        return this->mImpl->mStore->buyStoreItem(player, id);
+        return this->mImpl->mStore->buyStoreItem(player, id, count);
     }
 
     ll::Expected<bool> MarketPlugin::addReview(Player& player, const std::string& storeId, int rating, const std::string& content) {
@@ -923,6 +949,10 @@ namespace LOICollection::server::Plugins {
 
     double MarketPlugin::computeStoreScore(const StoreScoreInput& input, const Config::C_Market& options) {
         return MarketStore::computeStoreScore(input, options);
+    }
+
+    int MarketPlugin::computeTax(int price, double rate) {
+        return static_cast<int>(std::floor(price * rate));
     }
 
     ll::Expected<std::optional<QuoteInfo>> MarketPlugin::getQuote(const std::string& itemName) {
@@ -951,6 +981,83 @@ namespace LOICollection::server::Plugins {
             return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
 
         return this->mImpl->mQuote->getReport(days);
+    }
+
+    ll::Expected<bool> MarketPlugin::createWanted(Player& player, int slot, const std::string& name, int unitPrice, int amount) {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
+
+        return this->mImpl->mWanted->createWanted(player, slot, name, unitPrice, amount);
+    }
+
+    ll::Expected<bool> MarketPlugin::cancelWanted(Player& player, const std::string& id) {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
+
+        return this->mImpl->mWanted->cancelWanted(player, id);
+    }
+
+    ll::Expected<bool> MarketPlugin::fillWanted(Player& player, const std::string& id, int amount) {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
+
+        return this->mImpl->mWanted->fillWanted(player, id, amount);
+    }
+
+    ll::Expected<std::vector<std::string>> MarketPlugin::getWantedList() {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
+
+        return this->mImpl->mWanted->getWantedList();
+    }
+
+    ll::Expected<std::vector<std::string>> MarketPlugin::getWantedItems(Player& player) {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
+
+        return this->mImpl->mWanted->getWantedItems(player);
+    }
+
+    ll::Expected<std::unordered_map<std::string, std::string>> MarketPlugin::getWantedData(const std::string& id) {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
+
+        return this->mImpl->mWanted->getWantedData(id);
+    }
+
+    ll::Expected<bool> MarketPlugin::createAuction(Player& player, int slot, const std::string& name, int startPrice, int durationSeconds) {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
+
+        return this->mImpl->mAuction->createAuction(player, slot, name, startPrice, durationSeconds);
+    }
+
+    ll::Expected<bool> MarketPlugin::bidAuction(Player& player, const std::string& id, int price) {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
+
+        return this->mImpl->mAuction->bidAuction(player, id, price);
+    }
+
+    ll::Expected<std::vector<std::string>> MarketPlugin::getAuctionList() {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
+
+        return this->mImpl->mAuction->getAuctionList();
+    }
+
+    ll::Expected<std::vector<std::string>> MarketPlugin::getAuctionItems(Player& player) {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
+
+        return this->mImpl->mAuction->getAuctionItems(player);
+    }
+
+    ll::Expected<std::unordered_map<std::string, std::string>> MarketPlugin::getAuctionData(const std::string& id) {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
+
+        return this->mImpl->mAuction->getAuctionData(id);
     }
 
     void MarketPlugin::clearStoreRankCache() {
@@ -1003,6 +1110,9 @@ namespace LOICollection::server::Plugins {
         this->mImpl->mGuiPath = (mGuiPath / "market.lcui").string();
         this->mImpl->mGuiTradePath = (mGuiPath / "market_trade.lcui").string();
         this->mImpl->mGuiStorePath = (mGuiPath / "market_store.lcui").string();
+        this->mImpl->mGuiQuotePath = (mGuiPath / "market_quote.lcui").string();
+        this->mImpl->mGuiWantedPath = (mGuiPath / "market_wanted.lcui").string();
+        this->mImpl->mGuiAuctionPath = (mGuiPath / "market_auction.lcui").string();
 
         this->mImpl->mStore = std::make_unique<MarketStore>(
             this->mImpl->db,
@@ -1020,6 +1130,26 @@ namespace LOICollection::server::Plugins {
             this->mImpl->logger,
             *this->mImpl->mTimerManager
         );
+        this->mImpl->mWanted = std::make_unique<MarketWanted>(
+            this->mImpl->db,
+            this->mImpl->db2,
+            this->mImpl->options,
+            this->mImpl->logger,
+            *this->mImpl->mTimerManager,
+            [this](const std::string& target) -> ll::Expected<std::vector<std::string>> {
+                return this->getBlacklist(target);
+            }
+        );
+        this->mImpl->mAuction = std::make_unique<MarketAuction>(
+            this->mImpl->db,
+            this->mImpl->db2,
+            this->mImpl->options,
+            this->mImpl->logger,
+            *this->mImpl->mTimerManager,
+            [this](const std::string& target) -> ll::Expected<std::vector<std::string>> {
+                return this->getBlacklist(target);
+            }
+        );
         this->mImpl->mGui = std::make_unique<MarketGui>();
 
         return true;
@@ -1031,6 +1161,8 @@ namespace LOICollection::server::Plugins {
 
         this->mImpl->mStore.reset();
         this->mImpl->mQuote.reset();
+        this->mImpl->mWanted.reset();
+        this->mImpl->mAuction.reset();
         this->mImpl->mGui.reset();
 
         this->mImpl->db.reset();
@@ -1075,7 +1207,16 @@ namespace LOICollection::server::Plugins {
         }).and_then([this]() -> ll::Expected<void> {
             return this->mImpl->mStore->createTables();
         }).and_then([this]() -> ll::Expected<void> {
+            return this->mImpl->mWanted->createTables();
+        }).and_then([this]() -> ll::Expected<void> {
+            return this->mImpl->mAuction->createTables();
+        }).and_then([this]() -> ll::Expected<void> {
             return this->mImpl->mQuote->start();
+        }).and_then([this]() -> ll::Expected<void> {
+            this->mImpl->mWanted->startSweep();
+            this->mImpl->mAuction->startSweep();
+
+            return {};
         }).and_then([this]() -> ll::Expected<void> {
             return this->registeryUI();
         }).transform([this]() -> bool {

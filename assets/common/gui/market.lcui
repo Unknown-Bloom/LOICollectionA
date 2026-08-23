@@ -10,6 +10,15 @@ navigateTrade.value = false;
 navigatePersonal = new GlobalValue();
 navigatePersonal.value = false;
 
+navigateQuote = new GlobalValue();
+navigateQuote.value = false;
+
+navigateWanted = new GlobalValue();
+navigateWanted.value = false;
+
+navigateAuction = new GlobalValue();
+navigateAuction.value = false;
+
 worldbuyOption = new ButtonOptions();
 worldbuyOption.tooltip = {tr("market.gui.worldbuy.tooltip")};
 
@@ -25,6 +34,27 @@ tradeOption.tooltip = {tr("market.gui.trade.tooltip")};
 
 personalOption = new ButtonOptions();
 personalOption.tooltip = {tr("market.gui.personal.tooltip")};
+
+quoteEnabled = GUIManager::request("market.quote.enabled", [])[0];
+quoteVisible = new ObservableBoolean(quoteEnabled, false);
+
+quoteOption = new ButtonOptions();
+quoteOption.tooltip = {tr("market.gui.quote.tooltip")};
+quoteOption.visible = quoteVisible;
+
+wantedEnabled = GUIManager::request("market.wanted.enabled", [])[0];
+wantedVisible = new ObservableBoolean(wantedEnabled, false);
+
+wantedOption = new ButtonOptions();
+wantedOption.tooltip = {tr("market.gui.wanted.tooltip")};
+wantedOption.visible = wantedVisible;
+
+auctionEnabled = GUIManager::request("market.auction.enabled", [])[0];
+auctionVisible = new ObservableBoolean(auctionEnabled, false);
+
+auctionOption = new ButtonOptions();
+auctionOption.tooltip = {tr("market.gui.auction.tooltip")};
+auctionOption.visible = auctionVisible;
 
 buyItemOption = new ButtonOptions();
 buyItemOption.tooltip = {tr("market.gui.sell.item.button1.tooltip")};
@@ -50,6 +80,27 @@ marketOpen.button({tr("market.gui.store")}, func () -> void {
         marketOpen.close();
     ]
 }, storeOption);
+marketOpen.button({tr("market.gui.quote")}, func () -> void {
+    if (!navigateQuote.value) [
+        navigateQuote.value = true;
+
+        marketOpen.close();
+    ]
+}, quoteOption);
+marketOpen.button({tr("market.gui.wanted")}, func () -> void {
+    if (!navigateWanted.value) [
+        navigateWanted.value = true;
+
+        marketOpen.close();
+    ]
+}, wantedOption);
+marketOpen.button({tr("market.gui.auction")}, func () -> void {
+    if (!navigateAuction.value) [
+        navigateAuction.value = true;
+
+        marketOpen.close();
+    ]
+}, auctionOption);
 marketOpen.button({tr("market.gui.trade")}, func () -> void {
     if (!navigateTrade.value) [
         navigateTrade.value = true;
@@ -69,14 +120,26 @@ marketOpen.show(func (result) -> void {
     if (navigateStore.value) [
         GUIManager::open("market.store", "market.store.list", 3);
     :
-        if (navigateBuy.value) [
-            GUIManager::switchTo("market.buy", 3);
+        if (navigateQuote.value) [
+            GUIManager::open("market.quote", "market.quote", 3);
         :
-            if (navigateTrade.value) [
-                GUIManager::switchTo("market.trade", 3);
+            if (navigateWanted.value) [
+                GUIManager::open("market.wanted", "market.wanted", 3);
             :
-                if (navigatePersonal.value) [
-                    GUIManager::switchTo("market.personal", 1);
+                if (navigateAuction.value) [
+                    GUIManager::open("market.auction", "market.auction", 3);
+                :
+                    if (navigateBuy.value) [
+                        GUIManager::switchTo("market.buy", 3);
+                    :
+                        if (navigateTrade.value) [
+                            GUIManager::switchTo("market.trade", 3);
+                        :
+                            if (navigatePersonal.value) [
+                                GUIManager::switchTo("market.personal", 1);
+                            ]
+                        ]
+                    ]
                 ]
             ]
         ]

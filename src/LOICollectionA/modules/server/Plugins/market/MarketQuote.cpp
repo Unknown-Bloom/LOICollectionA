@@ -61,14 +61,12 @@ namespace LOICollection::server::Plugins {
         std::unordered_set<std::string> activeSellers30d;
 
         bool isOutlier(const QuoteStat& stat, int price) const {
-            double ratio = this->options.StorePriceOutlierRatio;
-            if (ratio <= 0.0 || stat.validCount30d <= 0)
+            if (stat.validCount30d <= 0)
                 return false;
 
             double average = static_cast<double>(stat.validSum30d) / stat.validCount30d;
-            return average > 0.0 &&
-                (static_cast<double>(price) > average * ratio ||
-                    static_cast<double>(price) < average / ratio);
+
+            return MarketQuote::isPriceOutlier(average, price, this->options.StorePriceOutlierRatio);
         }
 
         void mergeStat(QuoteStat& stat, int price, int tax, long long time, bool outlier, bool within7d) const {
@@ -165,8 +163,11 @@ namespace LOICollection::server::Plugins {
                             bool within7d = age <= WINDOW_7D;
 
                             QuoteStat& stat = rebuilt[itemName];
+                            // 反作弊：自买成交有效但价格信号不可信，与离群价一样不计入均价（仍计入成交量）
+                            bool selfBuy = row.contains("buyer_uuid") && row.contains("seller_uuid") &&
+                                !row.at("buyer_uuid").empty() && row.at("buyer_uuid") == row.at("seller_uuid");
                             bool outlier = this->mImpl->isOutlier(stat, price);
-                            this->mImpl->mergeStat(stat, price, tax, time, outlier, within7d);
+                            this->mImpl->mergeStat(stat, price, tax, time, outlier || selfBuy, within7d);
 
                             std::string seller = row.contains("seller_uuid") ? row.at("seller_uuid") : "";
                             if (seller.empty()) {
@@ -189,11 +190,13 @@ namespace LOICollection::server::Plugins {
             });
     }
 
-    void MarketQuote::onItemSold(const std::string& itemName, int price, int tax, long long time, const std::string& sellerUuid) {
+    void MarketQuote::onItemSold(const std::string& itemName, int price, int tax, long long time, const std::string& sellerUuid, const std::string& buyerUuid) {
         QuoteStat& stat = this->mImpl->stats[itemName];
 
+        // 自买成交有效但价格信号不可信，与离群价一样不计入均价（仍计入成交量）
+        bool selfBuy = !buyerUuid.empty() && buyerUuid == sellerUuid;
         bool outlier = this->mImpl->isOutlier(stat, price);
-        this->mImpl->mergeStat(stat, price, tax, time, outlier, true);
+        this->mImpl->mergeStat(stat, price, tax, time, outlier || selfBuy, true);
 
         if (!sellerUuid.empty())
             this->mImpl->activeSellers7d.insert(sellerUuid);
@@ -281,6 +284,14 @@ namespace LOICollection::server::Plugins {
             : static_cast<long long>(this->mImpl->activeSellers30d.size());
 
         return report;
+    }
+
+    bool MarketQuote::isPriceOutlier(double average, int price, double ratio) {
+        if (ratio <= 0.0 || average <= 0.0)
+            return false;
+
+        return static_cast<double>(price) > average * ratio ||
+            static_cast<double>(price) < average / ratio;
     }
 
     MarketQuote::MarketQuote(

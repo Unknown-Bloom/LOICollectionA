@@ -63,7 +63,7 @@ namespace LOICollection::server::Plugins {
 
         LOICOLLECTION_A_NDAPI ll::Expected<void> rebuild();
 
-        LOICOLLECTION_A_API void onItemSold(const std::string& itemName, int price, int tax, long long time, const std::string& sellerUuid);
+        LOICOLLECTION_A_API void onItemSold(const std::string& itemName, int price, int tax, long long time, const std::string& sellerUuid, const std::string& buyerUuid);
 
         LOICOLLECTION_A_NDAPI ll::Expected<std::optional<QuoteInfo>> getQuote(const std::string& itemName) const;
 
@@ -72,6 +72,9 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<std::string, long long>>> getTopTurnover(int limit, int days = 30) const;
 
         LOICOLLECTION_A_NDAPI ll::Expected<QuoteReport> getReport(int days) const;
+
+        // 离群判定：偏离有效均价超过 ratio 倍的成交不计入均价（仍计入成交量）；ratio <= 0 或均价为 0 时关闭
+        LOICOLLECTION_A_NDAPI static bool isPriceOutlier(double average, int price, double ratio);
 
     private:
         struct Impl;

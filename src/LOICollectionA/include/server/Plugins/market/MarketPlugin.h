@@ -47,12 +47,14 @@ namespace LOICollection::server::Plugins {
         StoreItemNotFound = 8,
         StoreReviewNotFound = 9,
         StoreCostInsufficient = 10,
-        WantedExpired = 11,
-        WantedFilled = 12,
-        WantedFrozenFundFailed = 13,
-        AuctionBidTooLow = 14,
-        AuctionOutbidRefundFailed = 15,
-        CompensationRequired = 16
+        WantedNotFound = 11,
+        WantedExpired = 12,
+        WantedFilled = 13,
+        WantedFrozenFundFailed = 14,
+        AuctionBidTooLow = 15,
+        AuctionOutbidRefundFailed = 16,
+        CompensationRequired = 17,
+        AuctionNotFound = 18
     };
 
     struct MarketPluginErrorCategory : std::error_category {
@@ -72,12 +74,14 @@ namespace LOICollection::server::Plugins {
                 case MarketPluginErrorCode::StoreItemNotFound: return "Store item not found";
                 case MarketPluginErrorCode::StoreReviewNotFound: return "Store review not found";
                 case MarketPluginErrorCode::StoreCostInsufficient: return "Store creation cost insufficient";
+                case MarketPluginErrorCode::WantedNotFound: return "Wanted order not found";
                 case MarketPluginErrorCode::WantedExpired: return "Wanted order has expired";
                 case MarketPluginErrorCode::WantedFilled: return "Wanted order is already filled";
                 case MarketPluginErrorCode::WantedFrozenFundFailed: return "Failed to freeze funds for wanted order";
                 case MarketPluginErrorCode::AuctionBidTooLow: return "Bid is lower than the minimum increment";
                 case MarketPluginErrorCode::AuctionOutbidRefundFailed: return "Failed to refund the outbid bidder";
                 case MarketPluginErrorCode::CompensationRequired: return "Game state update failed after commit, compensation required";
+                case MarketPluginErrorCode::AuctionNotFound: return "Auction not found";
                 default:
                     return "Unknown";
             }
@@ -144,7 +148,7 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI ll::Expected<bool> dissolveStore(Player& player);
         LOICOLLECTION_A_NDAPI ll::Expected<bool> uploadStoreItem(Player& player, int slot, const std::string& name, const std::string& icon, const std::string& intr, int score);
         LOICOLLECTION_A_NDAPI ll::Expected<bool> offshelfStoreItem(Player& player, const std::string& id, bool returnItem = false);
-        LOICOLLECTION_A_NDAPI ll::Expected<bool> buyStoreItem(Player& player, const std::string& id);
+        LOICOLLECTION_A_NDAPI ll::Expected<bool> buyStoreItem(Player& player, const std::string& id, int count = 1);
 
         LOICOLLECTION_A_NDAPI ll::Expected<bool> addReview(Player& player, const std::string& storeId, int rating, const std::string& content);
         LOICOLLECTION_A_NDAPI ll::Expected<bool> auditReview(Player& player, const std::string& id, bool approve);
@@ -164,10 +168,26 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<std::string, long long>>> getTopTurnover(int limit, int days = 30);
         LOICOLLECTION_A_NDAPI ll::Expected<QuoteReport> getReport(int days);
 
+        LOICOLLECTION_A_NDAPI ll::Expected<bool> createWanted(Player& player, int slot, const std::string& name, int unitPrice, int amount);
+        LOICOLLECTION_A_NDAPI ll::Expected<bool> cancelWanted(Player& player, const std::string& id);
+        LOICOLLECTION_A_NDAPI ll::Expected<bool> fillWanted(Player& player, const std::string& id, int amount);
+        LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getWantedList();
+        LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getWantedItems(Player& player);
+        LOICOLLECTION_A_NDAPI ll::Expected<std::unordered_map<std::string, std::string>> getWantedData(const std::string& id);
+
+        LOICOLLECTION_A_NDAPI ll::Expected<bool> createAuction(Player& player, int slot, const std::string& name, int startPrice, int durationSeconds);
+        LOICOLLECTION_A_NDAPI ll::Expected<bool> bidAuction(Player& player, const std::string& id, int price);
+        LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getAuctionList();
+        LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getAuctionItems(Player& player);
+        LOICOLLECTION_A_NDAPI ll::Expected<std::unordered_map<std::string, std::string>> getAuctionData(const std::string& id);
+
         LOICOLLECTION_A_API   void clearStoreRankCache();
         LOICOLLECTION_A_API   void startStoreRankRefresh();
 
         LOICOLLECTION_A_NDAPI static double computeStoreScore(const StoreScoreInput& input, const Config::C_Market& options);
+
+        // 交易税：floor(price × rate)；取整边界与收取逻辑统一（默认税率 0 时恒为 0）
+        LOICOLLECTION_A_NDAPI static int computeTax(int price, double rate);
 
         LOICOLLECTION_A_NDAPI bool isValid();
 
