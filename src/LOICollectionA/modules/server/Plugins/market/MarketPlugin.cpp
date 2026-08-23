@@ -57,6 +57,7 @@
 #include "LOICollectionA/data/SQLiteStorage.h"
 
 #include "LOICollectionA/base/Cache.h"
+#include "LOICollectionA/base/ScopeGuard.h"
 #include "LOICollectionA/base/Wrapper.h"
 #include "LOICollectionA/base/ServiceProvider.h"
 
@@ -87,6 +88,7 @@ namespace LOICollection::server::Plugins {
 
         ll::ConcurrentDenseMap<std::string, TradeEntry> mTrades;
         ll::ConcurrentDenseMap<std::string, TradeEntry> mTradeRequests;
+        ll::ConcurrentDenseMap<std::string, bool> mSettling;
 
         LRUKCache<std::string, std::vector<std::string>> BlacklistCache;
 
@@ -205,13 +207,23 @@ namespace LOICollection::server::Plugins {
             this->mImpl->db2->get("Market", uuid, "score")
                 .and_then([this, uuid, &event](const std::string& value) -> ll::Expected<void> {
                     int mScore = SystemUtils::toInt(value, 0);
-                    if (mScore > 0) {
-                        ScoreboardUtils::addScore(event.self(), this->mImpl->options.TargetScoreboard, mScore);
+                    if (mScore <= 0)
+                        return {};
 
-                        return this->mImpl->db2->set("Market", uuid, "score", "0");
-                    }
+                    // 防重入：结算期间对该玩家加内存锁，join 事件重入时直接跳过
+                    if (this->mImpl->mSettling.contains(uuid))
+                        return {};
 
-                    return {};
+                    this->mImpl->mSettling[uuid] = true;
+                    auto guard = make_scope_guard([this, uuid]() -> void {
+                        this->mImpl->mSettling.erase(uuid);
+                    });
+
+                    // 先销账再发钱：先销账成功而发钱前崩溃，钱留在库里，下次 join 重发——宁可迟发不可多发
+                    return this->mImpl->db2->set("Market", uuid, "score", "0")
+                        .transform([this, uuid, mScore, &event]() -> void {
+                            ScoreboardUtils::addScore(event.self(), this->mImpl->options.TargetScoreboard, mScore);
+                        });
                 })
                 .or_else(modules::defaultErrorHandler<MarketPlugin>);
         });
@@ -260,11 +272,11 @@ namespace LOICollection::server::Plugins {
                             return true;
                         });
                 } else {
-                    return this->mImpl->db2->get("Market", mObject, "Score", "0")
+                    return this->mImpl->db2->get("Market", mObject, "score", "0")
                         .and_then([this, mScore, mObject](const std::string& value) -> ll::Expected<bool> {
                             int mMarketScore = SystemUtils::toInt(value, 0);
 
-                            return this->mImpl->db2->set("Market", mObject, "Score", std::to_string(mMarketScore + mScore))
+                            return this->mImpl->db2->set("Market", mObject, "score", std::to_string(mMarketScore + mScore))
                                 .transform([]() -> bool {
                                     return true;
                                 });

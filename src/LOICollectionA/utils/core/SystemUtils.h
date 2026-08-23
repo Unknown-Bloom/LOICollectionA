@@ -14,6 +14,7 @@ namespace SystemUtils {
     std::vector<std::string> getIntersection(const std::vector<std::vector<std::string>>& elements);
 
     int toInt(const std::string& str, int defaultValue = 0);
+    long long toLongLong(const std::string& str, long long defaultValue = 0);
         
     bool isPastOrPresent(const std::string& str);
 }

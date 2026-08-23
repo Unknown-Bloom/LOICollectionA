@@ -43,7 +43,13 @@ namespace LOICollection::server::Plugins {
         StoreAlreadyExists = 7,
         StoreItemNotFound = 8,
         StoreReviewNotFound = 9,
-        StoreCostInsufficient = 10
+        StoreCostInsufficient = 10,
+        WantedExpired = 11,
+        WantedFilled = 12,
+        WantedFrozenFundFailed = 13,
+        AuctionBidTooLow = 14,
+        AuctionOutbidRefundFailed = 15,
+        CompensationRequired = 16
     };
 
     struct MarketPluginErrorCategory : std::error_category {
@@ -63,6 +69,12 @@ namespace LOICollection::server::Plugins {
                 case MarketPluginErrorCode::StoreItemNotFound: return "Store item not found";
                 case MarketPluginErrorCode::StoreReviewNotFound: return "Store review not found";
                 case MarketPluginErrorCode::StoreCostInsufficient: return "Store creation cost insufficient";
+                case MarketPluginErrorCode::WantedExpired: return "Wanted order has expired";
+                case MarketPluginErrorCode::WantedFilled: return "Wanted order is already filled";
+                case MarketPluginErrorCode::WantedFrozenFundFailed: return "Failed to freeze funds for wanted order";
+                case MarketPluginErrorCode::AuctionBidTooLow: return "Bid is lower than the minimum increment";
+                case MarketPluginErrorCode::AuctionOutbidRefundFailed: return "Failed to refund the outbid bidder";
+                case MarketPluginErrorCode::CompensationRequired: return "Game state update failed after commit, compensation required";
                 default:
                     return "Unknown";
             }
