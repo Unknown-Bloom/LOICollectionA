@@ -11,6 +11,7 @@
 
 #include <ll/api/Expected.h>
 #include <ll/api/event/EventBus.h>
+#include <ll/api/service/Bedrock.h>
 
 #include <mc/deps/nbt/Tag.h>
 #include <mc/deps/nbt/CompoundTag.h>
@@ -133,7 +134,7 @@ namespace LOICollection::server::Plugins {
         };
 
         return this->mImpl->db->set("StoreAuction", SystemUtils::getCurrentTimestamp(), data)
-            .or_else([slot, &player, mItemStack](ll::Error e) -> ll::Expected<void> {
+            .or_else([&player, mItemStack](ll::Error e) -> ll::Expected<void> {
                 // 写库失败：物品退回背包，拍卖未生效
                 player.mInventory->mInventory->addItem(mItemStack);
                 player.refreshInventory();
@@ -184,7 +185,7 @@ namespace LOICollection::server::Plugins {
                     return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::AuctionBidTooLow));
 
                 return this->mImpl->blacklistProvider(sellerUuid)
-                    .and_then([this, id, price, &player, data, sellerUuid](const std::vector<std::string>& blacklists) -> ll::Expected<bool> {
+                    .and_then([this, id, price, &player, data](const std::vector<std::string>& blacklists) -> ll::Expected<bool> {
                         if (std::find(blacklists.begin(), blacklists.end(), player.getUuid().asString()) != blacklists.end()) {
                             return LanguagePlugin::getShared()->getLanguage(player)
                                 .transform([&player](const std::string& language) -> bool {
@@ -216,7 +217,7 @@ namespace LOICollection::server::Plugins {
 
                         // 先写新出价（唯一不可逆点），失败则退回本次冻结的出价
                         return this->mImpl->db->set("StoreAuction", id, updated)
-                            .or_else([this, mScoreboard, price, &player](ll::Error e) -> ll::Expected<void> {
+                            .or_else([mScoreboard, price, &player](ll::Error e) -> ll::Expected<void> {
                                 ScoreboardUtils::addScore(player, mScoreboard, price);
 
                                 return ll::Unexpected(e);
@@ -243,8 +244,8 @@ namespace LOICollection::server::Plugins {
                                                 return {};
                                             });
 
-                                        return restore.and_then([e]() -> ll::Expected<bool> {
-                                            return ll::Unexpected(e);
+                                        return restore.and_then([e = std::move(e)]() mutable -> ll::Expected<bool> {
+                                            return ll::Unexpected(std::move(e));
                                         });
                                     })
                                     .transform([this, &player, data, price, oldBidder, oldPrice](bool) -> bool {
@@ -303,7 +304,7 @@ namespace LOICollection::server::Plugins {
             return ll::Unexpected(commitResult.error());
 
         // 提交后游戏状态失败走补偿：恢复拍卖单（settled 归零）+ 删除成交记录，下轮扫描重试
-        auto compensate = [this, id, data, saleKey, bidderUuid, sellerAmount, tax, price]() -> ll::Expected<void> {
+        auto compensate = [this, id, data, saleKey]() -> ll::Expected<void> {
             this->mImpl->logger->warn(fmt::runtime(tr({}, "market.log16")), data.at("seller_name"), id);
 
             return this->restoreAuction(id, data, saleKey);
@@ -339,17 +340,17 @@ namespace LOICollection::server::Plugins {
         }();
 
         return settle.or_else([&compensate](ll::Error e) -> ll::Expected<void> {
-            return compensate().and_then([e]() -> ll::Expected<void> {
-                return ll::Unexpected(e);
+            return compensate().and_then([e = std::move(e)]() mutable -> ll::Expected<void> {
+                return ll::Unexpected(std::move(e));
             });
-        }).and_then([this, &data, price, tax, saleKey, bidderUuid, sellerAmount, id]() -> ll::Expected<void> {
+        }).and_then([this, &data, price, tax, saleKey, bidderUuid, id]() -> ll::Expected<void> {
             return this->collectTax(tax)
-                .or_else([this, id, &data, saleKey, bidderUuid](ll::Error e) -> ll::Expected<void> {
+                .or_else([this, id](ll::Error e) -> ll::Expected<void> {
                     this->mImpl->logger->warn("MarketAuction: tax collect failed for auction {}: {}", id, e.message());
 
                     return ll::Unexpected(e);
                 })
-                .transform([this, &data, price, tax, saleKey, bidderUuid, sellerAmount]() -> void {
+                .transform([this, &data, price, tax, saleKey, bidderUuid]() -> void {
                     this->mImpl->logger->info(fmt::runtime(tr({}, "market.log18")), data.at("item_name"), data.at("bidder_name"));
 
                     ll::event::EventBus::getInstance().publish(LOICollection::server::Events::MarketItemSoldEvent(

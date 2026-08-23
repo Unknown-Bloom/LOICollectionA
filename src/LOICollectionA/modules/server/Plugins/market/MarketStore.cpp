@@ -11,6 +11,7 @@
 
 #include <ll/api/Expected.h>
 #include <ll/api/event/EventBus.h>
+#include <ll/api/service/Bedrock.h>
 
 #include <mc/deps/nbt/Tag.h>
 #include <mc/deps/nbt/CompoundTag.h>
@@ -631,8 +632,8 @@ namespace LOICollection::server::Plugins {
 
                                         return this->settleSeller(ownerUuid, data.at("name"), sellerAmount, mScoreboard)
                                             .or_else([&compensate](ll::Error e) -> ll::Expected<bool> {
-                                                return compensate().and_then([e]() -> ll::Expected<bool> {
-                                                    return ll::Unexpected(e);
+                                                return compensate().and_then([e = std::move(e)]() mutable -> ll::Expected<bool> {
+                                                    return ll::Unexpected(std::move(e));
                                                 });
                                             })
                                             .and_then([this, tax]() -> ll::Expected<bool> {

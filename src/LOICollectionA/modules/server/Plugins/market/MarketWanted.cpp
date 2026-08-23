@@ -11,6 +11,7 @@
 
 #include <ll/api/Expected.h>
 #include <ll/api/event/EventBus.h>
+#include <ll/api/service/Bedrock.h>
 
 #include <mc/deps/nbt/Tag.h>
 #include <mc/deps/nbt/CompoundTag.h>
@@ -148,7 +149,7 @@ namespace LOICollection::server::Plugins {
                 };
 
                 return this->mImpl->db->set("StoreWanted", SystemUtils::getCurrentTimestamp(), data)
-                    .or_else([this, mScoreboard, mFrozen, &player](ll::Error e) -> ll::Expected<void> {
+                    .or_else([mScoreboard, mFrozen, &player](ll::Error e) -> ll::Expected<void> {
                         // 写库失败：退回冻结资金，求购单未生效
                         ScoreboardUtils::addScore(player, mScoreboard, static_cast<int>(mFrozen));
 
@@ -189,8 +190,8 @@ namespace LOICollection::server::Plugins {
                             .or_else([this, id, data, &player](ll::Error e) -> ll::Expected<void> {
                                 this->mImpl->logger->warn(fmt::runtime(tr({}, "market.log21")), player.getRealName(), id);
 
-                                return this->restoreWanted(id, data).and_then([e]() -> ll::Expected<void> {
-                                    return ll::Unexpected(e);
+                                return this->restoreWanted(id, data).and_then([e = std::move(e)]() mutable -> ll::Expected<void> {
+                                    return ll::Unexpected(std::move(e));
                                 });
                             });
                     })
@@ -259,7 +260,7 @@ namespace LOICollection::server::Plugins {
                         // 买家资金已在创建时全额冻结，此处不再扣款；
                         // 事务提交（摘单 + 写成交）是唯一不可逆点。
                         return this->commitWantedFill(id, data, amount, pay, tax, player)
-                            .and_then([this, id, data, amount, pay, sellerAmount, tax, buyerUuid, &player, buyer](const std::string& saleKey) -> ll::Expected<bool> {
+                            .and_then([this, data, amount, pay, sellerAmount, tax, buyerUuid, &player, buyer](const std::string& saleKey) -> ll::Expected<bool> {
                                 // 卖家交出物品 → 买家收物品（校验已通过，失败概率极低）
                                 InventoryUtils::clearItem(player, data.at("item_type"), amount);
 
@@ -457,8 +458,8 @@ namespace LOICollection::server::Plugins {
                                         .or_else([this, id, data](ll::Error e) -> ll::Expected<void> {
                                             this->mImpl->logger->warn(fmt::runtime(tr({}, "market.log21")), data.at("wanted_name"), id);
 
-                                            return this->restoreWanted(id, data).and_then([e]() -> ll::Expected<void> {
-                                                return ll::Unexpected(e);
+                                            return this->restoreWanted(id, data).and_then([e = std::move(e)]() mutable -> ll::Expected<void> {
+                                                return ll::Unexpected(std::move(e));
                                             });
                                         });
                                 })

@@ -141,7 +141,7 @@ namespace LOICollection::server::Plugins {
 
                 return owners;
             })
-            .and_then([this](std::unordered_map<std::string, std::string> owners) -> ll::Expected<void> {
+            .and_then([this, loadTable](std::unordered_map<std::string, std::string> owners) -> ll::Expected<void> {
                 return loadTable("StoreSale")
                     .transform([this, owners](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> sales) mutable -> void {
                         std::unordered_map<std::string, QuoteStat> rebuilt;
