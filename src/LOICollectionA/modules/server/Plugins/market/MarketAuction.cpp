@@ -134,12 +134,12 @@ namespace LOICollection::server::Plugins {
         };
 
         return this->mImpl->db->set("StoreAuction", SystemUtils::getCurrentTimestamp(), data)
-            .or_else([&player, mItemStack](ll::Error e) -> ll::Expected<void> {
+            .or_else([&player, &mItemStack](ll::Error e) -> ll::Expected<void> {
                 // 写库失败：物品退回背包，拍卖未生效
                 player.mInventory->mInventory->addItem(mItemStack);
                 player.refreshInventory();
 
-                return ll::Unexpected(e);
+                return ll::Unexpected(std::move(e));
             })
             .transform([this, slot, &player, mName]() -> bool {
                 player.mInventory->mInventory->removeItem(slot, 64);
@@ -233,7 +233,7 @@ namespace LOICollection::server::Plugins {
 
                                 int oldPrice = SystemUtils::toInt(data.at("current_price"), 0);
                                 return this->refundScore(oldBidder, oldPrice, mScoreboard)
-                                    .or_else([this, id, data, oldBidder, mScoreboard, price, &player](ll::Error e) -> ll::Expected<bool> {
+                                    .or_else([this, id, data, oldBidder, mScoreboard, price, &player](ll::Error e) -> ll::Expected<void> {
                                         // 退还失败：回滚本次出价（恢复原状态 + 退回新出价者资金），需管理员介入
                                         this->mImpl->logger->warn(fmt::runtime(tr({}, "market.log27")), data.at("item_name"), oldBidder);
 
@@ -244,11 +244,11 @@ namespace LOICollection::server::Plugins {
                                                 return {};
                                             });
 
-                                        return restore.and_then([e = std::move(e)]() mutable -> ll::Expected<bool> {
+                                        return std::move(restore).and_then([e = std::move(e)]() mutable -> ll::Expected<void> {
                                             return ll::Unexpected(std::move(e));
                                         });
                                     })
-                                    .transform([this, &player, data, price, oldBidder, oldPrice](bool) -> bool {
+                                    .transform([this, &player, data, price, oldBidder, oldPrice]() -> bool {
                                         if (Player* outbid = ll::service::getLevel()->getPlayer(mce::UUID::fromString(oldBidder)); outbid) {
                                             auto language = LanguagePlugin::getShared()->getLanguage(*outbid);
                                             if (language.has_value())
@@ -339,7 +339,7 @@ namespace LOICollection::server::Plugins {
                 });
         }();
 
-        return settle.or_else([&compensate](ll::Error e) -> ll::Expected<void> {
+        return std::move(settle).or_else([&compensate](ll::Error e) -> ll::Expected<void> {
             return compensate().and_then([e = std::move(e)]() mutable -> ll::Expected<void> {
                 return ll::Unexpected(std::move(e));
             });
@@ -480,11 +480,11 @@ namespace LOICollection::server::Plugins {
         if (tax <= 0)
             return {};
 
-        return this->mImpl->settingsDb->get("MarketTax", "total", "0")
+        return this->mImpl->settingsDb->get("MarketTax", "total", "total", "0")
             .and_then([this, tax](const std::string& value) -> ll::Expected<void> {
                 long long total = SystemUtils::toLongLong(value, 0) + tax;
 
-                return this->mImpl->settingsDb->set("MarketTax", "total", std::to_string(total));
+                return this->mImpl->settingsDb->set("MarketTax", "total", "total", std::to_string(total));
             });
     }
 

@@ -631,28 +631,31 @@ namespace LOICollection::server::Plugins {
                                         player.refreshInventory();
 
                                         return this->settleSeller(ownerUuid, data.at("name"), sellerAmount, mScoreboard)
-                                            .or_else([&compensate](ll::Error e) -> ll::Expected<bool> {
-                                                return compensate().and_then([e = std::move(e)]() mutable -> ll::Expected<bool> {
+                                            .or_else([&compensate](ll::Error e) -> ll::Expected<void> {
+                                                return compensate().and_then([e = std::move(e)]() mutable -> ll::Expected<void> {
                                                     return ll::Unexpected(std::move(e));
                                                 });
                                             })
-                                            .and_then([this, tax]() -> ll::Expected<bool> {
+                                            .transform([]() -> bool {
+                                                return true;
+                                            })
+                                            .and_then([this, tax](bool) -> ll::Expected<bool> {
                                                 // 税收入账：累计税额计入 MarketTax 表（默认税率 0 时跳过）
                                                 if (tax <= 0)
                                                     return true;
 
-                                                return this->mImpl->settingsDb->get("MarketTax", "total", "0")
+                                                return this->mImpl->settingsDb->get("MarketTax", "total", "total", "0")
                                                     .and_then([this, tax](const std::string& value) -> ll::Expected<bool> {
                                                         long long total = SystemUtils::toLongLong(value, 0) + tax;
 
-                                                        return this->mImpl->settingsDb->set("MarketTax", "total", std::to_string(total))
+                                                        return this->mImpl->settingsDb->set("MarketTax", "total", "total", std::to_string(total))
                                                             .transform([]() -> bool {
                                                                 return true;
                                                             });
                                                     });
                                             })
-                                            .transform([this, &player, data, ownerUuid, saleKey, tax]() -> bool {
-                                                this->getLogger()->info(fmt::runtime(tr({}, "market.log13")), data.at("name"));
+                                            .transform([this, &player, data, ownerUuid, saleKey, tax](bool) -> bool {
+                                                this->mImpl->logger->info(fmt::runtime(tr({}, "market.log13")), data.at("name"));
 
                                                 ll::event::EventBus::getInstance().publish(LOICollection::server::Events::MarketItemSoldEvent(
                                                     data.at("name"),
@@ -743,7 +746,7 @@ namespace LOICollection::server::Plugins {
         if (!delResult.has_value())
             return ll::Unexpected(delResult.error());
 
-        return transaction.value().commit().transform([this]() -> void {
+        return transaction.value().commit().transform([this](bool) -> void {
             this->clearRankCache();
         });
     }

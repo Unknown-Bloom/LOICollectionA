@@ -412,11 +412,11 @@ namespace LOICollection::server::Plugins {
         if (tax <= 0)
             return {};
 
-        return this->mImpl->settingsDb->get("MarketTax", "total", "0")
+        return this->mImpl->settingsDb->get("MarketTax", "total", "total", "0")
             .and_then([this, tax](const std::string& value) -> ll::Expected<void> {
                 long long total = SystemUtils::toLongLong(value, 0) + tax;
 
-                return this->mImpl->settingsDb->set("MarketTax", "total", std::to_string(total));
+                return this->mImpl->settingsDb->set("MarketTax", "total", "total", std::to_string(total));
             });
     }
 
