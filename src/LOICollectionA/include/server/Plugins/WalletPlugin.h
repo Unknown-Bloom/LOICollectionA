@@ -118,6 +118,12 @@ namespace LOICollection::server::Plugins {
         ll::Expected<bool> refundEnvelope(const std::string& id);
         ll::Expected<void> accumulateFee(long long amount);
 
+        ll::Expected<void> appendLedger(const std::string& fromUuid, const std::string& fromName, const std::string& toUuid, const std::string& toName, long long amount, long long fee, const std::string& type);
+        ll::Expected<std::vector<std::string>> getPlayerLedger(const std::string& uuid, int limit);
+        void scheduleLedgerCleanup();
+        void cleanupLedger();
+        ll::Expected<void> sendHistory(Player& receiver, const std::string& uuid, const std::string& name, int limit);
+
         struct RedEnvelopeEntry;
 
         struct operation;

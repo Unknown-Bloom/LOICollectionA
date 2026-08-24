@@ -12,6 +12,9 @@ navigateRedenvelope.value = false;
 navigateWealth = new GlobalValue();
 navigateWealth.value = false;
 
+navigateHistory = new GlobalValue();
+navigateHistory.value = false;
+
 onlineOption = new ButtonOptions();
 onlineOption.tooltip = {tr("wallet.gui.transfer.tooltip")};
 
@@ -23,6 +26,9 @@ redenvelopeOption.tooltip = {tr("wallet.gui.redenvelope.tooltip")};
 
 wealthOption = new ButtonOptions();
 wealthOption.tooltip = {tr("wallet.gui.wealth.tooltip")};
+
+historyOption = new ButtonOptions();
+historyOption.tooltip = {tr("wallet.gui.history.tooltip")};
 
 open = new CustomForm("wallet.open", {tr("wallet.gui.title")});
 open.label(std::format({tr("wallet.gui.label")}, [ infoData[0], infoData[1] ]), new TextOptions());
@@ -55,6 +61,13 @@ open.button({tr("wallet.gui.wealth")}, func () -> void {
         open.close();
     ]
 }, wealthOption);
+open.button({tr("wallet.gui.history")}, func () -> void {
+    if (!navigateHistory.value) [
+        navigateHistory.value = true;
+
+        open.close();
+    ]
+}, historyOption);
 open.closeButton();
 open.show(func (result) -> void {
     if (navigateOnline.value) [
@@ -65,6 +78,10 @@ open.show(func (result) -> void {
         :
             if (navigateRedenvelope.value) [
                 GUIManager::switchTo("wallet.redenvelope", 1);
+            :
+                if (navigateHistory.value) [
+                    GUIManager::switchTo("wallet.history", 1);
+                ]
             ]
         ]
     ]
@@ -168,3 +185,15 @@ redenvelope.show(func (result) -> void {
     ]
 });
 redenvelope.show();
+
+history = new PaginatedForm("wallet.history", {tr("wallet.gui.title")}, GUIManager::value("wallet.history"), 10);
+history.label({tr("wallet.gui.history.label")}, new TextOptions());
+history.previousButton({tr("generic.gui.page.previous")});
+history.nextButton({tr("generic.gui.page.next")});
+history.closeButton();
+history.show(func (result) -> void {
+    if (result.selection == "") [
+        GUIManager::open("wallet", "wallet.open", 1, []);
+    ]
+});
+history.show();

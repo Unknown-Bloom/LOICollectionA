@@ -89,6 +89,9 @@ namespace Config {
         std::string TargetScoreboard = "money";
         double ExchangeRate = 0.1;
         int RedEnvelopeTimeout = 60;
+
+        bool WalletHistoryEnabled = true;
+        int WalletHistoryRetentionDays = 90;
     };
 
     struct C_Chat {

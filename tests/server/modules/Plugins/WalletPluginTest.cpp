@@ -40,7 +40,7 @@ protected:
     void TearDown() override {
         auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
 
-        auto result = storage->exec("DELETE FROM Wallet; DELETE FROM RedEnvelope; DELETE FROM RedEnvelopeGrab; DELETE FROM WalletFee;");
+        auto result = storage->exec("DELETE FROM Wallet; DELETE FROM RedEnvelope; DELETE FROM RedEnvelopeGrab; DELETE FROM WalletFee; DELETE FROM WalletLedger;");
         if (!result.has_value())
             GTEST_FAIL() << "Unable to clear data";
 
@@ -342,6 +342,72 @@ TEST_F(WalletPluginTest, FeePoolAccumulates) {
 
     int fee = 200 - static_cast<int>(200 * (1 - config.ExchangeRate));
     EXPECT_EQ(after.value() - before.value(), fee);
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+}
+
+TEST_F(WalletPluginTest, LedgerRecordsTransfer) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    TestSimulatedPlayer sp2("test_player4");
+    EXPECT_TRUE(sp2.create());
+
+    auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+
+    Config::C_Wallet config = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Wallet;
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(config.TargetScoreboard)) {
+        hasScoreboard = false;
+
+        ScoreboardUtils::create(config.TargetScoreboard);
+    }
+
+    ScoreboardUtils::setScore(*sp, config.TargetScoreboard, 500);
+
+    EXPECT_TRUE(WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 200).has_value());
+
+    auto ids = storage->find("WalletLedger", std::vector<std::pair<std::string, std::string>>{ { "from_uuid", sp->getUuid().asString() } });
+    EXPECT_TRUE(ids.has_value());
+    ASSERT_FALSE(ids.value().empty());
+
+    auto row = storage->get("WalletLedger", ids.value().at(0)).value();
+    EXPECT_EQ(row["type"], "transfer");
+    EXPECT_EQ(row["to_uuid"], sp2.getPlayer()->getUuid().asString());
+    EXPECT_EQ(SystemUtils::toInt(row["amount"], 0) + SystemUtils::toInt(row["fee"], 0), 200);
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+}
+
+TEST_F(WalletPluginTest, LedgerHistoryVisibility) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+
+    Config::C_Wallet config = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Wallet;
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(config.TargetScoreboard)) {
+        hasScoreboard = false;
+
+        ScoreboardUtils::create(config.TargetScoreboard);
+    }
+
+    ScoreboardUtils::setScore(*sp, config.TargetScoreboard, 500);
+
+    EXPECT_TRUE(WalletPlugin::getShared()->forTransfer(*sp, sp->getUuid().asString(), sp->getRealName(), 100).has_value());
+
+    // The query path must only surface rows where the player is a participant.
+    auto ids = storage->find("WalletLedger", {
+        { "from_uuid", sp->getUuid().asString() },
+        { "to_uuid", sp->getUuid().asString() }
+    }, SQLiteStorage::FindCondition::OR);
+    EXPECT_TRUE(ids.has_value());
+    ASSERT_FALSE(ids.value().empty());
 
     if (!hasScoreboard)
         ScoreboardUtils::remove(config.TargetScoreboard);

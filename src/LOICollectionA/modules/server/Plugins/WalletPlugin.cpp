@@ -71,6 +71,8 @@ namespace LOICollection::server::Plugins {
     constexpr const char* WALLET_FEE_TABLE = "WalletFee";
     constexpr const char* WALLET_FEE_COLUMN = "amount";
 
+    constexpr const char* WALLET_LEDGER_TABLE = "WalletLedger";
+
     struct WalletPlugin::RedEnvelopeEntry {
         std::string id;
         std::string chatKey;
@@ -90,12 +92,17 @@ namespace LOICollection::server::Plugins {
         int Score = 0;
     };
 
+    struct WalletPlugin::operationQuery {
+        std::string PlayerName;
+    };
+
     struct WalletPlugin::Impl {
         std::shared_ptr<TimerManager> mTimerManager;
 
         ll::ConcurrentDenseMap<std::string, std::vector<RedEnvelopeEntry>> mRedEnvelopes;
         ll::ConcurrentDenseMap<std::string, bool> mSettling;
 
+        std::atomic<uint64_t> mLedgerSeq{ 0 };
         std::atomic<bool> mRegistered{ false };
 
         Config::C_Wallet options;
@@ -151,8 +158,13 @@ namespace LOICollection::server::Plugins {
                 ScoreboardUtils::reduceScore(player, mScoreboard, mMoney);
 
                 int mTargetMoney = static_cast<int>(param.Score * (1 - this->mImpl->options.ExchangeRate));
-                for (Player*& target : results)
+                for (Player*& target : results) {
                     ScoreboardUtils::addScore(*target, mScoreboard, mTargetMoney);
+
+                    long long perTargetFee = static_cast<long long>(param.Score) - mTargetMoney;
+                    this->appendLedger(player.getUuid().asString(), player.getRealName(), target->getUuid().asString(), target->getRealName(), mTargetMoney, perTargetFee, "transfer")
+                        .or_else(modules::defaultErrorHandler<WalletPlugin>);
+                }
 
                 long long fee = static_cast<long long>(mMoney) - static_cast<long long>(mTargetMoney) * results.size();
                 if (fee > 0)
@@ -180,6 +192,56 @@ namespace LOICollection::server::Plugins {
             this->wealth(player).or_else(modules::defaultErrorHandler<WalletPlugin>);
 
             output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.generic.ui")), player.getRealName());
+        });
+        command.overload().text("history").execute([this](CommandOrigin const& origin, CommandOutput& output) -> void {
+            Actor* entity = origin.getEntity();
+            if (entity == nullptr || !entity->isType(ActorType::Player))
+                return output.error(tr(origin.getLocaleCode(), "commands.generic.target"));
+            Player& player = *static_cast<Player*>(entity);
+
+            if (!this->mImpl->options.WalletHistoryEnabled)
+                return output.error(tr(origin.getLocaleCode(), "wallet.history.disabled"));
+
+            this->sendHistory(player, player.getUuid().asString(), player.getRealName(), 20)
+                .or_else(modules::defaultErrorHandler<WalletPlugin>);
+
+            output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.generic.ui")), player.getRealName());
+        });
+        command.overload<operationQuery>().text("query").required("PlayerName").execute([this](CommandOrigin const& origin, CommandOutput& output, operationQuery const& param) -> void {
+            if (origin.getPermissionsLevel() < CommandPermissionLevel::GameDirectors)
+                return output.error(tr(origin.getLocaleCode(), "commands.generic.permission"));
+
+            if (!this->mImpl->options.WalletHistoryEnabled)
+                return output.error(tr(origin.getLocaleCode(), "wallet.history.disabled"));
+
+            Actor* entity = origin.getEntity();
+            if (entity == nullptr || !entity->isType(ActorType::Player))
+                return output.error(tr(origin.getLocaleCode(), "commands.generic.target"));
+            Player& receiver = *static_cast<Player*>(entity);
+
+            std::string name = param.PlayerName;
+
+            std::string uuid;
+            if (Player* candidate = ll::service::getLevel()->getPlayer(name); candidate)
+                uuid = candidate->getUuid().asString();
+
+            if (uuid.empty()) {
+                auto result = this->getPlayerInfo();
+                if (!result.has_value())
+                    return output.error(tr(origin.getLocaleCode(), "commands.generic.unknown"));
+                for (const auto& [id, playerName] : result.value())
+                    if (playerName == name) {
+                        uuid = id;
+                        break;
+                    }
+            }
+
+            if (uuid.empty())
+                return output.error(fmt::runtime(tr(origin.getLocaleCode(), "wallet.query.notfound")), name);
+
+            this->sendHistory(receiver, uuid, name, 50).or_else(modules::defaultErrorHandler<WalletPlugin>);
+
+            output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.generic.ui")), name);
         });
         command.overload().text("reload").execute([this](CommandOrigin const& origin, CommandOutput& output) -> void {
             if (origin.getPermissionsLevel() < CommandPermissionLevel::GameDirectors)
@@ -218,6 +280,18 @@ namespace LOICollection::server::Plugins {
 
                             for (const auto& [uuid, name] : players)
                                 values->elements.emplace_back(name);
+
+                            return values;
+                        });
+                });
+
+                form::GUIManager::getInstance().registerValue("wallet.history", [this](Player& player) -> ll::Expected<frontend::ArrayRef> {
+                    return this->getPlayerLedger(player.getUuid().asString(), 50)
+                        .transform([](const std::vector<std::string>& lines) -> frontend::ArrayRef {
+                            auto values = std::make_shared<frontend::ArrayValue>();
+
+                            for (const auto& line : lines)
+                                values->elements.emplace_back(line);
 
                             return values;
                         });
@@ -461,12 +535,15 @@ namespace LOICollection::server::Plugins {
         int mTargetMoney = static_cast<int>(score * (1 - this->mImpl->options.ExchangeRate));
 
         return this->transfer(target, mTargetMoney)
-            .transform([this, name, score, mTargetMoney, playerName = player.getRealName()]() -> bool {
+            .transform([this, name, score, mTargetMoney, uuid = player.getUuid().asString(), playerName = player.getRealName()]() -> bool {
                 this->getLogger()->info(fmt::runtime(tr({}, "wallet.log")), playerName, name, score);
 
                 long long fee = static_cast<long long>(score) - mTargetMoney;
                 if (fee > 0)
                     this->accumulateFee(fee).or_else(modules::defaultErrorHandler<WalletPlugin>);
+
+                this->appendLedger(uuid, playerName, target, name, mTargetMoney, fee, "transfer")
+                    .or_else(modules::defaultErrorHandler<WalletPlugin>);
 
                 return true;
             });
@@ -580,6 +657,9 @@ namespace LOICollection::server::Plugins {
             return ll::Unexpected(commit.error());
 
         ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, amount);
+
+        this->appendLedger(entry.senderUuid, entry.senderName, uuid, player.getRealName(), amount, 0, "redenvelope_grab")
+            .or_else(modules::defaultErrorHandler<WalletPlugin>);
 
         this->broadcastReceive(entry, player, amount, people + 1);
 
@@ -703,11 +783,18 @@ namespace LOICollection::server::Plugins {
         if (!chatKey.has_value())
             return ll::Unexpected(chatKey.error());
 
+        auto senderName = this->mImpl->db->get("RedEnvelope", id, "sender_name", "");
+        if (!senderName.has_value())
+            return ll::Unexpected(senderName.error());
+
         int remaining = SystemUtils::toInt(capacity.value(), 0);
         if (remaining > 0) {
             auto refund = this->transfer(data.value(), remaining);
             if (!refund.has_value())
                 return ll::Unexpected(refund.error());
+
+            this->appendLedger("", "", data.value(), senderName.value(), remaining, 0, "redenvelope_refund")
+                .or_else(modules::defaultErrorHandler<WalletPlugin>);
         }
 
         auto del = this->deleteEnvelope(id);
@@ -908,6 +995,9 @@ namespace LOICollection::server::Plugins {
             0
         });
 
+        this->appendLedger(uuid, player.getRealName(), "", "", total, 0, "redenvelope_send")
+            .or_else(modules::defaultErrorHandler<WalletPlugin>);
+
         this->mImpl->mTimerManager->schedule(id, std::chrono::seconds(this->mImpl->options.RedEnvelopeTimeout), [this, id]() -> void {
             auto refund = this->refundEnvelope(id);
             if (!refund.has_value()) {
@@ -1010,12 +1100,35 @@ namespace LOICollection::server::Plugins {
                 ctor(WALLET_FEE_COLUMN);
             });
         }).and_then([this]() -> ll::Expected<void> {
+            return this->mImpl->db->create(WALLET_LEDGER_TABLE, [](SQLiteStorage::ColumnCallback ctor) -> void {
+                ctor("from_uuid");
+                ctor("from_name");
+                ctor("to_uuid");
+                ctor("to_name");
+                ctor("amount");
+                ctor("fee");
+                ctor("type");
+                ctor("time_ns");
+                ctor("time");
+            });
+        }).and_then([this]() -> ll::Expected<void> {
+            return this->mImpl->db->exec("CREATE INDEX IF NOT EXISTS idx_WalletLedger_time_ns ON WalletLedger(time_ns);")
+                .and_then([this]() -> ll::Expected<void> {
+                    return this->mImpl->db->exec("CREATE INDEX IF NOT EXISTS idx_WalletLedger_from_uuid ON WalletLedger(from_uuid);");
+                })
+                .and_then([this]() -> ll::Expected<void> {
+                    return this->mImpl->db->exec("CREATE INDEX IF NOT EXISTS idx_WalletLedger_to_uuid ON WalletLedger(to_uuid);");
+                });
+        }).and_then([this]() -> ll::Expected<void> {
             return this->sweepExpiredEnvelopes();
         }).and_then([this]() -> ll::Expected<void> {
             return this->registeryUI();
         }).transform([this]() -> bool {
             this->registeryCommand();
             this->listenEvent();
+
+            if (this->mImpl->options.WalletHistoryRetentionDays > 0)
+                this->scheduleLedgerCleanup();
 
             this->mImpl->mRegistered.store(true, std::memory_order_release);
 
@@ -1067,6 +1180,120 @@ namespace LOICollection::server::Plugins {
                 long long total = SystemUtils::toLongLong(value, 0);
 
                 return this->mImpl->db->set(WALLET_FEE_TABLE, "total", WALLET_FEE_COLUMN, std::to_string(total + amount));
+            });
+    }
+
+    ll::Expected<void> WalletPlugin::appendLedger(const std::string& fromUuid, const std::string& fromName, const std::string& toUuid, const std::string& toName, long long amount, long long fee, const std::string& type) {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
+
+        if (!this->mImpl->options.WalletHistoryEnabled)
+            return {};
+
+        long long nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+
+        std::string id = std::to_string(nowNs) + "_" + std::to_string(this->mImpl->mLedgerSeq.fetch_add(1, std::memory_order_relaxed));
+
+        std::unordered_map<std::string, std::string> row = {
+            { "from_uuid", fromUuid },
+            { "from_name", fromName },
+            { "to_uuid", toUuid },
+            { "to_name", toName },
+            { "amount", std::to_string(amount) },
+            { "fee", std::to_string(fee) },
+            { "type", type },
+            { "time_ns", std::to_string(nowNs) },
+            { "time", SystemUtils::getNowTime() }
+        };
+
+        return this->mImpl->db->set(WALLET_LEDGER_TABLE, id, row);
+    }
+
+    ll::Expected<std::vector<std::string>> WalletPlugin::getPlayerLedger(const std::string& uuid, int limit) {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
+
+        return this->mImpl->db->find(WALLET_LEDGER_TABLE, {
+            { "from_uuid", uuid },
+            { "to_uuid", uuid }
+        }, SQLiteStorage::FindCondition::OR)
+            .and_then([this, uuid, limit](const std::vector<std::string>& ids) -> ll::Expected<std::vector<std::string>> {
+                if (ids.empty())
+                    return std::vector<std::string>{};
+
+                return this->mImpl->db->get(WALLET_LEDGER_TABLE, ids)
+                    .transform([this, uuid, limit](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> rows) -> std::vector<std::string> {
+                        std::vector<std::pair<std::string, std::string>> sorted;
+                        sorted.reserve(rows.size());
+
+                        for (const auto& [id, row] : rows) {
+                            std::string type = row.contains("type") ? row.at("type") : "";
+                            std::string fromName = row.contains("from_name") ? row.at("from_name") : "";
+                            std::string toName = row.contains("to_name") ? row.at("to_name") : "";
+                            std::string amount = row.contains("amount") ? row.at("amount") : "0";
+                            std::string fee = row.contains("fee") ? row.at("fee") : "0";
+                            std::string timeNs = row.contains("time_ns") ? row.at("time_ns") : "";
+                            std::string timeStr = row.contains("time") ? row.at("time") : "";
+
+                            bool isOut = row.contains("from_uuid") && row.at("from_uuid") == uuid;
+                            std::string direction = tr({}, isOut ? "wallet.history.type.out" : "wallet.history.type.in");
+
+                            std::string display = fmt::format(fmt::runtime(tr({}, "wallet.history.row")),
+                                timeStr, direction, fromName, toName, amount, fee);
+
+                            sorted.emplace_back(timeNs, display);
+                        }
+
+                        std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) {
+                            return a.first > b.first;
+                        });
+
+                        if (limit > 0 && sorted.size() > static_cast<size_t>(limit))
+                            sorted.resize(static_cast<size_t>(limit));
+
+                        std::vector<std::string> result;
+                        result.reserve(sorted.size());
+                        for (const auto& [t, d] : sorted)
+                            result.emplace_back(d);
+
+                        return result;
+                    });
+            });
+    }
+
+    void WalletPlugin::scheduleLedgerCleanup() {
+        this->mImpl->mTimerManager->schedule("wallet_ledger_cleanup", std::chrono::hours(24), [this]() -> void {
+            this->cleanupLedger();
+        });
+    }
+
+    void WalletPlugin::cleanupLedger() {
+        long long cutoff = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count()
+            - static_cast<long long>(this->mImpl->options.WalletHistoryRetentionDays) * 86400LL * 1000000000LL;
+
+        this->mImpl->db->exec(fmt::format("DELETE FROM {} WHERE time_ns < {}", WALLET_LEDGER_TABLE, cutoff))
+            .or_else(modules::defaultErrorHandler<WalletPlugin>);
+
+        this->scheduleLedgerCleanup();
+    }
+
+    ll::Expected<void> WalletPlugin::sendHistory(Player& receiver, const std::string& uuid, const std::string& name, int limit) {
+        return this->getPlayerLedger(uuid, limit)
+            .and_then([&receiver, name](const std::vector<std::string>& lines) -> ll::Expected<void> {
+                if (lines.empty()) {
+                    receiver.sendMessage(tr({}, "wallet.history.empty"));
+
+                    return {};
+                }
+
+                receiver.sendMessage(fmt::format(fmt::runtime(tr({}, "wallet.history.header")), name));
+
+                for (const auto& line : lines)
+                    receiver.sendMessage(line);
+
+                return {};
             });
     }
 }
