@@ -38,7 +38,9 @@ namespace LOICollection::server::Plugins {
         CooldownActive = 6,
         ConfirmRequired = 7,
         BankEmpty = 8,
-        BelowMinDeposit = 9
+        BelowMinDeposit = 9,
+        RedEnvelopeCountExceeded = 10,
+        NotInTargetList = 11
     };
 
     struct WalletPluginErrorCategory : std::error_category {
@@ -57,6 +59,8 @@ namespace LOICollection::server::Plugins {
                 case WalletPluginErrorCode::ConfirmRequired: return "Large transfer requires confirmation";
                 case WalletPluginErrorCode::BankEmpty: return "No bank deposit found";
                 case WalletPluginErrorCode::BelowMinDeposit: return "Deposit below the minimum amount";
+                case WalletPluginErrorCode::RedEnvelopeCountExceeded: return "Red envelope share count exceeds the limit";
+                case WalletPluginErrorCode::NotInTargetList: return "Player is not in the red envelope target list";
                 default:
                     return "Unknown";
             }
@@ -92,9 +96,13 @@ namespace LOICollection::server::Plugins {
 
         LOICOLLECTION_A_NDAPI ll::Expected<void> transfer(const std::string& target, int score);
         LOICOLLECTION_A_NDAPI ll::Expected<void> wealth(Player& player);
-        LOICOLLECTION_A_NDAPI ll::Expected<void> redenvelope(Player& player, const std::string& key, int score, int count);
+        LOICOLLECTION_A_NDAPI ll::Expected<void> redenvelope(Player& player, const std::string& key, int score, int count, const std::vector<std::string>& targets = {});
 
         LOICOLLECTION_A_NDAPI ll::Expected<long long> getFeePool();
+
+        LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getEnvelopeStats(const std::string& id);
+
+        LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getRedEnvelopeDailyStats();
 
         LOICOLLECTION_A_NDAPI ll::Expected<void> sweepExpiredEnvelopes();
 
@@ -151,6 +159,8 @@ namespace LOICollection::server::Plugins {
         ll::Expected<void> deleteEnvelope(const std::string& id);
         ll::Expected<bool> refundEnvelope(const std::string& id);
         ll::Expected<void> accumulateFee(long long amount);
+        void emitWalletTransfer(const std::string& fromUuid, const std::string& fromName, const std::string& toUuid, const std::string& toName, long long amount, long long fee, const std::string& type);
+        ll::Expected<std::vector<std::string>> resolveTargetUuids(const std::vector<std::string>& names);
 
         ll::Expected<void> appendLedger(const std::string& fromUuid, const std::string& fromName, const std::string& toUuid, const std::string& toName, long long amount, long long fee, const std::string& type);
         ll::Expected<std::vector<std::string>> getPlayerLedger(const std::string& uuid, int limit);
@@ -171,6 +181,10 @@ namespace LOICollection::server::Plugins {
         struct WealthEntry;
 
         struct operation;
+
+        struct operationQuery;
+
+        struct operationQueryId;
 
         struct Impl;
         std::unique_ptr<Impl> mImpl;

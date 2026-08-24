@@ -106,6 +106,9 @@ namespace Config {
         double WalletBankDailyRate = 0.0005;
         double WalletInterestTaxRate = 0.1;
         bool WalletInterestFromPool = true;
+
+        bool RedEnvelopeTargetedEnabled = true;
+        int RedEnvelopeMaxCount = 100;
     };
 
     struct C_Chat {

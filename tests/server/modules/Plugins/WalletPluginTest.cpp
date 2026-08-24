@@ -8,6 +8,7 @@
 
 #include <ll/api/service/Bedrock.h>
 #include <ll/api/thread/ServerThreadExecutor.h>
+#include <ll/api/event/EventBus.h>
 
 #include <mc/world/level/Level.h>
 #include <mc/world/actor/player/Player.h>
@@ -25,6 +26,8 @@
 #include "LOICollectionA/ConfigPlugin.h"
 
 #include "LOICollectionA/include/server/Plugins/WalletPlugin.h"
+
+#include "LOICollectionA/include/server/Events/modules/WalletTransferEvent.h"
 
 #include "common/coro/MockExecutor.h"
 #include "server/TestSimulatedPlayer.h"
@@ -437,7 +440,7 @@ TEST_F(WalletPluginTest, TransferLimitBelowMinimum) {
     // Below the configured minimum is rejected with a dedicated error code.
     auto low = WalletPlugin::getShared()->forTransfer(*sp, "nonexistent_target", "test_name", 3);
     ASSERT_FALSE(low.has_value());
-    EXPECT_EQ(static_cast<WalletPluginErrorCode>(low.error().value()), WalletPluginErrorCode::BelowMinimum);
+    EXPECT_EQ(low.error().as<ll::ErrorCodeError>().ec, WalletPlugin::makeErrorCode(WalletPluginErrorCode::BelowMinimum));
 
     // Exactly at the minimum threshold is accepted.
     auto ok = WalletPlugin::getShared()->forTransfer(*sp, "nonexistent_target", "test_name", 5);
@@ -476,7 +479,7 @@ TEST_F(WalletPluginTest, TransferLimitDailyBudget) {
     // Spending a further 200 would bring the day's total to 400 > 300, rejected.
     auto second = WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 200);
     ASSERT_FALSE(second.has_value());
-    EXPECT_EQ(static_cast<WalletPluginErrorCode>(second.error().value()), WalletPluginErrorCode::DailyLimitExceeded);
+    EXPECT_EQ(second.error().as<ll::ErrorCodeError>().ec, WalletPlugin::makeErrorCode(WalletPluginErrorCode::DailyLimitExceeded));
 
     WalletPlugin::getShared()->setOptionsForTest(GetWalletConfig());
 
@@ -513,7 +516,7 @@ TEST_F(WalletPluginTest, TransferLimitCooldown) {
     // An immediate second transfer is blocked by the active cooldown.
     auto second = WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 100);
     ASSERT_FALSE(second.has_value());
-    EXPECT_EQ(static_cast<WalletPluginErrorCode>(second.error().value()), WalletPluginErrorCode::CooldownActive);
+    EXPECT_EQ(second.error().as<ll::ErrorCodeError>().ec, WalletPlugin::makeErrorCode(WalletPluginErrorCode::CooldownActive));
 
     WalletPlugin::getShared()->setOptionsForTest(GetWalletConfig());
 
@@ -544,7 +547,7 @@ TEST_F(WalletPluginTest, TransferLargeRequiresConfirmation) {
     // Unconfirmed large transfer is rejected with ConfirmRequired.
     auto blocked = WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 1500);
     ASSERT_FALSE(blocked.has_value());
-    EXPECT_EQ(static_cast<WalletPluginErrorCode>(blocked.error().value()), WalletPluginErrorCode::ConfirmRequired);
+    EXPECT_EQ(blocked.error().as<ll::ErrorCodeError>().ec, WalletPlugin::makeErrorCode(WalletPluginErrorCode::ConfirmRequired));
 
     // Confirmed large transfer is accepted.
     auto confirm = WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 1500, true);
@@ -610,7 +613,7 @@ TEST_F(WalletPluginTest, BankDepositBelowMinimum) {
 
     auto low = WalletPlugin::getShared()->bankDeposit(*sp, 5);
     ASSERT_FALSE(low.has_value());
-    EXPECT_EQ(static_cast<WalletPluginErrorCode>(low.error().value()), WalletPluginErrorCode::BelowMinDeposit);
+    EXPECT_EQ(low.error().as<ll::ErrorCodeError>().ec, WalletPlugin::makeErrorCode(WalletPluginErrorCode::BelowMinDeposit));
 
     auto ok = WalletPlugin::getShared()->bankDeposit(*sp, 10);
     EXPECT_TRUE(ok.has_value());
@@ -627,7 +630,7 @@ TEST_F(WalletPluginTest, BankWithdrawEmpty) {
 
     auto result = WalletPlugin::getShared()->bankWithdraw(*sp);
     ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(static_cast<WalletPluginErrorCode>(result.error().value()), WalletPluginErrorCode::BankEmpty);
+    EXPECT_EQ(result.error().as<ll::ErrorCodeError>().ec, WalletPlugin::makeErrorCode(WalletPluginErrorCode::BankEmpty));
 }
 
 TEST_F(WalletPluginTest, BankInterestDegradesWhenPoolEmpty) {
@@ -735,6 +738,198 @@ TEST_F(WalletPluginTest, WealthRankingOrder) {
     ASSERT_TRUE(self.has_value());
     EXPECT_EQ(self.value().first, 3);
     EXPECT_EQ(self.value().second, 50);
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+}
+
+TEST_F(WalletPluginTest, RedenvelopeTargetedRejectsOutsider) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    TestSimulatedPlayer sp2("test_player4");
+    EXPECT_TRUE(sp2.create());
+
+    TestSimulatedPlayer sp3("test_player5");
+    EXPECT_TRUE(sp3.create());
+
+    Config::C_Wallet base = GetWalletConfig();
+    base.RedEnvelopeTargetedEnabled = true;
+    WalletPlugin::getShared()->setOptionsForTest(base);
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(base.TargetScoreboard)) {
+        hasScoreboard = false;
+        ScoreboardUtils::create(base.TargetScoreboard);
+    }
+
+    ScoreboardUtils::setScore(*sp, base.TargetScoreboard, 500);
+
+    MockExecutor executor;
+    EXPECT_TRUE(WalletPlugin::getShared()->setExecutor(executor).has_value());
+
+    // Target only sp2 by its online name.
+    EXPECT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "test_key", 100, 5, { sp2.getPlayer()->getRealName() }).has_value());
+
+    // sp2 is in the recipient list and can grab.
+    EXPECT_TRUE(WalletPlugin::getShared()->tryGrabRedEnvelope(*sp2.getPlayer(), "test_key").has_value());
+
+    // sp3 is not in the list and is rejected with the dedicated error code.
+    auto outsider = WalletPlugin::getShared()->tryGrabRedEnvelope(*sp3.getPlayer(), "test_key");
+    ASSERT_FALSE(outsider.has_value());
+    EXPECT_EQ(outsider.error().as<ll::ErrorCodeError>().ec, WalletPlugin::makeErrorCode(WalletPluginErrorCode::NotInTargetList));
+
+    WalletPlugin::getShared()->setOptionsForTest(GetWalletConfig());
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(base.TargetScoreboard);
+}
+
+TEST_F(WalletPluginTest, RedenvelopeTargetedOfflineByName) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    TestSimulatedPlayer sp2("test_player4");
+    EXPECT_TRUE(sp2.create());
+
+    auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+
+    Config::C_Wallet base = GetWalletConfig();
+    base.RedEnvelopeTargetedEnabled = true;
+    WalletPlugin::getShared()->setOptionsForTest(base);
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(base.TargetScoreboard)) {
+        hasScoreboard = false;
+        ScoreboardUtils::create(base.TargetScoreboard);
+    }
+
+    ScoreboardUtils::setScore(*sp, base.TargetScoreboard, 500);
+
+    MockExecutor executor;
+    EXPECT_TRUE(WalletPlugin::getShared()->setExecutor(executor).has_value());
+
+    // Seed the Wallet table so the offline name resolves to a uuid.
+    EXPECT_TRUE(storage->set("Wallet", "00000000-0000-0000-0000-00000000ffff", { { "name", "OfflineBob" } }).has_value());
+
+    EXPECT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "test_key", 100, 5, { "OfflineBob" }).has_value());
+
+    auto ids = storage->find("RedEnvelope", std::vector<std::pair<std::string, std::string>>{ { "chat_key", "test_key" } });
+    ASSERT_TRUE(ids.has_value());
+    ASSERT_EQ(ids.value().size(), 1u);
+
+    EXPECT_EQ(storage->get("RedEnvelope", ids.value().at(0), "targets", "").value(), "00000000-0000-0000-0000-00000000ffff");
+
+    WalletPlugin::getShared()->setOptionsForTest(GetWalletConfig());
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(base.TargetScoreboard);
+}
+
+TEST_F(WalletPluginTest, RedenvelopeCountLimit) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    Config::C_Wallet base = GetWalletConfig();
+    base.RedEnvelopeMaxCount = 3;
+    WalletPlugin::getShared()->setOptionsForTest(base);
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(base.TargetScoreboard)) {
+        hasScoreboard = false;
+        ScoreboardUtils::create(base.TargetScoreboard);
+    }
+
+    ScoreboardUtils::setScore(*sp, base.TargetScoreboard, 500);
+
+    MockExecutor executor;
+    EXPECT_TRUE(WalletPlugin::getShared()->setExecutor(executor).has_value());
+
+    // Exceeding the configured share limit is rejected with a dedicated error code.
+    auto over = WalletPlugin::getShared()->redenvelope(*sp, "test_key", 100, 5);
+    ASSERT_FALSE(over.has_value());
+    EXPECT_EQ(over.error().as<ll::ErrorCodeError>().ec, WalletPlugin::makeErrorCode(WalletPluginErrorCode::RedEnvelopeCountExceeded));
+
+    // Within the limit is accepted.
+    EXPECT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "test_key", 100, 3).has_value());
+
+    WalletPlugin::getShared()->setOptionsForTest(GetWalletConfig());
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(base.TargetScoreboard);
+}
+
+TEST_F(WalletPluginTest, EnvelopeStatsDetails) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    TestSimulatedPlayer sp2("test_player4");
+    EXPECT_TRUE(sp2.create());
+
+    auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+
+    Config::C_Wallet config = GetWalletConfig();
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(config.TargetScoreboard)) {
+        hasScoreboard = false;
+        ScoreboardUtils::create(config.TargetScoreboard);
+    }
+
+    ScoreboardUtils::setScore(*sp, config.TargetScoreboard, 500);
+
+    MockExecutor executor;
+    EXPECT_TRUE(WalletPlugin::getShared()->setExecutor(executor).has_value());
+    EXPECT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "test_key", 100, 5).has_value());
+
+    auto ids = storage->find("RedEnvelope", std::vector<std::pair<std::string, std::string>>{ { "chat_key", "test_key" } });
+    ASSERT_TRUE(ids.has_value());
+    ASSERT_EQ(ids.value().size(), 1u);
+
+    std::string id = ids.value().at(0);
+
+    // No grabs yet -> no stats rows.
+    auto empty = WalletPlugin::getShared()->getEnvelopeStats(id);
+    ASSERT_TRUE(empty.has_value());
+    EXPECT_TRUE(empty.value().empty());
+
+    EXPECT_TRUE(WalletPlugin::getShared()->tryGrabRedEnvelope(*sp2.getPlayer(), "test_key").has_value());
+
+    auto stats = WalletPlugin::getShared()->getEnvelopeStats(id);
+    ASSERT_TRUE(stats.has_value());
+    ASSERT_FALSE(stats.value().empty());
+    EXPECT_NE(stats.value().at(0).find(id), std::string::npos);
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+}
+
+TEST_F(WalletPluginTest, TransferEventPublished) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    TestSimulatedPlayer sp2("test_player4");
+    EXPECT_TRUE(sp2.create());
+
+    Config::C_Wallet config = GetWalletConfig();
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(config.TargetScoreboard)) {
+        hasScoreboard = false;
+        ScoreboardUtils::create(config.TargetScoreboard);
+    }
+
+    ScoreboardUtils::setScore(*sp, config.TargetScoreboard, 200);
+
+    int received = 0;
+    auto listener = ll::event::EventBus::getInstance().emplaceListener<LOICollection::server::Events::WalletTransferEvent>([&received](LOICollection::server::Events::WalletTransferEvent&) -> void {
+        received += 1;
+    });
+
+    EXPECT_TRUE(WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 100).has_value());
+    EXPECT_EQ(received, 1);
+
+    ll::event::EventBus::getInstance().removeListener(listener);
 
     if (!hasScoreboard)
         ScoreboardUtils::remove(config.TargetScoreboard);

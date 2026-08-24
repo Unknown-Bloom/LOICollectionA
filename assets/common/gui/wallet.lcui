@@ -212,6 +212,7 @@ transferOffline.show();
 redeemScore = new ObservableString("", true);
 redeemCount = new ObservableString("", true);
 redeemKey = new ObservableString("", true);
+redeemTargets = new ObservableString("", true);
 redeemDone = new GlobalValue();
 redeemDone.value = false;
 
@@ -224,13 +225,17 @@ redeemInputTwo.description = {tr("wallet.gui.redenvelope.input2.placeholder")};
 redeemInputThree = new TextFieldOptions();
 redeemInputThree.description = {tr("wallet.gui.redenvelope.input3.placeholder")};
 
+redeemInputFour = new TextFieldOptions();
+redeemInputFour.description = {tr("wallet.gui.redenvelope.input4.placeholder")};
+
 redenvelope = new CustomForm("wallet.redenvelope", {tr("wallet.gui.title")});
 redenvelope.label(std::format({tr("wallet.gui.label")}, [ infoData[0], infoData[1] ]), new TextOptions());
 redenvelope.textField({tr("wallet.gui.redenvelope.input1")}, redeemScore, redeemInputOne);
 redenvelope.textField({tr("wallet.gui.redenvelope.input2")}, redeemCount, redeemInputTwo);
 redenvelope.textField({tr("wallet.gui.redenvelope.input3")}, redeemKey, redeemInputThree);
+redenvelope.textField({tr("wallet.gui.redenvelope.input4")}, redeemTargets, redeemInputFour);
 redenvelope.button({tr("generic.gui.save")}, func () -> void {
-    submitResult = GUIManager::request("wallet.redenvelope.submit", [ redeemScore.getData(), redeemCount.getData(), redeemKey.getData() ]);
+    submitResult = GUIManager::request("wallet.redenvelope.submit", [ redeemScore.getData(), redeemCount.getData(), redeemKey.getData(), redeemTargets.getData() ]);
 
     redeemDone.value = submitResult[0];
     redenvelope.close();
