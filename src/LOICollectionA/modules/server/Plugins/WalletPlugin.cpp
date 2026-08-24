@@ -73,6 +73,16 @@ namespace LOICollection::server::Plugins {
 
     constexpr const char* WALLET_LEDGER_TABLE = "WalletLedger";
 
+    inline std::string walletLimitMessage(const std::string& locale, const std::error_code& error) {
+        switch (static_cast<WalletPluginErrorCode>(error.value())) {
+            case WalletPluginErrorCode::BelowMinimum: return tr(locale, "wallet.limit.min");
+            case WalletPluginErrorCode::DailyLimitExceeded: return tr(locale, "wallet.limit.daily");
+            case WalletPluginErrorCode::CooldownActive: return tr(locale, "wallet.limit.cooldown");
+            case WalletPluginErrorCode::ConfirmRequired: return tr(locale, "wallet.limit.confirm");
+            default: return error.message();
+        }
+    }
+
     struct WalletPlugin::RedEnvelopeEntry {
         std::string id;
         std::string chatKey;
@@ -101,6 +111,7 @@ namespace LOICollection::server::Plugins {
 
         ll::ConcurrentDenseMap<std::string, std::vector<RedEnvelopeEntry>> mRedEnvelopes;
         ll::ConcurrentDenseMap<std::string, bool> mSettling;
+        ll::ConcurrentDenseMap<std::string, int64_t> mLastTransferTime;
 
         std::atomic<uint64_t> mLedgerSeq{ 0 };
         std::atomic<bool> mRegistered{ false };
@@ -151,7 +162,18 @@ namespace LOICollection::server::Plugins {
 
                 std::string mScoreboard = this->mImpl->options.TargetScoreboard;
 
+                if (this->mImpl->options.TransferMinAmount > 0 && param.Score < this->mImpl->options.TransferMinAmount)
+                    return output.error(tr(origin.getLocaleCode(), "wallet.limit.min"), param.Score, this->mImpl->options.TransferMinAmount);
+
+                if (this->mImpl->options.TransferConfirmThreshold > 0 && param.Score > this->mImpl->options.TransferConfirmThreshold)
+                    return output.error(tr(origin.getLocaleCode(), "wallet.limit.confirm"));
+
                 int mMoney = param.Score * static_cast<int>(results.size());
+                if (this->mImpl->options.TransferDailyLimit > 0 || this->mImpl->options.TransferCooldownSeconds > 0) {
+                    if (auto verification = this->validateTransfer(player.getUuid().asString(), mMoney); !verification.has_value())
+                        return output.error(walletLimitMessage(origin.getLocaleCode(), verification.error()));
+                }
+
                 if (ScoreboardUtils::getScore(player, mScoreboard) < mMoney || param.Score < 0)
                     return output.error(tr(origin.getLocaleCode(), "commands.wallet.error.score"));
 
@@ -169,6 +191,8 @@ namespace LOICollection::server::Plugins {
                 long long fee = static_cast<long long>(mMoney) - static_cast<long long>(mTargetMoney) * results.size();
                 if (fee > 0)
                     this->accumulateFee(fee).or_else(modules::defaultErrorHandler<WalletPlugin>);
+
+                this->updateTransferCooldown(player.getUuid().asString());
 
                 output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.wallet.success.transfer")), param.Score, results.size());
             });
@@ -358,8 +382,33 @@ namespace LOICollection::server::Plugins {
                     auto values = std::make_shared<frontend::ArrayValue>();
 
                     if (!result.has_value()) {
+                        auto code = static_cast<WalletPluginErrorCode>(result.error().value());
+
+                        if (code == WalletPluginErrorCode::ConfirmRequired) {
+                            long long fee = static_cast<long long>(money * this->mImpl->options.ExchangeRate);
+
+                            values->elements.emplace_back(false);
+                            values->elements.emplace_back(true);
+                            values->elements.emplace_back(static_cast<int>(fee));
+                            values->elements.emplace_back(static_cast<int>(money - fee));
+                            return values;
+                        }
+
+                        if (code == WalletPluginErrorCode::BelowMinimum || code == WalletPluginErrorCode::DailyLimitExceeded || code == WalletPluginErrorCode::CooldownActive) {
+                            return LanguagePlugin::getShared()->getLanguage(player)
+                                .and_then([error = result.error(), &player](const std::string& language) -> ll::Expected<frontend::ArrayRef> {
+                                    player.sendMessage(walletLimitMessage(language, error));
+
+                                    auto fail = std::make_shared<frontend::ArrayValue>();
+                                    fail->elements.emplace_back(false);
+                                    fail->elements.emplace_back(false);
+                                    return fail;
+                                });
+                        }
+
                         modules::defaultErrorHandler<WalletPlugin>(result.error());
 
+                        values->elements.emplace_back(false);
                         values->elements.emplace_back(false);
                         return values;
                     }
@@ -370,12 +419,47 @@ namespace LOICollection::server::Plugins {
                                 player.sendMessage(tr(language, "wallet.tips.transfer"));
 
                                 values->elements.emplace_back(false);
+                                values->elements.emplace_back(false);
                                 return values;
                             });
                     }
 
                     values->elements.emplace_back(true);
+                    values->elements.emplace_back(false);
                     return values;
+                });
+
+                form::GUIManager::getInstance().registerCallback("wallet.transfer.confirm", [this](frontend::ArrayRef args, Player& player) -> ll::Expected<void> {
+                    if (args->elements.size() != 3 ||
+                        !std::holds_alternative<std::string>(args->elements[0]) ||
+                        !std::holds_alternative<std::string>(args->elements[1]) ||
+                        !std::holds_alternative<std::string>(args->elements[2]))
+                        return ll::makeStringError("wallet.transfer.confirm: must take three string parameters");
+
+                    auto uuid = std::get<std::string>(args->elements[0]);
+                    auto name = std::get<std::string>(args->elements[1]);
+                    int money = SystemUtils::toInt(std::get<std::string>(args->elements[2]), 0);
+
+                    auto result = this->forTransfer(player, uuid, name, money, true);
+                    if (!result.has_value()) {
+                        return LanguagePlugin::getShared()->getLanguage(player)
+                            .and_then([error = result.error(), &player](const std::string& language) -> ll::Expected<void> {
+                                player.sendMessage(walletLimitMessage(language, error));
+
+                                return {};
+                            });
+                    }
+
+                    if (!result.value()) {
+                        return LanguagePlugin::getShared()->getLanguage(player)
+                            .and_then([&player](const std::string& language) -> ll::Expected<void> {
+                                player.sendMessage(tr(language, "wallet.tips.transfer"));
+
+                                return {};
+                            });
+                    }
+
+                    return {};
                 });
 
                 form::GUIManager::getInstance().registerRequest("wallet.redenvelope.submit", [this](frontend::ArrayRef args, Player& player) -> ll::Expected<frontend::ArrayRef> {
@@ -522,9 +606,15 @@ namespace LOICollection::server::Plugins {
             });
     }
 
-    ll::Expected<bool> WalletPlugin::forTransfer(Player& player, const std::string& target, const std::string& name, int score) {
+    ll::Expected<bool> WalletPlugin::forTransfer(Player& player, const std::string& target, const std::string& name, int score, bool confirmed) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
+
+        if (this->mImpl->options.TransferConfirmThreshold > 0 && score > this->mImpl->options.TransferConfirmThreshold && !confirmed)
+            return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::ConfirmRequired));
+
+        if (auto verification = this->validateTransfer(player.getUuid().asString(), score); !verification.has_value())
+            return ll::Unexpected(verification.error());
 
         std::string mScoreboard = this->mImpl->options.TargetScoreboard;
         if (ScoreboardUtils::getScore(player, mScoreboard) < score || score <= 0)
@@ -538,6 +628,8 @@ namespace LOICollection::server::Plugins {
             .transform([this, name, score, mTargetMoney, uuid = player.getUuid().asString(), playerName = player.getRealName()]() -> bool {
                 this->getLogger()->info(fmt::runtime(tr({}, "wallet.log")), playerName, name, score);
 
+                this->updateTransferCooldown(uuid);
+
                 long long fee = static_cast<long long>(score) - mTargetMoney;
                 if (fee > 0)
                     this->accumulateFee(fee).or_else(modules::defaultErrorHandler<WalletPlugin>);
@@ -547,6 +639,66 @@ namespace LOICollection::server::Plugins {
 
                 return true;
             });
+    }
+
+    ll::Expected<void> WalletPlugin::validateTransfer(const std::string& uuid, int spend) {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
+
+        const auto& options = this->mImpl->options;
+
+        if (options.TransferMinAmount > 0 && spend < options.TransferMinAmount)
+            return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::BelowMinimum));
+
+        if (options.TransferCooldownSeconds > 0) {
+            auto now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+            if (auto it = this->mImpl->mLastTransferTime.find(uuid); it != this->mImpl->mLastTransferTime.end() && now - it->second < options.TransferCooldownSeconds)
+                return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::CooldownActive));
+        }
+
+        if (options.TransferDailyLimit > 0) {
+            long long today = this->getTodayOutgoing(uuid);
+            if (today + spend > options.TransferDailyLimit)
+                return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::DailyLimitExceeded));
+        }
+
+        return {};
+    }
+
+    long long WalletPlugin::getTodayOutgoing(const std::string& uuid) {
+        constexpr long long NS_PER_DAY = 86400LL * 1000000000LL;
+
+        auto nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        long long todayStartNs = (nowNs / NS_PER_DAY) * NS_PER_DAY;
+
+        auto ids = this->mImpl->db->find(WALLET_LEDGER_TABLE, std::vector<std::pair<std::string, std::string>>{ { "from_uuid", uuid } });
+        if (!ids.has_value())
+            return 0;
+
+        long long total = 0;
+        for (const auto& id : ids.value()) {
+            auto row = this->mImpl->db->get(WALLET_LEDGER_TABLE, id);
+            if (!row.has_value())
+                continue;
+
+            const auto& fields = row.value();
+            if (!fields.contains("type") || fields.at("type") != "transfer")
+                continue;
+            if (!fields.contains("time_ns") || SystemUtils::toLongLong(fields.at("time_ns"), 0) < todayStartNs)
+                continue;
+
+            total += SystemUtils::toLongLong(fields.at("amount"), 0) + SystemUtils::toLongLong(fields.at("fee"), 0);
+        }
+
+        return total;
+    }
+
+    void WalletPlugin::updateTransferCooldown(const std::string& uuid) {
+        if (this->mImpl->options.TransferCooldownSeconds <= 0)
+            return;
+
+        auto now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        this->mImpl->mLastTransferTime[uuid] = now;
     }
 
     ll::Expected<void> WalletPlugin::setExecutor(const ll::coro::Executor& executor) {
@@ -1036,6 +1188,10 @@ namespace LOICollection::server::Plugins {
 
     double WalletPlugin::getExchangeRate() {
         return this->mImpl->options.ExchangeRate;
+    }
+
+    void WalletPlugin::setOptionsForTest(const Config::C_Wallet& options) {
+        this->mImpl->options = options;
     }
 
     std::string WalletPlugin::getName() {

@@ -92,6 +92,11 @@ namespace Config {
 
         bool WalletHistoryEnabled = true;
         int WalletHistoryRetentionDays = 90;
+
+        int TransferMinAmount = 1;
+        int TransferDailyLimit = 0;
+        int TransferConfirmThreshold = 1000;
+        int TransferCooldownSeconds = 0;
     };
 
     struct C_Chat {

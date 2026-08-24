@@ -100,7 +100,13 @@
                 "ModuleEnabled": false, // 是否启用钱包
                 "TargetScoreboard": "money", // 钱包指定使用 Score 对象
                 "ExchangeRate": 0.1, // 钱包汇率
-                "RedEnvelopeTimeout": 60 // 红包超时时间（单位为秒）
+                "RedEnvelopeTimeout": 60, // 红包超时时间（单位为秒）
+                "WalletHistoryEnabled": true, // 是否记录资金台账
+                "WalletHistoryRetentionDays": 90, // 台账保留天数，超期自动清理
+                "TransferMinAmount": 1, // 最低转账额，低于该值拒绝（0 = 不限）
+                "TransferDailyLimit": 0, // 单日累计转账上限（含手续费），0 = 不限
+                "TransferConfirmThreshold": 1000, // 大额转账确认阈值，超过需 GUI 二次确认（0 = 不需确认）
+                "TransferCooldownSeconds": 0 // 两次转账最小间隔（秒），0 = 无冷却
             },
             "Chat": { // 聊天强化配置
                 "ModuleEnabled": false, // 是否启用聊天强化

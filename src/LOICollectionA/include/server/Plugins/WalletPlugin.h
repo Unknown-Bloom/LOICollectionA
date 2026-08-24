@@ -14,6 +14,10 @@
 
 class Player;
 
+namespace Config {
+    struct C_Wallet;
+}
+
 namespace ll {
     namespace io {
         class Logger;
@@ -28,7 +32,11 @@ namespace LOICollection::server::Plugins {
     enum class WalletPluginErrorCode : int {
         Invalid = 1,
         NotFound = 2,
-        RedEnvelopeCompleted = 3
+        RedEnvelopeCompleted = 3,
+        BelowMinimum = 4,
+        DailyLimitExceeded = 5,
+        CooldownActive = 6,
+        ConfirmRequired = 7
     };
 
     struct WalletPluginErrorCategory : std::error_category {
@@ -41,6 +49,10 @@ namespace LOICollection::server::Plugins {
                 case WalletPluginErrorCode::Invalid: return "Plugin is invalid";
                 case WalletPluginErrorCode::NotFound: return "Red envelope data not found";
                 case WalletPluginErrorCode::RedEnvelopeCompleted: return "Red envelope already completed";
+                case WalletPluginErrorCode::BelowMinimum: return "Transfer amount below minimum";
+                case WalletPluginErrorCode::DailyLimitExceeded: return "Daily transfer limit exceeded";
+                case WalletPluginErrorCode::CooldownActive: return "Transfer cooldown is active";
+                case WalletPluginErrorCode::ConfirmRequired: return "Large transfer requires confirmation";
                 default:
                     return "Unknown";
             }
@@ -68,7 +80,7 @@ namespace LOICollection::server::Plugins {
 
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<std::string, std::string>>> getPlayerInfo();
 
-        LOICOLLECTION_A_NDAPI ll::Expected<bool> forTransfer(Player& player, const std::string& target, const std::string& name, int score);
+        LOICOLLECTION_A_NDAPI ll::Expected<bool> forTransfer(Player& player, const std::string& target, const std::string& name, int score, bool confirmed = false);
 
         LOICOLLECTION_A_NDAPI ll::Expected<void> setExecutor(const ll::coro::Executor& executor);
 
@@ -88,6 +100,8 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI std::string getTargetScoreboard();
 
         LOICOLLECTION_A_NDAPI double getExchangeRate();
+
+        LOICOLLECTION_A_NDAPI void setOptionsForTest(const Config::C_Wallet& options);
 
     public:
         LOICOLLECTION_A_NDAPI std::string getName() override;
@@ -123,6 +137,10 @@ namespace LOICollection::server::Plugins {
         void scheduleLedgerCleanup();
         void cleanupLedger();
         ll::Expected<void> sendHistory(Player& receiver, const std::string& uuid, const std::string& name, int limit);
+
+        ll::Expected<void> validateTransfer(const std::string& uuid, int spend);
+        long long getTodayOutgoing(const std::string& uuid);
+        void updateTransferCooldown(const std::string& uuid);
 
         struct RedEnvelopeEntry;
 

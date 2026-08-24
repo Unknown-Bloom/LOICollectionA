@@ -106,8 +106,31 @@ func buildTransferContent(transferType: string, index: int) -> void {
     content.button({tr("generic.gui.save")}, func () -> void {
         submitResult = GUIManager::request("wallet.transfer.submit", [ targetData[0], targetData[1], transferType, amountField.getData() ]);
 
-        submitDone.value = submitResult[0];
-        content.close();
+        if (submitResult[1] == true) [
+            confirmUuid = targetData[0];
+            confirmName = targetData[1];
+            confirmMoney = amountField.getData();
+            confirmTransferType = transferType;
+
+            confirmTransfer = new MessageBox("wallet.confirm", {tr("wallet.gui.title")});
+            confirmTransfer.body(std::format({tr("wallet.gui.transfer.confirm")}, [ submitResult[2], submitResult[3] ]));
+            confirmTransfer.button1({tr("generic.gui.save")});
+            confirmTransfer.button2({tr("generic.gui.cancel")});
+            confirmTransfer.show(func (result) -> void {
+                if (result instanceof MessageBoxResult) [
+                    if (result.selection == 0) [
+                        GUIManager::callback("wallet.transfer.confirm", [ confirmUuid, confirmName, confirmMoney ]);
+                    ]
+                ]
+
+                GUIManager::open("wallet", "wallet.open", 1, []);
+            });
+
+            GUIManager::switchTo("wallet.confirm", 2);
+        :
+            submitDone.value = submitResult[0];
+            content.close();
+        ]
     }, new ButtonOptions());
     content.closeButton();
     content.show(func (result) -> void {

@@ -100,7 +100,13 @@ When you upgrade the plugin version, newly added configuration items are automat
                 "ModuleEnabled": false, // Whether to enable the wallet
                 "TargetScoreboard": "money", // Score object used by the wallet
                 "ExchangeRate": 0.1, // Wallet exchange rate
-                "RedEnvelopeTimeout": 60 // Red envelope timeout (in seconds)
+                "RedEnvelopeTimeout": 60, // Red envelope timeout (in seconds)
+                "WalletHistoryEnabled": true, // Whether to record the fund ledger
+                "WalletHistoryRetentionDays": 90, // Ledger retention days; expired records are cleaned up
+                "TransferMinAmount": 1, // Minimum transfer amount; below is rejected (0 = unrestricted)
+                "TransferDailyLimit": 0, // Daily accumulated transfer cap (incl. fee), 0 = unrestricted
+                "TransferConfirmThreshold": 1000, // Large transfer confirmation threshold; requires GUI confirmation when exceeded (0 = none)
+                "TransferCooldownSeconds": 0 // Minimum interval between transfers (seconds), 0 = no cooldown
             },
             "Chat": { // Chat enhancement configuration
                 "ModuleEnabled": false, // Whether to enable chat enhancement

@@ -46,6 +46,10 @@ protected:
 
         EXPECT_TRUE(WalletPlugin::getShared()->setExecutor(ll::thread::ServerThreadExecutor::getDefault()).has_value());
     }
+
+    Config::C_Wallet GetWalletConfig() {
+        return ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Wallet;
+    }
 };
 
 TEST_F(WalletPluginTest, GetPlayerInfo) {
@@ -411,4 +415,143 @@ TEST_F(WalletPluginTest, LedgerHistoryVisibility) {
 
     if (!hasScoreboard)
         ScoreboardUtils::remove(config.TargetScoreboard);
+}
+
+TEST_F(WalletPluginTest, TransferLimitBelowMinimum) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    Config::C_Wallet base = GetWalletConfig();
+    base.TransferMinAmount = 5;
+    WalletPlugin::getShared()->setOptionsForTest(base);
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(base.TargetScoreboard)) {
+        hasScoreboard = false;
+        ScoreboardUtils::create(base.TargetScoreboard);
+    }
+
+    ScoreboardUtils::setScore(*sp, base.TargetScoreboard, 100);
+
+    // Below the configured minimum is rejected with a dedicated error code.
+    auto low = WalletPlugin::getShared()->forTransfer(*sp, "nonexistent_target", "test_name", 3);
+    ASSERT_FALSE(low.has_value());
+    EXPECT_EQ(static_cast<WalletPluginErrorCode>(low.error().value()), WalletPluginErrorCode::BelowMinimum);
+
+    // Exactly at the minimum threshold is accepted.
+    auto ok = WalletPlugin::getShared()->forTransfer(*sp, "nonexistent_target", "test_name", 5);
+    EXPECT_TRUE(ok.has_value());
+
+    WalletPlugin::getShared()->setOptionsForTest(GetWalletConfig());
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(base.TargetScoreboard);
+}
+
+TEST_F(WalletPluginTest, TransferLimitDailyBudget) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    TestSimulatedPlayer sp2("test_player4");
+    EXPECT_TRUE(sp2.create());
+
+    Config::C_Wallet base = GetWalletConfig();
+    base.TransferMinAmount = 1;
+    base.TransferDailyLimit = 300;
+    WalletPlugin::getShared()->setOptionsForTest(base);
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(base.TargetScoreboard)) {
+        hasScoreboard = false;
+        ScoreboardUtils::create(base.TargetScoreboard);
+    }
+
+    ScoreboardUtils::setScore(*sp, base.TargetScoreboard, 500);
+
+    // First transfer fits within the 300/day budget.
+    auto first = WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 200);
+    EXPECT_TRUE(first.has_value());
+
+    // Spending a further 200 would bring the day's total to 400 > 300, rejected.
+    auto second = WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 200);
+    ASSERT_FALSE(second.has_value());
+    EXPECT_EQ(static_cast<WalletPluginErrorCode>(second.error().value()), WalletPluginErrorCode::DailyLimitExceeded);
+
+    WalletPlugin::getShared()->setOptionsForTest(GetWalletConfig());
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(base.TargetScoreboard);
+}
+
+TEST_F(WalletPluginTest, TransferLimitCooldown) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    TestSimulatedPlayer sp2("test_player4");
+    EXPECT_TRUE(sp2.create());
+
+    Config::C_Wallet base = GetWalletConfig();
+    base.TransferMinAmount = 1;
+    base.TransferCooldownSeconds = 60;
+    WalletPlugin::getShared()->setOptionsForTest(base);
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(base.TargetScoreboard)) {
+        hasScoreboard = false;
+        ScoreboardUtils::create(base.TargetScoreboard);
+    }
+
+    ScoreboardUtils::setScore(*sp, base.TargetScoreboard, 500);
+
+    ScoreboardUtils::setScore(*sp2.getPlayer(), base.TargetScoreboard, 100);
+
+    // First transfer succeeds and stamps the cooldown timestamp.
+    auto first = WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 100);
+    EXPECT_TRUE(first.has_value());
+
+    // An immediate second transfer is blocked by the active cooldown.
+    auto second = WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 100);
+    ASSERT_FALSE(second.has_value());
+    EXPECT_EQ(static_cast<WalletPluginErrorCode>(second.error().value()), WalletPluginErrorCode::CooldownActive);
+
+    WalletPlugin::getShared()->setOptionsForTest(GetWalletConfig());
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(base.TargetScoreboard);
+}
+
+TEST_F(WalletPluginTest, TransferLargeRequiresConfirmation) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    TestSimulatedPlayer sp2("test_player4");
+    EXPECT_TRUE(sp2.create());
+
+    Config::C_Wallet base = GetWalletConfig();
+    base.TransferMinAmount = 1;
+    base.TransferConfirmThreshold = 1000;
+    WalletPlugin::getShared()->setOptionsForTest(base);
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(base.TargetScoreboard)) {
+        hasScoreboard = false;
+        ScoreboardUtils::create(base.TargetScoreboard);
+    }
+
+    ScoreboardUtils::setScore(*sp, base.TargetScoreboard, 2000);
+
+    // Unconfirmed large transfer is rejected with ConfirmRequired.
+    auto blocked = WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 1500);
+    ASSERT_FALSE(blocked.has_value());
+    EXPECT_EQ(static_cast<WalletPluginErrorCode>(blocked.error().value()), WalletPluginErrorCode::ConfirmRequired);
+
+    // Confirmed large transfer is accepted.
+    auto confirm = WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 1500, true);
+    EXPECT_TRUE(confirm.has_value());
+    EXPECT_TRUE(confirm.value());
+
+    WalletPlugin::getShared()->setOptionsForTest(GetWalletConfig());
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(base.TargetScoreboard);
 }
