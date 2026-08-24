@@ -369,6 +369,9 @@ And the plugins provide the following commands for simple interaction:
 [Server] Usage:
 [Server] - /market gui
 [Server] - /market reload
+[Server] - /market report [Days: int]
+[Server] - /market tax
+[Server] - /market tax <Rate: string>
 ```
 
 > [!TIP]
@@ -379,6 +382,17 @@ And the plugins provide the following commands for simple interaction:
 
 - `/market reload`
   - Reload (recompile) the player market GUI (permission level: GameDirectors).
+
+- `/market report [Days]`
+  - View the market report (trade count, turnover, tax, active sellers), default statistics window is 7 days (permission level: GameDirectors).
+  - Here, `[Days: int]` is the statistics window in days.
+
+- `/market tax`
+  - Show the current market transaction tax rate (permission level: GameDirectors).
+
+- `/market tax <Rate>`
+  - Set the market transaction tax rate at runtime, effective immediately and persisted (permission level: GameDirectors).
+  - Here, `<Rate: string>` is the tax rate as a decimal (range 0.0 ~ 1.0).
 
 > [!TIP]
 > Can you see me? ( •̀ ω •́ )✧

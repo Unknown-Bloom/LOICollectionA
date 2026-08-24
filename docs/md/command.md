@@ -369,6 +369,9 @@
 [Server] Usage:
 [Server] - /market gui
 [Server] - /market reload
+[Server] - /market report [Days: int]
+[Server] - /market tax
+[Server] - /market tax <Rate: string>
 ```
 
 > [!TIP]
@@ -379,6 +382,17 @@
 
 - `/market reload`
   - 重新加载（重新编译）玩家市场 GUI（权限等级: GameDirectors）。
+
+- `/market report [Days]`
+  - 查看市场经营报表（成交笔数、成交总额、税收总额、活跃卖家数），统计窗口默认 7 天（权限等级: GameDirectors）。
+  - 其中 `[Days: int]` 为统计窗口天数。
+
+- `/market tax`
+  - 查询当前市场交易税率（权限等级: GameDirectors）。
+
+- `/market tax <Rate>`
+  - 运行时设置市场交易税率，立即生效并持久化（权限等级: GameDirectors）。
+  - 其中 `<Rate: string>` 为税率小数（范围 0.0 ~ 1.0）。
 
 > [!TIP]
 > 你看到我了吗？( •̀ ω •́ )✧

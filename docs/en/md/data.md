@@ -130,7 +130,22 @@ When you upgrade the plugin version, newly added configuration items are automat
                 "StoreTransactionWindowDays": 30, // Store transaction data statistics window (in days)
                 "StoreRatingWindowDays": 180, // Store review data statistics window (in days)
                 "StoreRiskWindowDays": 30, // Store risk data statistics window (in days)
-                "StoreRankRefreshMinutes": 60 // Store leaderboard refresh interval (in minutes)
+                "StoreRankRefreshMinutes": 60, // Store leaderboard refresh interval (in minutes)
+                "StoreQuoteEnabled": true, // Whether to enable quote aggregation (average price, volume and turnover rankings)
+                "StoreQuoteRefreshMinutes": 30, // Quote refresh interval (in minutes)
+                "StoreTransactionTaxRate": 0.0, // Transaction tax rate (0.0 ~ 1.0, floor(price × rate); can be overridden at runtime via /market tax)
+                "StorePriceCeilingRatio": 0.0, // Price ceiling ratio (based on the 30-day average price; listings above average × ratio are rejected, 0 disables)
+                "StoreWantedEnabled": true, // Whether to enable wanted orders
+                "StoreWantedMaxPerPlayer": 5, // Maximum number of concurrent wanted orders per player
+                "StoreWantedExpireDays": 7, // Wanted order expiry (in days; frozen prepayment is refunded on expiry)
+                "StorePartialBuyEnabled": true, // Whether to enable partial fulfillment of wanted orders
+                "StoreAuctionEnabled": true, // Whether to enable auctions
+                "StoreAuctionMinDurationMinutes": 30, // Minimum auction duration (in minutes)
+                "StoreAuctionMaxDurationHours": 72, // Maximum auction duration (in hours)
+                "StoreAuctionMinBidIncrement": 1.05, // Minimum bid increment ratio (a new bid must exceed current price × ratio)
+                "StoreAuctionAntiSnipeSeconds": 0, // Anti-sniping duration (in seconds; late bids extend the auction, 0 disables)
+                "StoreRepeatTradeLimit": 3, // Repeat trade count limit per trade pair (excess trades are excluded from average price, anti-farming)
+                "StorePriceOutlierRatio": 0.0 // Outlier price filter ratio (trades deviating beyond this multiple of the recent average are excluded, 0 disables)
             },
             "BehaviorEvent": { // Behavior event configuration
                 "ModuleEnabled": false, // Whether to enable behavior events
