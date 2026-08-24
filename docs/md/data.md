@@ -130,7 +130,22 @@
                 "StoreTransactionWindowDays": 30, // 商店交易数据统计窗口（单位为天）
                 "StoreRatingWindowDays": 180, // 商店评价数据统计窗口（单位为天）
                 "StoreRiskWindowDays": 30, // 商店风险数据统计窗口（单位为天）
-                "StoreRankRefreshMinutes": 60 // 商店排行榜刷新间隔（单位为分钟）
+                "StoreRankRefreshMinutes": 60, // 商店排行榜刷新间隔（单位为分钟）
+                "StoreQuoteEnabled": true, // 是否启用行情聚合（成交均价、成交量与成交额排行）
+                "StoreQuoteRefreshMinutes": 30, // 行情刷新间隔（单位为分钟）
+                "StoreTransactionTaxRate": 0.0, // 交易税税率（0.0 ~ 1.0，成交价 × 税率向下取整；可被 /market tax 运行时覆盖）
+                "StorePriceCeilingRatio": 0.0, // 价格上限比例（基于近 30 天均价，超过均价 × 比例的定价将被拦截，为 0 时关闭）
+                "StoreWantedEnabled": true, // 是否启用求购单功能
+                "StoreWantedMaxPerPlayer": 5, // 单个玩家最大同时挂单数量
+                "StoreWantedExpireDays": 7, // 求购单过期天数（过期后自动退还冻结预付款）
+                "StorePartialBuyEnabled": true, // 是否启用求购单部分成交
+                "StoreAuctionEnabled": true, // 是否启用拍卖功能
+                "StoreAuctionMinDurationMinutes": 30, // 拍卖最短时长（单位为分钟）
+                "StoreAuctionMaxDurationHours": 72, // 拍卖最长时长（单位为小时）
+                "StoreAuctionMinBidIncrement": 1.05, // 最低加价比例（新出价须高于当前价 × 该比例）
+                "StoreAuctionAntiSnipeSeconds": 0, // 防狙击时长（单位为秒，尾盘出价自动延长；为 0 时关闭）
+                "StoreRepeatTradeLimit": 3, // 同一交易对重复成交计数上限（超过后不计入行情均价，防刷量）
+                "StorePriceOutlierRatio": 0.0 // 离群价过滤比例（偏离近期均价超过该倍数的成交不计入均价，为 0 时关闭）
             },
             "BehaviorEvent": { // 行为事件配置
                 "ModuleEnabled": false, // 是否启用行为事件
