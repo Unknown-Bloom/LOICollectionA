@@ -135,7 +135,6 @@ namespace LOICollection::server::Plugins {
 
         return this->mImpl->db->set("StoreAuction", SystemUtils::getCurrentTimestamp(), data)
             .or_else([&player, &mItemStack](ll::Error e) -> ll::Expected<void> {
-                // 写库失败：物品退回背包，拍卖未生效
                 player.mInventory->mInventory->addItem(mItemStack);
                 player.refreshInventory();
 
@@ -167,19 +166,16 @@ namespace LOICollection::server::Plugins {
                 if (sellerUuid == player.getUuid().asString())
                     return false;
 
-                // 已到期 / 已结算的拍卖不再接受出价
                 if (SystemUtils::isPastOrPresent(data.at("end_at")))
                     return false;
                 if (data.at("settled") == "1")
                     return false;
 
-                // 当前最高出价者无需再加价
                 if (!data.at("bidder_uuid").empty() && data.at("bidder_uuid") == player.getUuid().asString())
                     return false;
 
                 int currentPrice = SystemUtils::toInt(data.at("current_price"), 0);
 
-                // 最小增幅：新出价 >= current_price * StoreAuctionMinBidIncrement（向上取整）
                 int minBid = static_cast<int>(std::ceil(currentPrice * this->mImpl->options.StoreAuctionMinBidIncrement));
                 if (price < minBid)
                     return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::AuctionBidTooLow));
@@ -199,7 +195,6 @@ namespace LOICollection::server::Plugins {
                         if (ScoreboardUtils::getScore(player, mScoreboard) < price)
                             return false;
 
-                        // 出价即冻结全款（扣当前出价钱），被超越时退回
                         ScoreboardUtils::reduceScore(player, mScoreboard, price);
 
                         std::unordered_map<std::string, std::string> updated = data;
@@ -208,14 +203,12 @@ namespace LOICollection::server::Plugins {
                         updated["bidder_name"] = player.getRealName();
                         updated["bid_count"] = std::to_string(SystemUtils::toInt(data.at("bid_count"), 0) + 1);
 
-                        // 防狙击（默认关闭）：最后 N 秒内的出价自动延长截止时间同等时长
                         int antiSnipe = this->mImpl->options.StoreAuctionAntiSnipeSeconds;
                         if (antiSnipe > 0 &&
                             SystemUtils::isPastOrPresent(SystemUtils::toTimeCalculate(data.at("end_at"), -antiSnipe))) {
                             updated["end_at"] = SystemUtils::toTimeCalculate(data.at("end_at"), antiSnipe);
                         }
 
-                        // 先写新出价（唯一不可逆点），失败则退回本次冻结的出价
                         return this->mImpl->db->set("StoreAuction", id, updated)
                             .or_else([mScoreboard, price, &player](ll::Error e) -> ll::Expected<void> {
                                 ScoreboardUtils::addScore(player, mScoreboard, price);
@@ -223,7 +216,6 @@ namespace LOICollection::server::Plugins {
                                 return ll::Unexpected(e);
                             })
                             .and_then([this, id, data, price, mScoreboard, &player]() -> ll::Expected<bool> {
-                                // 退还前一位出价者（其资金在出价时已被冻结）
                                 std::string oldBidder = data.at("bidder_uuid");
                                 if (oldBidder.empty()) {
                                     this->mImpl->logger->info(fmt::runtime(tr({}, "market.log26")), player.getRealName(), data.at("item_name"), price);
@@ -234,7 +226,6 @@ namespace LOICollection::server::Plugins {
                                 int oldPrice = SystemUtils::toInt(data.at("current_price"), 0);
                                 return this->refundScore(oldBidder, oldPrice, mScoreboard)
                                     .or_else([this, id, data, oldBidder, mScoreboard, price, &player](ll::Error e) -> ll::Expected<void> {
-                                        // 退还失败：回滚本次出价（恢复原状态 + 退回新出价者资金），需管理员介入
                                         this->mImpl->logger->warn(fmt::runtime(tr({}, "market.log27")), data.at("item_name"), oldBidder);
 
                                         auto restore = this->mImpl->db->set("StoreAuction", id, data)
@@ -278,7 +269,6 @@ namespace LOICollection::server::Plugins {
         auto conn = transaction.value().connection();
         std::string saleKey = SystemUtils::getCurrentTimestamp();
 
-        // 标记 settled（防重入）+ 摘单 + 写成交，一次性原子提交
         std::unordered_map<std::string, std::string> sale = {
             { "store_id", data.at("seller_uuid") },
             { "item_name", data.at("item_name") },
@@ -303,7 +293,6 @@ namespace LOICollection::server::Plugins {
         if (!commitResult.has_value())
             return ll::Unexpected(commitResult.error());
 
-        // 提交后游戏状态失败走补偿：恢复拍卖单（settled 归零）+ 删除成交记录，下轮扫描重试
         auto compensate = [this, id, data, saleKey]() -> ll::Expected<void> {
             this->mImpl->logger->warn(fmt::runtime(tr({}, "market.log16")), data.at("seller_name"), id);
 
@@ -320,7 +309,6 @@ namespace LOICollection::server::Plugins {
 
         std::string mScoreboard = this->mImpl->options.TargetScoreboard;
 
-        // 卖家结算：在线直接发钱并提示，离线累加暂存分（宁可迟发不可多发）
         ll::Expected<void> settle = [&]() -> ll::Expected<void> {
             if (Player* seller = ll::service::getLevel()->getPlayer(mce::UUID::fromString(data.at("seller_uuid"))); seller) {
                 return LanguagePlugin::getShared()->getLanguage(*seller)
@@ -378,7 +366,6 @@ namespace LOICollection::server::Plugins {
         if (!commitResult.has_value())
             return ll::Unexpected(commitResult.error());
 
-        // 提交后归还物品失败走补偿：恢复拍卖单，下轮扫描重试
         Player* seller = ll::service::getLevel()->getPlayer(mce::UUID::fromString(data.at("seller_uuid")));
         if (!seller)
             return this->restoreAuction(id, data, "");
@@ -407,7 +394,6 @@ namespace LOICollection::server::Plugins {
                             if (!SystemUtils::isPastOrPresent(data.at("end_at")))
                                 continue;
 
-                            // 有出价者：买家在线才成交（离线则顺延下轮扫描，避免物品无法交付）
                             if (!data.at("bidder_uuid").empty()) {
                                 Player* bidder = ll::service::getLevel()->getPlayer(mce::UUID::fromString(data.at("bidder_uuid")));
                                 if (!bidder)
@@ -417,7 +403,6 @@ namespace LOICollection::server::Plugins {
                                 if (!result.has_value())
                                     this->mImpl->logger->warn("MarketAuction: settle auction {} failed: {}", id, result.error().message());
                             }
-                            // 无人出价：流拍退回物品，卖家在线才退回（离线顺延）
                             else {
                                 Player* seller = ll::service::getLevel()->getPlayer(mce::UUID::fromString(data.at("seller_uuid")));
                                 if (!seller)
@@ -467,7 +452,6 @@ namespace LOICollection::server::Plugins {
             return {};
         }
 
-        // 离线玩家：累加到暂存分，上线时结算（与离线结算同构，宁可迟发不可多发）
         return this->mImpl->settingsDb->get("Market", uuid, "score", "0")
             .and_then([this, uuid, score](const std::string& value) -> ll::Expected<void> {
                 int mMarketScore = SystemUtils::toInt(value, 0);
@@ -489,7 +473,6 @@ namespace LOICollection::server::Plugins {
     }
 
     void MarketAuction::startSweep() {
-        // 启动补结算：服务器重启后补偿到期未结算的拍卖（玩家未上线则顺延至后续轮询）
         this->sweepExpired().or_else([this](ll::Error e) -> ll::Expected<void> {
             this->mImpl->logger->warn("MarketAuction: startup sweep failed: {}", e.message());
 

@@ -260,7 +260,6 @@ namespace LOICollection::server::Plugins {
                     if (mScore <= 0)
                         return {};
 
-                    // 防重入：结算期间对该玩家加内存锁，join 事件重入时直接跳过
                     if (this->mImpl->mSettling.contains(uuid))
                         return {};
 
@@ -269,7 +268,6 @@ namespace LOICollection::server::Plugins {
                         this->mImpl->mSettling.erase(uuid);
                     });
 
-                    // 先销账再发钱：先销账成功而发钱前崩溃，钱留在库里，下次 join 重发——宁可迟发不可多发
                     return this->mImpl->db2->set("Market", uuid, "score", "0")
                         .transform([this, uuid, mScore, &event]() -> void {
                             ScoreboardUtils::addScore(event.self(), this->mImpl->options.TargetScoreboard, mScore);

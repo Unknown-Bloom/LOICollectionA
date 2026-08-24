@@ -186,7 +186,6 @@ namespace LOICollection::server::Plugins {
 
         LOICOLLECTION_A_NDAPI static double computeStoreScore(const StoreScoreInput& input, const Config::C_Market& options);
 
-        // 交易税：floor(price × rate)；取整边界与收取逻辑统一（默认税率 0 时恒为 0）
         LOICOLLECTION_A_NDAPI static int computeTax(int price, double rate);
 
         LOICOLLECTION_A_NDAPI bool isValid();

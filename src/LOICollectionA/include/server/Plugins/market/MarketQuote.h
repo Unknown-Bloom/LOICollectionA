@@ -36,10 +36,10 @@ namespace LOICollection::server::Plugins {
     };
 
     struct QuoteReport {
-        long long count = 0;         // 区间成交笔数
-        long long turnover = 0;      // 区间成交总额
-        long long tax = 0;           // 区间税收总额
-        long long activeSellers = 0; // 活跃卖家数
+        long long count = 0;
+        long long turnover = 0;
+        long long tax = 0;
+        long long activeSellers = 0;
     };
 
     class MarketQuote {
@@ -73,7 +73,6 @@ namespace LOICollection::server::Plugins {
 
         LOICOLLECTION_A_NDAPI ll::Expected<QuoteReport> getReport(int days) const;
 
-        // 离群判定：偏离有效均价超过 ratio 倍的成交不计入均价（仍计入成交量）；ratio <= 0 或均价为 0 时关闭
         LOICOLLECTION_A_NDAPI static bool isPriceOutlier(double average, int price, double ratio);
 
     private:

@@ -129,7 +129,6 @@ namespace LOICollection::server::Plugins {
                         });
                 }
 
-                // 预付款冻结：创建求购单时扣全款，保证接单必有钱
                 ScoreboardUtils::reduceScore(player, mScoreboard, static_cast<int>(mFrozen));
 
                 std::unordered_map<std::string, std::string> data = {
@@ -150,7 +149,6 @@ namespace LOICollection::server::Plugins {
 
                 return this->mImpl->db->set("StoreWanted", SystemUtils::getCurrentTimestamp(), data)
                     .or_else([mScoreboard, mFrozen, &player](ll::Error e) -> ll::Expected<void> {
-                        // 写库失败：退回冻结资金，求购单未生效
                         ScoreboardUtils::addScore(player, mScoreboard, static_cast<int>(mFrozen));
 
                         return ll::Unexpected(e);
@@ -181,7 +179,6 @@ namespace LOICollection::server::Plugins {
                 int filled = SystemUtils::toInt(data.at("amount_filled"), 0);
                 int refund = unitPrice * std::max(0, total - filled);
 
-                // 事务先删除求购单（不可逆点），再退款；退款失败则恢复求购单（补偿）
                 return this->deleteWanted(id)
                     .and_then([this, id, data, refund, &player]() -> ll::Expected<void> {
                         std::string mScoreboard = this->mImpl->options.TargetScoreboard;
@@ -219,7 +216,6 @@ namespace LOICollection::server::Plugins {
                 if (buyerUuid == player.getUuid().asString())
                     return false;
 
-                // 过期/已满校验
                 if (SystemUtils::isPastOrPresent(data.at("expire_at")))
                     return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::WantedExpired));
 
@@ -231,7 +227,6 @@ namespace LOICollection::server::Plugins {
                 if (amount > remaining)
                     return false;
 
-                // 阶段 1：仅允许买家在线时供货
                 Player* buyer = ll::service::getLevel()->getPlayer(mce::UUID::fromString(buyerUuid));
                 if (!buyer)
                     return false;
@@ -257,11 +252,8 @@ namespace LOICollection::server::Plugins {
                         int tax = static_cast<int>(std::floor(pay * this->mImpl->options.StoreTransactionTaxRate));
                         int sellerAmount = pay - tax;
 
-                        // 买家资金已在创建时全额冻结，此处不再扣款；
-                        // 事务提交（摘单 + 写成交）是唯一不可逆点。
                         return this->commitWantedFill(id, data, amount, pay, tax, player)
                             .and_then([this, data, amount, pay, sellerAmount, tax, buyerUuid, &player, buyer](const std::string& saleKey) -> ll::Expected<bool> {
-                                // 卖家交出物品 → 买家收物品（校验已通过，失败概率极低）
                                 InventoryUtils::clearItem(player, data.at("item_type"), amount);
 
                                 ItemStack mItemStack = ItemStack::fromTag(CompoundTag::fromSnbt(data.at("item_data"))->mTags);
@@ -270,7 +262,6 @@ namespace LOICollection::server::Plugins {
                                 player.refreshInventory();
                                 buyer->refreshInventory();
 
-                                // 卖家结算：供货者一定在线，同步发钱
                                 ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, sellerAmount);
 
                                 return this->collectTax(tax)
@@ -314,7 +305,6 @@ namespace LOICollection::server::Plugins {
         int total = SystemUtils::toInt(data.at("amount_total"), 0);
         int filled = SystemUtils::toInt(data.at("amount_filled"), 0) + amount;
 
-        // 更新已成交量；完成则删除求购单（与商店购买"先摘牌再写成交"同构）
         auto updateResult = filled >= total
             ? this->mImpl->db->del(conn, "StoreWanted", id)
             : this->mImpl->db->set(conn, "StoreWanted", id, "amount_filled", std::to_string(filled));
@@ -359,7 +349,6 @@ namespace LOICollection::server::Plugins {
         int total = SystemUtils::toInt(data.at("amount_total"), 0);
         int filled = SystemUtils::toInt(data.at("amount_filled"), 0);
 
-        // 若求购单已完成（删除），整单恢复；否则回写 amount_filled
         auto updateResult = filled + amount >= total
             ? this->mImpl->db->set(conn, "StoreWanted", id, data)
             : this->mImpl->db->set(conn, "StoreWanted", id, "amount_filled", std::to_string(filled));
@@ -399,7 +388,6 @@ namespace LOICollection::server::Plugins {
             return {};
         }
 
-        // 离线买家：累加到暂存分，上线时结算（与离线收款同构，宁可迟发不可多发）
         return this->mImpl->settingsDb->get("Market", buyerUuid, "score", "0")
             .and_then([this, buyerUuid, score](const std::string& value) -> ll::Expected<void> {
                 int mMarketScore = SystemUtils::toInt(value, 0);

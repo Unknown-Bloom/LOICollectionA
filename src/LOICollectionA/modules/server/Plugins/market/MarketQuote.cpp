@@ -27,7 +27,6 @@ namespace LOICollection::server::Plugins {
         constexpr long long WINDOW_7D = 7LL * DAY_SECONDS;
         constexpr long long WINDOW_30D = 30LL * DAY_SECONDS;
 
-        // 仅支持 7/30 天窗口，其余按 30 天处理
         int normalizeDays(int days) {
             return days <= 7 ? 7 : 30;
         }
@@ -90,8 +89,6 @@ namespace LOICollection::server::Plugins {
                 stat.lastPrice = price;
             }
 
-            // 增量事件总是最新的成交，天然落在 7 天与 30 天窗口内；
-            // 窗口滑动造成的误差由定时重建（rebuild）纠偏。
             if (!outlier) {
                 stat.validCount30d++;
                 stat.validSum30d += price;
@@ -157,13 +154,11 @@ namespace LOICollection::server::Plugins {
 
                             const std::string& itemName = row.at("item_name");
                             int price = SystemUtils::toInt(row.at("price"), 0);
-                            // schemaless 扩展：旧成交记录无 tax 列，读取时带默认值兜底
                             int tax = SystemUtils::toInt(row.contains("tax") ? row.at("tax") : "0", 0);
                             long long time = SystemUtils::toLongLong(key, 0);
                             bool within7d = age <= WINDOW_7D;
 
                             QuoteStat& stat = rebuilt[itemName];
-                            // 反作弊：自买成交有效但价格信号不可信，与离群价一样不计入均价（仍计入成交量）
                             bool selfBuy = row.contains("buyer_uuid") && row.contains("seller_uuid") &&
                                 !row.at("buyer_uuid").empty() && row.at("buyer_uuid") == row.at("seller_uuid");
                             bool outlier = this->mImpl->isOutlier(stat, price);
@@ -193,7 +188,6 @@ namespace LOICollection::server::Plugins {
     void MarketQuote::onItemSold(const std::string& itemName, int price, int tax, long long time, const std::string& sellerUuid, const std::string& buyerUuid) {
         QuoteStat& stat = this->mImpl->stats[itemName];
 
-        // 自买成交有效但价格信号不可信，与离群价一样不计入均价（仍计入成交量）
         bool selfBuy = !buyerUuid.empty() && buyerUuid == sellerUuid;
         bool outlier = this->mImpl->isOutlier(stat, price);
         this->mImpl->mergeStat(stat, price, tax, time, outlier || selfBuy, true);

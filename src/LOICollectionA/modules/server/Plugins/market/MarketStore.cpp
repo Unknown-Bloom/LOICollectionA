@@ -118,7 +118,6 @@ namespace LOICollection::server::Plugins {
                 ctor("time");
             });
         }).and_then([this]() -> ll::Expected<void> {
-            // 行情聚合与全局搜索依赖的索引（幂等，零迁移）
             return this->mImpl->db->exec("CREATE INDEX IF NOT EXISTS idx_StoreSale_time ON StoreSale(time);")
                 .and_then([this]() -> ll::Expected<void> {
                     return this->mImpl->db->exec("CREATE INDEX IF NOT EXISTS idx_StoreSale_item_name ON StoreSale(item_name);");
@@ -183,7 +182,6 @@ namespace LOICollection::server::Plugins {
 
                 std::unordered_map<std::string, int> saleCount;
                 std::unordered_map<std::string, long long> saleVolume;
-                // 对敲检测：同一买卖双方在窗口内成交超过限额的部分不计入排名权重
                 std::unordered_map<std::string, int> pairTradeCount;
                 for (const auto& [key, row] : data.sales) {
                     long long t = SystemUtils::toInt(SystemUtils::getTimeSpan(nowTime, row.at("time"), ""), 0);
@@ -193,7 +191,6 @@ namespace LOICollection::server::Plugins {
                     const std::string& storeId = row.at("store_id");
                     int price = SystemUtils::toInt(row.at("price"), 0);
 
-                    // 自买：buyer 与 store owner 相同，成交有效但不计入排名权重
                     std::string seller = row.contains("seller_uuid") ? row.at("seller_uuid") : "";
                     if (seller.empty()) {
                         auto ownerIt = data.stores.find(storeId);
@@ -204,7 +201,6 @@ namespace LOICollection::server::Plugins {
                     if (!seller.empty() && !buyer.empty() && seller == buyer)
                         continue;
 
-                    // 对敲：同一买卖双方超出限额的成交不计入排名权重（默认 3，设极大值即等效关闭）
                     int repeatLimit = std::max(0, options.StoreRepeatTradeLimit);
                     if (repeatLimit > 0 && !seller.empty() && !buyer.empty()) {
                         std::string pair = buyer + "|" + seller;
@@ -578,7 +574,6 @@ namespace LOICollection::server::Plugins {
                                         });
                                 }
 
-                                // 标价为整组价格；拆分购买按比例线性折算，不引入阶梯定价
                                 int unitScore = SystemUtils::toInt(data.at("score"), 0);
                                 ItemStack mFullStack = ItemStack::fromTag(CompoundTag::fromSnbt(data.at("data"))->mTags);
                                 int stackCount = static_cast<int>(mFullStack.mCount);
@@ -607,16 +602,11 @@ namespace LOICollection::server::Plugins {
                                         });
                                 }
 
-                                // 交易税：买家支付 = 标价（不变），卖家实收 = 标价 - 税
                                 int tax = static_cast<int>(std::floor(mScore * this->mImpl->options.StoreTransactionTaxRate));
                                 int sellerAmount = mScore - tax;
 
-                                // 事务提交是唯一不可逆点：先摘牌/重写剩余再写成交，提交前不触碰任何游戏状态；
-                                // 提交失败直接返回，买家余额与挂单均未变化，无损。
                                 return this->commitStoreSale(player, id, data, storeId, ownerUuid, tax, remainingData)
                                     .and_then([this, id, count, &player, data, ownerUuid, mScore, sellerAmount, tax, mScoreboard](const std::string& saleKey) -> ll::Expected<bool> {
-                                        // 余额与背包空间已在提交前校验，买家扣钱/给物品失败概率极低；
-                                        // 一旦发生，恢复挂单并删除成交记录（新事务补偿），彻底关闭双卖窗口。
                                         auto compensate = [this, id, &player, data, saleKey]() -> ll::Expected<void> {
                                             this->mImpl->logger->warn(fmt::runtime(tr({}, "market.log16")), player.getRealName(), id);
 
@@ -640,7 +630,6 @@ namespace LOICollection::server::Plugins {
                                                 return true;
                                             })
                                             .and_then([this, tax](bool) -> ll::Expected<bool> {
-                                                // 税收入账：累计税额计入 MarketTax 表（默认税率 0 时跳过）
                                                 if (tax <= 0)
                                                     return true;
 
@@ -705,8 +694,6 @@ namespace LOICollection::server::Plugins {
         if (!setResult.has_value())
             return ll::Unexpected(setResult.error());
 
-        // 整组售出：删除挂单（先摘牌，杜绝并发双卖）；
-        // 部分售出：把剩余数量重写回 StoreItem.data（改 NBT count），挂单内容变更而非删除。
         bool isPartial = !remainingData.empty();
         std::unordered_map<std::string, std::string> updated = data;
         if (isPartial)
@@ -761,7 +748,6 @@ namespace LOICollection::server::Plugins {
                 });
         }
 
-        // 离线卖家：累加到暂存分（列名统一小写），玩家上线时结算
         return this->mImpl->settingsDb->get("Market", ownerUuid, "score", "0")
             .and_then([this, ownerUuid, score](const std::string& value) -> ll::Expected<void> {
                 int mMarketScore = SystemUtils::toInt(value, 0);

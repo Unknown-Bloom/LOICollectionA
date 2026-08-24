@@ -25,7 +25,6 @@
 namespace LOICollection::server::Plugins::marketGui {
     using I18nUtilsTools::tr;
 
-    // 当前在线玩家（排除自己与模拟玩家），供玩家选择列表使用
     inline std::vector<std::pair<std::string, std::string>> listPlayers(Player& player) {
         std::vector<std::pair<std::string, std::string>> players;
 
@@ -40,7 +39,6 @@ namespace LOICollection::server::Plugins::marketGui {
         return players;
     }
 
-    // 背包中可上架的物品（排除禁售物品），供寄售/交易/上架列表使用
     inline ll::Expected<std::vector<std::pair<std::string, int>>> listSellableInventory(MarketPlugin& owner, Player& player) {
         return LanguagePlugin::getShared()->getLanguage(player)
             .transform([&owner, &player](const std::string& language) -> std::vector<std::pair<std::string, int>> {
