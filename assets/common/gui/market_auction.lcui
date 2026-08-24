@@ -1,0 +1,202 @@
+navigateAuctionCreate = new GlobalValue();
+navigateAuctionCreate.value = false;
+
+navigateAuctionMine = new GlobalValue();
+navigateAuctionMine.value = false;
+
+createOption = new ButtonOptions();
+createOption.tooltip = {tr("market.gui.auction.create.tooltip")};
+
+mineOption = new ButtonOptions();
+mineOption.tooltip = {tr("market.gui.auction.mine.tooltip")};
+
+auction = new PaginatedForm("market.auction", {tr("market.gui.title")}, GUIManager::value("market.auction.items"), 10);
+auction.label({tr("market.gui.auction.list.label")}, new TextOptions());
+auction.previousButton({tr("generic.gui.page.previous")});
+auction.nextButton({tr("generic.gui.page.next")});
+auction.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
+auction.divider(new DividerOptions());
+auction.button({tr("market.gui.auction.create")}, func () -> void {
+    if (!navigateAuctionCreate.value) [
+        navigateAuctionCreate.value = true;
+
+        auction.close();
+    ]
+}, createOption);
+auction.button({tr("market.gui.auction.mine")}, func () -> void {
+    if (!navigateAuctionMine.value) [
+        navigateAuctionMine.value = true;
+
+        auction.close();
+    ]
+}, mineOption);
+auction.closeButton();
+auction.show(func (result) -> void {
+    if (navigateAuctionCreate.value) [
+        buildAuctionInventory();
+    :
+        if (navigateAuctionMine.value) [
+            buildAuctionMine();
+        :
+            if (result.selection != "") [
+                idData = GUIManager::request("market.auction.id", [ result.selectionIndex ]);
+
+                buildAuctionInfo(idData[0]);
+            :
+                GUIManager::open("market", "market.open", 1);
+            ]
+        ]
+    ]
+});
+auction.show();
+
+func buildAuctionInfo(id: string) -> void {
+    infoData = GUIManager::request("market.auction.info", [ id ]);
+
+    bidPrice = new ObservableString("", true);
+
+    bidOptions = new TextFieldOptions();
+    bidOptions.description = {tr("market.gui.auction.bid.price.placeholder")};
+
+    bidDone = new GlobalValue();
+    bidDone.value = false;
+
+    bidResult = new GlobalValue();
+    bidResult.value = true;
+
+    auctionInfo = new CustomForm("market.auction.info", {tr("market.gui.title")});
+    auctionInfo.label(infoData[0], new TextOptions());
+    auctionInfo.spacer(new SpacingOptions());
+    auctionInfo.divider(new DividerOptions());
+    auctionInfo.textField({tr("market.gui.auction.bid.price")}, bidPrice, bidOptions);
+    auctionInfo.button({tr("market.gui.auction.bid")}, func () -> void {
+        bidResultData = GUIManager::request("market.auction.bid.submit", [ id, bidPrice.getData() ]);
+
+        bidResult.value = bidResultData[0];
+        bidDone.value = true;
+
+        auctionInfo.close();
+    }, new ButtonOptions());
+    auctionInfo.closeButton();
+    auctionInfo.show(func (result) -> void {
+        if (bidDone.value) [
+            if (bidResult.value) [
+                GUIManager::open("market.auction", "market.auction", 3);
+            :
+                GUIManager::open("market.auction", "market.auction", 3);
+            ]
+        :
+            GUIManager::open("market.auction", "market.auction", 3);
+        ]
+    });
+
+    GUIManager::switchTo("market.auction.info", 1);
+}
+
+func buildAuctionInventory() -> void {
+    auctionInventory = new PaginatedForm("market.auction.inventory", {tr("market.gui.title")}, GUIManager::value("market.sell.inventory"), 10);
+    auctionInventory.label({tr("market.gui.sell.item.dropdown")}, new TextOptions());
+    auctionInventory.previousButton({tr("generic.gui.page.previous")});
+    auctionInventory.nextButton({tr("generic.gui.page.next")});
+    auctionInventory.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
+    auctionInventory.closeButton();
+    auctionInventory.show(func (result) -> void {
+        if (result.selection != "") [
+            slotData = GUIManager::request("market.auction.slot", [ result.selectionIndex ]);
+
+            buildAuctionCreate(slotData[0]);
+        :
+            GUIManager::open("market.auction", "market.auction", 3);
+        ]
+    });
+
+    GUIManager::switchTo("market.auction.inventory", 3);
+}
+
+func buildAuctionCreate(slot: int) -> void {
+    durationBoundsData = GUIManager::request("market.auction.duration.bounds", []);
+
+    auctionName = new ObservableString("", true);
+    auctionPrice = new ObservableString("", true);
+    auctionDuration = new ObservableString("", true);
+
+    nameOptions = new TextFieldOptions();
+    nameOptions.description = {tr("market.gui.auction.create.name.placeholder")};
+
+    priceOptions = new TextFieldOptions();
+    priceOptions.description = {tr("market.gui.auction.create.price.placeholder")};
+
+    durationOptions = new TextFieldOptions();
+    durationOptions.description = {std::format({tr("market.gui.auction.create.duration.placeholder")}, [ durationBoundsData[0], durationBoundsData[1] ])};
+
+    createDone = new GlobalValue();
+    createDone.value = false;
+
+    createResult = new GlobalValue();
+    createResult.value = true;
+
+    auctionCreate = new CustomForm("market.auction.create", {tr("market.gui.title")});
+    auctionCreate.label({tr("market.gui.label")}, new TextOptions());
+    auctionCreate.spacer(new SpacingOptions());
+    auctionCreate.divider(new DividerOptions());
+    auctionCreate.textField({tr("market.gui.auction.create.name")}, auctionName, nameOptions);
+    auctionCreate.textField({tr("market.gui.auction.create.price")}, auctionPrice, priceOptions);
+    auctionCreate.textField({tr("market.gui.auction.create.duration")}, auctionDuration, durationOptions);
+    auctionCreate.button({tr("generic.gui.save")}, func () -> void {
+        createResultData = GUIManager::request("market.auction.create.submit", [ slot, auctionName.getData(), auctionPrice.getData(), auctionDuration.getData() ]);
+
+        createResult.value = createResultData[0];
+        createDone.value = true;
+
+        auctionCreate.close();
+    }, new ButtonOptions());
+    auctionCreate.closeButton();
+    auctionCreate.show(func (result) -> void {
+        if (createDone.value) [
+            if (createResult.value) [
+                GUIManager::open("market.auction", "market.auction", 3);
+            :
+                GUIManager::open("market.auction", "market.auction", 3);
+            ]
+        :
+            GUIManager::open("market.auction", "market.auction", 3);
+        ]
+    });
+
+    GUIManager::switchTo("market.auction.create", 1);
+}
+
+func buildAuctionMine() -> void {
+    auctionMine = new PaginatedForm("market.auction.mine", {tr("market.gui.title")}, GUIManager::value("market.my.auction"), 10);
+    auctionMine.label({tr("market.gui.auction.mine.label")}, new TextOptions());
+    auctionMine.previousButton({tr("generic.gui.page.previous")});
+    auctionMine.nextButton({tr("generic.gui.page.next")});
+    auctionMine.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
+    auctionMine.closeButton();
+    auctionMine.show(func (result) -> void {
+        if (result.selection != "") [
+            idData = GUIManager::request("market.my.auction.id", [ result.selectionIndex ]);
+
+            buildAuctionMineInfo(idData[0]);
+        :
+            GUIManager::open("market.auction", "market.auction", 3);
+        ]
+    });
+
+    GUIManager::switchTo("market.auction.mine", 3);
+}
+
+func buildAuctionMineInfo(id: string) -> void {
+    infoData = GUIManager::request("market.auction.info", [ id ]);
+
+    auctionMineInfo = new CustomForm("market.auction.mine.info", {tr("market.gui.title")});
+    auctionMineInfo.label(infoData[0], new TextOptions());
+    auctionMineInfo.spacer(new SpacingOptions());
+    auctionMineInfo.divider(new DividerOptions());
+    auctionMineInfo.closeButton();
+    auctionMineInfo.show(func (result) -> void {
+        GUIManager::open("market.auction", "market.auction.mine", 3);
+    });
+
+    GUIManager::switchTo("market.auction.mine.info", 1);
+}

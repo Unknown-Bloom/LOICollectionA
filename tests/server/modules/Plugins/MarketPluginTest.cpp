@@ -83,6 +83,14 @@ protected:
         if (!r7.has_value())
             GTEST_FAIL() << "Unable to clear data";
 
+        auto r8 = db->exec("DELETE FROM StoreWanted;");
+        if (!r8.has_value())
+            GTEST_FAIL() << "Unable to clear data";
+
+        auto r9 = db->exec("DELETE FROM StoreAuction;");
+        if (!r9.has_value())
+            GTEST_FAIL() << "Unable to clear data";
+
         MarketPlugin::getShared()->clearStoreRankCache();
 
         EXPECT_TRUE(MarketPlugin::getShared()->setExecutor(ll::thread::ServerThreadExecutor::getDefault()).has_value());
@@ -90,6 +98,10 @@ protected:
         Config::C_Market config = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Market;
         if (config.StoreEnabled)
             MarketPlugin::getShared()->startStoreRankRefresh();
+
+        auto taxRate = MarketPlugin::getShared()->getTaxRate();
+        if (taxRate.has_value() && taxRate.value() != config.StoreTransactionTaxRate)
+            EXPECT_TRUE(MarketPlugin::getShared()->setTaxRate(config.StoreTransactionTaxRate).has_value());
     }
 
     Config::C_Market GetMarketConfig() {
@@ -1238,4 +1250,489 @@ TEST_F(MarketPluginTest, StoreRankingTimedRefresh) {
     auto rank3 = MarketPlugin::getShared()->getStoreRanking();
     ASSERT_TRUE(rank3.has_value());
     EXPECT_EQ(rank3.value().front(), uuidB);
+}
+
+// ---- 税（阶段 1）：纯函数，无需服务器环境 ----
+TEST(MarketTaxTest, ComputeTaxFloor) {
+    // 按价格 * 税率向下取整
+    EXPECT_EQ(MarketPlugin::computeTax(1000, 0.05), 50);
+    EXPECT_EQ(MarketPlugin::computeTax(999, 0.05), 49);
+    EXPECT_EQ(MarketPlugin::computeTax(1234, 0.03), 37);
+    EXPECT_EQ(MarketPlugin::computeTax(100000, 0.15), 15000);
+}
+
+TEST(MarketTaxTest, ComputeTaxEdgeCases) {
+    // 零税率与零价格
+    EXPECT_EQ(MarketPlugin::computeTax(1000, 0.0), 0);
+    EXPECT_EQ(MarketPlugin::computeTax(0, 0.1), 0);
+    // 小额成交不产生税
+    EXPECT_EQ(MarketPlugin::computeTax(1, 0.99), 0);
+    EXPECT_EQ(MarketPlugin::computeTax(100, 0.001), 0);
+}
+
+// ---- 反作弊（阶段 1）：离群价判定纯函数 ----
+TEST(MarketQuoteOutlierTest, IsPriceOutlier) {
+    // 区间内价格视为有效
+    EXPECT_FALSE(MarketQuote::isPriceOutlier(100.0, 100, 2.0));
+    EXPECT_FALSE(MarketQuote::isPriceOutlier(100.0, 199, 2.0));
+    EXPECT_FALSE(MarketQuote::isPriceOutlier(100.0, 51, 2.0));
+    // 超过均价 ratio 倍 / 低于均价的 1/ratio 视为离群
+    EXPECT_TRUE(MarketQuote::isPriceOutlier(100.0, 201, 2.0));
+    EXPECT_TRUE(MarketQuote::isPriceOutlier(100.0, 49, 2.0));
+}
+
+TEST(MarketQuoteOutlierTest, OutlierDisabled) {
+    // ratio <= 0 或均价为 0 时关闭过滤
+    EXPECT_FALSE(MarketQuote::isPriceOutlier(100.0, 100000, 0.0));
+    EXPECT_FALSE(MarketQuote::isPriceOutlier(100.0, 100000, -1.0));
+    EXPECT_FALSE(MarketQuote::isPriceOutlier(0.0, 100000, 2.0));
+}
+
+// ---- 经济治理（阶段 4）：价格上限判定纯函数 ----
+TEST(MarketPriceCeilingTest, IsPriceAboveCeiling) {
+    EXPECT_FALSE(MarketPlugin::isPriceAboveCeiling(150, 100, 2.0));
+    EXPECT_FALSE(MarketPlugin::isPriceAboveCeiling(200, 100, 2.0));
+    EXPECT_TRUE(MarketPlugin::isPriceAboveCeiling(201, 100, 2.0));
+    EXPECT_TRUE(MarketPlugin::isPriceAboveCeiling(100000, 100, 2.0));
+    EXPECT_FALSE(MarketPlugin::isPriceAboveCeiling(50, 100, 2.0));
+}
+
+TEST(MarketPriceCeilingTest, CeilingDisabled) {
+    EXPECT_FALSE(MarketPlugin::isPriceAboveCeiling(100000, 100, 0.0));
+    EXPECT_FALSE(MarketPlugin::isPriceAboveCeiling(100000, 100, -1.0));
+    EXPECT_FALSE(MarketPlugin::isPriceAboveCeiling(100000, 0, 2.0));
+}
+
+// ---- 经济治理（阶段 4）：运行时税率持久化与边界 ----
+TEST_F(MarketPluginTest, RuntimeTaxRatePersist) {
+    auto original = MarketPlugin::getShared()->getTaxRate();
+    ASSERT_TRUE(original.has_value());
+
+    auto invalidLow = MarketPlugin::getShared()->setTaxRate(-0.1);
+    ASSERT_FALSE(invalidLow.has_value());
+
+    auto invalidHigh = MarketPlugin::getShared()->setTaxRate(1.5);
+    ASSERT_FALSE(invalidHigh.has_value());
+
+    auto set = MarketPlugin::getShared()->setTaxRate(0.05);
+    ASSERT_TRUE(set.has_value());
+
+    auto rate = MarketPlugin::getShared()->getTaxRate();
+    ASSERT_TRUE(rate.has_value());
+    EXPECT_DOUBLE_EQ(rate.value(), 0.05);
+
+    auto stored = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB")->get("MarketTax", "rate", "rate", "");
+    ASSERT_TRUE(stored.has_value());
+    EXPECT_DOUBLE_EQ(SystemUtils::toDouble(stored.value(), -1.0), 0.05);
+
+    auto restore = MarketPlugin::getShared()->setTaxRate(original.value());
+    ASSERT_TRUE(restore.has_value());
+}
+
+TEST_F(MarketPluginTest, RuntimeTaxRateBoundaryValues) {
+    auto original = MarketPlugin::getShared()->getTaxRate();
+    ASSERT_TRUE(original.has_value());
+
+    auto zero = MarketPlugin::getShared()->setTaxRate(0.0);
+    ASSERT_TRUE(zero.has_value());
+
+    auto rateZero = MarketPlugin::getShared()->getTaxRate();
+    ASSERT_TRUE(rateZero.has_value());
+    EXPECT_DOUBLE_EQ(rateZero.value(), 0.0);
+
+    auto full = MarketPlugin::getShared()->setTaxRate(1.0);
+    ASSERT_TRUE(full.has_value());
+
+    auto rateFull = MarketPlugin::getShared()->getTaxRate();
+    ASSERT_TRUE(rateFull.has_value());
+    EXPECT_DOUBLE_EQ(rateFull.value(), 1.0);
+
+    auto restore = MarketPlugin::getShared()->setTaxRate(original.value());
+    ASSERT_TRUE(restore.has_value());
+}
+
+// ---- 经济治理（阶段 4）：价格上限默认关闭时上架直通 ----
+TEST_F(MarketPluginTest, PriceCeilingDisabledByDefault) {
+    Config::C_Market config = GetMarketConfig();
+    if (config.StorePriceCeilingRatio > 0.0)
+        GTEST_SKIP();
+
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(sp);
+
+    auto allowed = MarketPlugin::getShared()->guardPriceCeiling(*sp, "ceiling_probe", 999999);
+    ASSERT_TRUE(allowed.has_value());
+    EXPECT_TRUE(allowed.value());
+}
+
+// ---- 行情（阶段 1）：成交后行情聚合、成交量排行、报表税收 ----
+TEST_F(MarketPluginTest, StoreQuoteAggregation) {
+    Config::C_Market config = GetMarketConfig();
+    if (!config.StoreEnabled || !config.StoreQuoteEnabled)
+        GTEST_SKIP();
+
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(sp);
+
+    TestSimulatedPlayer buyer("test_player6");
+    ASSERT_TRUE(buyer.create());
+
+    ASSERT_TRUE(CreateStore(*sp));
+    ASSERT_TRUE(GiveItem(*sp, "minecraft:grass_block", 1));
+    // 用唯一物品名隔离内存态行情统计（避免被其他用例的 grass_block 成交污染）
+    ASSERT_TRUE(UploadStoreItem(*sp, "quote_probe", 100));
+
+    auto items = MarketPlugin::getShared()->getStoreItems(sp->getUuid().asString());
+    ASSERT_TRUE(items.has_value());
+    ASSERT_FALSE(items.value().empty());
+
+    bool created = false;
+    PrepareScoreboard(config, created);
+    ScoreboardUtils::setScore(*buyer.getPlayer(), config.TargetScoreboard, 1000);
+
+    auto buy = MarketPlugin::getShared()->buyStoreItem(*buyer.getPlayer(), items.value().front());
+    ASSERT_TRUE(buy.has_value());
+    EXPECT_TRUE(buy.value());
+
+    auto quote = MarketPlugin::getShared()->getQuote("quote_probe");
+    ASSERT_TRUE(quote.has_value());
+    ASSERT_TRUE(quote.value().has_value());
+    EXPECT_EQ(quote.value()->count30d, 1);
+    EXPECT_EQ(quote.value()->lastPrice, 100);
+    EXPECT_EQ(quote.value()->avg30d, 100);
+    EXPECT_EQ(quote.value()->max30d, 100);
+
+    auto top = MarketPlugin::getShared()->getTopVolume(50, 30);
+    ASSERT_TRUE(top.has_value());
+    auto found = std::find_if(top.value().begin(), top.value().end(), [](const auto& entry) -> bool {
+        return entry.first == "quote_probe";
+    });
+    ASSERT_NE(found, top.value().end());
+    EXPECT_EQ(found->second, 1);
+
+    // 报表为全局累计，做下限断言
+    auto report = MarketPlugin::getShared()->getReport(30);
+    ASSERT_TRUE(report.has_value());
+    EXPECT_GE(report.value().count, 1);
+    EXPECT_GE(report.value().turnover, 100);
+    EXPECT_GE(report.value().tax, MarketPlugin::computeTax(100, config.StoreTransactionTaxRate));
+    EXPECT_GE(report.value().activeSellers, 1);
+
+    if (created)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+}
+
+// ---- 求购（阶段 2）：创建冻结预付款 ----
+TEST_F(MarketPluginTest, StoreWantedCreateFreeze) {
+    Config::C_Market config = GetMarketConfig();
+    if (!config.StoreEnabled || !config.StoreWantedEnabled)
+        GTEST_SKIP();
+
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(sp);
+
+    bool created = false;
+    PrepareScoreboard(config, created);
+
+    ASSERT_TRUE(GiveItem(*sp, "minecraft:grass_block", 1));
+    int slot = FindSlot(*sp, "minecraft:grass_block");
+    ASSERT_GE(slot, 0);
+
+    int unitPrice = 30;
+    int amount = 5;
+    int base = 10000;
+    ScoreboardUtils::setScore(*sp, config.TargetScoreboard, base);
+
+    auto create = MarketPlugin::getShared()->createWanted(*sp, slot, "Wanted Grass", unitPrice, amount);
+    ASSERT_TRUE(create.has_value());
+    EXPECT_TRUE(create.value());
+
+    // 预付款冻结：base - unitPrice * amount
+    EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), base - unitPrice * amount);
+
+    auto list = MarketPlugin::getShared()->getWantedItems(*sp);
+    ASSERT_TRUE(list.has_value());
+    ASSERT_EQ(list.value().size(), 1);
+
+    auto data = MarketPlugin::getShared()->getWantedData(list.value().front());
+    ASSERT_TRUE(data.has_value());
+    EXPECT_EQ(data.value().at("unit_price"), "30");
+    EXPECT_EQ(data.value().at("amount_total"), "5");
+    EXPECT_EQ(data.value().at("amount_filled"), "0");
+
+    if (created)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+}
+
+// ---- 求购（阶段 2）：供货成交，卖家实收扣税 ----
+TEST_F(MarketPluginTest, StoreWantedFill) {
+    Config::C_Market config = GetMarketConfig();
+    if (!config.StoreEnabled || !config.StoreWantedEnabled)
+        GTEST_SKIP();
+
+    auto buyer = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(buyer);
+
+    TestSimulatedPlayer seller("test_player6");
+    ASSERT_TRUE(seller.create());
+
+    bool created = false;
+    PrepareScoreboard(config, created);
+
+    InventoryUtils::clearItem(*buyer, "minecraft:grass_block", 2304);
+    InventoryUtils::clearItem(*seller.getPlayer(), "minecraft:grass_block", 2304);
+
+    ASSERT_TRUE(GiveItem(*buyer, "minecraft:grass_block", 1));
+    int slot = FindSlot(*buyer, "minecraft:grass_block");
+    ASSERT_GE(slot, 0);
+
+    int unitPrice = 30;
+    int amount = 5;
+    ScoreboardUtils::setScore(*buyer, config.TargetScoreboard, 10000);
+    ScoreboardUtils::setScore(*seller.getPlayer(), config.TargetScoreboard, 0);
+
+    auto create = MarketPlugin::getShared()->createWanted(*buyer, slot, "Wanted Grass", unitPrice, amount);
+    ASSERT_TRUE(create.has_value());
+    EXPECT_TRUE(create.value());
+
+    auto list = MarketPlugin::getShared()->getWantedItems(*buyer);
+    ASSERT_TRUE(list.has_value());
+    ASSERT_EQ(list.value().size(), 1);
+    std::string id = list.value().front();
+
+    ASSERT_TRUE(GiveItem(*seller.getPlayer(), "minecraft:grass_block", amount));
+
+    auto fill = MarketPlugin::getShared()->fillWanted(*seller.getPlayer(), id, amount);
+    ASSERT_TRUE(fill.has_value());
+    EXPECT_TRUE(fill.value());
+
+    // 卖家实收 = 单价 * 数量 - 税；物品从卖家转到买家；求购单已满删除
+    int pay = unitPrice * amount;
+    int tax = MarketPlugin::computeTax(pay, config.StoreTransactionTaxRate);
+    EXPECT_EQ(ScoreboardUtils::getScore(*seller.getPlayer(), config.TargetScoreboard), pay - tax);
+    EXPECT_FALSE(InventoryUtils::isItemInInventory(*seller.getPlayer(), "minecraft:grass_block", 1));
+    EXPECT_TRUE(InventoryUtils::isItemInInventory(*buyer, "minecraft:grass_block", amount));
+
+    auto has = MarketPlugin::getShared()->getDatabase()->has("StoreWanted", id);
+    ASSERT_TRUE(has.has_value());
+    EXPECT_FALSE(has.value());
+
+    if (created)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+}
+
+// ---- 求购（阶段 2）：反作弊——买家不能给自己供货 ----
+TEST_F(MarketPluginTest, StoreWantedSelfFillBlocked) {
+    Config::C_Market config = GetMarketConfig();
+    if (!config.StoreEnabled || !config.StoreWantedEnabled)
+        GTEST_SKIP();
+
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(sp);
+
+    bool created = false;
+    PrepareScoreboard(config, created);
+
+    ASSERT_TRUE(GiveItem(*sp, "minecraft:grass_block", 1));
+    int slot = FindSlot(*sp, "minecraft:grass_block");
+    ASSERT_GE(slot, 0);
+
+    ScoreboardUtils::setScore(*sp, config.TargetScoreboard, 10000);
+
+    auto create = MarketPlugin::getShared()->createWanted(*sp, slot, "Wanted Grass", 30, 5);
+    ASSERT_TRUE(create.has_value());
+    EXPECT_TRUE(create.value());
+
+    auto list = MarketPlugin::getShared()->getWantedItems(*sp);
+    ASSERT_TRUE(list.has_value());
+    ASSERT_EQ(list.value().size(), 1);
+
+    auto fill = MarketPlugin::getShared()->fillWanted(*sp, list.value().front(), 1);
+    ASSERT_TRUE(fill.has_value());
+    EXPECT_FALSE(fill.value());
+
+    if (created)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+}
+
+// ---- 求购（阶段 2）：取消退还剩余冻结资金 ----
+TEST_F(MarketPluginTest, StoreWantedCancelRefund) {
+    Config::C_Market config = GetMarketConfig();
+    if (!config.StoreEnabled || !config.StoreWantedEnabled)
+        GTEST_SKIP();
+
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(sp);
+
+    bool created = false;
+    PrepareScoreboard(config, created);
+
+    ASSERT_TRUE(GiveItem(*sp, "minecraft:grass_block", 1));
+    int slot = FindSlot(*sp, "minecraft:grass_block");
+    ASSERT_GE(slot, 0);
+
+    int unitPrice = 30;
+    int amount = 5;
+    int base = 10000;
+    ScoreboardUtils::setScore(*sp, config.TargetScoreboard, base);
+
+    auto create = MarketPlugin::getShared()->createWanted(*sp, slot, "Wanted Grass", unitPrice, amount);
+    ASSERT_TRUE(create.has_value());
+    EXPECT_TRUE(create.value());
+
+    auto list = MarketPlugin::getShared()->getWantedItems(*sp);
+    ASSERT_TRUE(list.has_value());
+    ASSERT_EQ(list.value().size(), 1);
+
+    auto cancel = MarketPlugin::getShared()->cancelWanted(*sp, list.value().front());
+    ASSERT_TRUE(cancel.has_value());
+    EXPECT_TRUE(cancel.value());
+
+    // 未成交全额退还
+    EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), base);
+
+    if (created)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+}
+
+// ---- 拍卖（阶段 3）：上架扣物品 + 出价冻结全款 ----
+TEST_F(MarketPluginTest, StoreAuctionCreateBid) {
+    Config::C_Market config = GetMarketConfig();
+    if (!config.StoreEnabled || !config.StoreAuctionEnabled)
+        GTEST_SKIP();
+
+    auto seller = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(seller);
+
+    TestSimulatedPlayer bidder("test_player6");
+    ASSERT_TRUE(bidder.create());
+
+    bool created = false;
+    PrepareScoreboard(config, created);
+
+    InventoryUtils::clearItem(*seller, "minecraft:grass_block", 2304);
+
+    ASSERT_TRUE(GiveItem(*seller, "minecraft:grass_block", 1));
+    int slot = FindSlot(*seller, "minecraft:grass_block");
+    ASSERT_GE(slot, 0);
+
+    int duration = std::max(30 * 60, config.StoreAuctionMinDurationMinutes * 60);
+    auto create = MarketPlugin::getShared()->createAuction(*seller, slot, "Auction Grass", 100, duration);
+    ASSERT_TRUE(create.has_value());
+    EXPECT_TRUE(create.value());
+    EXPECT_FALSE(InventoryUtils::isItemInInventory(*seller, "minecraft:grass_block", 1));
+
+    auto list = MarketPlugin::getShared()->getAuctionList();
+    ASSERT_TRUE(list.has_value());
+    ASSERT_EQ(list.value().size(), 1);
+    std::string id = list.value().front();
+
+    // 出价即冻结全款
+    int base = 10000;
+    ScoreboardUtils::setScore(*bidder.getPlayer(), config.TargetScoreboard, base);
+
+    auto bid = MarketPlugin::getShared()->bidAuction(*bidder.getPlayer(), id, 150);
+    ASSERT_TRUE(bid.has_value());
+    EXPECT_TRUE(bid.value());
+    EXPECT_EQ(ScoreboardUtils::getScore(*bidder.getPlayer(), config.TargetScoreboard), base - 150);
+
+    auto data = MarketPlugin::getShared()->getAuctionData(id);
+    ASSERT_TRUE(data.has_value());
+    EXPECT_EQ(data.value().at("current_price"), "150");
+    EXPECT_EQ(data.value().at("bidder_uuid"), bidder.getPlayer()->getUuid().asString());
+
+    if (created)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+}
+
+// ---- 拍卖（阶段 3）：反作弊——卖家不能出价自己的拍卖 ----
+TEST_F(MarketPluginTest, StoreAuctionSelfBidBlocked) {
+    Config::C_Market config = GetMarketConfig();
+    if (!config.StoreEnabled || !config.StoreAuctionEnabled)
+        GTEST_SKIP();
+
+    auto seller = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(seller);
+
+    bool created = false;
+    PrepareScoreboard(config, created);
+
+    InventoryUtils::clearItem(*seller, "minecraft:grass_block", 2304);
+    ASSERT_TRUE(GiveItem(*seller, "minecraft:grass_block", 1));
+    int slot = FindSlot(*seller, "minecraft:grass_block");
+    ASSERT_GE(slot, 0);
+
+    int duration = std::max(30 * 60, config.StoreAuctionMinDurationMinutes * 60);
+    auto create = MarketPlugin::getShared()->createAuction(*seller, slot, "Auction Grass", 100, duration);
+    ASSERT_TRUE(create.has_value());
+    EXPECT_TRUE(create.value());
+
+    auto list = MarketPlugin::getShared()->getAuctionList();
+    ASSERT_TRUE(list.has_value());
+    ASSERT_EQ(list.value().size(), 1);
+
+    auto bid = MarketPlugin::getShared()->bidAuction(*seller, list.value().front(), 200);
+    ASSERT_TRUE(bid.has_value());
+    EXPECT_FALSE(bid.value());
+
+    if (created)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+}
+
+// ---- 拍卖（阶段 3）：加价校验 + 被超越自动退款 ----
+TEST_F(MarketPluginTest, StoreAuctionOutbidRefund) {
+    Config::C_Market config = GetMarketConfig();
+    if (!config.StoreEnabled || !config.StoreAuctionEnabled)
+        GTEST_SKIP();
+
+    auto seller = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(seller);
+
+    TestSimulatedPlayer bidder1("test_player6");
+    TestSimulatedPlayer bidder2("test_player7");
+    ASSERT_TRUE(bidder1.create());
+    ASSERT_TRUE(bidder2.create());
+
+    bool created = false;
+    PrepareScoreboard(config, created);
+
+    InventoryUtils::clearItem(*seller, "minecraft:grass_block", 2304);
+    ASSERT_TRUE(GiveItem(*seller, "minecraft:grass_block", 1));
+    int slot = FindSlot(*seller, "minecraft:grass_block");
+    ASSERT_GE(slot, 0);
+
+    int duration = std::max(30 * 60, config.StoreAuctionMinDurationMinutes * 60);
+    auto create = MarketPlugin::getShared()->createAuction(*seller, slot, "Auction Grass", 100, duration);
+    ASSERT_TRUE(create.has_value());
+    EXPECT_TRUE(create.value());
+
+    auto list = MarketPlugin::getShared()->getAuctionList();
+    ASSERT_TRUE(list.has_value());
+    ASSERT_EQ(list.value().size(), 1);
+    std::string id = list.value().front();
+
+    int base = 10000;
+    ScoreboardUtils::setScore(*bidder1.getPlayer(), config.TargetScoreboard, base);
+    ScoreboardUtils::setScore(*bidder2.getPlayer(), config.TargetScoreboard, base);
+
+    auto bid1 = MarketPlugin::getShared()->bidAuction(*bidder1.getPlayer(), id, 100);
+    ASSERT_TRUE(bid1.has_value());
+    EXPECT_TRUE(bid1.value());
+    EXPECT_EQ(ScoreboardUtils::getScore(*bidder1.getPlayer(), config.TargetScoreboard), base - 100);
+
+    // 出价低于最低加价（当前价 * 增量比例）：返回错误而非成交
+    auto low = MarketPlugin::getShared()->bidAuction(*bidder2.getPlayer(), id, 100);
+    EXPECT_FALSE(low.has_value());
+
+    // 满足最低加价：成交并退回首位出价者
+    int minBid = static_cast<int>(std::ceil(100.0 * config.StoreAuctionMinBidIncrement));
+    auto bid2 = MarketPlugin::getShared()->bidAuction(*bidder2.getPlayer(), id, minBid);
+    ASSERT_TRUE(bid2.has_value());
+    EXPECT_TRUE(bid2.value());
+
+    EXPECT_EQ(ScoreboardUtils::getScore(*bidder1.getPlayer(), config.TargetScoreboard), base);
+    EXPECT_EQ(ScoreboardUtils::getScore(*bidder2.getPlayer(), config.TargetScoreboard), base - minBid);
+
+    if (created)
+        ScoreboardUtils::remove(config.TargetScoreboard);
 }

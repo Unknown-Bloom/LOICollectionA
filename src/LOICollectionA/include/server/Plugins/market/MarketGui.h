@@ -19,5 +19,13 @@ namespace LOICollection::server::Plugins {
 
     public:
         LOICOLLECTION_A_NDAPI ll::Expected<void> registerAll(MarketPlugin& owner);
+
+    private:
+        void registerCore(MarketPlugin& owner);
+        void registerTrade(MarketPlugin& owner);
+        void registerStore(MarketPlugin& owner);
+        void registerQuote(MarketPlugin& owner);
+        void registerWanted(MarketPlugin& owner);
+        void registerAuction(MarketPlugin& owner);
     };
 }

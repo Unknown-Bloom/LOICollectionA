@@ -17,6 +17,20 @@ TEST(SystemUtilsTest, ToIntInvalidStringReturnsDefault) {
     EXPECT_EQ(SystemUtils::toInt("", 99), 99);
 }
 
+TEST(SystemUtilsTest, ToDoubleValidNumber) {
+    EXPECT_DOUBLE_EQ(SystemUtils::toDouble("0.05", -1.0), 0.05);
+    EXPECT_DOUBLE_EQ(SystemUtils::toDouble("1.5"), 1.5);
+    EXPECT_DOUBLE_EQ(SystemUtils::toDouble("0"), 0.0);
+    EXPECT_DOUBLE_EQ(SystemUtils::toDouble("-2.75", 0.0), -2.75);
+}
+
+TEST(SystemUtilsTest, ToDoubleInvalidStringReturnsDefault) {
+    EXPECT_DOUBLE_EQ(SystemUtils::toDouble("abc", 10.0), 10.0);
+    EXPECT_DOUBLE_EQ(SystemUtils::toDouble("", -1.0), -1.0);
+    EXPECT_DOUBLE_EQ(SystemUtils::toDouble("12..3", -1.0), -1.0);
+    EXPECT_DOUBLE_EQ(SystemUtils::toDouble("0.05x", -1.0), -1.0);
+}
+
 TEST(SystemUtilsTest, GetIntersection) {
     std::vector<std::vector<std::string>> input = {
         {"a", "b", "c", "d"},

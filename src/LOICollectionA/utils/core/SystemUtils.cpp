@@ -106,6 +106,20 @@ namespace SystemUtils {
         return (ec == std::errc() && ptr == str.data() + str.size()) ? result : defaultValue;
     }
 
+    long long toLongLong(const std::string& str, long long defaultValue) {
+        long long result;
+        auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), result);
+
+        return (ec == std::errc() && ptr == str.data() + str.size()) ? result : defaultValue;
+    }
+
+    double toDouble(const std::string& str, double defaultValue) {
+        double result;
+        auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), result);
+
+        return (ec == std::errc() && ptr == str.data() + str.size()) ? result : defaultValue;
+    }
+
     bool isPastOrPresent(const std::string& str) {
         std::chrono::local_seconds mLocalTp;
         if ((std::istringstream(str) >> std::chrono::parse("%Y%m%d%H%M%S", mLocalTp)).fail())

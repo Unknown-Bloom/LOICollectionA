@@ -30,6 +30,7 @@ namespace LOICollection::server::Plugins {
     class MarketStore {
     public:
         using BlacklistProvider = std::function<ll::Expected<std::vector<std::string>>(const std::string&)>;
+        using TaxRateProvider = std::function<double()>;
 
         MarketStore(
             std::shared_ptr<SQLiteStorage> db,
@@ -37,7 +38,8 @@ namespace LOICollection::server::Plugins {
             const Config::C_Market& options,
             std::shared_ptr<ll::io::Logger> logger,
             TimerManager& timerManager,
-            BlacklistProvider blacklistProvider
+            BlacklistProvider blacklistProvider,
+            TaxRateProvider taxRateProvider = nullptr
         );
 
         ~MarketStore();
@@ -54,7 +56,7 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI ll::Expected<bool> dissolveStore(Player& player);
         LOICOLLECTION_A_NDAPI ll::Expected<bool> uploadStoreItem(Player& player, int slot, const std::string& name, const std::string& icon, const std::string& intr, int score);
         LOICOLLECTION_A_NDAPI ll::Expected<bool> offshelfStoreItem(Player& player, const std::string& id, bool returnItem = false);
-        LOICOLLECTION_A_NDAPI ll::Expected<bool> buyStoreItem(Player& player, const std::string& id);
+        LOICOLLECTION_A_NDAPI ll::Expected<bool> buyStoreItem(Player& player, const std::string& id, int count = 1);
 
         LOICOLLECTION_A_NDAPI ll::Expected<bool> addReview(Player& player, const std::string& storeId, int rating, const std::string& content);
         LOICOLLECTION_A_NDAPI ll::Expected<bool> auditReview(Player& player, const std::string& id, bool approve);
@@ -76,6 +78,10 @@ namespace LOICollection::server::Plugins {
 
     private:
         bool isValid() const;
+
+        ll::Expected<std::string> commitStoreSale(Player& player, const std::string& id, const std::unordered_map<std::string, std::string>& data, const std::string& storeId, const std::string& ownerUuid, int tax, const std::string& remainingData = "");
+        ll::Expected<void> restoreStoreSale(const std::string& id, const std::unordered_map<std::string, std::string>& data, const std::string& saleKey);
+        ll::Expected<void> settleSeller(const std::string& ownerUuid, const std::string& itemName, int score, const std::string& scoreboard);
 
         struct RankData;
         struct Impl;

@@ -121,6 +121,24 @@ namespace Config {
         int StoreRatingWindowDays = 180;
         int StoreRiskWindowDays = 30;
         int StoreRankRefreshMinutes = 60;
+
+        bool StoreQuoteEnabled = true;
+        int StoreQuoteRefreshMinutes = 30;
+        double StoreTransactionTaxRate = 0.0;
+        double StorePriceCeilingRatio = 0.0;
+
+        bool StoreWantedEnabled = true;
+        int StoreWantedMaxPerPlayer = 5;
+        int StoreWantedExpireDays = 7;
+        bool StorePartialBuyEnabled = true;
+
+        bool StoreAuctionEnabled = true;
+        int StoreAuctionMinDurationMinutes = 30;
+        int StoreAuctionMaxDurationHours = 72;
+        double StoreAuctionMinBidIncrement = 1.05;
+        int StoreAuctionAntiSnipeSeconds = 0;
+        int StoreRepeatTradeLimit = 3;
+        double StorePriceOutlierRatio = 0.0;
     };
 
     struct C_BehaviorEvent {

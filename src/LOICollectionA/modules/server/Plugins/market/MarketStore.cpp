@@ -10,6 +10,8 @@
 #include <fmt/core.h>
 
 #include <ll/api/Expected.h>
+#include <ll/api/event/EventBus.h>
+#include <ll/api/service/Bedrock.h>
 
 #include <mc/deps/nbt/Tag.h>
 #include <mc/deps/nbt/CompoundTag.h>
@@ -26,6 +28,7 @@
 #include <mc/server/commands/CommandPermissionLevel.h>
 
 #include "LOICollectionA/include/server/Plugins/LanguagePlugin.h"
+#include "LOICollectionA/include/server/Events/modules/MarketItemSoldEvent.h"
 
 #include "LOICollectionA/coro/TimerManager.h"
 
@@ -60,6 +63,7 @@ namespace LOICollection::server::Plugins {
         std::shared_ptr<ll::io::Logger> logger;
         TimerManager& timerManager;
         BlacklistProvider blacklistProvider;
+        TaxRateProvider taxRateProvider;
         LRUKCache<std::string, std::vector<std::string>> rankCache;
 
         Impl(
@@ -68,14 +72,20 @@ namespace LOICollection::server::Plugins {
             const Config::C_Market& options_,
             std::shared_ptr<ll::io::Logger> logger_,
             TimerManager& timerManager_,
-            BlacklistProvider blacklistProvider_
+            BlacklistProvider blacklistProvider_,
+            TaxRateProvider taxRateProvider_
         ) : db(std::move(db_)),
             settingsDb(std::move(settingsDb_)),
             options(options_),
             logger(std::move(logger_)),
             timerManager(timerManager_),
             blacklistProvider(std::move(blacklistProvider_)),
+            taxRateProvider(std::move(taxRateProvider_)),
             rankCache(100, 100) {}
+
+        double effectiveTaxRate() const {
+            return taxRateProvider ? taxRateProvider() : options.StoreTransactionTaxRate;
+        }
     };
 
     ll::Expected<void> MarketStore::createTables() {
@@ -114,6 +124,14 @@ namespace LOICollection::server::Plugins {
                 ctor("status");
                 ctor("time");
             });
+        }).and_then([this]() -> ll::Expected<void> {
+            return this->mImpl->db->exec("CREATE INDEX IF NOT EXISTS idx_StoreSale_time ON StoreSale(time);")
+                .and_then([this]() -> ll::Expected<void> {
+                    return this->mImpl->db->exec("CREATE INDEX IF NOT EXISTS idx_StoreSale_item_name ON StoreSale(item_name);");
+                })
+                .and_then([this]() -> ll::Expected<void> {
+                    return this->mImpl->db->exec("CREATE INDEX IF NOT EXISTS idx_StoreItem_name ON StoreItem(name);");
+                });
         });
     }
 
@@ -171,14 +189,34 @@ namespace LOICollection::server::Plugins {
 
                 std::unordered_map<std::string, int> saleCount;
                 std::unordered_map<std::string, long long> saleVolume;
+                std::unordered_map<std::string, int> pairTradeCount;
                 for (const auto& [key, row] : data.sales) {
                     long long t = SystemUtils::toInt(SystemUtils::getTimeSpan(nowTime, row.at("time"), ""), 0);
                     if (t > txWindow)
                         continue;
 
                     const std::string& storeId = row.at("store_id");
+                    int price = SystemUtils::toInt(row.at("price"), 0);
+
+                    std::string seller = row.contains("seller_uuid") ? row.at("seller_uuid") : "";
+                    if (seller.empty()) {
+                        auto ownerIt = data.stores.find(storeId);
+                        if (ownerIt != data.stores.end())
+                            seller = ownerIt->second.at("owner_uuid");
+                    }
+                    std::string buyer = row.contains("buyer_uuid") ? row.at("buyer_uuid") : "";
+                    if (!seller.empty() && !buyer.empty() && seller == buyer)
+                        continue;
+
+                    int repeatLimit = std::max(0, options.StoreRepeatTradeLimit);
+                    if (repeatLimit > 0 && !seller.empty() && !buyer.empty()) {
+                        std::string pair = buyer + "|" + seller;
+                        if (++pairTradeCount[pair] > repeatLimit)
+                            continue;
+                    }
+
                     saleCount[storeId]++;
-                    saleVolume[storeId] += SystemUtils::toInt(row.at("price"), 0);
+                    saleVolume[storeId] += price;
                 }
 
                 std::unordered_map<std::string, int> approvedCount;
@@ -514,23 +552,26 @@ namespace LOICollection::server::Plugins {
             });
     }
 
-    ll::Expected<bool> MarketStore::buyStoreItem(Player& player, const std::string& id) {
+    ll::Expected<bool> MarketStore::buyStoreItem(Player& player, const std::string& id, int count) {
         if (!this->isValid())
             return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::Invalid));
 
         if (!this->mImpl->options.StoreEnabled)
             return false;
 
+        if (count <= 0 || (count > 1 && !this->mImpl->options.StorePartialBuyEnabled))
+            return false;
+
         return this->getStoreItemData(id)
-            .and_then([this, id, &player](std::unordered_map<std::string, std::string> data) -> ll::Expected<bool> {
+            .and_then([this, id, count, &player](std::unordered_map<std::string, std::string> data) -> ll::Expected<bool> {
                 std::string storeId = data.at("store_id");
 
                 return this->getStore(storeId)
-                    .and_then([this, id, &player, data, storeId](std::unordered_map<std::string, std::string> store) -> ll::Expected<bool> {
+                    .and_then([this, id, count, &player, data, storeId](std::unordered_map<std::string, std::string> store) -> ll::Expected<bool> {
                         std::string ownerUuid = store.at("owner_uuid");
 
                         return this->mImpl->blacklistProvider(ownerUuid)
-                            .and_then([this, id, &player, data, storeId, ownerUuid](const std::vector<std::string>& blacklists) -> ll::Expected<bool> {
+                            .and_then([this, id, count, &player, data, storeId, ownerUuid](const std::vector<std::string>& blacklists) -> ll::Expected<bool> {
                                 if (std::find(blacklists.begin(), blacklists.end(), player.getUuid().asString()) != blacklists.end()) {
                                     return LanguagePlugin::getShared()->getLanguage(player)
                                         .transform([&player](const std::string& language) -> bool {
@@ -540,7 +581,23 @@ namespace LOICollection::server::Plugins {
                                         });
                                 }
 
-                                int mScore = SystemUtils::toInt(data.at("score"), 0);
+                                int unitScore = SystemUtils::toInt(data.at("score"), 0);
+                                ItemStack mFullStack = ItemStack::fromTag(CompoundTag::fromSnbt(data.at("data"))->mTags);
+                                int stackCount = static_cast<int>(mFullStack.mCount);
+                                if (count > stackCount)
+                                    return false;
+
+                                bool isFull = count == stackCount;
+                                int mScore = isFull
+                                    ? unitScore
+                                    : static_cast<int>(static_cast<long long>(unitScore) * count / stackCount);
+
+                                std::string remainingData;
+                                if (!isFull) {
+                                    mFullStack.mCount = static_cast<unsigned char>(stackCount - count);
+                                    remainingData = mFullStack.save(*SaveContextFactory::createCloneSaveContext())->toSnbt(SnbtFormat::Minimize, 0);
+                                }
+
                                 std::string mScoreboard = this->mImpl->options.TargetScoreboard;
 
                                 if (ScoreboardUtils::getScore(player, mScoreboard) < mScore) {
@@ -552,68 +609,157 @@ namespace LOICollection::server::Plugins {
                                         });
                                 }
 
-                                ScoreboardUtils::reduceScore(player, mScoreboard, mScore);
+                                int tax = static_cast<int>(std::floor(mScore * this->mImpl->effectiveTaxRate()));
+                                int sellerAmount = mScore - tax;
 
-                                ItemStack mItemStack = ItemStack::fromTag(CompoundTag::fromSnbt(data.at("data"))->mTags);
-                                InventoryUtils::giveItem(player, mItemStack, static_cast<int>(mItemStack.mCount));
+                                return this->commitStoreSale(player, id, data, storeId, ownerUuid, tax, remainingData)
+                                    .and_then([this, id, count, &player, data, ownerUuid, mScore, sellerAmount, tax, mScoreboard](const std::string& saleKey) -> ll::Expected<bool> {
+                                        auto compensate = [this, id, &player, data, saleKey]() -> ll::Expected<void> {
+                                            this->mImpl->logger->warn(fmt::runtime(tr({}, "market.log16")), player.getRealName(), id);
 
-                                player.refreshInventory();
+                                            return this->restoreStoreSale(id, data, saleKey);
+                                        };
 
-                                auto writeSale = [this, id, storeId, &player, &data]() -> ll::Expected<bool> {
-                                    auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
-                                    if (!transaction.has_value())
-                                        return ll::Unexpected(transaction.error());
+                                        ScoreboardUtils::reduceScore(player, mScoreboard, mScore);
 
-                                    auto conn = transaction.value().connection();
-                                    std::unordered_map<std::string, std::string> sale = {
-                                        { "store_id", storeId },
-                                        { "item_name", data.at("name") },
-                                        { "price", data.at("score") },
-                                        { "buyer_uuid", player.getUuid().asString() },
-                                        { "buyer_name", player.getRealName() },
-                                        { "time", SystemUtils::getNowTime() }
-                                    };
+                                        ItemStack mItemStack = ItemStack::fromTag(CompoundTag::fromSnbt(data.at("data"))->mTags);
+                                        InventoryUtils::giveItem(player, mItemStack, count);
 
-                                    auto setResult = this->mImpl->db->set(conn, "StoreSale", SystemUtils::getCurrentTimestamp(), sale);
-                                    if (!setResult.has_value())
-                                        return ll::Unexpected(setResult.error());
+                                        player.refreshInventory();
 
-                                    auto delResult = this->mImpl->db->del(conn, "StoreItem", id);
-                                    if (!delResult.has_value())
-                                        return ll::Unexpected(delResult.error());
+                                        return this->settleSeller(ownerUuid, data.at("name"), sellerAmount, mScoreboard)
+                                            .or_else([&compensate](ll::Error e) -> ll::Expected<void> {
+                                                return compensate().and_then([e = std::move(e)]() mutable -> ll::Expected<void> {
+                                                    return ll::Unexpected(std::move(e));
+                                                });
+                                            })
+                                            .transform([]() -> bool {
+                                                return true;
+                                            })
+                                            .and_then([this, tax](bool) -> ll::Expected<bool> {
+                                                if (tax <= 0)
+                                                    return true;
 
-                                    auto commitResult = transaction.value().commit();
-                                    if (!commitResult.has_value())
-                                        return ll::Unexpected(commitResult.error());
+                                                return this->mImpl->settingsDb->get("MarketTax", "total", "total", "0")
+                                                    .and_then([this, tax](const std::string& value) -> ll::Expected<bool> {
+                                                        long long total = SystemUtils::toLongLong(value, 0) + tax;
 
-                                    this->clearRankCache();
-                                    this->mImpl->logger->info(fmt::runtime(tr({}, "market.log13")), data.at("name"));
+                                                        return this->mImpl->settingsDb->set("MarketTax", "total", "total", std::to_string(total))
+                                                            .transform([]() -> bool {
+                                                                return true;
+                                                            });
+                                                    });
+                                            })
+                                            .transform([this, &player, data, ownerUuid, saleKey, tax](bool) -> bool {
+                                                this->mImpl->logger->info(fmt::runtime(tr({}, "market.log13")), data.at("name"));
 
-                                    return true;
-                                };
+                                                ll::event::EventBus::getInstance().publish(LOICollection::server::Events::MarketItemSoldEvent(
+                                                    data.at("name"),
+                                                    SystemUtils::toInt(data.at("score"), 0),
+                                                    tax,
+                                                    player.getUuid().asString(),
+                                                    ownerUuid,
+                                                    SystemUtils::toLongLong(saleKey, 0)
+                                                ));
 
-                                if (Player* mPlayer = ll::service::getLevel()->getPlayer(mce::UUID::fromString(ownerUuid)); mPlayer) {
-                                    return LanguagePlugin::getShared()->getLanguage(*mPlayer)
-                                        .and_then([&data, mScoreboard, mScore, mPlayer, writeSale](const std::string& language) -> ll::Expected<bool> {
-                                            mPlayer->sendMessage(fmt::format(fmt::runtime(tr(language, "market.gui.sell.sellItem.tips1")), data.at("name")));
-
-                                            ScoreboardUtils::addScore(*mPlayer, mScoreboard, mScore);
-
-                                            return writeSale();
-                                        });
-                                }
-
-                                return this->mImpl->settingsDb->get("Market", ownerUuid, "Score", "0")
-                                    .and_then([this, ownerUuid, mScore, writeSale](const std::string& value) -> ll::Expected<bool> {
-                                        int mMarketScore = SystemUtils::toInt(value, 0);
-
-                                        return this->mImpl->settingsDb->set("Market", ownerUuid, "Score", std::to_string(mMarketScore + mScore))
-                                            .and_then([writeSale]() -> ll::Expected<bool> {
-                                                return writeSale();
+                                                return true;
                                             });
                                     });
                             });
                     });
+            });
+    }
+
+    ll::Expected<std::string> MarketStore::commitStoreSale(
+        Player& player,
+        const std::string& id,
+        const std::unordered_map<std::string, std::string>& data,
+        const std::string& storeId,
+        const std::string& ownerUuid,
+        int tax,
+        const std::string& remainingData
+    ) {
+        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
+        if (!transaction.has_value())
+            return ll::Unexpected(transaction.error());
+
+        auto conn = transaction.value().connection();
+        std::string saleKey = SystemUtils::getCurrentTimestamp();
+
+        std::unordered_map<std::string, std::string> sale = {
+            { "store_id", storeId },
+            { "item_name", data.at("name") },
+            { "price", data.at("score") },
+            { "tax", std::to_string(tax) },
+            { "buyer_uuid", player.getUuid().asString() },
+            { "buyer_name", player.getRealName() },
+            { "seller_uuid", ownerUuid },
+            { "time", SystemUtils::getNowTime() }
+        };
+
+        auto setResult = this->mImpl->db->set(conn, "StoreSale", saleKey, sale);
+        if (!setResult.has_value())
+            return ll::Unexpected(setResult.error());
+
+        bool isPartial = !remainingData.empty();
+        std::unordered_map<std::string, std::string> updated = data;
+        if (isPartial)
+            updated["data"] = remainingData;
+
+        auto updateResult = isPartial
+            ? this->mImpl->db->set(conn, "StoreItem", id, updated)
+            : this->mImpl->db->del(conn, "StoreItem", id);
+        if (!updateResult.has_value())
+            return ll::Unexpected(updateResult.error());
+
+        auto commitResult = transaction.value().commit();
+        if (!commitResult.has_value())
+            return ll::Unexpected(commitResult.error());
+
+        this->clearRankCache();
+
+        return saleKey;
+    }
+
+    ll::Expected<void> MarketStore::restoreStoreSale(
+        const std::string& id,
+        const std::unordered_map<std::string, std::string>& data,
+        const std::string& saleKey
+    ) {
+        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
+        if (!transaction.has_value())
+            return ll::Unexpected(transaction.error());
+
+        auto conn = transaction.value().connection();
+
+        auto setResult = this->mImpl->db->set(conn, "StoreItem", id, data);
+        if (!setResult.has_value())
+            return ll::Unexpected(setResult.error());
+
+        auto delResult = this->mImpl->db->del(conn, "StoreSale", saleKey);
+        if (!delResult.has_value())
+            return ll::Unexpected(delResult.error());
+
+        return transaction.value().commit().transform([this](bool) -> void {
+            this->clearRankCache();
+        });
+    }
+
+    ll::Expected<void> MarketStore::settleSeller(const std::string& ownerUuid, const std::string& itemName, int score, const std::string& scoreboard) {
+        if (Player* seller = ll::service::getLevel()->getPlayer(mce::UUID::fromString(ownerUuid)); seller) {
+            return LanguagePlugin::getShared()->getLanguage(*seller)
+                .transform([seller, itemName, scoreboard, score](const std::string& language) -> void {
+                    seller->sendMessage(fmt::format(fmt::runtime(tr(language, "market.gui.sell.sellItem.tips1")), itemName));
+
+                    ScoreboardUtils::addScore(*seller, scoreboard, score);
+                });
+        }
+
+        return this->mImpl->settingsDb->get("Market", ownerUuid, "score", "0")
+            .and_then([this, ownerUuid, score](const std::string& value) -> ll::Expected<void> {
+                int mMarketScore = SystemUtils::toInt(value, 0);
+
+                return this->mImpl->settingsDb->set("Market", ownerUuid, "score", std::to_string(mMarketScore + score));
             });
     }
 
@@ -782,14 +928,16 @@ namespace LOICollection::server::Plugins {
         const Config::C_Market& options,
         std::shared_ptr<ll::io::Logger> logger,
         TimerManager& timerManager,
-        BlacklistProvider blacklistProvider
+        BlacklistProvider blacklistProvider,
+        TaxRateProvider taxRateProvider
     ) : mImpl(std::make_unique<Impl>(
             std::move(db),
             std::move(settingsDb),
             options,
             std::move(logger),
             timerManager,
-            std::move(blacklistProvider)
+            std::move(blacklistProvider),
+            std::move(taxRateProvider)
         )) {}
 
     MarketStore::~MarketStore() = default;
