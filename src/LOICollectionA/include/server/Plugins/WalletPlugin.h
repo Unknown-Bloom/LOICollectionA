@@ -36,7 +36,9 @@ namespace LOICollection::server::Plugins {
         BelowMinimum = 4,
         DailyLimitExceeded = 5,
         CooldownActive = 6,
-        ConfirmRequired = 7
+        ConfirmRequired = 7,
+        BankEmpty = 8,
+        BelowMinDeposit = 9
     };
 
     struct WalletPluginErrorCategory : std::error_category {
@@ -53,6 +55,8 @@ namespace LOICollection::server::Plugins {
                 case WalletPluginErrorCode::DailyLimitExceeded: return "Daily transfer limit exceeded";
                 case WalletPluginErrorCode::CooldownActive: return "Transfer cooldown is active";
                 case WalletPluginErrorCode::ConfirmRequired: return "Large transfer requires confirmation";
+                case WalletPluginErrorCode::BankEmpty: return "No bank deposit found";
+                case WalletPluginErrorCode::BelowMinDeposit: return "Deposit below the minimum amount";
                 default:
                     return "Unknown";
             }
@@ -94,6 +98,22 @@ namespace LOICollection::server::Plugins {
 
         LOICOLLECTION_A_NDAPI ll::Expected<void> sweepExpiredEnvelopes();
 
+        LOICOLLECTION_A_NDAPI ll::Expected<void> bankDeposit(Player& player, int amount);
+
+        LOICOLLECTION_A_NDAPI ll::Expected<void> bankWithdraw(Player& player);
+
+        LOICOLLECTION_A_NDAPI ll::Expected<long long> getBankPrincipal(const std::string& uuid);
+
+        LOICOLLECTION_A_NDAPI ll::Expected<long long> getBankInterest(const std::string& uuid);
+
+        LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<std::string, long long>>> getWealthRanking(int limit);
+
+        LOICOLLECTION_A_NDAPI ll::Expected<std::pair<int, long long>> getWealthRank(const std::string& uuid);
+
+        LOICOLLECTION_A_NDAPI ll::Expected<void> rebuildWealthRanking();
+
+        LOICOLLECTION_A_NDAPI ll::Expected<void> updateBalanceSnapshot(const std::string& uuid, long long balance);
+
         LOICOLLECTION_A_NDAPI bool isValid();
 
     public:
@@ -102,6 +122,8 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI double getExchangeRate();
 
         LOICOLLECTION_A_NDAPI void setOptionsForTest(const Config::C_Wallet& options);
+
+        static int computeGiftAmount(int remainingCapacity, int remainingPeople);
 
     public:
         LOICOLLECTION_A_NDAPI std::string getName() override;
@@ -122,8 +144,6 @@ namespace LOICollection::server::Plugins {
         void listenEvent();
         void unlistenEvent();
 
-        static int computeGiftAmount(int remainingCapacity, int remainingPeople);
-
         ll::Expected<bool> grabEnvelope(Player& player, const std::string& uuid, struct RedEnvelopeEntry& entry);
         void broadcastContent(Player& sender, const std::string& key, const std::string& id, int score, int count);
         void broadcastReceive(const struct RedEnvelopeEntry& entry, Player& player, int amount, int people);
@@ -142,7 +162,13 @@ namespace LOICollection::server::Plugins {
         long long getTodayOutgoing(const std::string& uuid);
         void updateTransferCooldown(const std::string& uuid);
 
+        ll::Expected<long long> computeBankInterest(const std::string& uuid, long long principal, long long depositAt);
+
+        ll::Expected<std::vector<WealthEntry>> computeWealthRanking();
+        void scheduleWealthRefresh();
+
         struct RedEnvelopeEntry;
+        struct WealthEntry;
 
         struct operation;
 

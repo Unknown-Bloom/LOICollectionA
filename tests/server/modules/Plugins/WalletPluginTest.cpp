@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <string>
 #include <algorithm>
@@ -40,7 +41,7 @@ protected:
     void TearDown() override {
         auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
 
-        auto result = storage->exec("DELETE FROM Wallet; DELETE FROM RedEnvelope; DELETE FROM RedEnvelopeGrab; DELETE FROM WalletFee; DELETE FROM WalletLedger;");
+        auto result = storage->exec("DELETE FROM Wallet; DELETE FROM RedEnvelope; DELETE FROM RedEnvelopeGrab; DELETE FROM WalletFee; DELETE FROM WalletLedger; DELETE FROM WalletBank;");
         if (!result.has_value())
             GTEST_FAIL() << "Unable to clear data";
 
@@ -554,4 +555,187 @@ TEST_F(WalletPluginTest, TransferLargeRequiresConfirmation) {
 
     if (!hasScoreboard)
         ScoreboardUtils::remove(base.TargetScoreboard);
+}
+
+TEST_F(WalletPluginTest, BankDepositAndWithdraw) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+
+    Config::C_Wallet config = GetWalletConfig();
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(config.TargetScoreboard)) {
+        hasScoreboard = false;
+        ScoreboardUtils::create(config.TargetScoreboard);
+    }
+
+    ScoreboardUtils::setScore(*sp, config.TargetScoreboard, 500);
+
+    // Deposit 100: score drops, principal recorded, ledger row written.
+    EXPECT_TRUE(WalletPlugin::getShared()->bankDeposit(*sp, 100).has_value());
+    EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), 400);
+    EXPECT_EQ(WalletPlugin::getShared()->getBankPrincipal(sp->getUuid().asString()).value(), 100);
+
+    auto ids = storage->find("WalletLedger", std::vector<std::pair<std::string, std::string>>{ { "from_uuid", sp->getUuid().asString() } });
+    EXPECT_TRUE(ids.has_value());
+    ASSERT_FALSE(ids.value().empty());
+    EXPECT_EQ(storage->get("WalletLedger", ids.value().at(0)).value()["type"], "bank_deposit");
+
+    // Withdraw immediately: interest is 0, principal fully returned.
+    EXPECT_TRUE(WalletPlugin::getShared()->bankWithdraw(*sp).has_value());
+    EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), 500);
+    EXPECT_EQ(WalletPlugin::getShared()->getBankPrincipal(sp->getUuid().asString()).value(), 0);
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+}
+
+TEST_F(WalletPluginTest, BankDepositBelowMinimum) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    Config::C_Wallet base = GetWalletConfig();
+    base.WalletBankMinDeposit = 10;
+    WalletPlugin::getShared()->setOptionsForTest(base);
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(base.TargetScoreboard)) {
+        hasScoreboard = false;
+        ScoreboardUtils::create(base.TargetScoreboard);
+    }
+
+    ScoreboardUtils::setScore(*sp, base.TargetScoreboard, 100);
+
+    auto low = WalletPlugin::getShared()->bankDeposit(*sp, 5);
+    ASSERT_FALSE(low.has_value());
+    EXPECT_EQ(static_cast<WalletPluginErrorCode>(low.error().value()), WalletPluginErrorCode::BelowMinDeposit);
+
+    auto ok = WalletPlugin::getShared()->bankDeposit(*sp, 10);
+    EXPECT_TRUE(ok.has_value());
+
+    WalletPlugin::getShared()->setOptionsForTest(GetWalletConfig());
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(base.TargetScoreboard);
+}
+
+TEST_F(WalletPluginTest, BankWithdrawEmpty) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    auto result = WalletPlugin::getShared()->bankWithdraw(*sp);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(static_cast<WalletPluginErrorCode>(result.error().value()), WalletPluginErrorCode::BankEmpty);
+}
+
+TEST_F(WalletPluginTest, BankInterestDegradesWhenPoolEmpty) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    Config::C_Wallet base = GetWalletConfig();
+    base.WalletInterestFromPool = true;
+    WalletPlugin::getShared()->setOptionsForTest(base);
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(base.TargetScoreboard)) {
+        hasScoreboard = false;
+        ScoreboardUtils::create(base.TargetScoreboard);
+    }
+
+    // Fee pool starts empty (cleared in TearDown).
+    EXPECT_EQ(WalletPlugin::getShared()->getFeePool().value(), 0);
+
+    ScoreboardUtils::setScore(*sp, base.TargetScoreboard, 1000);
+    EXPECT_TRUE(WalletPlugin::getShared()->bankDeposit(*sp, 1000).has_value());
+    EXPECT_EQ(ScoreboardUtils::getScore(*sp, base.TargetScoreboard), 0);
+
+    // Withdraw: interest limited by the empty pool -> 0, principal still fully returned.
+    EXPECT_TRUE(WalletPlugin::getShared()->bankWithdraw(*sp).has_value());
+    EXPECT_EQ(ScoreboardUtils::getScore(*sp, base.TargetScoreboard), 1000);
+
+    WalletPlugin::getShared()->setOptionsForTest(GetWalletConfig());
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(base.TargetScoreboard);
+}
+
+TEST_F(WalletPluginTest, BankInterestCalculation) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+
+    Config::C_Wallet config = GetWalletConfig();
+
+    std::string uuid = sp->getUuid().asString();
+
+    // No bank account -> no principal, no interest.
+    EXPECT_EQ(WalletPlugin::getShared()->getBankInterest(uuid).value(), 0);
+
+    long long now = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::system_clock::now().time_since_epoch()
+    ).count();
+
+    // Deposited just now -> 0 full days elapsed -> 0 interest.
+    EXPECT_TRUE(storage->set("WalletBank", uuid, { { "principal", "1000" }, { "deposit_at", std::to_string(now) } }).has_value());
+    EXPECT_EQ(WalletPlugin::getShared()->getBankInterest(uuid).value(), 0);
+
+    // 3 full days at the daily rate -> floor(principal * rate * days).
+    long long threeDaysAgo = now - 3LL * 86400LL * 1000000000LL;
+    EXPECT_TRUE(storage->set("WalletBank", uuid, { { "principal", "1000" }, { "deposit_at", std::to_string(threeDaysAgo) } }).has_value());
+    long long expected = static_cast<long long>(std::floor(
+        1000.0 * config.WalletBankDailyRate * 3.0
+    ));
+    EXPECT_EQ(WalletPlugin::getShared()->getBankInterest(uuid).value(), expected);
+}
+
+TEST_F(WalletPluginTest, WealthRankingOrder) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+
+    Config::C_Wallet config = GetWalletConfig();
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(config.TargetScoreboard)) {
+        hasScoreboard = false;
+        ScoreboardUtils::create(config.TargetScoreboard);
+    }
+
+    // test_player is online: its real scoreboard must override the stored snapshot.
+    ScoreboardUtils::setScore(*sp, config.TargetScoreboard, 50);
+
+    std::string uuidA = sp->getUuid().asString();
+    std::string uuidB = "00000000-0000-0000-0000-0000000000bb";
+    std::string uuidC = "00000000-0000-0000-0000-0000000000cc";
+
+    EXPECT_TRUE(storage->set("Wallet", uuidA, { { "name", sp->getRealName() }, { "balance", "999" } }).has_value());
+    EXPECT_TRUE(storage->set("Wallet", uuidB, { { "name", "Bob" }, { "balance", "200" } }).has_value());
+    EXPECT_TRUE(storage->set("Wallet", uuidC, { { "name", "Carol" }, { "balance", "150" } }).has_value());
+
+    EXPECT_TRUE(WalletPlugin::getShared()->rebuildWealthRanking().has_value());
+
+    // Offline players use the snapshot; online test_player uses the real balance (50, not 999).
+    auto ranking = WalletPlugin::getShared()->getWealthRanking(10);
+    ASSERT_TRUE(ranking.has_value());
+    ASSERT_EQ(ranking.value().size(), 3u);
+    EXPECT_EQ(ranking.value().at(0).first, "Bob");
+    EXPECT_EQ(ranking.value().at(1).first, "Carol");
+    EXPECT_EQ(ranking.value().at(2).first, sp->getRealName());
+
+    auto rank = WalletPlugin::getShared()->getWealthRank(uuidB);
+    ASSERT_TRUE(rank.has_value());
+    EXPECT_EQ(rank.value().first, 1);
+    EXPECT_EQ(rank.value().second, 200);
+
+    auto self = WalletPlugin::getShared()->getWealthRank(uuidA);
+    ASSERT_TRUE(self.has_value());
+    EXPECT_EQ(self.value().first, 3);
+    EXPECT_EQ(self.value().second, 50);
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(config.TargetScoreboard);
 }

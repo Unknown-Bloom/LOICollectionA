@@ -97,6 +97,15 @@ namespace Config {
         int TransferDailyLimit = 0;
         int TransferConfirmThreshold = 1000;
         int TransferCooldownSeconds = 0;
+
+        int WealthTopSize = 50;
+        int WealthRefreshMinutes = 10;
+
+        bool WalletBankEnabled = true;
+        int WalletBankMinDeposit = 10;
+        double WalletBankDailyRate = 0.0005;
+        double WalletInterestTaxRate = 0.1;
+        bool WalletInterestFromPool = true;
     };
 
     struct C_Chat {

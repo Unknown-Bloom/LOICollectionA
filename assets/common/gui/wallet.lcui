@@ -15,6 +15,12 @@ navigateWealth.value = false;
 navigateHistory = new GlobalValue();
 navigateHistory.value = false;
 
+navigateBank = new GlobalValue();
+navigateBank.value = false;
+
+navigateRank = new GlobalValue();
+navigateRank.value = false;
+
 onlineOption = new ButtonOptions();
 onlineOption.tooltip = {tr("wallet.gui.transfer.tooltip")};
 
@@ -29,6 +35,12 @@ wealthOption.tooltip = {tr("wallet.gui.wealth.tooltip")};
 
 historyOption = new ButtonOptions();
 historyOption.tooltip = {tr("wallet.gui.history.tooltip")};
+
+bankOption = new ButtonOptions();
+bankOption.tooltip = {tr("wallet.gui.bank.tooltip")};
+
+rankOption = new ButtonOptions();
+rankOption.tooltip = {tr("wallet.gui.rank.tooltip")};
 
 open = new CustomForm("wallet.open", {tr("wallet.gui.title")});
 open.label(std::format({tr("wallet.gui.label")}, [ infoData[0], infoData[1] ]), new TextOptions());
@@ -68,6 +80,20 @@ open.button({tr("wallet.gui.history")}, func () -> void {
         open.close();
     ]
 }, historyOption);
+open.button({tr("wallet.gui.bank")}, func () -> void {
+    if (!navigateBank.value) [
+        navigateBank.value = true;
+
+        open.close();
+    ]
+}, bankOption);
+open.button({tr("wallet.gui.rank")}, func () -> void {
+    if (!navigateRank.value) [
+        navigateRank.value = true;
+
+        open.close();
+    ]
+}, rankOption);
 open.closeButton();
 open.show(func (result) -> void {
     if (navigateOnline.value) [
@@ -81,6 +107,14 @@ open.show(func (result) -> void {
             :
                 if (navigateHistory.value) [
                     GUIManager::switchTo("wallet.history", 1);
+                :
+                    if (navigateBank.value) [
+                        GUIManager::switchTo("wallet.bank", 1);
+                    :
+                        if (navigateRank.value) [
+                            GUIManager::switchTo("wallet.rank", 3);
+                        ]
+                    ]
                 ]
             ]
         ]
@@ -220,3 +254,56 @@ history.show(func (result) -> void {
     ]
 });
 history.show();
+
+bankInfoData = GUIManager::request("wallet.bank.info", []);
+
+bankDepositInput = new ObservableString("", true);
+bankDone = new GlobalValue();
+bankDone.value = false;
+
+bankDepositInputOption = new TextFieldOptions();
+bankDepositInputOption.description = {tr("wallet.gui.bank.deposit.input.placeholder")};
+
+bank = new CustomForm("wallet.bank", {tr("wallet.gui.title")});
+bank.label(
+    std::format({tr("wallet.gui.label")}, [ infoData[0], infoData[1] ]) + "\n" +
+    std::format({tr("wallet.gui.bank.label")}, [ bankInfoData[0], bankInfoData[1] ]),
+    new TextOptions()
+);
+bank.textField({tr("wallet.gui.bank.deposit.input")}, bankDepositInput, bankDepositInputOption);
+bank.button({tr("wallet.gui.bank.deposit.button")}, func () -> void {
+    bankResult = GUIManager::request("wallet.bank.deposit", [ bankDepositInput.getData() ]);
+
+    bankDone.value = bankResult[0];
+    bank.close();
+}, new ButtonOptions());
+bank.button({tr("wallet.gui.bank.withdraw.button")}, func () -> void {
+    bankResult = GUIManager::request("wallet.bank.withdraw", []);
+
+    bankDone.value = bankResult[0];
+    bank.close();
+}, new ButtonOptions());
+bank.closeButton();
+bank.show(func (result) -> void {
+    if (!bankDone.value) [
+        GUIManager::open("wallet", "wallet.open", 1, []);
+    ]
+});
+bank.show();
+
+rankSelfData = GUIManager::request("wallet.rank.self", []);
+
+rank = new PaginatedForm("wallet.rank", {tr("wallet.gui.title")}, GUIManager::value("wallet.rank"), 10);
+rank.label(
+    std::format({tr("wallet.gui.rank.label")}, [ rankSelfData[0], rankSelfData[1] ]),
+    new TextOptions()
+);
+rank.previousButton({tr("generic.gui.page.previous")});
+rank.nextButton({tr("generic.gui.page.next")});
+rank.closeButton();
+rank.show(func (result) -> void {
+    if (result.selection == "") [
+        GUIManager::open("wallet", "wallet.open", 1, []);
+    ]
+});
+rank.show();
