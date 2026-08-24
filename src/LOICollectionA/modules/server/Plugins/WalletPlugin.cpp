@@ -1,4 +1,6 @@
 #include <atomic>
+#include <cmath>
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
@@ -55,6 +57,7 @@
 
 #include "LOICollectionA/include/form/GUIManager.h"
 
+#include "LOICollectionA/base/ScopeGuard.h"
 #include "LOICollectionA/base/Wrapper.h"
 #include "LOICollectionA/base/ServiceProvider.h"
 
@@ -65,16 +68,21 @@
 using I18nUtilsTools::tr;
 
 namespace LOICollection::server::Plugins {
+    constexpr const char* WALLET_FEE_TABLE = "WalletFee";
+    constexpr const char* WALLET_FEE_COLUMN = "amount";
+
     struct WalletPlugin::RedEnvelopeEntry {
         std::string id;
-        std::string sender;
-
-        std::unordered_map<std::string, int> receivers;
-        std::unordered_map<std::string, std::string> names;
+        std::string chatKey;
+        std::string senderUuid;
+        std::string senderName;
 
         int count;
-        int capacity;
-        int people;
+        long long expireAt;
+
+        std::string kingUuid;
+        std::string kingName;
+        int kingAmount;
     };
 
     struct WalletPlugin::operation {
@@ -86,6 +94,7 @@ namespace LOICollection::server::Plugins {
         std::shared_ptr<TimerManager> mTimerManager;
 
         ll::ConcurrentDenseMap<std::string, std::vector<RedEnvelopeEntry>> mRedEnvelopes;
+        ll::ConcurrentDenseMap<std::string, bool> mSettling;
 
         std::atomic<bool> mRegistered{ false };
 
@@ -144,6 +153,10 @@ namespace LOICollection::server::Plugins {
                 int mTargetMoney = static_cast<int>(param.Score * (1 - this->mImpl->options.ExchangeRate));
                 for (Player*& target : results)
                     ScoreboardUtils::addScore(*target, mScoreboard, mTargetMoney);
+
+                long long fee = static_cast<long long>(mMoney) - static_cast<long long>(mTargetMoney) * results.size();
+                if (fee > 0)
+                    this->accumulateFee(fee).or_else(modules::defaultErrorHandler<WalletPlugin>);
 
                 output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.wallet.success.transfer")), param.Score, results.size());
             });
@@ -366,15 +379,23 @@ namespace LOICollection::server::Plugins {
                 .or_else(modules::defaultErrorHandler<WalletPlugin>);
 
             this->mImpl->db->get("Wallet", uuid, "score", "0")
-                .and_then([this, uuid, &event](const std::string& value) -> ll::Expected<void> { 
+                .and_then([this, uuid, &event](const std::string& value) -> ll::Expected<void> {
                     int score = SystemUtils::toInt(value, 0);
-                    if (score > 0) {
-                        ScoreboardUtils::addScore(event.self(), this->mImpl->options.TargetScoreboard, score);
+                    if (score <= 0)
+                        return {};
 
-                        return this->mImpl->db->set("Wallet", uuid, "score", "0");
-                    }
+                    if (this->mImpl->mSettling.contains(uuid))
+                        return {};
 
-                    return {};
+                    this->mImpl->mSettling[uuid] = true;
+                    auto guard = make_scope_guard([this, uuid]() -> void {
+                        this->mImpl->mSettling.erase(uuid);
+                    });
+
+                    return this->mImpl->db->set("Wallet", uuid, "score", "0")
+                        .transform([this, score, &event]() -> void {
+                            ScoreboardUtils::addScore(event.self(), this->mImpl->options.TargetScoreboard, score);
+                        });
                 })
                 .or_else(modules::defaultErrorHandler<WalletPlugin>);
         });
@@ -384,7 +405,7 @@ namespace LOICollection::server::Plugins {
 
             this->tryGrabRedEnvelope(event.self(), event.message())
                 .or_else([](ll::Error e) -> ll::Expected<void> {
-                    if (e.isA<ll::ErrorCodeError>() && e.as<ll::ErrorCodeError>().ec == makeErrorCode(WalletPluginErrorCode::NotFound))
+                    if (e.isA<ll::ErrorCodeError>())
                         return {};
 
                     return ll::Unexpected(e);
@@ -437,9 +458,15 @@ namespace LOICollection::server::Plugins {
 
         ScoreboardUtils::reduceScore(player, mScoreboard, score);
 
-        return this->transfer(target, static_cast<int>(score * (1 - this->mImpl->options.ExchangeRate)))
-            .transform([this, name, score, playerName = player.getRealName()]() -> bool {
+        int mTargetMoney = static_cast<int>(score * (1 - this->mImpl->options.ExchangeRate));
+
+        return this->transfer(target, mTargetMoney)
+            .transform([this, name, score, mTargetMoney, playerName = player.getRealName()]() -> bool {
                 this->getLogger()->info(fmt::runtime(tr({}, "wallet.log")), playerName, name, score);
+
+                long long fee = static_cast<long long>(score) - mTargetMoney;
+                if (fee > 0)
+                    this->accumulateFee(fee).or_else(modules::defaultErrorHandler<WalletPlugin>);
 
                 return true;
             });
@@ -462,72 +489,311 @@ namespace LOICollection::server::Plugins {
         if (it == this->mImpl->mRedEnvelopes.end())
             return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::NotFound));
 
-        std::string mObjectUuid = player.getUuid().asString();
-        std::string completedId;
+        std::string uuid = player.getUuid().asString();
 
-        for (auto& mObject : it->second) {
-            if (mObject.receivers.find(mObjectUuid) != mObject.receivers.end())
+        for (auto& entry : it->second) {
+            auto result = this->grabEnvelope(player, uuid, entry);
+            if (!result.has_value())
+                return ll::Unexpected(result.error());
+
+            if (result.value())
+                return {};
+        }
+
+        return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::RedEnvelopeCompleted));
+    }
+
+    int WalletPlugin::computeGiftAmount(int remainingCapacity, int remainingPeople) {
+        if (remainingCapacity <= 0)
+            return 0;
+
+        if (remainingPeople <= 1)
+            return remainingCapacity;
+
+        int upper = std::min(remainingCapacity - (remainingPeople - 1), (remainingCapacity / remainingPeople) * 2);
+        upper = std::max(upper, 1);
+
+        return ll::random_utils::rand(1, upper);
+    }
+
+    ll::Expected<bool> WalletPlugin::grabEnvelope(Player& player, const std::string& uuid, RedEnvelopeEntry& entry) {
+        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
+        if (!transaction.has_value())
+            return ll::Unexpected(transaction.error());
+
+        auto conn = transaction.value().connection();
+
+        auto data = this->mImpl->db->get(conn, "RedEnvelope", entry.id);
+        if (!data.has_value())
+            return ll::Unexpected(data.error());
+
+        auto m = data.value();
+        if (m.empty())
+            return false;
+
+        int capacity = SystemUtils::toInt(m["capacity"], 0);
+        int count = SystemUtils::toInt(m["count"], 0);
+        int people = SystemUtils::toInt(m["people"], 0);
+
+        if (people >= count)
+            return false;
+
+        std::string grabKey = entry.id + ":" + uuid;
+        auto grabbed = this->mImpl->db->has(conn, "RedEnvelopeGrab", grabKey);
+        if (!grabbed.has_value())
+            return ll::Unexpected(grabbed.error());
+
+        if (grabbed.value())
+            return false;
+
+        int remainingPeople = count - people;
+        bool last = remainingPeople == 1;
+        int amount = last ? capacity : this->computeGiftAmount(capacity, remainingPeople);
+        if (amount <= 0)
+            return false;
+
+        std::unordered_map<std::string, std::string> update = {
+            { "capacity", std::to_string(capacity - amount) },
+            { "people", std::to_string(people + 1) }
+        };
+
+        auto setEnv = this->mImpl->db->set(conn, "RedEnvelope", entry.id, update);
+        if (!setEnv.has_value())
+            return ll::Unexpected(setEnv.error());
+
+        auto setGrab = this->mImpl->db->set(conn, "RedEnvelopeGrab", grabKey, {
+            { "name", player.getRealName() },
+            { "amount", std::to_string(amount) }
+        });
+        if (!setGrab.has_value())
+            return ll::Unexpected(setGrab.error());
+
+        bool nowFull = (people + 1) >= count;
+        if (nowFull) {
+            auto delEnv = this->mImpl->db->del(conn, "RedEnvelope", entry.id);
+            if (!delEnv.has_value())
+                return ll::Unexpected(delEnv.error());
+        }
+
+        auto commit = transaction.value().commit();
+        if (!commit.has_value())
+            return ll::Unexpected(commit.error());
+
+        ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, amount);
+
+        this->broadcastReceive(entry, player, amount, people + 1);
+
+        if (amount > entry.kingAmount) {
+            entry.kingAmount = amount;
+            entry.kingUuid = uuid;
+            entry.kingName = player.getRealName();
+        }
+
+        if (nowFull) {
+            this->announceKing(entry);
+
+            auto& entries = this->mImpl->mRedEnvelopes[entry.chatKey];
+            entries.erase(std::remove_if(entries.begin(), entries.end(), [&entry](const RedEnvelopeEntry& e) -> bool {
+                return e.id == entry.id;
+            }), entries.end());
+        }
+
+        return true;
+    }
+
+    void WalletPlugin::broadcastContent(Player& sender, const std::string& key, const std::string& id, int score, int count) {
+        ll::service::getLevel()->forEachPlayer([&, score, count](Player& target) -> bool {
+            LanguagePlugin::getShared()->getLanguage(target)
+                .transform([&, score, count, &sender, id, key](const std::string& language) -> void {
+                    std::string mMessage = LOICollectionAPI::CallbackUtils::getInstance().translate(
+                        tr(language, "wallet.tips.redenvelope.content"), sender
+                    );
+
+                    TextPacket::createRawMessage(fmt::format(fmt::runtime(mMessage), 
+                        id, score, count, this->mImpl->options.RedEnvelopeTimeout, key
+                    )).sendTo(target);
+                })
+                .or_else(modules::defaultErrorHandler<WalletPlugin>);
+
+            return true;
+        });
+    }
+
+    void WalletPlugin::broadcastReceive(const RedEnvelopeEntry& entry, Player& player, int amount, int people) {
+        ll::service::getLevel()->forEachPlayer([&, amount, people](Player& target) -> bool {
+            LanguagePlugin::getShared()->getLanguage(target)
+                .transform([&, amount, people, &player, &entry, &target](const std::string& language) -> void {
+                    std::string mMessage = LOICollectionAPI::CallbackUtils::getInstance().translate(
+                        tr(language, "wallet.tips.redenvelope.receive"), player
+                    );
+
+                    TextPacket::createRawMessage(fmt::format(fmt::runtime(mMessage),
+                        entry.id, amount, people, entry.count
+                    )).sendTo(target);
+                })
+                .or_else(modules::defaultErrorHandler<WalletPlugin>);
+
+            return true;
+        });
+    }
+
+    void WalletPlugin::announceKing(RedEnvelopeEntry& entry) {
+        ll::service::getLevel()->forEachPlayer([&entry](Player& target) -> bool {
+            LanguagePlugin::getShared()->getLanguage(target)
+                .transform([&entry, &target](const std::string& language) -> void {
+                    TextPacket::createRawMessage(fmt::format(fmt::runtime(
+                        tr(language, "wallet.tips.redenvelope.receive.over")),
+                        entry.id, entry.kingName, entry.kingAmount
+                    )).sendTo(target);
+                })
+                .or_else(modules::defaultErrorHandler<WalletPlugin>);
+
+            return true;
+        });
+    }
+
+    ll::Expected<void> WalletPlugin::deleteEnvelope(const std::string& id) {
+        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
+        if (!transaction.has_value())
+            return ll::Unexpected(transaction.error());
+
+        auto conn = transaction.value().connection();
+
+        auto delEnv = this->mImpl->db->del(conn, "RedEnvelope", id);
+        if (!delEnv.has_value())
+            return ll::Unexpected(delEnv.error());
+
+        auto grabs = this->mImpl->db->list(conn, "RedEnvelopeGrab");
+        if (!grabs.has_value())
+            return ll::Unexpected(grabs.error());
+
+        std::string prefix = id + ":";
+        std::vector<std::string> keys;
+        for (const auto& grabKey : grabs.value()) {
+            if (grabKey.rfind(prefix, 0) == 0)
+                keys.emplace_back(grabKey);
+        }
+
+        if (!keys.empty()) {
+            auto delGrabs = this->mImpl->db->del(conn, "RedEnvelopeGrab", keys);
+            if (!delGrabs.has_value())
+                return ll::Unexpected(delGrabs.error());
+        }
+
+        auto commit = transaction.value().commit();
+        if (!commit.has_value())
+            return ll::Unexpected(commit.error());
+
+        return {};
+    }
+
+    ll::Expected<bool> WalletPlugin::refundEnvelope(const std::string& id) {
+        auto data = this->mImpl->db->get("RedEnvelope", id, "sender_uuid", "");
+        if (!data.has_value())
+            return ll::Unexpected(data.error());
+
+        if (data.value().empty())
+            return false;
+
+        auto capacity = this->mImpl->db->get("RedEnvelope", id, "capacity", "0");
+        if (!capacity.has_value())
+            return ll::Unexpected(capacity.error());
+
+        auto chatKey = this->mImpl->db->get("RedEnvelope", id, "chat_key", "");
+        if (!chatKey.has_value())
+            return ll::Unexpected(chatKey.error());
+
+        int remaining = SystemUtils::toInt(capacity.value(), 0);
+        if (remaining > 0) {
+            auto refund = this->transfer(data.value(), remaining);
+            if (!refund.has_value())
+                return ll::Unexpected(refund.error());
+        }
+
+        auto del = this->deleteEnvelope(id);
+        if (!del.has_value())
+            return ll::Unexpected(del.error());
+
+        auto it = this->mImpl->mRedEnvelopes.find(chatKey.value());
+        if (it != this->mImpl->mRedEnvelopes.end()) {
+            it->second.erase(std::remove_if(it->second.begin(), it->second.end(), [&id](const RedEnvelopeEntry& e) -> bool {
+                return e.id == id;
+            }), it->second.end());
+        }
+
+        return true;
+    }
+
+    ll::Expected<void> WalletPlugin::sweepExpiredEnvelopes() {
+        auto ids = this->mImpl->db->list("RedEnvelope");
+        if (!ids.has_value())
+            return ll::Unexpected(ids.error());
+
+        for (const auto& id : ids.value()) {
+            auto data = this->mImpl->db->get("RedEnvelope", id);
+            if (!data.has_value())
+                return ll::Unexpected(data.error());
+
+            auto m = data.value();
+            if (m.empty())
                 continue;
 
-            bool mLast = (mObject.people + 1) == mObject.count;
+            int people = SystemUtils::toInt(m["people"], 0);
+            int count = SystemUtils::toInt(m["count"], 0);
+            long long expireAt = SystemUtils::toLongLong(m["expire_at"], 0);
 
-            int remainingPeople = mObject.count - mObject.people;
-            int mTargetMoney = mLast ?
-                mObject.capacity :
-                ll::random_utils::rand(1, (mObject.capacity / remainingPeople) * 2);
+            long long now = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::system_clock::now().time_since_epoch()
+            ).count();
 
-            ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, mTargetMoney);
+            bool completed = people >= count;
+            bool expired = now > expireAt;
 
-            ll::service::getLevel()->forEachPlayer([mObject, mTargetMoney, &player](Player& target) -> bool {
-                LanguagePlugin::getShared()->getLanguage(target)
-                    .transform([mObject, mTargetMoney, &player, &target](const std::string& language) -> void {
-                        std::string mMessage = LOICollectionAPI::CallbackUtils::getInstance().translate(
-                            tr(language, "wallet.tips.redenvelope.receive"), player
-                        );
+            if (completed || expired) {
+                auto refund = this->refundEnvelope(id);
+                if (!refund.has_value())
+                    return ll::Unexpected(refund.error());
 
-                        TextPacket::createRawMessage(fmt::format(fmt::runtime(mMessage),
-                            mObject.id, mTargetMoney, (mObject.people + 1), mObject.count
-                        )).sendTo(target);
-                    })
-                    .or_else(modules::defaultErrorHandler<WalletPlugin>);
+                continue;
+            }
 
-                return true;
+            auto chatKey = m["chat_key"];
+            long long remain = expireAt - now;
+
+            this->mImpl->mRedEnvelopes[chatKey].push_back({
+                id,
+                chatKey,
+                m["sender_uuid"],
+                m["sender_name"],
+                count,
+                expireAt,
+                "",
+                "",
+                0
             });
 
-            mObject.people++;
-            mObject.capacity -= mTargetMoney;
-            mObject.receivers.insert({ mObjectUuid, mTargetMoney });
-            mObject.names.insert({ mObjectUuid, player.getRealName() });
+            this->mImpl->mTimerManager->schedule(id, std::chrono::nanoseconds(remain), [this, id]() -> void {
+                auto refund = this->refundEnvelope(id);
+                if (!refund.has_value()) {
+                    modules::defaultErrorHandler<WalletPlugin>(refund.error());
+                    return;
+                }
 
-            if (mLast) {
-                auto mKingIt = std::max_element(mObject.receivers.begin(), mObject.receivers.end(), [](const auto& a, const auto& b) {
-                    return a.second < b.second;
-                });
+                if (!refund.value())
+                    return;
 
-                ll::service::getLevel()->forEachPlayer([mObject, &mKingIt](Player& target) -> bool {
+                ll::service::getLevel()->forEachPlayer([id](Player& target) -> bool {
                     LanguagePlugin::getShared()->getLanguage(target)
-                        .transform([mObject, &mKingIt, &target](const std::string& language) -> void {
-                            TextPacket::createRawMessage(fmt::format(fmt::runtime(
-                                tr(language, "wallet.tips.redenvelope.receive.over")),
-                                mObject.id, mObject.names.at(mKingIt->first), mKingIt->second
-                            )).sendTo(target);
+                        .transform([id, &target](const std::string& language) -> void {
+                            TextPacket::createRawMessage(
+                                fmt::format(fmt::runtime(tr(language, "wallet.tips.redenvelope.timeout")), id)
+                            ).sendTo(target);
                         })
                         .or_else(modules::defaultErrorHandler<WalletPlugin>);
 
                     return true;
                 });
-
-                completedId = mObject.id;
-            }
-
-            break;
-        }
-
-        if (!completedId.empty()) {
-            auto& entries = it->second;
-            entries.erase(std::remove_if(entries.begin(), entries.end(), [&completedId](const RedEnvelopeEntry& entry) -> bool {
-                return entry.id == completedId;
-            }), entries.end());
+            });
         }
 
         return {};
@@ -580,63 +846,92 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
 
-        ScoreboardUtils::reduceScore(player, this->getTargetScoreboard(), score * count);
-        
-        std::string mObjectId = SystemUtils::getCurrentTimestamp();
+        if (count <= 0 || score <= 0)
+            return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
+
+        std::string uuid = player.getUuid().asString();
+
+        int total = score * count;
+        if (ScoreboardUtils::getScore(player, this->getTargetScoreboard()) < total)
+            return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
+
+        ScoreboardUtils::reduceScore(player, this->getTargetScoreboard(), total);
+
+        std::string id = SystemUtils::getCurrentTimestamp();
+
+        long long expire = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::system_clock::now().time_since_epoch()
+        ).count() + static_cast<long long>(this->mImpl->options.RedEnvelopeTimeout) * 1000000000LL;
+
+        std::unordered_map<std::string, std::string> env = {
+            { "chat_key", key },
+            { "sender_uuid", uuid },
+            { "sender_name", player.getRealName() },
+            { "capacity", std::to_string(total) },
+            { "count", std::to_string(count) },
+            { "people", "0" },
+            { "created_at", SystemUtils::getNowTime() },
+            { "expire_at", std::to_string(expire) }
+        };
+
+        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
+        if (!transaction.has_value()) {
+            ScoreboardUtils::addScore(player, this->getTargetScoreboard(), total);
+
+            return ll::Unexpected(transaction.error());
+        }
+
+        auto conn = transaction.value().connection();
+        auto setEnv = this->mImpl->db->set(conn, "RedEnvelope", id, env);
+        if (!setEnv.has_value()) {
+            ScoreboardUtils::addScore(player, this->getTargetScoreboard(), total);
+
+            return ll::Unexpected(setEnv.error());
+        }
+
+        auto commit = transaction.value().commit();
+        if (!commit.has_value()) {
+            ScoreboardUtils::addScore(player, this->getTargetScoreboard(), total);
+
+            return ll::Unexpected(commit.error());
+        }
 
         this->mImpl->mRedEnvelopes[key].push_back({
-            mObjectId,
-            player.getUuid().asString(),
-            {},
-            {},
+            id,
+            key,
+            uuid,
+            player.getRealName(),
             count,
-            score * count,
-            0,
+            expire,
+            "",
+            "",
+            0
         });
 
-        this->mImpl->mTimerManager->schedule(mObjectId, std::chrono::seconds(this->mImpl->options.RedEnvelopeTimeout), [this, key, mObjectId]() -> void {
-            auto& mEntries = this->mImpl->mRedEnvelopes[key];
-            auto mIt = std::find_if(mEntries.begin(), mEntries.end(), [mObjectId](RedEnvelopeEntry& entry) -> bool {
-                return entry.id  == mObjectId;
-            });
+        this->mImpl->mTimerManager->schedule(id, std::chrono::seconds(this->mImpl->options.RedEnvelopeTimeout), [this, id]() -> void {
+            auto refund = this->refundEnvelope(id);
+            if (!refund.has_value()) {
+                modules::defaultErrorHandler<WalletPlugin>(refund.error());
+                return;
+            }
 
-            if (mIt == mEntries.end())
+            if (!refund.value())
                 return;
 
-            this->transfer(mIt->sender, mIt->capacity).or_else(modules::defaultErrorHandler<WalletPlugin>);
-
-            ll::service::getLevel()->forEachPlayer([mObjectId](Player& target) -> bool {
+            ll::service::getLevel()->forEachPlayer([id](Player& target) -> bool {
                 LanguagePlugin::getShared()->getLanguage(target)
-                    .transform([mObjectId, &target](const std::string& language) -> void {
+                    .transform([id, &target](const std::string& language) -> void {
                         TextPacket::createRawMessage(
-                            fmt::format(fmt::runtime(tr(language, "wallet.tips.redenvelope.timeout")), mObjectId)
+                            fmt::format(fmt::runtime(tr(language, "wallet.tips.redenvelope.timeout")), id)
                         ).sendTo(target);
                     })
                     .or_else(modules::defaultErrorHandler<WalletPlugin>);
 
                 return true;
             });
-
-            mEntries.erase(std::remove_if(mEntries.begin(), mEntries.end(), [mObjectId](RedEnvelopeEntry& entry) -> bool {
-                return entry.id  == mObjectId;
-            }), mEntries.end());
         });
 
-        ll::service::getLevel()->forEachPlayer([&](Player& target) -> bool {
-            LanguagePlugin::getShared()->getLanguage(target)
-                .transform([&](const std::string& language) -> void {
-                    std::string mMessage = LOICollectionAPI::CallbackUtils::getInstance().translate(
-                        tr(language, "wallet.tips.redenvelope.content"), player
-                    );
-
-                    TextPacket::createRawMessage(fmt::format(fmt::runtime(mMessage), 
-                        mObjectId, score, count, this->mImpl->options.RedEnvelopeTimeout, key
-                    )).sendTo(target);
-                })
-                .or_else(modules::defaultErrorHandler<WalletPlugin>);
-
-            return true;
-        });
+        this->broadcastContent(player, key, id, score, count);
 
         return {};
     }
@@ -695,6 +990,28 @@ namespace LOICollection::server::Plugins {
             ctor("name");
             ctor("score");
         }).and_then([this]() -> ll::Expected<void> {
+            return this->mImpl->db->create("RedEnvelope", [](SQLiteStorage::ColumnCallback ctor) -> void {
+                ctor("chat_key");
+                ctor("sender_uuid");
+                ctor("sender_name");
+                ctor("capacity");
+                ctor("count");
+                ctor("people");
+                ctor("created_at");
+                ctor("expire_at");
+            });
+        }).and_then([this]() -> ll::Expected<void> {
+            return this->mImpl->db->create("RedEnvelopeGrab", [](SQLiteStorage::ColumnCallback ctor) -> void {
+                ctor("name");
+                ctor("amount");
+            });
+        }).and_then([this]() -> ll::Expected<void> {
+            return this->mImpl->db->create(WALLET_FEE_TABLE, [](SQLiteStorage::ColumnCallback ctor) -> void {
+                ctor(WALLET_FEE_COLUMN);
+            });
+        }).and_then([this]() -> ll::Expected<void> {
+            return this->sweepExpiredEnvelopes();
+        }).and_then([this]() -> ll::Expected<void> {
             return this->registeryUI();
         }).transform([this]() -> bool {
             this->registeryCommand();
@@ -712,18 +1029,44 @@ namespace LOICollection::server::Plugins {
 
         this->unlistenEvent();
 
-        for (auto& it : this->mImpl->mRedEnvelopes) {
-            for (auto& mObject : it.second) {
-                auto result = this->transfer(mObject.sender, mObject.capacity);
-                if (!result.has_value())
-                    return ll::Unexpected(result.error());
-            }
-        }
+        return this->mImpl->db->list("RedEnvelope")
+            .and_then([this](const std::vector<std::string>& ids) -> ll::Expected<void> {
+                for (const auto& id : ids) {
+                    auto result = this->refundEnvelope(id);
+                    if (!result.has_value())
+                        return ll::Unexpected(result.error());
+                }
 
-        this->mImpl->mRedEnvelopes.clear();
+                return {};
+            })
+            .transform([this]() -> bool {
+                this->mImpl->mRedEnvelopes.clear();
 
-        this->mImpl->mRegistered.store(false, std::memory_order_release);
+                this->mImpl->mRegistered.store(false, std::memory_order_release);
 
-        return true;
+                return true;
+            });
+    }
+
+    ll::Expected<long long> WalletPlugin::getFeePool() {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
+
+        return this->mImpl->db->get(WALLET_FEE_TABLE, "total", WALLET_FEE_COLUMN, "0")
+            .transform([](const std::string& value) -> long long {
+                return SystemUtils::toLongLong(value, 0);
+            });
+    }
+
+    ll::Expected<void> WalletPlugin::accumulateFee(long long amount) {
+        if (amount <= 0)
+            return {};
+
+        return this->mImpl->db->get(WALLET_FEE_TABLE, "total", WALLET_FEE_COLUMN, "0")
+            .and_then([this, amount](const std::string& value) -> ll::Expected<void> {
+                long long total = SystemUtils::toLongLong(value, 0);
+
+                return this->mImpl->db->set(WALLET_FEE_TABLE, "total", WALLET_FEE_COLUMN, std::to_string(total + amount));
+            });
     }
 }

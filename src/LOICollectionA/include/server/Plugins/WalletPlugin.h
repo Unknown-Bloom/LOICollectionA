@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 #include <ll/api/Expected.h>
 
@@ -26,7 +27,8 @@ namespace ll {
 namespace LOICollection::server::Plugins {
     enum class WalletPluginErrorCode : int {
         Invalid = 1,
-        NotFound = 2
+        NotFound = 2,
+        RedEnvelopeCompleted = 3
     };
 
     struct WalletPluginErrorCategory : std::error_category {
@@ -38,6 +40,7 @@ namespace LOICollection::server::Plugins {
             switch (static_cast<WalletPluginErrorCode>(ev)) {
                 case WalletPluginErrorCode::Invalid: return "Plugin is invalid";
                 case WalletPluginErrorCode::NotFound: return "Red envelope data not found";
+                case WalletPluginErrorCode::RedEnvelopeCompleted: return "Red envelope already completed";
                 default:
                     return "Unknown";
             }
@@ -75,6 +78,10 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI ll::Expected<void> wealth(Player& player);
         LOICOLLECTION_A_NDAPI ll::Expected<void> redenvelope(Player& player, const std::string& key, int score, int count);
 
+        LOICOLLECTION_A_NDAPI ll::Expected<long long> getFeePool();
+
+        LOICOLLECTION_A_NDAPI ll::Expected<void> sweepExpiredEnvelopes();
+
         LOICOLLECTION_A_NDAPI bool isValid();
 
     public:
@@ -100,6 +107,16 @@ namespace LOICollection::server::Plugins {
         void registeryCommand();
         void listenEvent();
         void unlistenEvent();
+
+        static int computeGiftAmount(int remainingCapacity, int remainingPeople);
+
+        ll::Expected<bool> grabEnvelope(Player& player, const std::string& uuid, struct RedEnvelopeEntry& entry);
+        void broadcastContent(Player& sender, const std::string& key, const std::string& id, int score, int count);
+        void broadcastReceive(const struct RedEnvelopeEntry& entry, Player& player, int amount, int people);
+        void announceKing(struct RedEnvelopeEntry& entry);
+        ll::Expected<void> deleteEnvelope(const std::string& id);
+        ll::Expected<bool> refundEnvelope(const std::string& id);
+        ll::Expected<void> accumulateFee(long long amount);
 
         struct RedEnvelopeEntry;
 
