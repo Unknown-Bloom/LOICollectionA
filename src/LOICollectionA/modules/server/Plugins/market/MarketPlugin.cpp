@@ -87,6 +87,7 @@ namespace LOICollection::server::Plugins {
 
     struct MarketPlugin::operation {
         int Days = 0;
+        std::string Rate;
     };
 
 
@@ -99,6 +100,9 @@ namespace LOICollection::server::Plugins {
         ll::ConcurrentDenseMap<std::string, bool> mSettling;
 
         LRUKCache<std::string, std::vector<std::string>> BlacklistCache;
+
+        std::atomic<double> mTaxRate{ 0.0 };
+        std::atomic<bool> mTaxRateLoaded{ false };
 
         std::atomic<bool> mRegistered{ false };
 
@@ -206,6 +210,33 @@ namespace LOICollection::server::Plugins {
                         output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.market.report.sellers")), report.activeSellers);
                     })
                     .or_else(modules::defaultErrorHandler<MarketPlugin>);
+            });
+        command.overload().text("tax").execute([this](CommandOrigin const& origin, CommandOutput& output) -> void {
+            if (origin.getPermissionsLevel() < CommandPermissionLevel::GameDirectors)
+                return output.error(tr(origin.getLocaleCode(), "commands.generic.permission"));
+
+            this->getTaxRate()
+                .transform([&origin, &output](double rate) -> void {
+                    output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.market.tax.show")), rate);
+                })
+                .or_else(modules::defaultErrorHandler<MarketPlugin>);
+        });
+        command.overload<operation>().text("tax").required("Rate").execute(
+            [this](CommandOrigin const& origin, CommandOutput& output, operation const& param) -> void {
+                if (origin.getPermissionsLevel() < CommandPermissionLevel::GameDirectors)
+                    return output.error(tr(origin.getLocaleCode(), "commands.generic.permission"));
+
+                double rate = SystemUtils::toDouble(param.Rate, -1.0);
+
+                this->setTaxRate(rate)
+                    .transform([&origin, &output, rate]() -> void {
+                        output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.market.tax.set")), rate);
+                    })
+                    .or_else([&origin, &output](ll::Error) -> ll::Expected<void> {
+                        output.error(tr(origin.getLocaleCode(), "commands.market.tax.invalid"));
+
+                        return {};
+                    });
             });
     }
 
@@ -387,12 +418,20 @@ namespace LOICollection::server::Plugins {
         if (!mItemStack || mItemStack.isNull())
             return false;
 
-        return this->addItem(player, mItemStack, name, icon, intr, score)
-            .transform([slot, &player]() -> bool {
-                player.mInventory->mInventory->removeItem(slot, 64);
-                player.refreshInventory();
+        std::string mName = name.empty() ? mItemStack.getName() : name;
 
-                return true;
+        return this->guardPriceCeiling(player, mName, score)
+            .and_then([this, &player, &mItemStack, &name, &icon, &intr, score, slot](bool allowed) -> ll::Expected<bool> {
+                if (!allowed)
+                    return false;
+
+                return this->addItem(player, mItemStack, name, icon, intr, score)
+                    .transform([&player, slot]() -> bool {
+                        player.mInventory->mInventory->removeItem(slot, 64);
+                        player.refreshInventory();
+
+                        return true;
+                    });
             });
     }
 
@@ -914,7 +953,13 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
 
-        return this->mImpl->mStore->uploadStoreItem(player, slot, name, icon, intr, score);
+        return this->guardPriceCeiling(player, name, score)
+            .and_then([this, &player, slot, &name, &icon, &intr, score](bool allowed) -> ll::Expected<bool> {
+                if (!allowed)
+                    return false;
+
+                return this->mImpl->mStore->uploadStoreItem(player, slot, name, icon, intr, score);
+            });
     }
 
     ll::Expected<bool> MarketPlugin::offshelfStoreItem(Player& player, const std::string& id, bool returnItem) {
@@ -953,6 +998,73 @@ namespace LOICollection::server::Plugins {
         return static_cast<int>(std::floor(price * rate));
     }
 
+    bool MarketPlugin::isPriceAboveCeiling(int price, int referencePrice, double ratio) {
+        if (ratio <= 0.0 || referencePrice <= 0)
+            return false;
+
+        return static_cast<double>(price) > static_cast<double>(referencePrice) * ratio;
+    }
+
+    ll::Expected<double> MarketPlugin::getTaxRate() {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
+
+        if (this->mImpl->mTaxRateLoaded.load(std::memory_order_acquire))
+            return this->mImpl->mTaxRate.load(std::memory_order_relaxed);
+
+        return this->mImpl->db2->get("MarketTax", "rate", "rate", "")
+            .transform([this](const std::string& value) -> double {
+                double rate = value.empty()
+                    ? this->mImpl->options.StoreTransactionTaxRate
+                    : SystemUtils::toDouble(value, this->mImpl->options.StoreTransactionTaxRate);
+
+                this->mImpl->mTaxRate.store(rate, std::memory_order_relaxed);
+                this->mImpl->mTaxRateLoaded.store(true, std::memory_order_release);
+
+                return rate;
+            });
+    }
+
+    ll::Expected<void> MarketPlugin::setTaxRate(double rate) {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
+
+        if (rate < 0.0 || rate > 1.0)
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::TaxRateInvalid));
+
+        return this->mImpl->db2->set("MarketTax", "rate", "rate", std::to_string(rate))
+            .transform([this, rate]() -> void {
+                this->mImpl->mTaxRate.store(rate, std::memory_order_relaxed);
+                this->mImpl->mTaxRateLoaded.store(true, std::memory_order_release);
+            });
+    }
+
+    ll::Expected<bool> MarketPlugin::guardPriceCeiling(Player& player, const std::string& itemName, int price) {
+        if (!this->isValid())
+            return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
+
+        double ratio = this->mImpl->options.StorePriceCeilingRatio;
+        if (ratio <= 0.0)
+            return true;
+
+        return this->getQuote(itemName)
+            .and_then([&player, price, ratio](std::optional<QuoteInfo> quote) -> ll::Expected<bool> {
+                if (!quote.has_value())
+                    return true;
+
+                int reference = quote->avg30d > 0 ? quote->avg30d : quote->lastPrice;
+                if (!isPriceAboveCeiling(price, reference, ratio))
+                    return true;
+
+                return LanguagePlugin::getShared()->getLanguage(player)
+                    .transform([&player, reference](const std::string& language) -> bool {
+                        player.sendMessage(fmt::format(fmt::runtime(tr(language, "market.gui.price.ceiling")), reference));
+
+                        return false;
+                    });
+            });
+    }
+
     ll::Expected<std::optional<QuoteInfo>> MarketPlugin::getQuote(const std::string& itemName) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
@@ -985,7 +1097,13 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
 
-        return this->mImpl->mWanted->createWanted(player, slot, name, unitPrice, amount);
+        return this->guardPriceCeiling(player, name, unitPrice)
+            .and_then([this, &player, slot, &name, unitPrice, amount](bool allowed) -> ll::Expected<bool> {
+                if (!allowed)
+                    return false;
+
+                return this->mImpl->mWanted->createWanted(player, slot, name, unitPrice, amount);
+            });
     }
 
     ll::Expected<bool> MarketPlugin::cancelWanted(Player& player, const std::string& id) {
@@ -1027,7 +1145,13 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
 
-        return this->mImpl->mAuction->createAuction(player, slot, name, startPrice, durationSeconds);
+        return this->guardPriceCeiling(player, name, startPrice)
+            .and_then([this, &player, slot, &name, startPrice, durationSeconds](bool allowed) -> ll::Expected<bool> {
+                if (!allowed)
+                    return false;
+
+                return this->mImpl->mAuction->createAuction(player, slot, name, startPrice, durationSeconds);
+            });
     }
 
     ll::Expected<bool> MarketPlugin::bidAuction(Player& player, const std::string& id, int price) {
@@ -1112,6 +1236,11 @@ namespace LOICollection::server::Plugins {
         this->mImpl->mGuiWantedPath = (mGuiPath / "market_wanted.lcui").string();
         this->mImpl->mGuiAuctionPath = (mGuiPath / "market_auction.lcui").string();
 
+        auto taxRateProvider = [this]() -> double {
+            auto rate = this->getTaxRate();
+            return rate.has_value() ? rate.value() : this->mImpl->options.StoreTransactionTaxRate;
+        };
+
         this->mImpl->mStore = std::make_unique<MarketStore>(
             this->mImpl->db,
             this->mImpl->db2,
@@ -1120,7 +1249,8 @@ namespace LOICollection::server::Plugins {
             *this->mImpl->mTimerManager,
             [this](const std::string& target) -> ll::Expected<std::vector<std::string>> {
                 return this->getBlacklist(target);
-            }
+            },
+            taxRateProvider
         );
         this->mImpl->mQuote = std::make_unique<MarketQuote>(
             this->mImpl->db,
@@ -1136,7 +1266,8 @@ namespace LOICollection::server::Plugins {
             *this->mImpl->mTimerManager,
             [this](const std::string& target) -> ll::Expected<std::vector<std::string>> {
                 return this->getBlacklist(target);
-            }
+            },
+            taxRateProvider
         );
         this->mImpl->mAuction = std::make_unique<MarketAuction>(
             this->mImpl->db,
@@ -1146,7 +1277,8 @@ namespace LOICollection::server::Plugins {
             *this->mImpl->mTimerManager,
             [this](const std::string& target) -> ll::Expected<std::vector<std::string>> {
                 return this->getBlacklist(target);
-            }
+            },
+            taxRateProvider
         );
         this->mImpl->mGui = std::make_unique<MarketGui>();
 
@@ -1168,6 +1300,9 @@ namespace LOICollection::server::Plugins {
         this->mImpl->logger.reset();
         this->mImpl->options = {};
 
+        this->mImpl->mTaxRate.store(0.0, std::memory_order_relaxed);
+        this->mImpl->mTaxRateLoaded.store(false, std::memory_order_release);
+
         if (this->mImpl->mRegistered.load(std::memory_order_acquire))
             this->unlistenEvent();
 
@@ -1184,6 +1319,7 @@ namespace LOICollection::server::Plugins {
         }).and_then([this]() -> ll::Expected<void> {
             return this->mImpl->db2->create("MarketTax", [](SQLiteStorage::ColumnCallback ctor) -> void {
                 ctor("total");
+                ctor("rate");
             });
         }).and_then([this]() -> ll::Expected<void> {
             return this->getDatabase()->create("Item", [](SQLiteStorage::ColumnCallback ctor) -> void {

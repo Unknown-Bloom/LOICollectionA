@@ -54,6 +54,7 @@ namespace LOICollection::server::Plugins {
         std::shared_ptr<ll::io::Logger> logger;
         TimerManager& timerManager;
         BlacklistProvider blacklistProvider;
+        TaxRateProvider taxRateProvider;
 
         Impl(
             std::shared_ptr<SQLiteStorage> db_,
@@ -61,13 +62,19 @@ namespace LOICollection::server::Plugins {
             const Config::C_Market& options_,
             std::shared_ptr<ll::io::Logger> logger_,
             TimerManager& timerManager_,
-            BlacklistProvider blacklistProvider_
+            BlacklistProvider blacklistProvider_,
+            TaxRateProvider taxRateProvider_
         ) : db(std::move(db_)),
             settingsDb(std::move(settingsDb_)),
             options(options_),
             logger(std::move(logger_)),
             timerManager(timerManager_),
-            blacklistProvider(std::move(blacklistProvider_)) {}
+            blacklistProvider(std::move(blacklistProvider_)),
+            taxRateProvider(std::move(taxRateProvider_)) {}
+
+        double effectiveTaxRate() const {
+            return taxRateProvider ? taxRateProvider() : options.StoreTransactionTaxRate;
+        }
     };
 
     ll::Expected<void> MarketWanted::createTables() {
@@ -249,7 +256,7 @@ namespace LOICollection::server::Plugins {
                         int unitPrice = SystemUtils::toInt(data.at("unit_price"), 0);
                         long long mPay = static_cast<long long>(unitPrice) * amount;
                         int pay = static_cast<int>(mPay);
-                        int tax = static_cast<int>(std::floor(pay * this->mImpl->options.StoreTransactionTaxRate));
+                        int tax = static_cast<int>(std::floor(pay * this->mImpl->effectiveTaxRate()));
                         int sellerAmount = pay - tax;
 
                         return this->commitWantedFill(id, data, amount, pay, tax, player)
@@ -505,14 +512,16 @@ namespace LOICollection::server::Plugins {
         const Config::C_Market& options,
         std::shared_ptr<ll::io::Logger> logger,
         TimerManager& timerManager,
-        BlacklistProvider blacklistProvider
+        BlacklistProvider blacklistProvider,
+        TaxRateProvider taxRateProvider
     ) : mImpl(std::make_unique<Impl>(
             std::move(db),
             std::move(settingsDb),
             options,
             std::move(logger),
             timerManager,
-            std::move(blacklistProvider)
+            std::move(blacklistProvider),
+            std::move(taxRateProvider)
         )) {}
 
     MarketWanted::~MarketWanted() = default;

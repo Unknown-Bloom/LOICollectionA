@@ -98,6 +98,10 @@ protected:
         Config::C_Market config = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Market;
         if (config.StoreEnabled)
             MarketPlugin::getShared()->startStoreRankRefresh();
+
+        auto taxRate = MarketPlugin::getShared()->getTaxRate();
+        if (taxRate.has_value() && taxRate.value() != config.StoreTransactionTaxRate)
+            EXPECT_TRUE(MarketPlugin::getShared()->setTaxRate(config.StoreTransactionTaxRate).has_value());
     }
 
     Config::C_Market GetMarketConfig() {
@@ -1282,6 +1286,83 @@ TEST(MarketQuoteOutlierTest, OutlierDisabled) {
     EXPECT_FALSE(MarketQuote::isPriceOutlier(100.0, 100000, 0.0));
     EXPECT_FALSE(MarketQuote::isPriceOutlier(100.0, 100000, -1.0));
     EXPECT_FALSE(MarketQuote::isPriceOutlier(0.0, 100000, 2.0));
+}
+
+// ---- 经济治理（阶段 4）：价格上限判定纯函数 ----
+TEST(MarketPriceCeilingTest, IsPriceAboveCeiling) {
+    EXPECT_FALSE(MarketPlugin::isPriceAboveCeiling(150, 100, 2.0));
+    EXPECT_FALSE(MarketPlugin::isPriceAboveCeiling(200, 100, 2.0));
+    EXPECT_TRUE(MarketPlugin::isPriceAboveCeiling(201, 100, 2.0));
+    EXPECT_TRUE(MarketPlugin::isPriceAboveCeiling(100000, 100, 2.0));
+    EXPECT_FALSE(MarketPlugin::isPriceAboveCeiling(50, 100, 2.0));
+}
+
+TEST(MarketPriceCeilingTest, CeilingDisabled) {
+    EXPECT_FALSE(MarketPlugin::isPriceAboveCeiling(100000, 100, 0.0));
+    EXPECT_FALSE(MarketPlugin::isPriceAboveCeiling(100000, 100, -1.0));
+    EXPECT_FALSE(MarketPlugin::isPriceAboveCeiling(100000, 0, 2.0));
+}
+
+// ---- 经济治理（阶段 4）：运行时税率持久化与边界 ----
+TEST_F(MarketPluginTest, RuntimeTaxRatePersist) {
+    auto original = MarketPlugin::getShared()->getTaxRate();
+    ASSERT_TRUE(original.has_value());
+
+    auto invalidLow = MarketPlugin::getShared()->setTaxRate(-0.1);
+    ASSERT_FALSE(invalidLow.has_value());
+
+    auto invalidHigh = MarketPlugin::getShared()->setTaxRate(1.5);
+    ASSERT_FALSE(invalidHigh.has_value());
+
+    auto set = MarketPlugin::getShared()->setTaxRate(0.05);
+    ASSERT_TRUE(set.has_value());
+
+    auto rate = MarketPlugin::getShared()->getTaxRate();
+    ASSERT_TRUE(rate.has_value());
+    EXPECT_DOUBLE_EQ(rate.value(), 0.05);
+
+    auto stored = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB")->get("MarketTax", "rate", "rate", "");
+    ASSERT_TRUE(stored.has_value());
+    EXPECT_DOUBLE_EQ(SystemUtils::toDouble(stored.value(), -1.0), 0.05);
+
+    auto restore = MarketPlugin::getShared()->setTaxRate(original.value());
+    ASSERT_TRUE(restore.has_value());
+}
+
+TEST_F(MarketPluginTest, RuntimeTaxRateBoundaryValues) {
+    auto original = MarketPlugin::getShared()->getTaxRate();
+    ASSERT_TRUE(original.has_value());
+
+    auto zero = MarketPlugin::getShared()->setTaxRate(0.0);
+    ASSERT_TRUE(zero.has_value());
+
+    auto rateZero = MarketPlugin::getShared()->getTaxRate();
+    ASSERT_TRUE(rateZero.has_value());
+    EXPECT_DOUBLE_EQ(rateZero.value(), 0.0);
+
+    auto full = MarketPlugin::getShared()->setTaxRate(1.0);
+    ASSERT_TRUE(full.has_value());
+
+    auto rateFull = MarketPlugin::getShared()->getTaxRate();
+    ASSERT_TRUE(rateFull.has_value());
+    EXPECT_DOUBLE_EQ(rateFull.value(), 1.0);
+
+    auto restore = MarketPlugin::getShared()->setTaxRate(original.value());
+    ASSERT_TRUE(restore.has_value());
+}
+
+// ---- 经济治理（阶段 4）：价格上限默认关闭时上架直通 ----
+TEST_F(MarketPluginTest, PriceCeilingDisabledByDefault) {
+    Config::C_Market config = GetMarketConfig();
+    if (config.StorePriceCeilingRatio > 0.0)
+        GTEST_SKIP();
+
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(sp);
+
+    auto allowed = MarketPlugin::getShared()->guardPriceCeiling(*sp, "ceiling_probe", 999999);
+    ASSERT_TRUE(allowed.has_value());
+    EXPECT_TRUE(allowed.value());
 }
 
 // ---- 行情（阶段 1）：成交后行情聚合、成交量排行、报表税收 ----

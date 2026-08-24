@@ -30,6 +30,7 @@ namespace LOICollection::server::Plugins {
     class MarketStore {
     public:
         using BlacklistProvider = std::function<ll::Expected<std::vector<std::string>>(const std::string&)>;
+        using TaxRateProvider = std::function<double()>;
 
         MarketStore(
             std::shared_ptr<SQLiteStorage> db,
@@ -37,7 +38,8 @@ namespace LOICollection::server::Plugins {
             const Config::C_Market& options,
             std::shared_ptr<ll::io::Logger> logger,
             TimerManager& timerManager,
-            BlacklistProvider blacklistProvider
+            BlacklistProvider blacklistProvider,
+            TaxRateProvider taxRateProvider = nullptr
         );
 
         ~MarketStore();

@@ -54,7 +54,8 @@ namespace LOICollection::server::Plugins {
         AuctionBidTooLow = 15,
         AuctionOutbidRefundFailed = 16,
         CompensationRequired = 17,
-        AuctionNotFound = 18
+        AuctionNotFound = 18,
+        TaxRateInvalid = 19
     };
 
     struct MarketPluginErrorCategory : std::error_category {
@@ -82,6 +83,7 @@ namespace LOICollection::server::Plugins {
                 case MarketPluginErrorCode::AuctionOutbidRefundFailed: return "Failed to refund the outbid bidder";
                 case MarketPluginErrorCode::CompensationRequired: return "Game state update failed after commit, compensation required";
                 case MarketPluginErrorCode::AuctionNotFound: return "Auction not found";
+                case MarketPluginErrorCode::TaxRateInvalid: return "Tax rate must be between 0.0 and 1.0";
                 default:
                     return "Unknown";
             }
@@ -187,6 +189,13 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI static double computeStoreScore(const StoreScoreInput& input, const Config::C_Market& options);
 
         LOICOLLECTION_A_NDAPI static int computeTax(int price, double rate);
+
+        LOICOLLECTION_A_NDAPI static bool isPriceAboveCeiling(int price, int referencePrice, double ratio);
+
+        LOICOLLECTION_A_NDAPI ll::Expected<double> getTaxRate();
+        LOICOLLECTION_A_NDAPI ll::Expected<void> setTaxRate(double rate);
+
+        LOICOLLECTION_A_NDAPI ll::Expected<bool> guardPriceCeiling(Player& player, const std::string& itemName, int price);
 
         LOICOLLECTION_A_NDAPI bool isValid();
 

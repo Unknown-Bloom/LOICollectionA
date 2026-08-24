@@ -15,6 +15,7 @@ namespace SystemUtils {
 
     int toInt(const std::string& str, int defaultValue = 0);
     long long toLongLong(const std::string& str, long long defaultValue = 0);
+    double toDouble(const std::string& str, double defaultValue = 0.0);
         
     bool isPastOrPresent(const std::string& str);
 }

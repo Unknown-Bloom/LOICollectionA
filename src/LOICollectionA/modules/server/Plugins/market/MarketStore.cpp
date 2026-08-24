@@ -63,6 +63,7 @@ namespace LOICollection::server::Plugins {
         std::shared_ptr<ll::io::Logger> logger;
         TimerManager& timerManager;
         BlacklistProvider blacklistProvider;
+        TaxRateProvider taxRateProvider;
         LRUKCache<std::string, std::vector<std::string>> rankCache;
 
         Impl(
@@ -71,14 +72,20 @@ namespace LOICollection::server::Plugins {
             const Config::C_Market& options_,
             std::shared_ptr<ll::io::Logger> logger_,
             TimerManager& timerManager_,
-            BlacklistProvider blacklistProvider_
+            BlacklistProvider blacklistProvider_,
+            TaxRateProvider taxRateProvider_
         ) : db(std::move(db_)),
             settingsDb(std::move(settingsDb_)),
             options(options_),
             logger(std::move(logger_)),
             timerManager(timerManager_),
             blacklistProvider(std::move(blacklistProvider_)),
+            taxRateProvider(std::move(taxRateProvider_)),
             rankCache(100, 100) {}
+
+        double effectiveTaxRate() const {
+            return taxRateProvider ? taxRateProvider() : options.StoreTransactionTaxRate;
+        }
     };
 
     ll::Expected<void> MarketStore::createTables() {
@@ -602,7 +609,7 @@ namespace LOICollection::server::Plugins {
                                         });
                                 }
 
-                                int tax = static_cast<int>(std::floor(mScore * this->mImpl->options.StoreTransactionTaxRate));
+                                int tax = static_cast<int>(std::floor(mScore * this->mImpl->effectiveTaxRate()));
                                 int sellerAmount = mScore - tax;
 
                                 return this->commitStoreSale(player, id, data, storeId, ownerUuid, tax, remainingData)
@@ -921,14 +928,16 @@ namespace LOICollection::server::Plugins {
         const Config::C_Market& options,
         std::shared_ptr<ll::io::Logger> logger,
         TimerManager& timerManager,
-        BlacklistProvider blacklistProvider
+        BlacklistProvider blacklistProvider,
+        TaxRateProvider taxRateProvider
     ) : mImpl(std::make_unique<Impl>(
             std::move(db),
             std::move(settingsDb),
             options,
             std::move(logger),
             timerManager,
-            std::move(blacklistProvider)
+            std::move(blacklistProvider),
+            std::move(taxRateProvider)
         )) {}
 
     MarketStore::~MarketStore() = default;

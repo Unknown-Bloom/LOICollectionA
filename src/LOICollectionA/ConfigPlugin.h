@@ -125,6 +125,7 @@ namespace Config {
         bool StoreQuoteEnabled = true;
         int StoreQuoteRefreshMinutes = 30;
         double StoreTransactionTaxRate = 0.0;
+        double StorePriceCeilingRatio = 0.0;
 
         bool StoreWantedEnabled = true;
         int StoreWantedMaxPerPlayer = 5;
