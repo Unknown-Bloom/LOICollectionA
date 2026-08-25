@@ -24,7 +24,6 @@
 #include "LOICollectionA/ConfigPlugin.h"
 
 #include "LOICollectionA/include/server/Plugins/wallet/WalletGui.h"
-#include "LOICollectionA/include/server/Plugins/wallet/WalletGuiDetail.h"
 #include "LOICollectionA/include/server/Plugins/wallet/WalletPlugin.h"
 
 using I18nUtilsTools::tr;
@@ -159,8 +158,8 @@ namespace LOICollection::server::Plugins {
 
                 if (code == WalletPluginErrorCode::BelowMinimum || code == WalletPluginErrorCode::DailyLimitExceeded || code == WalletPluginErrorCode::CooldownActive) {
                     return LanguagePlugin::getShared()->getLanguage(player)
-                        .and_then([ec = result.error().as<ll::ErrorCodeError>().ec, &player](const std::string& language) -> ll::Expected<frontend::ArrayRef> {
-                            player.sendMessage(walletGui::walletLimitMessage(language, ec));
+                        .and_then([ec = result.error().as<ll::ErrorCodeError>().ec, &player](const std::string&) -> ll::Expected<frontend::ArrayRef> {
+                            player.sendMessage(ec.message());
 
                             auto fail = std::make_shared<frontend::ArrayValue>();
                             fail->elements.emplace_back(false);
@@ -206,8 +205,8 @@ namespace LOICollection::server::Plugins {
             auto result = owner.forTransfer(player, uuid, name, money, true);
             if (!result.has_value()) {
                 return LanguagePlugin::getShared()->getLanguage(player)
-                    .and_then([ec = result.error().as<ll::ErrorCodeError>().ec, &player](const std::string& language) -> ll::Expected<void> {
-                        player.sendMessage(walletGui::walletLimitMessage(language, ec));
+                    .and_then([ec = result.error().as<ll::ErrorCodeError>().ec, &player](const std::string&) -> ll::Expected<void> {
+                        player.sendMessage(ec.message());
 
                         return {};
                     });
@@ -286,8 +285,8 @@ namespace LOICollection::server::Plugins {
             auto result = owner.redenvelope(player, key, score, count, targets);
             if (!result.has_value()) {
                 return LanguagePlugin::getShared()->getLanguage(player)
-                    .and_then([ec = result.error().as<ll::ErrorCodeError>().ec, &player, values](const std::string& language) -> ll::Expected<frontend::ArrayRef> {
-                        player.sendMessage(walletGui::walletLimitMessage(language, ec));
+                    .and_then([ec = result.error().as<ll::ErrorCodeError>().ec, &player, values](const std::string&) -> ll::Expected<frontend::ArrayRef> {
+                        player.sendMessage(ec.message());
 
                         values->elements.emplace_back(false);
                         return values;
@@ -360,8 +359,8 @@ namespace LOICollection::server::Plugins {
             auto result = owner.bankDeposit(player, amount);
             if (!result.has_value()) {
                 return LanguagePlugin::getShared()->getLanguage(player)
-                    .and_then([ec = result.error().as<ll::ErrorCodeError>().ec, &player, values](const std::string& language) -> ll::Expected<frontend::ArrayRef> {
-                        player.sendMessage(walletGui::walletLimitMessage(language, ec));
+                    .and_then([ec = result.error().as<ll::ErrorCodeError>().ec, &player, values](const std::string&) -> ll::Expected<frontend::ArrayRef> {
+                        player.sendMessage(ec.message());
 
                         values->elements.emplace_back(false);
                         return values;
@@ -378,8 +377,8 @@ namespace LOICollection::server::Plugins {
             auto result = owner.bankWithdraw(player);
             if (!result.has_value()) {
                 return LanguagePlugin::getShared()->getLanguage(player)
-                    .and_then([ec = result.error().as<ll::ErrorCodeError>().ec, &player, values](const std::string& language) -> ll::Expected<frontend::ArrayRef> {
-                        player.sendMessage(walletGui::walletLimitMessage(language, ec));
+                    .and_then([ec = result.error().as<ll::ErrorCodeError>().ec, &player, values](const std::string&) -> ll::Expected<frontend::ArrayRef> {
+                        player.sendMessage(ec.message());
 
                         values->elements.emplace_back(false);
                         return values;

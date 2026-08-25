@@ -243,8 +243,14 @@
 [Server] wallet:
 [Server] LOICollection -> 个人钱包
 [Server] Usage:
+[Server] - /wallet bank
 [Server] - /wallet gui
+[Server] - /wallet history
+[Server] - /wallet query <PlayerName: string>
+[Server] - /wallet rank
+[Server] - /wallet rinfo <EnvelopeId: string>
 [Server] - /wallet reload
+[Server] - /wallet rstat
 [Server] - /wallet transfer <Target: target> <Score: int>
 [Server] - /wallet wealth
 ```
@@ -252,11 +258,31 @@
 > [!TIP]
 > 其中 `wallet` 为 Wallet 的顶层命令（权限等级: Any）。
 
+- `/wallet bank`
+  - 打开银行储蓄 GUI（存款、取款、利息查询）。
+
 - `/wallet gui`
   - 打开个人钱包 GUI。
 
+- `/wallet history`
+  - 查看自己最近 20 条资金流水（转账、红包、银行）。
+
+- `/wallet query <PlayerName: string>`
+  - 查询指定玩家最近 50 条资金流水（权限等级: GameDirectors）。
+  - 其中 `<PlayerName: string>` 为目标玩家名称。
+
+- `/wallet rank`
+  - 打开财富排行榜 GUI。
+
+- `/wallet rinfo <EnvelopeId: string>`
+  - 查询指定红包的领取明细与手气王。
+  - 其中 `<EnvelopeId: string>` 为红包 ID。
+
 - `/wallet reload`
   - 重新加载（重新编译）个人钱包 GUI（权限等级: GameDirectors）。
+
+- `/wallet rstat`
+  - 查看今日全局红包统计（红包数、总金额、最豪发送者、手气王）。
 
 - `/wallet transfer <Target: target> <Score: int>`
   - 向目标转账。

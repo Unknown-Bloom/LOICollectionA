@@ -106,7 +106,16 @@
                 "TransferMinAmount": 1, // 最低转账额，低于该值拒绝（0 = 不限）
                 "TransferDailyLimit": 0, // 单日累计转账上限（含手续费），0 = 不限
                 "TransferConfirmThreshold": 1000, // 大额转账确认阈值，超过需 GUI 二次确认（0 = 不需确认）
-                "TransferCooldownSeconds": 0 // 两次转账最小间隔（秒），0 = 无冷却
+                "TransferCooldownSeconds": 0, // 两次转账最小间隔（秒），0 = 无冷却
+                "WealthTopSize": 50, // 财富排行榜容量（单位为个）
+                "WealthRefreshMinutes": 10, // 财富排行榜刷新间隔（单位为分钟）
+                "WalletBankEnabled": true, // 是否启用银行储蓄
+                "WalletBankMinDeposit": 10, // 最低存款额，低于该值拒绝
+                "WalletBankDailyRate": 0.0005, // 银行日利率（单利，按天计息）
+                "WalletInterestTaxRate": 0.1, // 利息税率（从利息中扣除进入钱池）
+                "WalletInterestFromPool": true, // 利息优先从手续费钱池支付（钱池不足时按比例降发）
+                "RedEnvelopeTargetedEnabled": true, // 是否启用定向红包
+                "RedEnvelopeMaxCount": 100 // 单个红包最大份数
             },
             "Chat": { // 聊天强化配置
                 "ModuleEnabled": false, // 是否启用聊天强化

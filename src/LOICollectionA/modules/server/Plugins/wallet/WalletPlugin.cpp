@@ -65,7 +65,6 @@
 #include "LOICollectionA/include/server/Plugins/wallet/WalletRedEnvelope.h"
 #include "LOICollectionA/include/server/Plugins/wallet/WalletBank.h"
 #include "LOICollectionA/include/server/Plugins/wallet/WalletGui.h"
-#include "LOICollectionA/include/server/Plugins/wallet/WalletGuiDetail.h"
 
 using I18nUtilsTools::tr;
 
@@ -413,215 +412,6 @@ namespace LOICollection::server::Plugins {
         this->mImpl->options = options;
     }
 
-    std::string WalletPlugin::getName() {
-        return "WalletPlugin";
-    }
-
-    modules::ModulePriority WalletPlugin::getPriority() {
-        return modules::ModulePriority::High;
-    }
-
-    ll::Expected<bool> WalletPlugin::load() {
-        if (!ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Wallet.ModuleEnabled)
-            return false;
-
-        this->mImpl->db = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
-        this->mImpl->logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
-        this->mImpl->options = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Wallet;
-        this->mImpl->mGuiPath = (std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("GuiPath")->data()) / "wallet.lcui").string();
-
-        this->mImpl->mLedger = std::make_unique<WalletLedger>(
-            this->mImpl->db,
-            this->mImpl->options,
-            this->mImpl->logger,
-            *this->mImpl->mTimerManager
-        );
-        this->mImpl->mRedEnvelope = std::make_unique<WalletRedEnvelope>(
-            this->mImpl->db,
-            this->mImpl->options,
-            this->mImpl->logger,
-            *this->mImpl->mTimerManager,
-            *this->mImpl->mLedger,
-            [this](const std::string& target, int score) -> ll::Expected<void> {
-                return this->transfer(target, score);
-            }
-        );
-        this->mImpl->mBank = std::make_unique<WalletBank>(
-            this->mImpl->db,
-            this->mImpl->options,
-            this->mImpl->logger,
-            *this->mImpl->mTimerManager,
-            *this->mImpl->mLedger
-        );
-        this->mImpl->mGui = std::make_unique<WalletGui>();
-
-        return true;
-    }
-
-    ll::Expected<bool> WalletPlugin::unload() {
-        if (!this->mImpl->options.ModuleEnabled)
-            return false;
-
-        this->mImpl->mLedger.reset();
-        this->mImpl->mRedEnvelope.reset();
-        this->mImpl->mBank.reset();
-        this->mImpl->mGui.reset();
-
-        this->mImpl->db.reset();
-        this->mImpl->logger.reset();
-        this->mImpl->options = {};
-
-        if (this->mImpl->mRegistered.load(std::memory_order_acquire))
-            this->unlistenEvent();
-
-        return true;
-    }
-
-    ll::Expected<bool> WalletPlugin::registry() {
-        if (!this->mImpl->options.ModuleEnabled)
-            return false;
-
-        return this->mImpl->db->create("Wallet", [](SQLiteStorage::ColumnCallback ctor) -> void {
-            ctor("name");
-            ctor("score");
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->mLedger->createTables();
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->mRedEnvelope->createTables();
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->mBank->createTables();
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->mRedEnvelope->sweepExpired();
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->registeryUI();
-        }).transform([this]() -> bool {
-            this->registeryCommand();
-            this->listenEvent();
-
-            this->mImpl->mLedger->startCleanupSchedule();
-
-            this->mImpl->mBank->rebuildWealthRanking().or_else(modules::defaultErrorHandler<WalletPlugin>);
-            this->mImpl->mBank->startWealthRefresh();
-
-            this->mImpl->mRegistered.store(true, std::memory_order_release);
-
-            return true;
-        });
-    }
-
-    ll::Expected<bool> WalletPlugin::unregistry() {
-        if (!this->mImpl->options.ModuleEnabled)
-            return false;
-
-        this->unlistenEvent();
-
-        return this->mImpl->mRedEnvelope->refundAll()
-            .transform([this]() -> bool {
-                this->mImpl->mRegistered.store(false, std::memory_order_release);
-
-                return true;
-            });
-    }
-
-    void WalletPlugin::listenEvent() {
-        ll::event::EventBus& eventBus = ll::event::EventBus::getInstance();
-        this->mImpl->PlayerJoinEventListener = eventBus.emplaceListener<ll::event::PlayerJoinEvent>([this](ll::event::PlayerJoinEvent& event) mutable -> void {
-            if (event.self().isSimulatedPlayer())
-                return;
-
-            std::string uuid = event.self().getUuid().asString();
-
-            this->mImpl->db->has("Wallet", uuid)
-                .and_then([this, uuid, name = event.self().getRealName()](bool exists) -> ll::Expected<void> {
-                    if (!exists) {
-                        std::unordered_map<std::string, std::string> data = {
-                            { "name", name },
-                            { "score", "0" },
-                            { "balance", "0" }
-                        };
-
-                        return this->mImpl->db->set("Wallet", uuid, data);
-                    }
-
-                    return {};
-                })
-                .or_else(modules::defaultErrorHandler<WalletPlugin>);
-
-            this->mImpl->db->get("Wallet", uuid, "score", "0")
-                .and_then([this, uuid, &event](const std::string& value) -> ll::Expected<void> {
-                    int score = SystemUtils::toInt(value, 0);
-                    if (score <= 0) {
-                        this->updateBalanceSnapshot(uuid, ScoreboardUtils::getScore(event.self(), this->mImpl->options.TargetScoreboard))
-                            .or_else(modules::defaultErrorHandler<WalletPlugin>);
-
-                        return {};
-                    }
-
-                    if (this->mImpl->mSettling.contains(uuid))
-                        return {};
-
-                    this->mImpl->mSettling[uuid] = true;
-                    auto guard = make_scope_guard([this, uuid]() -> void {
-                        this->mImpl->mSettling.erase(uuid);
-                    });
-
-                    return this->mImpl->db->set("Wallet", uuid, "score", "0")
-                        .transform([this, uuid, score, &event]() -> void {
-                            ScoreboardUtils::addScore(event.self(), this->mImpl->options.TargetScoreboard, score);
-
-                            this->updateBalanceSnapshot(uuid, ScoreboardUtils::getScore(event.self(), this->mImpl->options.TargetScoreboard))
-                                .or_else(modules::defaultErrorHandler<WalletPlugin>);
-                        });
-                })
-                .or_else(modules::defaultErrorHandler<WalletPlugin>);
-        });
-        this->mImpl->PlayerChatEventListener = eventBus.emplaceListener<ll::event::PlayerChatEvent>([this](ll::event::PlayerChatEvent& event) mutable -> void {
-            if (event.self().isSimulatedPlayer())
-                return;
-
-            this->tryGrabRedEnvelope(event.self(), event.message())
-                .or_else([&event](ll::Error e) -> ll::Expected<void> {
-                    if (e.isA<ll::ErrorCodeError>() && e.as<ll::ErrorCodeError>().ec == makeErrorCode(WalletPluginErrorCode::NotInTargetList)) {
-                        return LanguagePlugin::getShared()->getLanguage(event.self())
-                            .and_then([&event](const std::string& language) -> ll::Expected<void> {
-                                event.self().sendMessage(tr(language, "wallet.redenvelope.not.target"));
-
-                                return {};
-                            });
-                    }
-
-                    return ll::Unexpected(e);
-                })
-                .or_else(modules::defaultErrorHandler<WalletPlugin>);
-        }, ll::event::EventPriority::High);
-        this->mImpl->PlayerDisconnectEventListener = eventBus.emplaceListener<ll::event::PlayerDisconnectEvent>([this](ll::event::PlayerDisconnectEvent& event) mutable -> void {
-            if (event.self().isSimulatedPlayer())
-                return;
-
-            this->updateBalanceSnapshot(event.self().getUuid().asString(), ScoreboardUtils::getScore(event.self(), this->mImpl->options.TargetScoreboard))
-                .or_else(modules::defaultErrorHandler<WalletPlugin>);
-        });
-        this->mImpl->WalletTransferEventListener = eventBus.emplaceListener<LOICollection::server::Events::WalletTransferEvent>([this](LOICollection::server::Events::WalletTransferEvent& event) mutable -> void {
-            this->mImpl->logger->info(fmt::runtime(tr({}, "wallet.event.transfer")),
-                event.getType(), event.getFromName(), event.getToName(), event.getAmount(), event.getFee());
-        });
-        this->mImpl->RedEnvelopeCompletedEventListener = eventBus.emplaceListener<LOICollection::server::Events::RedEnvelopeCompletedEvent>([this](LOICollection::server::Events::RedEnvelopeCompletedEvent& event) mutable -> void {
-            this->mImpl->logger->info(fmt::runtime(tr({}, "wallet.event.envelope")),
-                event.getEnvelopeId(), event.getKingName(), event.getKingAmount(), event.getTotal());
-        });
-    }
-
-    void WalletPlugin::unlistenEvent() {
-        ll::event::EventBus& eventBus = ll::event::EventBus::getInstance();
-        eventBus.removeListener(this->mImpl->PlayerJoinEventListener);
-        eventBus.removeListener(this->mImpl->PlayerChatEventListener);
-        eventBus.removeListener(this->mImpl->PlayerDisconnectEventListener);
-        eventBus.removeListener(this->mImpl->WalletTransferEventListener);
-        eventBus.removeListener(this->mImpl->RedEnvelopeCompletedEventListener);
-
-        this->mImpl->mTimerManager->cancelAll();
-    }
-
     void WalletPlugin::registeryCommand() {
         ll::command::CommandHandle& command = ll::command::CommandRegistrar::getInstance(false)
             .getOrCreateCommand("wallet", tr({}, "commands.wallet.description"), CommandPermissionLevel::Any, CommandFlagValue::NotCheat | CommandFlagValue::Async);
@@ -647,7 +437,7 @@ namespace LOICollection::server::Plugins {
                 int mMoney = param.Score * static_cast<int>(results.size());
                 if (this->mImpl->options.TransferDailyLimit > 0 || this->mImpl->options.TransferCooldownSeconds > 0) {
                     if (auto verification = this->validateTransfer(player.getUuid().asString(), mMoney); !verification.has_value())
-                        return output.error(walletGui::walletLimitMessage(origin.getLocaleCode(), verification.error().as<ll::ErrorCodeError>().ec));
+                        return output.error(verification.error().message(origin.getLocaleCode()));
                 }
 
                 if (ScoreboardUtils::getScore(player, mScoreboard) < mMoney || param.Score < 0)
@@ -818,6 +608,215 @@ namespace LOICollection::server::Plugins {
         return form::GUIManager::getInstance().load("wallet", this->mImpl->mGuiPath)
             .and_then([this]() -> ll::Expected<void> {
                 return this->mImpl->mGui->registerAll(*this);
+            });
+    }
+
+    void WalletPlugin::listenEvent() {
+        ll::event::EventBus& eventBus = ll::event::EventBus::getInstance();
+        this->mImpl->PlayerJoinEventListener = eventBus.emplaceListener<ll::event::PlayerJoinEvent>([this](ll::event::PlayerJoinEvent& event) mutable -> void {
+            if (event.self().isSimulatedPlayer())
+                return;
+
+            std::string uuid = event.self().getUuid().asString();
+
+            this->mImpl->db->has("Wallet", uuid)
+                .and_then([this, uuid, name = event.self().getRealName()](bool exists) -> ll::Expected<void> {
+                    if (!exists) {
+                        std::unordered_map<std::string, std::string> data = {
+                            { "name", name },
+                            { "score", "0" },
+                            { "balance", "0" }
+                        };
+
+                        return this->mImpl->db->set("Wallet", uuid, data);
+                    }
+
+                    return {};
+                })
+                .or_else(modules::defaultErrorHandler<WalletPlugin>);
+
+            this->mImpl->db->get("Wallet", uuid, "score", "0")
+                .and_then([this, uuid, &event](const std::string& value) -> ll::Expected<void> {
+                    int score = SystemUtils::toInt(value, 0);
+                    if (score <= 0) {
+                        this->updateBalanceSnapshot(uuid, ScoreboardUtils::getScore(event.self(), this->mImpl->options.TargetScoreboard))
+                            .or_else(modules::defaultErrorHandler<WalletPlugin>);
+
+                        return {};
+                    }
+
+                    if (this->mImpl->mSettling.contains(uuid))
+                        return {};
+
+                    this->mImpl->mSettling[uuid] = true;
+                    auto guard = make_scope_guard([this, uuid]() -> void {
+                        this->mImpl->mSettling.erase(uuid);
+                    });
+
+                    return this->mImpl->db->set("Wallet", uuid, "score", "0")
+                        .transform([this, uuid, score, &event]() -> void {
+                            ScoreboardUtils::addScore(event.self(), this->mImpl->options.TargetScoreboard, score);
+
+                            this->updateBalanceSnapshot(uuid, ScoreboardUtils::getScore(event.self(), this->mImpl->options.TargetScoreboard))
+                                .or_else(modules::defaultErrorHandler<WalletPlugin>);
+                        });
+                })
+                .or_else(modules::defaultErrorHandler<WalletPlugin>);
+        });
+        this->mImpl->PlayerChatEventListener = eventBus.emplaceListener<ll::event::PlayerChatEvent>([this](ll::event::PlayerChatEvent& event) mutable -> void {
+            if (event.self().isSimulatedPlayer())
+                return;
+
+            this->tryGrabRedEnvelope(event.self(), event.message())
+                .or_else([&event](ll::Error e) -> ll::Expected<void> {
+                    if (e.isA<ll::ErrorCodeError>() && e.as<ll::ErrorCodeError>().ec == makeErrorCode(WalletPluginErrorCode::NotInTargetList)) {
+                        return LanguagePlugin::getShared()->getLanguage(event.self())
+                            .and_then([&event](const std::string& language) -> ll::Expected<void> {
+                                event.self().sendMessage(tr(language, "wallet.redenvelope.not.target"));
+
+                                return {};
+                            });
+                    }
+
+                    return ll::Unexpected(e);
+                })
+                .or_else(modules::defaultErrorHandler<WalletPlugin>);
+        }, ll::event::EventPriority::High);
+        this->mImpl->PlayerDisconnectEventListener = eventBus.emplaceListener<ll::event::PlayerDisconnectEvent>([this](ll::event::PlayerDisconnectEvent& event) mutable -> void {
+            if (event.self().isSimulatedPlayer())
+                return;
+
+            this->updateBalanceSnapshot(event.self().getUuid().asString(), ScoreboardUtils::getScore(event.self(), this->mImpl->options.TargetScoreboard))
+                .or_else(modules::defaultErrorHandler<WalletPlugin>);
+        });
+        this->mImpl->WalletTransferEventListener = eventBus.emplaceListener<LOICollection::server::Events::WalletTransferEvent>([this](LOICollection::server::Events::WalletTransferEvent& event) mutable -> void {
+            this->mImpl->logger->info(fmt::runtime(tr({}, "wallet.event.transfer")),
+                event.getType(), event.getFromName(), event.getToName(), event.getAmount(), event.getFee());
+        });
+        this->mImpl->RedEnvelopeCompletedEventListener = eventBus.emplaceListener<LOICollection::server::Events::RedEnvelopeCompletedEvent>([this](LOICollection::server::Events::RedEnvelopeCompletedEvent& event) mutable -> void {
+            this->mImpl->logger->info(fmt::runtime(tr({}, "wallet.event.envelope")),
+                event.getEnvelopeId(), event.getKingName(), event.getKingAmount(), event.getTotal());
+        });
+    }
+
+    void WalletPlugin::unlistenEvent() {
+        ll::event::EventBus& eventBus = ll::event::EventBus::getInstance();
+        eventBus.removeListener(this->mImpl->PlayerJoinEventListener);
+        eventBus.removeListener(this->mImpl->PlayerChatEventListener);
+        eventBus.removeListener(this->mImpl->PlayerDisconnectEventListener);
+        eventBus.removeListener(this->mImpl->WalletTransferEventListener);
+        eventBus.removeListener(this->mImpl->RedEnvelopeCompletedEventListener);
+
+        this->mImpl->mTimerManager->cancelAll();
+    }
+
+    std::string WalletPlugin::getName() {
+        return "WalletPlugin";
+    }
+
+    modules::ModulePriority WalletPlugin::getPriority() {
+        return modules::ModulePriority::High;
+    }
+
+    ll::Expected<bool> WalletPlugin::load() {
+        if (!ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Wallet.ModuleEnabled)
+            return false;
+
+        this->mImpl->db = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+        this->mImpl->logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
+        this->mImpl->options = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Wallet;
+        this->mImpl->mGuiPath = (std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("GuiPath")->data()) / "wallet.lcui").string();
+
+        this->mImpl->mLedger = std::make_unique<WalletLedger>(
+            this->mImpl->db,
+            this->mImpl->options,
+            this->mImpl->logger,
+            *this->mImpl->mTimerManager
+        );
+        this->mImpl->mRedEnvelope = std::make_unique<WalletRedEnvelope>(
+            this->mImpl->db,
+            this->mImpl->options,
+            this->mImpl->logger,
+            *this->mImpl->mTimerManager,
+            *this->mImpl->mLedger,
+            [this](const std::string& target, int score) -> ll::Expected<void> {
+                return this->transfer(target, score);
+            }
+        );
+        this->mImpl->mBank = std::make_unique<WalletBank>(
+            this->mImpl->db,
+            this->mImpl->options,
+            this->mImpl->logger,
+            *this->mImpl->mTimerManager,
+            *this->mImpl->mLedger
+        );
+        this->mImpl->mGui = std::make_unique<WalletGui>();
+
+        return true;
+    }
+
+    ll::Expected<bool> WalletPlugin::unload() {
+        if (!this->mImpl->options.ModuleEnabled)
+            return false;
+
+        this->mImpl->mLedger.reset();
+        this->mImpl->mRedEnvelope.reset();
+        this->mImpl->mBank.reset();
+        this->mImpl->mGui.reset();
+
+        this->mImpl->db.reset();
+        this->mImpl->logger.reset();
+        this->mImpl->options = {};
+
+        if (this->mImpl->mRegistered.load(std::memory_order_acquire))
+            this->unlistenEvent();
+
+        return true;
+    }
+
+    ll::Expected<bool> WalletPlugin::registry() {
+        if (!this->mImpl->options.ModuleEnabled)
+            return false;
+
+        return this->mImpl->db->create("Wallet", [](SQLiteStorage::ColumnCallback ctor) -> void {
+            ctor("name");
+            ctor("score");
+        }).and_then([this]() -> ll::Expected<void> {
+            return this->mImpl->mLedger->createTables();
+        }).and_then([this]() -> ll::Expected<void> {
+            return this->mImpl->mRedEnvelope->createTables();
+        }).and_then([this]() -> ll::Expected<void> {
+            return this->mImpl->mBank->createTables();
+        }).and_then([this]() -> ll::Expected<void> {
+            return this->mImpl->mRedEnvelope->sweepExpired();
+        }).and_then([this]() -> ll::Expected<void> {
+            return this->registeryUI();
+        }).transform([this]() -> bool {
+            this->registeryCommand();
+            this->listenEvent();
+
+            this->mImpl->mLedger->startCleanupSchedule();
+
+            this->mImpl->mBank->rebuildWealthRanking().or_else(modules::defaultErrorHandler<WalletPlugin>);
+            this->mImpl->mBank->startWealthRefresh();
+
+            this->mImpl->mRegistered.store(true, std::memory_order_release);
+
+            return true;
+        });
+    }
+
+    ll::Expected<bool> WalletPlugin::unregistry() {
+        if (!this->mImpl->options.ModuleEnabled)
+            return false;
+
+        this->unlistenEvent();
+
+        return this->mImpl->mRedEnvelope->refundAll()
+            .transform([this]() -> bool {
+                this->mImpl->mRegistered.store(false, std::memory_order_release);
+
+                return true;
             });
     }
 }
