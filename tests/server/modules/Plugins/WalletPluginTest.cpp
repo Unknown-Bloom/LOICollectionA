@@ -25,7 +25,7 @@
 
 #include "LOICollectionA/ConfigPlugin.h"
 
-#include "LOICollectionA/include/server/Plugins/WalletPlugin.h"
+#include "LOICollectionA/include/server/Plugins/wallet/WalletPlugin.h"
 
 #include "LOICollectionA/include/server/Events/modules/WalletTransferEvent.h"
 

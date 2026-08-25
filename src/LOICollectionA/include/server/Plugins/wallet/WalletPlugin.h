@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 #include <unordered_map>
 
@@ -67,7 +68,7 @@ namespace LOICollection::server::Plugins {
         }
     };
 
-    class WalletPlugin : public std::enable_shared_from_this<WalletPlugin>, 
+    class WalletPlugin : public std::enable_shared_from_this<WalletPlugin>,
                          public modules::ModuleBase,
                          public modules::AutoRegister<WalletPlugin> {
     public:
@@ -76,7 +77,7 @@ namespace LOICollection::server::Plugins {
         WalletPlugin(WalletPlugin const&) = delete;
         WalletPlugin(WalletPlugin&&) = delete;
         WalletPlugin& operator=(WalletPlugin const&) = delete;
-        WalletPlugin& operator=(WalletPlugin&&) = delete;    
+        WalletPlugin& operator=(WalletPlugin&&) = delete;
 
     public:
         LOICOLLECTION_A_NDAPI static std::shared_ptr<WalletPlugin> getShared();
@@ -84,28 +85,38 @@ namespace LOICollection::server::Plugins {
 
         LOICOLLECTION_A_NDAPI std::shared_ptr<ll::io::Logger> getLogger();
 
+        LOICOLLECTION_A_NDAPI const Config::C_Wallet& getOptions() const;
+
+        LOICOLLECTION_A_NDAPI bool isValid();
+
+    public:
         LOICOLLECTION_A_NDAPI ll::Expected<std::string> getPlayerInfo(const std::string& uuid);
 
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<std::string, std::string>>> getPlayerInfo();
 
+        LOICOLLECTION_A_NDAPI ll::Expected<void> updateBalanceSnapshot(const std::string& uuid, long long balance);
+
+    public:
         LOICOLLECTION_A_NDAPI ll::Expected<bool> forTransfer(Player& player, const std::string& target, const std::string& name, int score, bool confirmed = false);
 
-        LOICOLLECTION_A_NDAPI ll::Expected<void> setExecutor(const ll::coro::Executor& executor);
+        LOICOLLECTION_A_NDAPI ll::Expected<void> transfer(const std::string& target, int score);
 
+        LOICOLLECTION_A_NDAPI ll::Expected<void> wealth(Player& player);
+
+    public:
         LOICOLLECTION_A_NDAPI ll::Expected<void> tryGrabRedEnvelope(Player& player, const std::string& message);
 
-        LOICOLLECTION_A_NDAPI ll::Expected<void> transfer(const std::string& target, int score);
-        LOICOLLECTION_A_NDAPI ll::Expected<void> wealth(Player& player);
         LOICOLLECTION_A_NDAPI ll::Expected<void> redenvelope(Player& player, const std::string& key, int score, int count, const std::vector<std::string>& targets = {});
 
-        LOICOLLECTION_A_NDAPI ll::Expected<long long> getFeePool();
+        LOICOLLECTION_A_NDAPI ll::Expected<void> sweepExpiredEnvelopes();
 
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getEnvelopeStats(const std::string& id);
 
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getRedEnvelopeDailyStats();
 
-        LOICOLLECTION_A_NDAPI ll::Expected<void> sweepExpiredEnvelopes();
+        LOICOLLECTION_A_NDAPI static int computeGiftAmount(int remainingCapacity, int remainingPeople);
 
+    public:
         LOICOLLECTION_A_NDAPI ll::Expected<void> bankDeposit(Player& player, int amount);
 
         LOICOLLECTION_A_NDAPI ll::Expected<void> bankWithdraw(Player& player);
@@ -114,15 +125,22 @@ namespace LOICollection::server::Plugins {
 
         LOICOLLECTION_A_NDAPI ll::Expected<long long> getBankInterest(const std::string& uuid);
 
+    public:
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<std::string, long long>>> getWealthRanking(int limit);
 
         LOICOLLECTION_A_NDAPI ll::Expected<std::pair<int, long long>> getWealthRank(const std::string& uuid);
 
         LOICOLLECTION_A_NDAPI ll::Expected<void> rebuildWealthRanking();
 
-        LOICOLLECTION_A_NDAPI ll::Expected<void> updateBalanceSnapshot(const std::string& uuid, long long balance);
+    public:
+        LOICOLLECTION_A_NDAPI ll::Expected<long long> getFeePool();
 
-        LOICOLLECTION_A_NDAPI bool isValid();
+        LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getPlayerLedger(const std::string& uuid, int limit);
+
+        LOICOLLECTION_A_NDAPI ll::Expected<void> sendHistory(Player& receiver, const std::string& uuid, const std::string& name, int limit);
+
+    public:
+        LOICOLLECTION_A_NDAPI ll::Expected<void> setExecutor(const ll::coro::Executor& executor);
 
     public:
         LOICOLLECTION_A_NDAPI std::string getTargetScoreboard();
@@ -130,8 +148,6 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI double getExchangeRate();
 
         LOICOLLECTION_A_NDAPI void setOptionsForTest(const Config::C_Wallet& options);
-
-        static int computeGiftAmount(int remainingCapacity, int remainingPeople);
 
     public:
         LOICOLLECTION_A_NDAPI std::string getName() override;
@@ -144,9 +160,6 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_API   ll::Expected<bool> unregistry() override;
 
     private:
-        struct RedEnvelopeEntry;
-        struct WealthEntry;
-
         struct operation;
 
         struct operationQuery;
@@ -163,30 +176,8 @@ namespace LOICollection::server::Plugins {
         void listenEvent();
         void unlistenEvent();
 
-        ll::Expected<bool> grabEnvelope(Player& player, const std::string& uuid, struct RedEnvelopeEntry& entry);
-        void broadcastContent(Player& sender, const std::string& key, const std::string& id, int score, int count);
-        void broadcastReceive(const struct RedEnvelopeEntry& entry, Player& player, int amount, int people);
-        void announceKing(struct RedEnvelopeEntry& entry);
-        ll::Expected<void> deleteEnvelope(const std::string& id);
-        ll::Expected<bool> refundEnvelope(const std::string& id);
-        ll::Expected<void> accumulateFee(long long amount);
-        void emitWalletTransfer(const std::string& fromUuid, const std::string& fromName, const std::string& toUuid, const std::string& toName, long long amount, long long fee, const std::string& type);
-        ll::Expected<std::vector<std::string>> resolveTargetUuids(const std::vector<std::string>& names);
-
-        ll::Expected<void> appendLedger(const std::string& fromUuid, const std::string& fromName, const std::string& toUuid, const std::string& toName, long long amount, long long fee, const std::string& type);
-        ll::Expected<std::vector<std::string>> getPlayerLedger(const std::string& uuid, int limit);
-        void scheduleLedgerCleanup();
-        void cleanupLedger();
-        ll::Expected<void> sendHistory(Player& receiver, const std::string& uuid, const std::string& name, int limit);
-
         ll::Expected<void> validateTransfer(const std::string& uuid, int spend);
-        long long getTodayOutgoing(const std::string& uuid);
         void updateTransferCooldown(const std::string& uuid);
-
-        ll::Expected<long long> computeBankInterest(const std::string& uuid, long long principal, long long depositAt);
-
-        ll::Expected<std::vector<WealthEntry>> computeWealthRanking();
-        void scheduleWealthRefresh();
 
         std::unique_ptr<Impl> mImpl;
     };

@@ -1,18 +1,95 @@
-#include "LOICollectionA/include/server/Plugins/wallet/WalletDetail.h"
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
+#include <unordered_map>
+
+#include <ll/api/Expected.h>
+#include <ll/api/service/Bedrock.h>
+
+#include <mc/deps/core/string/HashedString.h>
+
+#include <mc/world/level/Level.h>
+#include <mc/world/actor/player/Player.h>
+
+#include "LOICollectionA/coro/TimerManager.h"
+
+#include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
+#include "LOICollectionA/utils/core/SystemUtils.h"
+
+#include "LOICollectionA/data/SQLiteStorage.h"
+
+#include "LOICollectionA/ConfigPlugin.h"
+
+#include "LOICollectionA/include/server/Plugins/wallet/WalletBank.h"
+#include "LOICollectionA/include/server/Plugins/wallet/WalletLedger.h"
+#include "LOICollectionA/include/server/Plugins/wallet/WalletType.h"
+#include "LOICollectionA/include/server/Plugins/wallet/WalletPlugin.h"
 
 namespace LOICollection::server::Plugins {
-    ll::Expected<void> WalletPlugin::bankDeposit(Player& player, int amount) {
+    struct WalletBank::Impl {
+        std::shared_ptr<SQLiteStorage> db;
+        const Config::C_Wallet& options;
+        std::shared_ptr<ll::io::Logger> logger;
+        TimerManager& timerManager;
+
+        WalletLedger& ledger;
+
+        mutable std::mutex mRankMutex;
+        std::vector<WealthEntry> mWealthRank;
+        std::unordered_map<std::string, size_t> mRankOf;
+
+        Impl(
+            std::shared_ptr<SQLiteStorage> db_,
+            const Config::C_Wallet& options_,
+            std::shared_ptr<ll::io::Logger> logger_,
+            TimerManager& timerManager_,
+            WalletLedger& ledger_
+        ) : db(std::move(db_)),
+            options(options_),
+            logger(std::move(logger_)),
+            timerManager(timerManager_),
+            ledger(ledger_) {}
+    };
+
+    WalletBank::WalletBank(
+        std::shared_ptr<SQLiteStorage> db,
+        const Config::C_Wallet& options,
+        std::shared_ptr<ll::io::Logger> logger,
+        TimerManager& timerManager,
+        WalletLedger& ledger
+    ) : mImpl(std::make_unique<Impl>(std::move(db), options, std::move(logger), timerManager, ledger)) {}
+
+    WalletBank::~WalletBank() = default;
+
+    bool WalletBank::isValid() const {
+        return this->mImpl->db != nullptr;
+    }
+
+    ll::Expected<void> WalletBank::createTables() {
+        return this->mImpl->db->create("WalletBank", [](SQLiteStorage::ColumnCallback ctor) -> void {
+            ctor("principal");
+            ctor("deposit_at");
+            ctor("name");
+        });
+    }
+
+    ll::Expected<void> WalletBank::deposit(Player& player, int amount) {
         if (!this->isValid())
-            return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
+            return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
         if (amount <= 0 || (this->mImpl->options.WalletBankMinDeposit > 0 && amount < this->mImpl->options.WalletBankMinDeposit))
-            return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::BelowMinDeposit));
+            return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::BelowMinDeposit));
 
         std::string uuid = player.getUuid().asString();
         std::string mScoreboard = this->mImpl->options.TargetScoreboard;
 
         if (ScoreboardUtils::getScore(player, mScoreboard) < amount)
-            return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
+            return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
         ScoreboardUtils::reduceScore(player, mScoreboard, amount);
 
@@ -56,18 +133,19 @@ namespace LOICollection::server::Plugins {
             return ll::Unexpected(commit.error());
         }
 
-        this->appendLedger(uuid, player.getRealName(), "", "", amount, 0, "bank_deposit")
-            .or_else(modules::defaultErrorHandler<WalletPlugin>);
+        this->mImpl->ledger.record(uuid, player.getRealName(), "", "", amount, 0, "bank_deposit");
 
-        this->emitWalletTransfer(uuid, player.getRealName(), "", "", amount, 0, "bank_deposit");
+        this->mImpl->db->set("Wallet", uuid, "balance", std::to_string(static_cast<long long>(ScoreboardUtils::getScore(player, mScoreboard))))
+            .or_else([this](ll::Error e) -> ll::Expected<void> {
+                e.log(*this->mImpl->logger);
 
-        this->updateBalanceSnapshot(uuid, static_cast<long long>(ScoreboardUtils::getScore(player, mScoreboard)))
-            .or_else(modules::defaultErrorHandler<WalletPlugin>);
+                return {};
+            });
 
         return {};
     }
 
-    ll::Expected<long long> WalletPlugin::computeBankInterest(const std::string& uuid, long long principal, long long depositAt) {
+    ll::Expected<long long> WalletBank::computeInterest(const std::string& uuid, long long principal, long long depositAt) {
         if (principal <= 0)
             return 0;
 
@@ -80,9 +158,9 @@ namespace LOICollection::server::Plugins {
         ));
     }
 
-    ll::Expected<void> WalletPlugin::bankWithdraw(Player& player) {
+    ll::Expected<void> WalletBank::withdraw(Player& player) {
         if (!this->isValid())
-            return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
+            return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
         std::string uuid = player.getUuid().asString();
 
@@ -92,12 +170,12 @@ namespace LOICollection::server::Plugins {
 
         auto row = data.value();
         if (row.empty() || !row.contains("principal") || SystemUtils::toLongLong(row.at("principal"), 0) <= 0)
-            return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::BankEmpty));
+            return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::BankEmpty));
 
         long long principal = SystemUtils::toLongLong(row.at("principal"), 0);
         long long depositAt = row.contains("deposit_at") ? SystemUtils::toLongLong(row.at("deposit_at"), 0) : 0;
 
-        auto interest = this->computeBankInterest(uuid, principal, depositAt);
+        auto interest = this->computeInterest(uuid, principal, depositAt);
         if (!interest.has_value())
             return ll::Unexpected(interest.error());
 
@@ -154,27 +232,24 @@ namespace LOICollection::server::Plugins {
 
         std::string playerName = player.getRealName();
 
-        this->appendLedger(uuid, playerName, "", "", principal, 0, "bank_withdraw")
-            .or_else(modules::defaultErrorHandler<WalletPlugin>);
+        this->mImpl->ledger.record(uuid, playerName, "", "", principal, 0, "bank_withdraw");
 
         if (paidInterest > 0)
-            this->appendLedger("", "", uuid, playerName, paidInterest, interestTax, "bank_interest")
-                .or_else(modules::defaultErrorHandler<WalletPlugin>);
+            this->mImpl->ledger.record("", "", uuid, playerName, paidInterest, interestTax, "bank_interest");
 
-        this->emitWalletTransfer(uuid, playerName, "", "", principal, 0, "bank_withdraw");
+        this->mImpl->db->set("Wallet", uuid, "balance", std::to_string(static_cast<long long>(ScoreboardUtils::getScore(player, this->mImpl->options.TargetScoreboard))))
+            .or_else([this](ll::Error e) -> ll::Expected<void> {
+                e.log(*this->mImpl->logger);
 
-        if (paidInterest > 0)
-            this->emitWalletTransfer("", "", uuid, playerName, paidInterest, interestTax, "bank_interest");
-
-        this->updateBalanceSnapshot(uuid, static_cast<long long>(ScoreboardUtils::getScore(player, this->mImpl->options.TargetScoreboard)))
-            .or_else(modules::defaultErrorHandler<WalletPlugin>);
+                return {};
+            });
 
         return {};
     }
 
-    ll::Expected<long long> WalletPlugin::getBankPrincipal(const std::string& uuid) {
+    ll::Expected<long long> WalletBank::getPrincipal(const std::string& uuid) {
         if (!this->isValid())
-            return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
+            return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
         return this->mImpl->db->get("WalletBank", uuid, "principal", "0")
             .transform([](const std::string& value) -> long long {
@@ -182,9 +257,9 @@ namespace LOICollection::server::Plugins {
             });
     }
 
-    ll::Expected<long long> WalletPlugin::getBankInterest(const std::string& uuid) {
+    ll::Expected<long long> WalletBank::getInterest(const std::string& uuid) {
         if (!this->isValid())
-            return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
+            return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
         return this->mImpl->db->get("WalletBank", uuid)
             .and_then([this, uuid](std::unordered_map<std::string, std::string> row) -> ll::Expected<long long> {
@@ -194,11 +269,11 @@ namespace LOICollection::server::Plugins {
                 long long principal = SystemUtils::toLongLong(row.at("principal"), 0);
                 long long depositAt = row.contains("deposit_at") ? SystemUtils::toLongLong(row.at("deposit_at"), 0) : 0;
 
-                return this->computeBankInterest(uuid, principal, depositAt);
+                return this->computeInterest(uuid, principal, depositAt);
             });
     }
 
-    ll::Expected<std::vector<WalletPlugin::WealthEntry>> WalletPlugin::computeWealthRanking() {
+    ll::Expected<std::vector<WealthEntry>> WalletBank::computeWealthRanking() {
         auto ids = this->mImpl->db->list("Wallet");
         if (!ids.has_value())
             return ll::Unexpected(ids.error());
@@ -237,9 +312,9 @@ namespace LOICollection::server::Plugins {
         return entries;
     }
 
-    ll::Expected<void> WalletPlugin::rebuildWealthRanking() {
+    ll::Expected<void> WalletBank::rebuildWealthRanking() {
         if (!this->isValid())
-            return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
+            return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
         return this->computeWealthRanking()
             .transform([this](std::vector<WealthEntry> entries) -> void {
@@ -254,9 +329,9 @@ namespace LOICollection::server::Plugins {
             });
     }
 
-    ll::Expected<std::vector<std::pair<std::string, long long>>> WalletPlugin::getWealthRanking(int limit) {
+    ll::Expected<std::vector<std::pair<std::string, long long>>> WalletBank::getWealthRanking(int limit) {
         if (!this->isValid())
-            return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
+            return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
         std::lock_guard<std::mutex> lock(this->mImpl->mRankMutex);
 
@@ -272,9 +347,9 @@ namespace LOICollection::server::Plugins {
         return result;
     }
 
-    ll::Expected<std::pair<int, long long>> WalletPlugin::getWealthRank(const std::string& uuid) {
+    ll::Expected<std::pair<int, long long>> WalletBank::getWealthRank(const std::string& uuid) {
         if (!this->isValid())
-            return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
+            return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
         std::lock_guard<std::mutex> lock(this->mImpl->mRankMutex);
 
@@ -291,13 +366,17 @@ namespace LOICollection::server::Plugins {
         return std::make_pair(static_cast<int>(it->second) + 1, balance);
     }
 
-    void WalletPlugin::scheduleWealthRefresh() {
+    void WalletBank::startWealthRefresh() {
         if (this->mImpl->options.WealthRefreshMinutes <= 0)
             return;
 
-        this->mImpl->mTimerManager->loopSchedule("wallet_wealth_refresh", std::chrono::minutes(this->mImpl->options.WealthRefreshMinutes), [this]() -> void {
-            this->rebuildWealthRanking().or_else(modules::defaultErrorHandler<WalletPlugin>);
+        this->mImpl->timerManager.loopSchedule("wallet_wealth_refresh", std::chrono::minutes(this->mImpl->options.WealthRefreshMinutes), [this]() -> void {
+            this->rebuildWealthRanking()
+                .or_else([this](ll::Error e) -> ll::Expected<void> {
+                    e.log(*this->mImpl->logger);
+
+                    return {};
+                });
         });
     }
-
 }
