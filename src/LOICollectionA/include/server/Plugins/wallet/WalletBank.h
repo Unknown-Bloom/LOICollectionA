@@ -67,7 +67,7 @@ namespace LOICollection::server::Plugins {
     private:
         bool isValid() const;
 
-        ll::Expected<long long> computeInterest(const std::string& uuid, long long principal, long long depositAt);
+        ll::Expected<long long> computeInterest(long long principal, long long depositAt);
         ll::Expected<std::vector<WealthEntry>> computeWealthRanking();
 
         struct Impl;

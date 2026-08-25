@@ -42,7 +42,7 @@ namespace LOICollection::server::Plugins {
     public:
         LOICOLLECTION_A_NDAPI ll::Expected<void> createTables();
 
-        LOICOLLECTION_A_NDAPI void record(const std::string& fromUuid, const std::string& fromName, const std::string& toUuid, const std::string& toName, long long amount, long long fee, const std::string& type);
+        LOICOLLECTION_A_API   void record(const std::string& fromUuid, const std::string& fromName, const std::string& toUuid, const std::string& toName, long long amount, long long fee, const std::string& type);
 
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getPlayerLedger(const std::string& uuid, int limit);
 

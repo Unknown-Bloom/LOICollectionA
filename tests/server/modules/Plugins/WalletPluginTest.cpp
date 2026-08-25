@@ -268,7 +268,7 @@ TEST_F(WalletPluginTest, RedenvelopePersistRow) {
     EXPECT_TRUE(WalletPlugin::getShared()->setExecutor(executor).has_value());
     EXPECT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "test_key", 100, 5).has_value());
 
-    auto ids = storage->find("RedEnvelope", std::vector<std::pair<std::string, std::string>>{ { "chat_key", "test_key" } });
+    auto ids = storage->find("RedEnvelope", std::vector<std::pair<std::string, std::string>>{ { "chat_key", "test_key" } }, SQLiteStorage::FindCondition::AND);
     EXPECT_TRUE(ids.has_value());
     ASSERT_EQ(ids.value().size(), 1u);
 
@@ -377,7 +377,7 @@ TEST_F(WalletPluginTest, LedgerRecordsTransfer) {
 
     EXPECT_TRUE(WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 200).has_value());
 
-    auto ids = storage->find("WalletLedger", std::vector<std::pair<std::string, std::string>>{ { "from_uuid", sp->getUuid().asString() } });
+    auto ids = storage->find("WalletLedger", std::vector<std::pair<std::string, std::string>>{ { "from_uuid", sp->getUuid().asString() } }, SQLiteStorage::FindCondition::AND);
     EXPECT_TRUE(ids.has_value());
     ASSERT_FALSE(ids.value().empty());
 
@@ -581,7 +581,7 @@ TEST_F(WalletPluginTest, BankDepositAndWithdraw) {
     EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), 400);
     EXPECT_EQ(WalletPlugin::getShared()->getBankPrincipal(sp->getUuid().asString()).value(), 100);
 
-    auto ids = storage->find("WalletLedger", std::vector<std::pair<std::string, std::string>>{ { "from_uuid", sp->getUuid().asString() } });
+    auto ids = storage->find("WalletLedger", std::vector<std::pair<std::string, std::string>>{ { "from_uuid", sp->getUuid().asString() } }, SQLiteStorage::FindCondition::AND);
     EXPECT_TRUE(ids.has_value());
     ASSERT_FALSE(ids.value().empty());
     EXPECT_EQ(storage->get("WalletLedger", ids.value().at(0)).value()["type"], "bank_deposit");
@@ -814,7 +814,7 @@ TEST_F(WalletPluginTest, RedenvelopeTargetedOfflineByName) {
 
     EXPECT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "test_key", 100, 5, { "OfflineBob" }).has_value());
 
-    auto ids = storage->find("RedEnvelope", std::vector<std::pair<std::string, std::string>>{ { "chat_key", "test_key" } });
+    auto ids = storage->find("RedEnvelope", std::vector<std::pair<std::string, std::string>>{ { "chat_key", "test_key" } }, SQLiteStorage::FindCondition::AND);
     ASSERT_TRUE(ids.has_value());
     ASSERT_EQ(ids.value().size(), 1u);
 
@@ -882,7 +882,7 @@ TEST_F(WalletPluginTest, EnvelopeStatsDetails) {
     EXPECT_TRUE(WalletPlugin::getShared()->setExecutor(executor).has_value());
     EXPECT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "test_key", 100, 5).has_value());
 
-    auto ids = storage->find("RedEnvelope", std::vector<std::pair<std::string, std::string>>{ { "chat_key", "test_key" } });
+    auto ids = storage->find("RedEnvelope", std::vector<std::pair<std::string, std::string>>{ { "chat_key", "test_key" } }, SQLiteStorage::FindCondition::AND);
     ASSERT_TRUE(ids.has_value());
     ASSERT_EQ(ids.value().size(), 1u);
 

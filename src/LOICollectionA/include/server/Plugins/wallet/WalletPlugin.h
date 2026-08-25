@@ -147,7 +147,7 @@ namespace LOICollection::server::Plugins {
 
         LOICOLLECTION_A_NDAPI double getExchangeRate();
 
-        LOICOLLECTION_A_NDAPI void setOptionsForTest(const Config::C_Wallet& options);
+        LOICOLLECTION_A_API   void setOptionsForTest(const Config::C_Wallet& options);
 
     public:
         LOICOLLECTION_A_NDAPI std::string getName() override;
