@@ -210,13 +210,13 @@ namespace LOICollection::server::Plugins {
         auto nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         long long todayStartNs = (nowNs / NS_PER_DAY) * NS_PER_DAY;
 
-        auto ids = this->mImpl->db->find(WALLET_LEDGER_TABLE, std::vector<std::pair<std::string, std::string>>{ { "from_uuid", uuid } });
+        auto ids = this->mImpl->db->find("WalletLedger", std::vector<std::pair<std::string, std::string>>{ { "from_uuid", uuid } });
         if (!ids.has_value())
             return 0;
 
         long long total = 0;
         for (const auto& id : ids.value()) {
-            auto row = this->mImpl->db->get(WALLET_LEDGER_TABLE, id);
+            auto row = this->mImpl->db->get("WalletLedger", id);
             if (!row.has_value())
                 continue;
 
@@ -377,11 +377,11 @@ namespace LOICollection::server::Plugins {
                 ctor("amount");
             });
         }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->db->create(WALLET_FEE_TABLE, [](SQLiteStorage::ColumnCallback ctor) -> void {
-                ctor(WALLET_FEE_COLUMN);
+            return this->mImpl->db->create("WalletFee", [](SQLiteStorage::ColumnCallback ctor) -> void {
+                ctor("amount");
             });
         }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->db->create(WALLET_LEDGER_TABLE, [](SQLiteStorage::ColumnCallback ctor) -> void {
+            return this->mImpl->db->create("WalletLedger", [](SQLiteStorage::ColumnCallback ctor) -> void {
                 ctor("from_uuid");
                 ctor("from_name");
                 ctor("to_uuid");
@@ -393,9 +393,9 @@ namespace LOICollection::server::Plugins {
                 ctor("time");
             });
         }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->db->create(WALLET_BANK_TABLE, [](SQLiteStorage::ColumnCallback ctor) -> void {
-                ctor(WALLET_BANK_PRINCIPAL);
-                ctor(WALLET_BANK_DEPOSIT_AT);
+            return this->mImpl->db->create("WalletBank", [](SQLiteStorage::ColumnCallback ctor) -> void {
+                ctor("principal");
+                ctor("deposit_at");
                 ctor("name");
             });
         }).and_then([this]() -> ll::Expected<void> {

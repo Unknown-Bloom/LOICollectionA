@@ -5,7 +5,7 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
 
-        return this->mImpl->db->get(WALLET_FEE_TABLE, "total", WALLET_FEE_COLUMN, "0")
+        return this->mImpl->db->get("WalletFee", "total", "amount", "0")
             .transform([](const std::string& value) -> long long {
                 return SystemUtils::toLongLong(value, 0);
             });
@@ -15,11 +15,11 @@ namespace LOICollection::server::Plugins {
         if (amount <= 0)
             return {};
 
-        return this->mImpl->db->get(WALLET_FEE_TABLE, "total", WALLET_FEE_COLUMN, "0")
+        return this->mImpl->db->get("WalletFee", "total", "amount", "0")
             .and_then([this, amount](const std::string& value) -> ll::Expected<void> {
                 long long total = SystemUtils::toLongLong(value, 0);
 
-                return this->mImpl->db->set(WALLET_FEE_TABLE, "total", WALLET_FEE_COLUMN, std::to_string(total + amount));
+                return this->mImpl->db->set("WalletFee", "total", "amount", std::to_string(total + amount));
             });
     }
 
@@ -34,7 +34,7 @@ namespace LOICollection::server::Plugins {
         ).count();
         long long todayStartNs = (nowNs / NS_PER_DAY) * NS_PER_DAY;
 
-        auto sendIds = this->mImpl->db->find(WALLET_LEDGER_TABLE, {
+        auto sendIds = this->mImpl->db->find("WalletLedger", {
             { "type", "redenvelope_send" }
         });
         if (!sendIds.has_value())
@@ -45,7 +45,7 @@ namespace LOICollection::server::Plugins {
         std::unordered_map<std::string, long long> senderTotal;
 
         for (const auto& id : sendIds.value()) {
-            auto row = this->mImpl->db->get(WALLET_LEDGER_TABLE, id);
+            auto row = this->mImpl->db->get("WalletLedger", id);
             if (!row.has_value())
                 continue;
 
@@ -61,7 +61,7 @@ namespace LOICollection::server::Plugins {
             senderTotal[sender] += amount;
         }
 
-        auto grabIds = this->mImpl->db->find(WALLET_LEDGER_TABLE, {
+        auto grabIds = this->mImpl->db->find("WalletLedger", {
             { "type", "redenvelope_grab" }
         });
         if (!grabIds.has_value())
@@ -69,7 +69,7 @@ namespace LOICollection::server::Plugins {
 
         std::unordered_map<std::string, long long> grabTotal;
         for (const auto& id : grabIds.value()) {
-            auto row = this->mImpl->db->get(WALLET_LEDGER_TABLE, id);
+            auto row = this->mImpl->db->get("WalletLedger", id);
             if (!row.has_value())
                 continue;
 
@@ -133,14 +133,14 @@ namespace LOICollection::server::Plugins {
             { "time", SystemUtils::getNowTime() }
         };
 
-        return this->mImpl->db->set(WALLET_LEDGER_TABLE, id, row);
+        return this->mImpl->db->set("WalletLedger", id, row);
     }
 
     ll::Expected<std::vector<std::string>> WalletPlugin::getPlayerLedger(const std::string& uuid, int limit) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
 
-        return this->mImpl->db->find(WALLET_LEDGER_TABLE, {
+        return this->mImpl->db->find("WalletLedger", {
             { "from_uuid", uuid },
             { "to_uuid", uuid }
         }, SQLiteStorage::FindCondition::OR)
@@ -148,7 +148,7 @@ namespace LOICollection::server::Plugins {
                 if (ids.empty())
                     return std::vector<std::string>{};
 
-                return this->mImpl->db->get(WALLET_LEDGER_TABLE, ids)
+                return this->mImpl->db->get("WalletLedger", ids)
                     .transform([this, uuid, limit](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> rows) -> std::vector<std::string> {
                         std::vector<std::pair<std::string, std::string>> sorted;
                         sorted.reserve(rows.size());
@@ -199,7 +199,7 @@ namespace LOICollection::server::Plugins {
             std::chrono::system_clock::now().time_since_epoch()).count()
             - static_cast<long long>(this->mImpl->options.WalletHistoryRetentionDays) * 86400LL * 1000000000LL;
 
-        this->mImpl->db->exec(fmt::format("DELETE FROM {} WHERE time_ns < {}", WALLET_LEDGER_TABLE, cutoff))
+        this->mImpl->db->exec(fmt::format("DELETE FROM {} WHERE time_ns < {}", "WalletLedger", cutoff))
             .or_else(modules::defaultErrorHandler<WalletPlugin>);
 
         this->scheduleLedgerCleanup();

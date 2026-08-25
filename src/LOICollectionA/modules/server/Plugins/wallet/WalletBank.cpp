@@ -27,20 +27,20 @@ namespace LOICollection::server::Plugins {
 
         auto conn = transaction.value().connection();
 
-        auto current = this->mImpl->db->get(conn, WALLET_BANK_TABLE, uuid);
+        auto current = this->mImpl->db->get(conn, "WalletBank", uuid);
         if (!current.has_value()) {
             ScoreboardUtils::addScore(player, mScoreboard, amount);
 
             return ll::Unexpected(current.error());
         }
 
-        long long principal = current.value().contains(WALLET_BANK_PRINCIPAL)
-            ? SystemUtils::toLongLong(current.value().at(WALLET_BANK_PRINCIPAL), 0)
+        long long principal = current.value().contains("principal")
+            ? SystemUtils::toLongLong(current.value().at("principal"), 0)
             : 0;
 
-        auto setBank = this->mImpl->db->set(conn, WALLET_BANK_TABLE, uuid, {
-            { WALLET_BANK_PRINCIPAL, std::to_string(principal + amount) },
-            { WALLET_BANK_DEPOSIT_AT, std::to_string(nowNs) },
+        auto setBank = this->mImpl->db->set(conn, "WalletBank", uuid, {
+            { "principal", std::to_string(principal + amount) },
+            { "deposit_at", std::to_string(nowNs) },
             { "name", player.getRealName() }
         });
         if (!setBank.has_value()) {
@@ -86,16 +86,16 @@ namespace LOICollection::server::Plugins {
 
         std::string uuid = player.getUuid().asString();
 
-        auto data = this->mImpl->db->get(WALLET_BANK_TABLE, uuid);
+        auto data = this->mImpl->db->get("WalletBank", uuid);
         if (!data.has_value())
             return ll::Unexpected(data.error());
 
         auto row = data.value();
-        if (row.empty() || !row.contains(WALLET_BANK_PRINCIPAL) || SystemUtils::toLongLong(row.at(WALLET_BANK_PRINCIPAL), 0) <= 0)
+        if (row.empty() || !row.contains("principal") || SystemUtils::toLongLong(row.at("principal"), 0) <= 0)
             return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::BankEmpty));
 
-        long long principal = SystemUtils::toLongLong(row.at(WALLET_BANK_PRINCIPAL), 0);
-        long long depositAt = row.contains(WALLET_BANK_DEPOSIT_AT) ? SystemUtils::toLongLong(row.at(WALLET_BANK_DEPOSIT_AT), 0) : 0;
+        long long principal = SystemUtils::toLongLong(row.at("principal"), 0);
+        long long depositAt = row.contains("deposit_at") ? SystemUtils::toLongLong(row.at("deposit_at"), 0) : 0;
 
         auto interest = this->computeBankInterest(uuid, principal, depositAt);
         if (!interest.has_value())
@@ -111,7 +111,7 @@ namespace LOICollection::server::Plugins {
         auto conn = transaction.value().connection();
 
         if (this->mImpl->options.WalletInterestFromPool) {
-            auto pool = this->mImpl->db->get(conn, WALLET_FEE_TABLE, "total", WALLET_FEE_COLUMN, "0");
+            auto pool = this->mImpl->db->get(conn, "WalletFee", "total", "amount", "0");
             if (!pool.has_value())
                 return ll::Unexpected(pool.error());
 
@@ -119,7 +119,7 @@ namespace LOICollection::server::Plugins {
             paidInterest = std::min(paidInterest, available);
 
             if (paidInterest > 0) {
-                auto setPool = this->mImpl->db->set(conn, WALLET_FEE_TABLE, "total", WALLET_FEE_COLUMN, std::to_string(available - paidInterest));
+                auto setPool = this->mImpl->db->set(conn, "WalletFee", "total", "amount", std::to_string(available - paidInterest));
                 if (!setPool.has_value())
                     return ll::Unexpected(setPool.error());
             }
@@ -129,19 +129,19 @@ namespace LOICollection::server::Plugins {
             ));
 
             if (interestTax > 0) {
-                auto pool = this->mImpl->db->get(conn, WALLET_FEE_TABLE, "total", WALLET_FEE_COLUMN, "0");
+                auto pool = this->mImpl->db->get(conn, "WalletFee", "total", "amount", "0");
                 if (!pool.has_value())
                     return ll::Unexpected(pool.error());
 
                 long long available = SystemUtils::toLongLong(pool.value(), 0);
 
-                auto setPool = this->mImpl->db->set(conn, WALLET_FEE_TABLE, "total", WALLET_FEE_COLUMN, std::to_string(available + interestTax));
+                auto setPool = this->mImpl->db->set(conn, "WalletFee", "total", "amount", std::to_string(available + interestTax));
                 if (!setPool.has_value())
                     return ll::Unexpected(setPool.error());
             }
         }
 
-        auto delBank = this->mImpl->db->del(conn, WALLET_BANK_TABLE, uuid);
+        auto delBank = this->mImpl->db->del(conn, "WalletBank", uuid);
         if (!delBank.has_value())
             return ll::Unexpected(delBank.error());
 
@@ -176,7 +176,7 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
 
-        return this->mImpl->db->get(WALLET_BANK_TABLE, uuid, WALLET_BANK_PRINCIPAL, "0")
+        return this->mImpl->db->get("WalletBank", uuid, "principal", "0")
             .transform([](const std::string& value) -> long long {
                 return SystemUtils::toLongLong(value, 0);
             });
@@ -186,13 +186,13 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
 
-        return this->mImpl->db->get(WALLET_BANK_TABLE, uuid)
+        return this->mImpl->db->get("WalletBank", uuid)
             .and_then([this, uuid](std::unordered_map<std::string, std::string> row) -> ll::Expected<long long> {
-                if (row.empty() || !row.contains(WALLET_BANK_PRINCIPAL))
+                if (row.empty() || !row.contains("principal"))
                     return 0;
 
-                long long principal = SystemUtils::toLongLong(row.at(WALLET_BANK_PRINCIPAL), 0);
-                long long depositAt = row.contains(WALLET_BANK_DEPOSIT_AT) ? SystemUtils::toLongLong(row.at(WALLET_BANK_DEPOSIT_AT), 0) : 0;
+                long long principal = SystemUtils::toLongLong(row.at("principal"), 0);
+                long long depositAt = row.contains("deposit_at") ? SystemUtils::toLongLong(row.at("deposit_at"), 0) : 0;
 
                 return this->computeBankInterest(uuid, principal, depositAt);
             });

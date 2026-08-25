@@ -75,15 +75,6 @@
 namespace LOICollection::server::Plugins {
     using I18nUtilsTools::tr;
 
-    constexpr const char* WALLET_FEE_TABLE = "WalletFee";
-    constexpr const char* WALLET_FEE_COLUMN = "amount";
-
-    constexpr const char* WALLET_LEDGER_TABLE = "WalletLedger";
-
-    constexpr const char* WALLET_BANK_TABLE = "WalletBank";
-    constexpr const char* WALLET_BANK_PRINCIPAL = "principal";
-    constexpr const char* WALLET_BANK_DEPOSIT_AT = "deposit_at";
-
     inline std::string walletLimitMessage(const std::string& locale, const std::error_code& error) {
         switch (static_cast<WalletPluginErrorCode>(error.value())) {
             case WalletPluginErrorCode::BelowMinimum: return tr(locale, "wallet.limit.min");
