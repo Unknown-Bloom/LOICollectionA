@@ -144,6 +144,17 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_API   ll::Expected<bool> unregistry() override;
 
     private:
+        struct RedEnvelopeEntry;
+        struct WealthEntry;
+
+        struct operation;
+
+        struct operationQuery;
+
+        struct operationQueryId;
+
+        struct Impl;
+
         WalletPlugin();
 
         ll::Expected<void> registeryUI();
@@ -177,16 +188,6 @@ namespace LOICollection::server::Plugins {
         ll::Expected<std::vector<WealthEntry>> computeWealthRanking();
         void scheduleWealthRefresh();
 
-        struct RedEnvelopeEntry;
-        struct WealthEntry;
-
-        struct operation;
-
-        struct operationQuery;
-
-        struct operationQueryId;
-
-        struct Impl;
         std::unique_ptr<Impl> mImpl;
     };
 }
