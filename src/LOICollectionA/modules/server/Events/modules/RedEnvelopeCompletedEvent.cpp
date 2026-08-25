@@ -7,7 +7,7 @@
 #include "LOICollectionA/include/server/Events/modules/RedEnvelopeCompletedEvent.h"
 
 namespace LOICollection::server::Events {
-    std::string RedEnvelopeCompletedEvent::getId() const {
+    std::string RedEnvelopeCompletedEvent::getEnvelopeId() const {
         return mId;
     }
 

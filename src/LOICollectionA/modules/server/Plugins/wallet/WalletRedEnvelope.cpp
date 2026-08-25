@@ -161,7 +161,7 @@ namespace LOICollection::server::Plugins {
     void WalletPlugin::broadcastContent(Player& sender, const std::string& key, const std::string& id, int score, int count) {
         ll::service::getLevel()->forEachPlayer([&, score, count](Player& target) -> bool {
             LanguagePlugin::getShared()->getLanguage(target)
-                .transform([&, score, count, &sender, id, key](const std::string& language) -> void {
+                .transform([&, score, count, id, key](const std::string& language) -> void {
                     std::string mMessage = LOICollectionAPI::CallbackUtils::getInstance().translate(
                         tr(language, "wallet.tips.redenvelope.content"), sender
                     );
@@ -179,7 +179,7 @@ namespace LOICollection::server::Plugins {
     void WalletPlugin::broadcastReceive(const RedEnvelopeEntry& entry, Player& player, int amount, int people) {
         ll::service::getLevel()->forEachPlayer([&, amount, people](Player& target) -> bool {
             LanguagePlugin::getShared()->getLanguage(target)
-                .transform([&, amount, people, &player, &entry, &target](const std::string& language) -> void {
+                .transform([&, amount, people](const std::string& language) -> void {
                     std::string mMessage = LOICollectionAPI::CallbackUtils::getInstance().translate(
                         tr(language, "wallet.tips.redenvelope.receive"), player
                     );

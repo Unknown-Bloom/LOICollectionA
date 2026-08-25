@@ -35,7 +35,7 @@ namespace LOICollection::server::Events {
             mTotal(total),
             mTime(time) {}
 
-        LOICOLLECTION_A_NDAPI std::string getId() const;
+        LOICOLLECTION_A_NDAPI std::string getEnvelopeId() const;
         LOICOLLECTION_A_NDAPI std::string getSenderUuid() const;
         LOICOLLECTION_A_NDAPI std::string getKingUuid() const;
         LOICOLLECTION_A_NDAPI std::string getKingName() const;

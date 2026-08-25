@@ -26,7 +26,7 @@ namespace LOICollection::server::Plugins {
                 int mMoney = param.Score * static_cast<int>(results.size());
                 if (this->mImpl->options.TransferDailyLimit > 0 || this->mImpl->options.TransferCooldownSeconds > 0) {
                     if (auto verification = this->validateTransfer(player.getUuid().asString(), mMoney); !verification.has_value())
-                        return output.error(walletLimitMessage(origin.getLocaleCode(), verification.error()));
+                        return output.error(walletLimitMessage(origin.getLocaleCode(), verification.error().as<ll::ErrorCodeError>().ec));
                 }
 
                 if (ScoreboardUtils::getScore(player, mScoreboard) < mMoney || param.Score < 0)

@@ -36,7 +36,7 @@ namespace LOICollection::server::Plugins {
 
         auto sendIds = this->mImpl->db->find("WalletLedger", {
             { "type", "redenvelope_send" }
-        });
+        }, SQLiteStorage::FindCondition::AND);
         if (!sendIds.has_value())
             return ll::Unexpected(sendIds.error());
 
@@ -63,7 +63,7 @@ namespace LOICollection::server::Plugins {
 
         auto grabIds = this->mImpl->db->find("WalletLedger", {
             { "type", "redenvelope_grab" }
-        });
+        }, SQLiteStorage::FindCondition::AND);
         if (!grabIds.has_value())
             return ll::Unexpected(grabIds.error());
 

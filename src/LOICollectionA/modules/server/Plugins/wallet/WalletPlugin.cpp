@@ -102,7 +102,7 @@ namespace LOICollection::server::Plugins {
         });
         this->mImpl->RedEnvelopeCompletedEventListener = eventBus.emplaceListener<LOICollection::server::Events::RedEnvelopeCompletedEvent>([this](LOICollection::server::Events::RedEnvelopeCompletedEvent& event) mutable -> void {
             this->mImpl->logger->info(fmt::runtime(tr({}, "wallet.event.envelope")),
-                event.getId(), event.getKingName(), event.getKingAmount(), event.getTotal());
+                event.getEnvelopeId(), event.getKingName(), event.getKingAmount(), event.getTotal());
         });
     }
 
@@ -162,7 +162,7 @@ namespace LOICollection::server::Plugins {
         int mTargetMoney = static_cast<int>(score * (1 - this->mImpl->options.ExchangeRate));
 
         return this->transfer(target, mTargetMoney)
-            .transform([this, name, score, mTargetMoney, uuid = player.getUuid().asString(), playerName = player.getRealName()]() -> bool {
+            .transform([this, target, name, score, mTargetMoney, uuid = player.getUuid().asString(), playerName = player.getRealName()]() -> bool {
                 this->getLogger()->info(fmt::runtime(tr({}, "wallet.log")), playerName, name, score);
 
                 this->updateTransferCooldown(uuid);
@@ -210,7 +210,7 @@ namespace LOICollection::server::Plugins {
         auto nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         long long todayStartNs = (nowNs / NS_PER_DAY) * NS_PER_DAY;
 
-        auto ids = this->mImpl->db->find("WalletLedger", std::vector<std::pair<std::string, std::string>>{ { "from_uuid", uuid } });
+        auto ids = this->mImpl->db->find("WalletLedger", std::vector<std::pair<std::string, std::string>>{ { "from_uuid", uuid } }, SQLiteStorage::FindCondition::AND);
         if (!ids.has_value())
             return 0;
 
