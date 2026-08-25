@@ -429,7 +429,7 @@ namespace LOICollection::server::Plugins {
                 std::string mScoreboard = this->mImpl->options.TargetScoreboard;
 
                 if (this->mImpl->options.TransferMinAmount > 0 && param.Score < this->mImpl->options.TransferMinAmount)
-                    return output.error(tr(origin.getLocaleCode(), "wallet.limit.min"), param.Score, this->mImpl->options.TransferMinAmount);
+                    return output.error(fmt::runtime(tr(origin.getLocaleCode(), "wallet.limit.min")), param.Score, this->mImpl->options.TransferMinAmount);
 
                 if (this->mImpl->options.TransferConfirmThreshold > 0 && param.Score > this->mImpl->options.TransferConfirmThreshold)
                     return output.error(tr(origin.getLocaleCode(), "wallet.limit.confirm"));
