@@ -279,7 +279,7 @@ namespace LOICollection::server::Plugins {
     void WalletRedEnvelope::broadcastReceive(const RedEnvelopeEntry& entry, Player& player, int amount, int people) {
         ll::service::getLevel()->forEachPlayer([this, &entry, &player, amount, people](Player& target) -> bool {
             LanguagePlugin::getShared()->getLanguage(target)
-                .transform([this, &entry, &player, &target, amount, people](const std::string& language) -> void {
+                .transform([&entry, &player, &target, amount, people](const std::string& language) -> void {
                     std::string mMessage = LOICollectionAPI::CallbackUtils::getInstance().translate(
                         tr(language, "wallet.tips.redenvelope.receive"), player
                     );
@@ -301,7 +301,7 @@ namespace LOICollection::server::Plugins {
     void WalletRedEnvelope::announceKing(RedEnvelopeEntry& entry) {
         ll::service::getLevel()->forEachPlayer([this, &entry](Player& target) -> bool {
             LanguagePlugin::getShared()->getLanguage(target)
-                .transform([this, &entry, &target](const std::string& language) -> void {
+                .transform([&entry, &target](const std::string& language) -> void {
                     TextPacket::createRawMessage(fmt::format(fmt::runtime(
                         tr(language, "wallet.tips.redenvelope.receive.over")),
                         entry.id, entry.kingName, entry.kingAmount
@@ -398,7 +398,7 @@ namespace LOICollection::server::Plugins {
     void WalletRedEnvelope::announceTimeout(const std::string& id) {
         ll::service::getLevel()->forEachPlayer([this, id](Player& target) -> bool {
             LanguagePlugin::getShared()->getLanguage(target)
-                .transform([this, id, &target](const std::string& language) -> void {
+                .transform([id, &target](const std::string& language) -> void {
                     TextPacket::createRawMessage(
                         fmt::format(fmt::runtime(tr(language, "wallet.tips.redenvelope.timeout")), id)
                     ).sendTo(target);

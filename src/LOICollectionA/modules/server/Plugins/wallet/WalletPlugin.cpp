@@ -510,7 +510,7 @@ namespace LOICollection::server::Plugins {
 
             output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.generic.ui")), player.getRealName());
         });
-        command.overload().text("rank").execute([this](CommandOrigin const& origin, CommandOutput& output) -> void {
+        command.overload().text("rank").execute([](CommandOrigin const& origin, CommandOutput& output) -> void {
             Actor* entity = origin.getEntity();
             if (entity == nullptr || !entity->isType(ActorType::Player))
                 return output.error(tr(origin.getLocaleCode(), "commands.generic.target"));

@@ -145,7 +145,7 @@ namespace LOICollection::server::Plugins {
         return {};
     }
 
-    ll::Expected<long long> WalletBank::computeInterest(const std::string& uuid, long long principal, long long depositAt) {
+    ll::Expected<long long> WalletBank::computeInterest(long long principal, long long depositAt) {
         if (principal <= 0)
             return 0;
 
@@ -175,7 +175,7 @@ namespace LOICollection::server::Plugins {
         long long principal = SystemUtils::toLongLong(row.at("principal"), 0);
         long long depositAt = row.contains("deposit_at") ? SystemUtils::toLongLong(row.at("deposit_at"), 0) : 0;
 
-        auto interest = this->computeInterest(uuid, principal, depositAt);
+        auto interest = this->computeInterest(principal, depositAt);
         if (!interest.has_value())
             return ll::Unexpected(interest.error());
 
@@ -269,7 +269,7 @@ namespace LOICollection::server::Plugins {
                 long long principal = SystemUtils::toLongLong(row.at("principal"), 0);
                 long long depositAt = row.contains("deposit_at") ? SystemUtils::toLongLong(row.at("deposit_at"), 0) : 0;
 
-                return this->computeInterest(uuid, principal, depositAt);
+                return this->computeInterest(principal, depositAt);
             });
     }
 
