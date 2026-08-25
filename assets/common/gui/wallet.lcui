@@ -12,6 +12,15 @@ navigateRedenvelope.value = false;
 navigateWealth = new GlobalValue();
 navigateWealth.value = false;
 
+navigateHistory = new GlobalValue();
+navigateHistory.value = false;
+
+navigateBank = new GlobalValue();
+navigateBank.value = false;
+
+navigateRank = new GlobalValue();
+navigateRank.value = false;
+
 onlineOption = new ButtonOptions();
 onlineOption.tooltip = {tr("wallet.gui.transfer.tooltip")};
 
@@ -23,6 +32,15 @@ redenvelopeOption.tooltip = {tr("wallet.gui.redenvelope.tooltip")};
 
 wealthOption = new ButtonOptions();
 wealthOption.tooltip = {tr("wallet.gui.wealth.tooltip")};
+
+historyOption = new ButtonOptions();
+historyOption.tooltip = {tr("wallet.gui.history.tooltip")};
+
+bankOption = new ButtonOptions();
+bankOption.tooltip = {tr("wallet.gui.bank.tooltip")};
+
+rankOption = new ButtonOptions();
+rankOption.tooltip = {tr("wallet.gui.rank.tooltip")};
 
 open = new CustomForm("wallet.open", {tr("wallet.gui.title")});
 open.label(std::format({tr("wallet.gui.label")}, [ infoData[0], infoData[1] ]), new TextOptions());
@@ -55,6 +73,27 @@ open.button({tr("wallet.gui.wealth")}, func () -> void {
         open.close();
     ]
 }, wealthOption);
+open.button({tr("wallet.gui.history")}, func () -> void {
+    if (!navigateHistory.value) [
+        navigateHistory.value = true;
+
+        open.close();
+    ]
+}, historyOption);
+open.button({tr("wallet.gui.bank")}, func () -> void {
+    if (!navigateBank.value) [
+        navigateBank.value = true;
+
+        open.close();
+    ]
+}, bankOption);
+open.button({tr("wallet.gui.rank")}, func () -> void {
+    if (!navigateRank.value) [
+        navigateRank.value = true;
+
+        open.close();
+    ]
+}, rankOption);
 open.closeButton();
 open.show(func (result) -> void {
     if (navigateOnline.value) [
@@ -65,6 +104,18 @@ open.show(func (result) -> void {
         :
             if (navigateRedenvelope.value) [
                 GUIManager::switchTo("wallet.redenvelope", 1);
+            :
+                if (navigateHistory.value) [
+                    GUIManager::switchTo("wallet.history", 1);
+                :
+                    if (navigateBank.value) [
+                        GUIManager::switchTo("wallet.bank", 1);
+                    :
+                        if (navigateRank.value) [
+                            GUIManager::switchTo("wallet.rank", 3);
+                        ]
+                    ]
+                ]
             ]
         ]
     ]
@@ -89,8 +140,31 @@ func buildTransferContent(transferType: string, index: int) -> void {
     content.button({tr("generic.gui.save")}, func () -> void {
         submitResult = GUIManager::request("wallet.transfer.submit", [ targetData[0], targetData[1], transferType, amountField.getData() ]);
 
-        submitDone.value = submitResult[0];
-        content.close();
+        if (submitResult[1] == true) [
+            confirmUuid = targetData[0];
+            confirmName = targetData[1];
+            confirmMoney = amountField.getData();
+            confirmTransferType = transferType;
+
+            confirmTransfer = new MessageBox("wallet.confirm", {tr("wallet.gui.title")});
+            confirmTransfer.body(std::format({tr("wallet.gui.transfer.confirm")}, [ submitResult[2], submitResult[3] ]));
+            confirmTransfer.button1({tr("generic.gui.save")});
+            confirmTransfer.button2({tr("generic.gui.cancel")});
+            confirmTransfer.show(func (result) -> void {
+                if (result instanceof MessageBoxResult) [
+                    if (result.selection == 0) [
+                        GUIManager::callback("wallet.transfer.confirm", [ confirmUuid, confirmName, confirmMoney ]);
+                    ]
+                ]
+
+                GUIManager::open("wallet", "wallet.open", 1, []);
+            });
+
+            GUIManager::switchTo("wallet.confirm", 2);
+        :
+            submitDone.value = submitResult[0];
+            content.close();
+        ]
     }, new ButtonOptions());
     content.closeButton();
     content.show(func (result) -> void {
@@ -138,6 +212,7 @@ transferOffline.show();
 redeemScore = new ObservableString("", true);
 redeemCount = new ObservableString("", true);
 redeemKey = new ObservableString("", true);
+redeemTargets = new ObservableString("", true);
 redeemDone = new GlobalValue();
 redeemDone.value = false;
 
@@ -150,13 +225,17 @@ redeemInputTwo.description = {tr("wallet.gui.redenvelope.input2.placeholder")};
 redeemInputThree = new TextFieldOptions();
 redeemInputThree.description = {tr("wallet.gui.redenvelope.input3.placeholder")};
 
+redeemInputFour = new TextFieldOptions();
+redeemInputFour.description = {tr("wallet.gui.redenvelope.input4.placeholder")};
+
 redenvelope = new CustomForm("wallet.redenvelope", {tr("wallet.gui.title")});
 redenvelope.label(std::format({tr("wallet.gui.label")}, [ infoData[0], infoData[1] ]), new TextOptions());
 redenvelope.textField({tr("wallet.gui.redenvelope.input1")}, redeemScore, redeemInputOne);
 redenvelope.textField({tr("wallet.gui.redenvelope.input2")}, redeemCount, redeemInputTwo);
 redenvelope.textField({tr("wallet.gui.redenvelope.input3")}, redeemKey, redeemInputThree);
+redenvelope.textField({tr("wallet.gui.redenvelope.input4")}, redeemTargets, redeemInputFour);
 redenvelope.button({tr("generic.gui.save")}, func () -> void {
-    submitResult = GUIManager::request("wallet.redenvelope.submit", [ redeemScore.getData(), redeemCount.getData(), redeemKey.getData() ]);
+    submitResult = GUIManager::request("wallet.redenvelope.submit", [ redeemScore.getData(), redeemCount.getData(), redeemKey.getData(), redeemTargets.getData() ]);
 
     redeemDone.value = submitResult[0];
     redenvelope.close();
@@ -168,3 +247,68 @@ redenvelope.show(func (result) -> void {
     ]
 });
 redenvelope.show();
+
+history = new PaginatedForm("wallet.history", {tr("wallet.gui.title")}, GUIManager::value("wallet.history"), 10);
+history.label({tr("wallet.gui.history.label")}, new TextOptions());
+history.previousButton({tr("generic.gui.page.previous")});
+history.nextButton({tr("generic.gui.page.next")});
+history.closeButton();
+history.show(func (result) -> void {
+    if (result.selection == "") [
+        GUIManager::open("wallet", "wallet.open", 1, []);
+    ]
+});
+history.show();
+
+bankInfoData = GUIManager::request("wallet.bank.info", []);
+
+bankDepositInput = new ObservableString("", true);
+bankDone = new GlobalValue();
+bankDone.value = false;
+
+bankDepositInputOption = new TextFieldOptions();
+bankDepositInputOption.description = {tr("wallet.gui.bank.deposit.input.placeholder")};
+
+bank = new CustomForm("wallet.bank", {tr("wallet.gui.title")});
+bank.label(
+    std::format({tr("wallet.gui.label")}, [ infoData[0], infoData[1] ]) + "\n" +
+    std::format({tr("wallet.gui.bank.label")}, [ bankInfoData[0], bankInfoData[1] ]),
+    new TextOptions()
+);
+bank.textField({tr("wallet.gui.bank.deposit.input")}, bankDepositInput, bankDepositInputOption);
+bank.button({tr("wallet.gui.bank.deposit.button")}, func () -> void {
+    bankResult = GUIManager::request("wallet.bank.deposit", [ bankDepositInput.getData() ]);
+
+    bankDone.value = bankResult[0];
+    bank.close();
+}, new ButtonOptions());
+bank.button({tr("wallet.gui.bank.withdraw.button")}, func () -> void {
+    bankResult = GUIManager::request("wallet.bank.withdraw", []);
+
+    bankDone.value = bankResult[0];
+    bank.close();
+}, new ButtonOptions());
+bank.closeButton();
+bank.show(func (result) -> void {
+    if (!bankDone.value) [
+        GUIManager::open("wallet", "wallet.open", 1, []);
+    ]
+});
+bank.show();
+
+rankSelfData = GUIManager::request("wallet.rank.self", []);
+
+rank = new PaginatedForm("wallet.rank", {tr("wallet.gui.title")}, GUIManager::value("wallet.rank"), 10);
+rank.label(
+    std::format({tr("wallet.gui.rank.label")}, [ rankSelfData[0], rankSelfData[1] ]),
+    new TextOptions()
+);
+rank.previousButton({tr("generic.gui.page.previous")});
+rank.nextButton({tr("generic.gui.page.next")});
+rank.closeButton();
+rank.show(func (result) -> void {
+    if (result.selection == "") [
+        GUIManager::open("wallet", "wallet.open", 1, []);
+    ]
+});
+rank.show();

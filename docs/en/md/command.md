@@ -243,8 +243,14 @@ And the plugins provide the following commands for simple interaction:
 [Server] wallet:
 [Server] LOICollection -> Personal wallet
 [Server] Usage:
+[Server] - /wallet bank
 [Server] - /wallet gui
+[Server] - /wallet history
+[Server] - /wallet query <PlayerName: string>
+[Server] - /wallet rank
+[Server] - /wallet rinfo <EnvelopeId: string>
 [Server] - /wallet reload
+[Server] - /wallet rstat
 [Server] - /wallet transfer <Target: target> <Score: int>
 [Server] - /wallet wealth
 ```
@@ -252,11 +258,31 @@ And the plugins provide the following commands for simple interaction:
 > [!TIP]
 > Here, `wallet` is the top-level command of Wallet (permission level: Any).
 
+- `/wallet bank`
+  - Open the bank savings GUI (deposit, withdrawal, interest query).
+
 - `/wallet gui`
   - Open the personal wallet GUI.
 
+- `/wallet history`
+  - View your latest 20 fund records (transfers, red envelopes, bank).
+
+- `/wallet query <PlayerName: string>`
+  - Query the latest 50 fund records of a specified player (permission level: GameDirectors).
+  - Here, `<PlayerName: string>` is the target player name.
+
+- `/wallet rank`
+  - Open the wealth ranking GUI.
+
+- `/wallet rinfo <EnvelopeId: string>`
+  - Query the grab details and lucky king of a specified red envelope.
+  - Here, `<EnvelopeId: string>` is the red envelope ID.
+
 - `/wallet reload`
   - Reload (recompile) the personal wallet GUI (permission level: GameDirectors).
+
+- `/wallet rstat`
+  - View today's global red envelope statistics (count, total amount, top sender, lucky kings).
 
 - `/wallet transfer <Target: target> <Score: int>`
   - Transfer to the target.

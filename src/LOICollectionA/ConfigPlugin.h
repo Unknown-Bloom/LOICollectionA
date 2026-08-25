@@ -89,6 +89,26 @@ namespace Config {
         std::string TargetScoreboard = "money";
         double ExchangeRate = 0.1;
         int RedEnvelopeTimeout = 60;
+
+        bool WalletHistoryEnabled = true;
+        int WalletHistoryRetentionDays = 90;
+
+        int TransferMinAmount = 1;
+        int TransferDailyLimit = 0;
+        int TransferConfirmThreshold = 1000;
+        int TransferCooldownSeconds = 0;
+
+        int WealthTopSize = 50;
+        int WealthRefreshMinutes = 10;
+
+        bool WalletBankEnabled = true;
+        int WalletBankMinDeposit = 10;
+        double WalletBankDailyRate = 0.0005;
+        double WalletInterestTaxRate = 0.1;
+        bool WalletInterestFromPool = true;
+
+        bool RedEnvelopeTargetedEnabled = true;
+        int RedEnvelopeMaxCount = 100;
     };
 
     struct C_Chat {
