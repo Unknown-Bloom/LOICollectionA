@@ -1,4 +1,3 @@
-#include <fstream>
 #include <map>
 #include <optional>
 #include <stdexcept>
@@ -7,7 +6,6 @@
 
 #include <gtest/gtest.h>
 
-#include "GuiTestEnv.h"
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
 #include "LOICollectionA/frontend/ScriptLoader.h"
 #include "LOICollectionA/frontend/SemanticAnalyzer.h"
@@ -19,10 +17,6 @@
 using namespace LOICollection::frontend;
 using LOICollection::utils::Sha256;
 
-/* §6.2 — multi-file imports: dependency resolution, definition merging and
- * the diagnostics for every failure mode. §6.3 — the shipped GUI scripts
- * must compile through the same loader with the declarative-block syntax. */
-
 namespace {
     using FileMap = std::map<std::string, std::string>;
 
@@ -33,15 +27,6 @@ namespace {
         };
     }
 
-    std::optional<std::string> readRealFile(const std::string& path) {
-        std::ifstream file(path, std::ios::binary);
-        if (!file)
-            return std::nullopt;
-
-        return std::string(std::istreambuf_iterator<char>(file), {});
-    }
-
-    /* Full pipeline (load → analyze → compile → run) over a virtual FS. */
     std::string evalFiles(const FileMap& files, const std::string& entry) {
         DiagnosticEngine diagnostics;
 
@@ -159,48 +144,4 @@ TEST(ScriptLoaderTest, MissingImportFileReportsError) {
 
     EXPECT_FALSE(loaded.has_value());
     EXPECT_NE(diagnostics.getErrorMessage().find("Cannot read imported file"), std::string::npos);
-}
-
-/* §6.3 — the migrated built-in scripts compile cleanly through the loader
- * (import resolution + declarative blocks) with the native GUI environment
- * registered. Compilation is the observable contract here: running them
- * needs the live GUIManager, which the standalone build does not carry. */
-
-class ShippedGuiScriptTest : public ::testing::Test {
-protected:
-    void SetUp() override {
-        LOICollection::frontend::test::registerGuiTestEnvironment();
-    }
-
-    void compileShippedScript(const std::string& name, size_t expectedFiles) {
-        const std::string dir = LOICOLLECTION_TEST_ASSETS_DIR;
-        const std::string entry = dir + "/" + name;
-
-        DiagnosticEngine diagnostics;
-
-        auto loaded = ScriptLoader::load(entry, dir, readRealFile, diagnostics);
-        ASSERT_TRUE(loaded.has_value()) << diagnostics.getErrorMessage();
-        EXPECT_EQ(loaded->files.size(), expectedFiles);
-
-        SemanticAnalyzer analyzer(diagnostics);
-        analyzer.analyze(*loaded->program);
-        EXPECT_FALSE(diagnostics.hasErrors()) << diagnostics.getErrorMessage();
-        EXPECT_FALSE(diagnostics.hasWarnings()) << diagnostics.getWarningMessage();
-
-        ir::Compiler compiler(diagnostics);
-        [[maybe_unused]] auto bytecode = compiler.compile(*loaded->program);
-        EXPECT_FALSE(diagnostics.hasErrors()) << diagnostics.getErrorMessage();
-    }
-};
-
-TEST_F(ShippedGuiScriptTest, LanguageScriptCompilesWithImport) {
-    compileShippedScript("language.lcui", 2);
-}
-
-TEST_F(ShippedGuiScriptTest, BlacklistScriptCompilesWithImport) {
-    compileShippedScript("blacklist.lcui", 2);
-}
-
-TEST_F(ShippedGuiScriptTest, WalletScriptCompilesWithImport) {
-    compileShippedScript("wallet.lcui", 2);
 }

@@ -14,8 +14,7 @@ navigateDelete.value = false;
 
 open = new CustomForm("blacklist.open", {tr("blacklist.gui.title")}) {
     label({tr("blacklist.gui.label")}, new TextOptions());
-    spacer(new SpacingOptions());
-    divider(new DividerOptions());
+    SectionHeader();
     button({tr("blacklist.gui.addBlacklist")}, on: func () -> void {
         if (!navigateAdd.value) [
             navigateAdd.value = true;
@@ -45,9 +44,7 @@ open = new CustomForm("blacklist.open", {tr("blacklist.gui.title")}) {
 
 add = new PaginatedForm("blacklist.add", {tr("blacklist.gui.add.title")}, GUIManager::value("blacklist.players"), 10) {
     label({tr("blacklist.gui.add.label")}, new TextOptions());
-    previousButton(pagePrevious());
-    nextButton(pageNext());
-    chooseButton(pageChoose(), pageChooseInput());
+    PageControls();
     closeButton();
     show(func (result) -> void {
         if (result.selection != "") [
@@ -66,18 +63,16 @@ add = new PaginatedForm("blacklist.add", {tr("blacklist.gui.add.title")}, GUIMan
 
                 content = new CustomForm("blacklist.content", {tr("blacklist.gui.add.title")}) {
                     label({tr("blacklist.gui.label")}, new TextOptions());
-                    spacer(new SpacingOptions());
-                    divider(new DividerOptions());
+                    SectionHeader();
                     textField({tr("blacklist.gui.add.input1")}, cause, addInputOne);
                     textField({tr("blacklist.gui.add.input2")}, duration, addInputTwo);
-                    button(saveLabel(), on: func () -> void {
+                    ConfirmBar(saveLabel(), func () -> void {
                         GUIManager::callback("blacklist.submit", [ result.selection, cause.getData(), duration.getData() ]);
 
                         contentValue.value = true;
 
                         content.close();
-                    }, new ButtonOptions());
-                    closeButton();
+                    });
                     show(func (result) -> void {
                         if (!contentValue.value) [
                             GUIManager::open("blacklist", "blacklist.add", 3);
@@ -99,9 +94,7 @@ add = new PaginatedForm("blacklist.add", {tr("blacklist.gui.add.title")}, GUIMan
 
 remove = new PaginatedForm("blacklist.remove", {tr("blacklist.gui.remove.title")}, GUIManager::value("blacklist.blacklists"), 10) {
     label({tr("blacklist.gui.remove.label")}, new TextOptions());
-    previousButton(pagePrevious());
-    nextButton(pageNext());
-    chooseButton(pageChoose(), pageChooseInput());
+    PageControls();
     closeButton();
     show(func (result) -> void {
         if (result.selection != "") [
@@ -115,16 +108,14 @@ remove = new PaginatedForm("blacklist.remove", {tr("blacklist.gui.remove.title")
                         std::format({tr("blacklist.gui.info.label")}, infoData),
                         new TextOptions()
                     );
-                    spacer(new SpacingOptions());
-                    divider(new DividerOptions());
-                    button({tr("blacklist.gui.info.remove")}, on: func () -> void {
+                    SectionHeader();
+                    ConfirmBar({tr("blacklist.gui.info.remove")}, func () -> void {
                         GUIManager::callback("blacklist.info.remove", [ result.selection ]);
 
                         infoRemoved.value = true;
 
                         info.close();
-                    }, new ButtonOptions());
-                    closeButton();
+                    });
                     show(func (result) -> void {
                         if (!infoRemoved.value) [
                             GUIManager::open("blacklist", "blacklist.remove", 3);

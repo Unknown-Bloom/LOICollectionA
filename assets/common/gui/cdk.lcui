@@ -1,3 +1,5 @@
+import "generic.lcui";
+
 navigateNew = new GlobalValue();
 navigateNew.value = false;
 
@@ -16,64 +18,63 @@ removeCdkOption.tooltip = {tr("cdk.gui.removeCdk.tooltip")};
 addAwardOption = new ButtonOptions();
 addAwardOption.tooltip = {tr("cdk.gui.addAward.tooltip")};
 
-cdkOpen = new CustomForm("cdk.open", {tr("cdk.gui.title")});
-cdkOpen.label({tr("cdk.gui.label")}, new TextOptions());
-cdkOpen.spacer(new SpacingOptions());
-cdkOpen.divider(new DividerOptions());
-cdkOpen.button({tr("cdk.gui.addCdk")}, func () -> void {
-    if (!navigateNew.value) [
-        navigateNew.value = true;
+cdkOpen = new CustomForm("cdk.open", {tr("cdk.gui.title")}) {
+    label({tr("cdk.gui.label")}, new TextOptions());
+    SectionHeader();
+    button({tr("cdk.gui.addCdk")}, on: func () -> void {
+        if (!navigateNew.value) [
+            navigateNew.value = true;
 
-        cdkOpen.close();
-    ]
-}, addCdkOption);
-cdkOpen.button({tr("cdk.gui.removeCdk")}, func () -> void {
-    if (!navigateRemove.value) [
-        navigateRemove.value = true;
+            cdkOpen.close();
+        ]
+    }, addCdkOption);
+    button({tr("cdk.gui.removeCdk")}, on: func () -> void {
+        if (!navigateRemove.value) [
+            navigateRemove.value = true;
 
-        cdkOpen.close();
-    ]
-}, removeCdkOption);
-cdkOpen.button({tr("cdk.gui.addAward")}, func () -> void {
-    if (!navigateAward.value) [
-        navigateAward.value = true;
+            cdkOpen.close();
+        ]
+    }, removeCdkOption);
+    button({tr("cdk.gui.addAward")}, on: func () -> void {
+        if (!navigateAward.value) [
+            navigateAward.value = true;
 
-        cdkOpen.close();
-    ]
-}, addAwardOption);
-cdkOpen.closeButton();
-cdkOpen.show(func (result) -> void {
-    if (navigateNew.value) [
-        GUIManager::switchTo("cdk.new", 1);
-    :
-        if (navigateRemove.value) [
-            GUIManager::switchTo("cdk.remove", 3);
+            cdkOpen.close();
+        ]
+    }, addAwardOption);
+    closeButton();
+    show(func (result) -> void {
+        if (navigateNew.value) [
+            GUIManager::switchTo("cdk.new", 1);
         :
-            if (navigateAward.value) [
-                GUIManager::switchTo("cdk.award", 3);
+            if (navigateRemove.value) [
+                GUIManager::switchTo("cdk.remove", 3);
+            :
+                if (navigateAward.value) [
+                    GUIManager::switchTo("cdk.award", 3);
+                ]
             ]
         ]
-    ]
-});
-cdkOpen.show();
+    });
+    show();
+};
 
 cdkInput = new ObservableString("", true);
 
 cdkInputOptions = new TextFieldOptions();
 cdkInputOptions.description = {tr("cdk.gui.convert.input.placeholder")};
 
-convert = new CustomForm("cdk.convert", {tr("cdk.gui.title")});
-convert.label({tr("cdk.gui.label")}, new TextOptions());
-convert.spacer(new SpacingOptions());
-convert.divider(new DividerOptions());
-convert.textField({tr("cdk.gui.convert.input")}, cdkInput, cdkInputOptions);
-convert.button({tr("generic.gui.save")}, func () -> void {
-    GUIManager::callback("cdk.convert.submit", [ cdkInput.getData() ]);
+convert = new CustomForm("cdk.convert", {tr("cdk.gui.title")}) {
+    label({tr("cdk.gui.label")}, new TextOptions());
+    SectionHeader();
+    textField({tr("cdk.gui.convert.input")}, cdkInput, cdkInputOptions);
+    ConfirmBar(saveLabel(), func () -> void {
+        GUIManager::callback("cdk.convert.submit", [ cdkInput.getData() ]);
 
-    convert.close();
-}, new ButtonOptions());
-convert.closeButton();
-convert.show();
+        convert.close();
+    });
+    show();
+};
 
 newCdkId = new ObservableString("", true);
 newCdkTime = new ObservableString("", true);
@@ -88,79 +89,75 @@ newCdkTimeOptions.description = {tr("cdk.gui.new.input2.placeholder")};
 newDone = new GlobalValue();
 newDone.value = false;
 
-cdkNew = new CustomForm("cdk.new", {tr("cdk.gui.title")});
-cdkNew.label({tr("cdk.gui.label")}, new TextOptions());
-cdkNew.spacer(new SpacingOptions());
-cdkNew.divider(new DividerOptions());
-cdkNew.textField({tr("cdk.gui.new.input1")}, newCdkId, newCdkIdOptions);
-cdkNew.toggle({tr("cdk.gui.new.switch")}, newPersonal, new ToggleOptions());
-cdkNew.textField({tr("cdk.gui.new.input2")}, newCdkTime, newCdkTimeOptions);
-cdkNew.button({tr("generic.gui.save")}, func () -> void {
-    GUIManager::callback("cdk.new.submit", [ newCdkId.getData(), newCdkTime.getData(), newPersonal.getData() ]);
+cdkNew = new CustomForm("cdk.new", {tr("cdk.gui.title")}) {
+    label({tr("cdk.gui.label")}, new TextOptions());
+    SectionHeader();
+    textField({tr("cdk.gui.new.input1")}, newCdkId, newCdkIdOptions);
+    toggle({tr("cdk.gui.new.switch")}, newPersonal, new ToggleOptions());
+    textField({tr("cdk.gui.new.input2")}, newCdkTime, newCdkTimeOptions);
+    ConfirmBar(saveLabel(), func () -> void {
+        GUIManager::callback("cdk.new.submit", [ newCdkId.getData(), newCdkTime.getData(), newPersonal.getData() ]);
 
-    newDone.value = true;
+        newDone.value = true;
 
-    cdkNew.close();
-}, new ButtonOptions());
-cdkNew.closeButton();
-cdkNew.show(func (result) -> void {
-    if (!newDone.value) [
-        GUIManager::open("cdk", "cdk.open", 1);
-    ]
-});
-cdkNew.show();
+        cdkNew.close();
+    });
+    show(func (result) -> void {
+        if (!newDone.value) [
+            GUIManager::open("cdk", "cdk.open", 1);
+        ]
+    });
+    show();
+};
 
-remove = new PaginatedForm("cdk.remove", {tr("cdk.gui.title")}, GUIManager::value("cdk.cdks"), 10);
-remove.label({tr("cdk.gui.remove.label")}, new TextOptions());
-remove.previousButton({tr("generic.gui.page.previous")});
-remove.nextButton({tr("generic.gui.page.next")});
-remove.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-remove.closeButton();
-remove.show(func (result) -> void {
-    if (result.selection != "") [
-        buildRemoveInfo(result.selection);
-    :
-        GUIManager::open("cdk", "cdk.open", 1);
-    ]
-});
-remove.show();
+remove = new PaginatedForm("cdk.remove", {tr("cdk.gui.title")}, GUIManager::value("cdk.cdks"), 10) {
+    label({tr("cdk.gui.remove.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
+        if (result.selection != "") [
+            buildRemoveInfo(result.selection);
+        :
+            GUIManager::open("cdk", "cdk.open", 1);
+        ]
+    });
+    show();
+};
 
-award = new PaginatedForm("cdk.award", {tr("cdk.gui.title")}, GUIManager::value("cdk.cdks"), 10);
-award.label({tr("cdk.gui.award.label")}, new TextOptions());
-award.previousButton({tr("generic.gui.page.previous")});
-award.nextButton({tr("generic.gui.page.next")});
-award.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-award.closeButton();
-award.show(func (result) -> void {
-    if (result.selection != "") [
-        buildAwardInfo(result.selection);
-    :
-        GUIManager::open("cdk", "cdk.open", 1);
-    ]
-});
-award.show();
+award = new PaginatedForm("cdk.award", {tr("cdk.gui.title")}, GUIManager::value("cdk.cdks"), 10) {
+    label({tr("cdk.gui.award.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
+        if (result.selection != "") [
+            buildAwardInfo(result.selection);
+        :
+            GUIManager::open("cdk", "cdk.open", 1);
+        ]
+    });
+    show();
+};
 
 func buildRemoveInfo(id: string) -> void {
     removeDone = new GlobalValue();
     removeDone.value = false;
 
-    removeInfo = new CustomForm("cdk.remove.info", {tr("cdk.gui.title")});
-    removeInfo.label(std::format({tr("cdk.gui.remove.content")}, [ id ]), new TextOptions());
-    removeInfo.spacer(new SpacingOptions());
-    removeInfo.divider(new DividerOptions());
-    removeInfo.button({tr("cdk.gui.remove.yes")}, func () -> void {
-        GUIManager::callback("cdk.remove", [ id ]);
+    removeInfo = new CustomForm("cdk.remove.info", {tr("cdk.gui.title")}) {
+        label(std::format({tr("cdk.gui.remove.content")}, [ id ]), new TextOptions());
+        SectionHeader();
+        ConfirmBar({tr("cdk.gui.remove.yes")}, func () -> void {
+            GUIManager::callback("cdk.remove", [ id ]);
 
-        removeDone.value = true;
+            removeDone.value = true;
 
-        removeInfo.close();
-    }, new ButtonOptions());
-    removeInfo.closeButton();
-    removeInfo.show(func (result) -> void {
-        if (!removeDone.value) [
-            GUIManager::open("cdk", "cdk.open", 1);
-        ]
-    });
+            removeInfo.close();
+        });
+        show(func (result) -> void {
+            if (!removeDone.value) [
+                GUIManager::open("cdk", "cdk.open", 1);
+            ]
+        });
+    };
 
     GUIManager::switchTo("cdk.remove.info", 1);
 }
@@ -177,47 +174,46 @@ func buildAwardInfo(id: string) -> void {
     navigateTitle = new GlobalValue();
     navigateTitle.value = false;
 
-    awardInfo = new CustomForm("cdk.award.info", {tr("cdk.gui.title")});
-    awardInfo.label(awardInfoData[0], new TextOptions());
-    awardInfo.spacer(new SpacingOptions());
-    awardInfo.divider(new DividerOptions());
-    awardInfo.button({tr("cdk.gui.award.score")}, func () -> void {
-        if (!navigateScore.value) [
-            navigateScore.value = true;
+    awardInfo = new CustomForm("cdk.award.info", {tr("cdk.gui.title")}) {
+        label(awardInfoData[0], new TextOptions());
+        SectionHeader();
+        button({tr("cdk.gui.award.score")}, on: func () -> void {
+            if (!navigateScore.value) [
+                navigateScore.value = true;
 
-            awardInfo.close();
-        ]
-    }, new ButtonOptions());
-    awardInfo.button({tr("cdk.gui.award.item")}, func () -> void {
-        if (!navigateItem.value) [
-            navigateItem.value = true;
+                awardInfo.close();
+            ]
+        }, new ButtonOptions());
+        button({tr("cdk.gui.award.item")}, on: func () -> void {
+            if (!navigateItem.value) [
+                navigateItem.value = true;
 
-            awardInfo.close();
-        ]
-    }, new ButtonOptions());
-    awardInfo.button({tr("cdk.gui.award.title")}, func () -> void {
-        if (!navigateTitle.value) [
-            navigateTitle.value = true;
+                awardInfo.close();
+            ]
+        }, new ButtonOptions());
+        ConfirmBar({tr("cdk.gui.award.title")}, func () -> void {
+            if (!navigateTitle.value) [
+                navigateTitle.value = true;
 
-            awardInfo.close();
-        ]
-    }, new ButtonOptions());
-    awardInfo.closeButton();
-    awardInfo.show(func (result) -> void {
-        if (navigateScore.value) [
-            buildAwardScore(id);
-        :
-            if (navigateItem.value) [
-                buildAwardItem(id);
+                awardInfo.close();
+            ]
+        });
+        show(func (result) -> void {
+            if (navigateScore.value) [
+                buildAwardScore(id);
             :
-                if (navigateTitle.value) [
-                    buildAwardTitle(id);
+                if (navigateItem.value) [
+                    buildAwardItem(id);
                 :
-                    GUIManager::open("cdk", "cdk.open", 1);
+                    if (navigateTitle.value) [
+                        buildAwardTitle(id);
+                    :
+                        GUIManager::open("cdk", "cdk.open", 1);
+                    ]
                 ]
             ]
-        ]
-    });
+        });
+    };
 
     GUIManager::switchTo("cdk.award.info", 1);
 }
@@ -235,25 +231,24 @@ func buildAwardScore(id: string) -> void {
     scoreDone = new GlobalValue();
     scoreDone.value = false;
 
-    awardScore = new CustomForm("cdk.award.score", {tr("cdk.gui.title")});
-    awardScore.label({tr("cdk.gui.label")}, new TextOptions());
-    awardScore.spacer(new SpacingOptions());
-    awardScore.divider(new DividerOptions());
-    awardScore.textField({tr("cdk.gui.award.score.input1")}, scoreObjective, scoreObjectiveOptions);
-    awardScore.textField({tr("cdk.gui.award.score.input2")}, scoreAmount, scoreAmountOptions);
-    awardScore.button({tr("generic.gui.save")}, func () -> void {
-        GUIManager::callback("cdk.award.score.submit", [ id, scoreObjective.getData(), scoreAmount.getData() ]);
+    awardScore = new CustomForm("cdk.award.score", {tr("cdk.gui.title")}) {
+        label({tr("cdk.gui.label")}, new TextOptions());
+        SectionHeader();
+        textField({tr("cdk.gui.award.score.input1")}, scoreObjective, scoreObjectiveOptions);
+        textField({tr("cdk.gui.award.score.input2")}, scoreAmount, scoreAmountOptions);
+        ConfirmBar(saveLabel(), func () -> void {
+            GUIManager::callback("cdk.award.score.submit", [ id, scoreObjective.getData(), scoreAmount.getData() ]);
 
-        scoreDone.value = true;
+            scoreDone.value = true;
 
-        awardScore.close();
-    }, new ButtonOptions());
-    awardScore.closeButton();
-    awardScore.show(func (result) -> void {
-        if (!scoreDone.value) [
-            buildAwardInfo(id);
-        ]
-    });
+            awardScore.close();
+        });
+        show(func (result) -> void {
+            if (!scoreDone.value) [
+                buildAwardInfo(id);
+            ]
+        });
+    };
 
     GUIManager::switchTo("cdk.award.score", 1);
 }
@@ -265,36 +260,35 @@ func buildAwardItem(id: string) -> void {
     navigateCustom = new GlobalValue();
     navigateCustom.value = false;
 
-    awardItem = new CustomForm("cdk.award.item", {tr("cdk.gui.title")});
-    awardItem.label({tr("cdk.gui.label")}, new TextOptions());
-    awardItem.spacer(new SpacingOptions());
-    awardItem.divider(new DividerOptions());
-    awardItem.button({tr("cdk.gui.award.item.inventory")}, func () -> void {
-        if (!navigateInventory.value) [
-            navigateInventory.value = true;
+    awardItem = new CustomForm("cdk.award.item", {tr("cdk.gui.title")}) {
+        label({tr("cdk.gui.label")}, new TextOptions());
+        SectionHeader();
+        button({tr("cdk.gui.award.item.inventory")}, on: func () -> void {
+            if (!navigateInventory.value) [
+                navigateInventory.value = true;
 
-            awardItem.close();
-        ]
-    }, new ButtonOptions());
-    awardItem.button({tr("cdk.gui.award.item.custom")}, func () -> void {
-        if (!navigateCustom.value) [
-            navigateCustom.value = true;
-
-            awardItem.close();
-        ]
-    }, new ButtonOptions());
-    awardItem.closeButton();
-    awardItem.show(func (result) -> void {
-        if (navigateInventory.value) [
-            buildInventory(id);
-        :
-            if (navigateCustom.value) [
-                buildItemType(id);
-            :
-                buildAwardInfo(id);
+                awardItem.close();
             ]
-        ]
-    });
+        }, new ButtonOptions());
+        ConfirmBar({tr("cdk.gui.award.item.custom")}, func () -> void {
+            if (!navigateCustom.value) [
+                navigateCustom.value = true;
+
+                awardItem.close();
+            ]
+        });
+        show(func (result) -> void {
+            if (navigateInventory.value) [
+                buildInventory(id);
+            :
+                if (navigateCustom.value) [
+                    buildItemType(id);
+                :
+                    buildAwardInfo(id);
+                ]
+            ]
+        });
+    };
 
     GUIManager::switchTo("cdk.award.item", 1);
 }
@@ -315,28 +309,27 @@ func buildItemType(id: string) -> void {
     typeDone = new GlobalValue();
     typeDone.value = false;
 
-    itemType = new CustomForm("cdk.award.item.type", {tr("cdk.gui.title")});
-    itemType.label({tr("cdk.gui.label")}, new TextOptions());
-    itemType.spacer(new SpacingOptions());
-    itemType.divider(new DividerOptions());
-    itemType.dropdown({tr("cdk.gui.award.item.custom.dropdown")}, typeIndex, typeItems, new DropdownOptions());
-    itemType.button({tr("generic.gui.save")}, func () -> void {
-        typeDone.value = true;
+    itemType = new CustomForm("cdk.award.item.type", {tr("cdk.gui.title")}) {
+        label({tr("cdk.gui.label")}, new TextOptions());
+        SectionHeader();
+        dropdown({tr("cdk.gui.award.item.custom.dropdown")}, typeIndex, typeItems, new DropdownOptions());
+        ConfirmBar(saveLabel(), func () -> void {
+            typeDone.value = true;
 
-        itemType.close();
-    }, new ButtonOptions());
-    itemType.closeButton();
-    itemType.show(func (result) -> void {
-        if (typeDone.value) [
-            if (typeIndex.getData() == 0) [
-                buildItemCommon(id, "universal");
+            itemType.close();
+        });
+        show(func (result) -> void {
+            if (typeDone.value) [
+                if (typeIndex.getData() == 0) [
+                    buildItemCommon(id, "universal");
+                :
+                    buildItemCommon(id, "nbt");
+                ]
             :
-                buildItemCommon(id, "nbt");
+                buildAwardInfo(id);
             ]
-        :
-            buildAwardInfo(id);
-        ]
-    });
+        });
+    };
 
     GUIManager::switchTo("cdk.award.item.type", 1);
 }
@@ -362,51 +355,49 @@ func buildItemCommon(id: string, itemType: string) -> void {
     itemCommonDone = new GlobalValue();
     itemCommonDone.value = false;
 
-    itemCommon = new CustomForm("cdk.award.item.common", {tr("cdk.gui.title")});
-    itemCommon.label({tr("cdk.gui.label")}, new TextOptions());
-    itemCommon.spacer(new SpacingOptions());
-    itemCommon.divider(new DividerOptions());
-    itemCommon.textField({tr("cdk.gui.award.item.custom.input1")}, itemId, itemIdOptions);
+    itemCommon = new CustomForm("cdk.award.item.common", {tr("cdk.gui.title")}) {
+        label({tr("cdk.gui.label")}, new TextOptions());
+        SectionHeader();
+        textField({tr("cdk.gui.award.item.custom.input1")}, itemId, itemIdOptions);
 
-    if (itemType == "universal") [
-        itemCommon.textField({tr("cdk.gui.award.item.custom.input2")}, itemName, itemNameOptions);
-        itemCommon.textField({tr("cdk.gui.award.item.custom.input3")}, itemQuantity, itemQuantityOptions);
-        itemCommon.textField({tr("cdk.gui.award.item.custom.input4")}, itemSpecialValue, itemSpecialValueOptions);
-    ]
-
-    itemCommon.button({tr("generic.gui.save")}, func () -> void {
-        GUIManager::callback("cdk.award.item.submit", [ id, itemType, itemId.getData(), itemName.getData(), itemQuantity.getData(), itemSpecialValue.getData() ]);
-
-        itemCommonDone.value = true;
-
-        itemCommon.close();
-    }, new ButtonOptions());
-    itemCommon.closeButton();
-    itemCommon.show(func (result) -> void {
-        if (!itemCommonDone.value) [
-            buildAwardInfo(id);
+        if (itemType == "universal") [
+            textField({tr("cdk.gui.award.item.custom.input2")}, itemName, itemNameOptions);
+            textField({tr("cdk.gui.award.item.custom.input3")}, itemQuantity, itemQuantityOptions);
+            textField({tr("cdk.gui.award.item.custom.input4")}, itemSpecialValue, itemSpecialValueOptions);
         ]
-    });
+
+        ConfirmBar(saveLabel(), func () -> void {
+            GUIManager::callback("cdk.award.item.submit", [ id, itemType, itemId.getData(), itemName.getData(), itemQuantity.getData(), itemSpecialValue.getData() ]);
+
+            itemCommonDone.value = true;
+
+            itemCommon.close();
+        });
+        show(func (result) -> void {
+            if (!itemCommonDone.value) [
+                buildAwardInfo(id);
+            ]
+        });
+    };
 
     GUIManager::switchTo("cdk.award.item.common", 1);
 }
 
 func buildInventory(id: string) -> void {
-    inventory = new PaginatedForm("cdk.award.inventory", {tr("cdk.gui.title")}, GUIManager::value("cdk.inventory"), 10);
-    inventory.label({tr("cdk.gui.award.item.inventory.label")}, new TextOptions());
-    inventory.previousButton({tr("generic.gui.page.previous")});
-    inventory.nextButton({tr("generic.gui.page.next")});
-    inventory.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-    inventory.closeButton();
-    inventory.show(func (result) -> void {
-        if (result.selection != "") [
-            slotData = GUIManager::request("cdk.inventory.slot", [ result.selectionIndex ]);
+    inventory = new PaginatedForm("cdk.award.inventory", {tr("cdk.gui.title")}, GUIManager::value("cdk.inventory"), 10) {
+        label({tr("cdk.gui.award.item.inventory.label")}, new TextOptions());
+        PageControls();
+        closeButton();
+        show(func (result) -> void {
+            if (result.selection != "") [
+                slotData = GUIManager::request("cdk.inventory.slot", [ result.selectionIndex ]);
 
-            buildInventoryConfirm(id, slotData[0]);
-        :
-            buildAwardInfo(id);
-        ]
-    });
+                buildInventoryConfirm(id, slotData[0]);
+            :
+                buildAwardInfo(id);
+            ]
+        });
+    };
 
     GUIManager::switchTo("cdk.award.inventory", 3);
 }
@@ -417,23 +408,22 @@ func buildInventoryConfirm(id: string, slot: int) -> void {
     inventoryConfirmDone = new GlobalValue();
     inventoryConfirmDone.value = false;
 
-    inventoryConfirm = new CustomForm("cdk.award.inventory.confirm", {tr("cdk.gui.title")});
-    inventoryConfirm.label(inventoryItemData[0], new TextOptions());
-    inventoryConfirm.spacer(new SpacingOptions());
-    inventoryConfirm.divider(new DividerOptions());
-    inventoryConfirm.button({tr("cdk.gui.award.item.inventory.yes")}, func () -> void {
-        GUIManager::callback("cdk.award.inventory.submit", [ id, slot ]);
+    inventoryConfirm = new CustomForm("cdk.award.inventory.confirm", {tr("cdk.gui.title")}) {
+        label(inventoryItemData[0], new TextOptions());
+        SectionHeader();
+        ConfirmBar({tr("cdk.gui.award.item.inventory.yes")}, func () -> void {
+            GUIManager::callback("cdk.award.inventory.submit", [ id, slot ]);
 
-        inventoryConfirmDone.value = true;
+            inventoryConfirmDone.value = true;
 
-        inventoryConfirm.close();
-    }, new ButtonOptions());
-    inventoryConfirm.closeButton();
-    inventoryConfirm.show(func (result) -> void {
-        if (!inventoryConfirmDone.value) [
-            buildInventory(id);
-        ]
-    });
+            inventoryConfirm.close();
+        });
+        show(func (result) -> void {
+            if (!inventoryConfirmDone.value) [
+                buildInventory(id);
+            ]
+        });
+    };
 
     GUIManager::switchTo("cdk.award.inventory.confirm", 1);
 }
@@ -451,25 +441,24 @@ func buildAwardTitle(id: string) -> void {
     titleDone = new GlobalValue();
     titleDone.value = false;
 
-    awardTitle = new CustomForm("cdk.award.title", {tr("cdk.gui.title")});
-    awardTitle.label({tr("cdk.gui.label")}, new TextOptions());
-    awardTitle.spacer(new SpacingOptions());
-    awardTitle.divider(new DividerOptions());
-    awardTitle.textField({tr("cdk.gui.award.title.input1")}, titleText, titleTextOptions);
-    awardTitle.textField({tr("cdk.gui.award.title.input2")}, titleTime, titleTimeOptions);
-    awardTitle.button({tr("generic.gui.save")}, func () -> void {
-        GUIManager::callback("cdk.award.title.submit", [ id, titleText.getData(), titleTime.getData() ]);
+    awardTitle = new CustomForm("cdk.award.title", {tr("cdk.gui.title")}) {
+        label({tr("cdk.gui.label")}, new TextOptions());
+        SectionHeader();
+        textField({tr("cdk.gui.award.title.input1")}, titleText, titleTextOptions);
+        textField({tr("cdk.gui.award.title.input2")}, titleTime, titleTimeOptions);
+        ConfirmBar(saveLabel(), func () -> void {
+            GUIManager::callback("cdk.award.title.submit", [ id, titleText.getData(), titleTime.getData() ]);
 
-        titleDone.value = true;
+            titleDone.value = true;
 
-        awardTitle.close();
-    }, new ButtonOptions());
-    awardTitle.closeButton();
-    awardTitle.show(func (result) -> void {
-        if (!titleDone.value) [
-            buildAwardInfo(id);
-        ]
-    });
+            awardTitle.close();
+        });
+        show(func (result) -> void {
+            if (!titleDone.value) [
+                buildAwardInfo(id);
+            ]
+        });
+    };
 
     GUIManager::switchTo("cdk.award.title", 1);
 }

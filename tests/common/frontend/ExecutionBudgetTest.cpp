@@ -7,10 +7,6 @@
 
 using namespace LOICollection::frontend;
 
-/* §7.2 — execution budget and call depth: a runaway script must abort with a
- * diagnostic instead of hanging the host or exhausting the native stack,
- * while legitimate bounded work stays unaffected. */
-
 namespace {
     std::string failureOf(const std::string& source) {
         try {
@@ -46,7 +42,6 @@ TEST(ExecutionBudgetTest, UnboundedRecursionHitsDepthLimit) {
 }
 
 TEST(ExecutionBudgetTest, BoundedLoopCompletesWithinBudget) {
-    /* 10k iterations, well under the 1M-instruction budget. */
     EXPECT_EQ(eval(R"(
         total = 0;
         i = 0;
@@ -59,7 +54,6 @@ TEST(ExecutionBudgetTest, BoundedLoopCompletesWithinBudget) {
 }
 
 TEST(ExecutionBudgetTest, ReasonableRecursionDepthAllowed) {
-    /* Depth 100 must stay far below the 256-frame ceiling. */
     EXPECT_EQ(eval(R"(
         func sum(n) -> int {
             if (n <= 0) [

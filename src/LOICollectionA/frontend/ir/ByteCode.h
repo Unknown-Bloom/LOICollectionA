@@ -90,9 +90,6 @@ namespace LOICollection::frontend::ir {
         std::vector<VirtualCallMeta> virtualCalls;
         std::vector<SuperCallMeta> superCalls;
         std::vector<LambdaMeta> lambdas;
-        /* Deque on purpose: the compiler keeps `current` references into
-         * nested bodies while appending siblings, so references must stay
-         * valid across push_back (a vector would dangle on reallocation). */
         std::deque<BytecodeChunk> methodBodies;
 
         size_t emit(OpCode op, int operand = 0, const SourceLocation& loc = {}) {

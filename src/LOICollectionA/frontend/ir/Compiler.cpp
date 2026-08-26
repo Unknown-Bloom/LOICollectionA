@@ -685,7 +685,9 @@ namespace LOICollection::frontend::ir {
 
             bool producesValue = node.parts[i]->getType() != ASTNode::Type::Class
                 && node.parts[i]->getType() != ASTNode::Type::Return
-                && node.parts[i]->getType() != ASTNode::Type::Using;
+                && node.parts[i]->getType() != ASTNode::Type::Using
+                && node.parts[i]->getType() != ASTNode::Type::Import
+                && node.parts[i]->getType() != ASTNode::Type::Component;
 
             if (i != node.parts.size() - 1 && producesValue)
                 this->current.get().emit(OpCode::POP);
@@ -694,10 +696,9 @@ namespace LOICollection::frontend::ir {
 
     void Compiler::visit(UsingNode&) {}
 
-    /* Import declarations are resolved by the loader before compilation
-     * (§6.2): by the time the compiler runs, imported definitions are part
-     * of the merged program, so nothing is emitted here. */
     void Compiler::visit(ImportNode&) {}
+
+    void Compiler::visit(ComponentNode&) {}
 
     void Compiler::visit(ProgramNode& node) {
         compileSequence(node);
@@ -927,13 +928,6 @@ namespace LOICollection::frontend::ir {
             this->compileDeclarativeBlock(*node.declarativeBlock, node.receiverName);
     }
 
-    /* §5.1 desugaring: the block body becomes ordered method calls on the
-     * object under construction. Every bare statement call is rewritten into
-     * `receiver.method(...)` so the regular method-call pipeline emits the
-     * bytecode; control flow compiles unchanged. With a named receiver
-     * (`form = new Form(...) { ... }`) the object is stored into the variable
-     * before the body runs, matching the manual expansion statement by
-     * statement; otherwise a frame-local temp carries it. */
     void Compiler::compileDeclarativeBlock(BlockNode& block, const std::string& receiverName) {
         std::string receiver = receiverName;
         if (receiver.empty())

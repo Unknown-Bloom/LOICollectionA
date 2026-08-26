@@ -10,10 +10,10 @@
 脚本的完整处理流程为：
 
 ```text
-Lexer（词法分析） -> Parser（语法分析） -> SemanticAnalyzer（语义分析） -> Compiler（字节码编译） -> Optimizer（优化） -> VM（执行）
+ScriptLoader（导入解析与合并） -> Lexer（词法分析） -> Parser（语法分析） -> SemanticAnalyzer（语义分析） -> Compiler（字节码编译） -> Optimizer（优化） -> VM（执行）
 ```
 
-- 插件启动时或执行 `/xxx reload` 命令后，`GUIManager::load` 会读取 `.lcui` 文件，完成上述编译流程并将字节码缓存。
+- 插件启动时或执行 `/xxx reload` 命令后，`GUIManager::load` 会读取 `.lcui` 文件，先解析 `import` 导入图（见「多文件导入」），再完成上述编译流程；编译产物除缓存在内存外，还会以 `.lcc` 字节码文件落盘（见「字节码磁盘缓存」）。
 - 玩家打开 GUI 时，`GUIManager::open(id, formId, type[, ctx])` 会针对该玩家执行缓存的脚本；脚本中 `new CustomForm(...)`、`new PaginatedForm(...)` 等创建的表单会注册到 `GUIManager`，随后切换到 `formId` 对应的表单。
 
 > 原生表单类的方法与生命周期详见 [原生 UI（Native UI）](./native-ui.md)，Menu/Shop 专用表单与默认变量详见 [LOICollectionAPI](./api.md)。
@@ -21,14 +21,126 @@ Lexer（词法分析） -> Parser（语法分析） -> SemanticAnalyzer（语义
 ## 一个最小的脚本
 
 ```lcui
+form = new CustomForm("example.main", {tr("example.gui.title")}) {
+    label({tr("example.gui.hello")}, new TextOptions());
+    button({tr("generic.gui.close")}, on: func () -> void {
+        form.close();
+    }, new ButtonOptions());
+    closeButton();
+    show();
+};
+```
+
+## 声明式 UI 块
+
+创建表单时，可以在构造调用后紧跟一个 `{ ... }` 块，按界面出现顺序声明控件。块内省略接收者的方法调用会自动作用于正在构建的表单。上面的最小脚本完全等价于手工展开的命令式写法：
+
+```lcui
 form = new CustomForm("example.main", {tr("example.gui.title")});
 form.label({tr("example.gui.hello")}, new TextOptions());
-form.button({tr("generic.gui.close")}, func () -> void {
+form.button({tr("generic.gui.close")}, on: func () -> void {
     form.close();
 }, new ButtonOptions());
 form.closeButton();
 form.show();
 ```
+
+要点：
+
+- **接收者**：`变量 = new 表单类(参数) { ... }` 中，块内的裸调用（如 `label(...)`）会脱糖为 `变量.label(...)`。接收者变量在块体执行前就已绑定，因此块内定义的 lambda（例如按钮回调）可以直接用名字引用正在构建的表单，如上例中的 `form.close()`。
+- **`on:` 命名参数**：在块内（且仅在块内）可以为 `button` 等带回调的方法使用 `on: 回调` 传参，参数位置与显式写法一致。
+- **控制流**：块内允许 `if` 等控制流语句，按实际执行顺序决定哪些控件被加入。例如内置的 `market_store.lcui` 中，审核按钮仅在管理员且开启审核时才会加入：
+
+```lcui
+mineForm = new CustomForm("market.store.mine", {tr("market.gui.title")}) {
+    /* ... 其他按钮 ... */
+    if (GUIManager::request("market.isAdmin", [])[0] && GUIManager::request("market.store.review.enabled", [])[0]) [
+        button({tr("market.gui.store.mine.audit")}, on: func () -> void {
+            navigateAudit.value = true;
+
+            mineForm.close();
+        }, auditOption);
+    ]
+
+    closeButton();
+};
+```
+
+- **仅限表单类**：声明式块只能用于 `CustomForm`、`MessageBox`、`PaginatedForm`、`ScriptForm`；对其他类使用（如 `new GlobalValue() { ... }`）会报编译错误。
+- **普通函数回退**：块内不属于表单方法的裸调用会按普通函数解析，因此导入的辅助函数（如 `pagePrevious()`、`saveLabel()`）可以直接在块内调用。
+
+## 组件（component）
+
+`component` 把重复的表单控件组合抽象成可复用的片段。组件在使用点按编译期宏展开（卫生展开），参数按名绑定，运行期零开销；组件体内的裸方法调用继承使用点的当前表单隐式接收者：
+
+```lcui
+component ConfirmBar(confirmText, onConfirm) {
+    button(confirmText, on: onConfirm, new ButtonOptions());
+    closeButton();
+}
+
+form = new CustomForm("wallet.main", {tr("wallet.gui.title")}) {
+    label({tr("wallet.gui.label")}, new TextOptions());
+    ConfirmBar(saveLabel(), func () -> void {
+        form.close();
+    });
+    show();
+};
+```
+
+上面的写法在编译期等价于直接在块内写：
+
+```lcui
+form = new CustomForm("wallet.main", {tr("wallet.gui.title")}) {
+    label({tr("wallet.gui.label")}, new TextOptions());
+    button(saveLabel(), on: func () -> void {
+        form.close();
+    }, new ButtonOptions());
+    closeButton();
+    show();
+};
+```
+
+规则：
+
+| 规则 | 说明 |
+| --- | --- |
+| 定义位置 | 组件只能定义在脚本顶层；嵌套在函数体或块内定义会报编译错误 |
+| 使用位置 | 组件调用只能作为声明式 UI 块内的语句；在块外调用或作为表达式使用会报编译错误 |
+| 参数绑定 | 调用参数个数必须与组件参数一致，按位置绑定到参数名 |
+| 卫生展开 | 组件体内声明的局部变量会被自动重命名，不会捕获或污染使用点的外层同名变量；多个使用点的展开相互独立 |
+| 禁止递归 | 组件（直接或间接）调用自身会报编译错误 |
+| 块内能力 | 组件体内允许控制流与局部变量（块作用域），含义与手写在声明式块内完全一致 |
+| 接收者继承 | 展开发生在使用点，因此组件体内的裸调用作用于使用点的表单接收者（上例中的 `form`） |
+| 跨文件复用 | 组件定义属于顶层定义，可以放在被 `import` 的文件中（如 `generic.lcui`）供多个脚本共用 |
+
+内置脚本的公共控件组合就定义在 `generic.lcui` 中：`PageControls()`（上一页/下一页/跳转三连按钮）、`SectionHeader()`（间隔 + 分隔线）、`ConfirmBar(confirmText, onConfirm)`（确认按钮 + 关闭按钮）。
+
+## 多文件导入（import）
+
+脚本顶部可以使用 `import` 引入其他 `.lcui` 文件的顶层定义（`class` / `func` / `using` / `component`），实现跨文件复用。内置脚本的公共界面词汇表（分页按钮、保存/取消文案等）就抽取在 `generic.lcui` 中：
+
+```lcui
+import "generic.lcui";
+
+quote = new PaginatedForm("market.quote", {tr("market.gui.title")}, GUIManager::value("market.quote.items"), 10) {
+    label({tr("market.gui.quote.list.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show();
+};
+```
+
+规则：
+
+| 规则 | 说明 |
+| --- | --- |
+| 路径解析 | `import` 路径相对于入口脚本所在目录解析 |
+| 合并顺序 | 导入图按依赖优先（拓扑序）展开，每个文件的定义只合并一次；菱形导入（A、B 都导入 C）合法，C 只出现一次 |
+| 定义冲突 | 不同文件中同名 `class` / `func` / `using` / `component` 会报错，错误信息包含两处定义的文件与行号 |
+| 仅限定义 | 被导入的文件只能包含 `class` / `func` / `using` / `component` / `import`，不能包含可执行语句（避免导入产生副作用）；入口文件不受此限制 |
+| 循环导入 | 循环导入（如 A → B → A）会报错，并给出完整环路径 |
+| 文件缺失 | 导入的文件不存在或不可读时报错 |
 
 ## 注释、字面量与语句分隔
 
@@ -694,23 +806,50 @@ items = makeItems();
 selected = new GlobalValue();
 selected.value = "";
 
-form = new CustomForm("example.shop", {tr("example.shop.title")});
-form.label({tr("example.shop.list")}, new TextOptions());
-form.button(items[0].format(), func () -> void {
-    selected.value = items[0].name;
-    form.close();
-}, new ButtonOptions());
-form.button(items[1].format(), func () -> void {
-    selected.value = items[1].name;
-    form.close();
-}, new ButtonOptions());
-form.closeButton();
-form.show();
+form = new CustomForm("example.shop", {tr("example.shop.title")}) {
+    label({tr("example.shop.list")}, new TextOptions());
+    button(items[0].format(), on: func () -> void {
+        selected.value = items[0].name;
+
+        form.close();
+    }, new ButtonOptions());
+    button(items[1].format(), on: func () -> void {
+        selected.value = items[1].name;
+
+        form.close();
+    }, new ButtonOptions());
+    closeButton();
+    show();
+};
 ```
+
+## 执行预算与调用深度
+
+为防止失控脚本卡死服务器，VM 对每次脚本执行设置了两道硬限制：
+
+| 限制 | 上限 | 触发后的行为 |
+| --- | --- | --- |
+| 指令数 | 1,000,000 条 | 终止执行并报错 `Execution budget exhausted` |
+| 调用深度 | 256 层调用帧 | 终止执行并报错 `Call stack depth limit exceeded` |
+
+普通界面脚本远达不到这两个上限；忘写步进条件的死循环（如 `while (true)`）或无终止条件的递归会被及时中止，而不是拖垮服务器。
+
+## 字节码磁盘缓存
+
+`GUIManager::load` 编译脚本后，会把字节码序列化到源文件旁边的 `<脚本名>.lcc` 文件（例如 `market.lcui` 对应 `market.lcui.lcc`）：
+
+- 再次加载时优先读取 `.lcc` 缓存，命中则跳过词法/语法/语义分析与编译，直接复用字节码；
+- 缓存头记录源文件及整个导入图中每个文件的 SHA-256；源文件或任一导入文件内容变化、缓存格式版本不同都会使缓存整体失效并重新编译；
+- 序列化数据附带校验和，损坏的缓存会被丢弃并重新编译；
+- 缓存仅是加速手段：删除 `.lcc` 文件不影响正确性，只是下次加载需要重新编译。
 
 ## 常见约束与陷阱
 
-- 类、命名函数与 `using` 只能出现在脚本顶层，不能嵌套定义。
+- 类、命名函数、`using` 与组件只能出现在脚本顶层，不能嵌套定义。
+- 声明式 UI 块只能用于表单类（`CustomForm` / `MessageBox` / `PaginatedForm` / `ScriptForm`）；`on:` 命名参数只在块内可用。
+- 组件调用只能作为声明式 UI 块内的语句；组件递归（直接或间接）会报编译错误。
+- 被导入的文件只能包含顶层定义（`class` / `func` / `using` / `component` / `import`）；不同文件中的同名定义会冲突报错。
+- 单次脚本执行的指令数上限为 1,000,000、调用深度上限为 256 层，超限会终止执行。
 - `return` 只能在函数内使用；`break`/`continue` 只能在循环内使用。
 - 类型声明（`x: int`）必须同时提供初始值；没有默认值的类字段必须在构造函数中赋值。
 - `None` 只能用于 `optional` 上下文；空 `optional` 直接读取、算术或比较会报错。

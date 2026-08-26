@@ -85,6 +85,7 @@ namespace LOICollection::frontend::ir {
         void visit(IndexAccessNode& node) override;
         void visit(UsingNode& node) override;
         void visit(ImportNode& node) override;
+        void visit(ComponentNode& node) override;
 
         void registerClassMeta(ClassNode& node);
         void compileClassBodies(ClassNode& node);

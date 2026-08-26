@@ -2,6 +2,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "LOICollectionA/frontend/ComponentExpander.h"
 #include "LOICollectionA/frontend/Lexer.h"
 #include "LOICollectionA/frontend/Parser.h"
 
@@ -11,14 +12,13 @@
 
 namespace LOICollection::frontend {
     namespace {
-        /* Top-level nodes a file may declare; anything else is an
-         * executable statement. */
         bool isTopLevelDefinition(ASTNode& node) {
             switch (node.getType()) {
                 case ASTNode::Type::Class:
                 case ASTNode::Type::FunctionDef:
                 case ASTNode::Type::Using:
                 case ASTNode::Type::Import:
+                case ASTNode::Type::Component:
                     return true;
                 default:
                     return false;
@@ -33,6 +33,8 @@ namespace LOICollection::frontend {
                     return &static_cast<FunctionDefNode&>(node).name;
                 case ASTNode::Type::Using:
                     return &static_cast<UsingNode&>(node).name;
+                case ASTNode::Type::Component:
+                    return &static_cast<ComponentNode&>(node).name;
                 default:
                     return nullptr;
             }
@@ -46,6 +48,8 @@ namespace LOICollection::frontend {
                     return static_cast<FunctionDefNode&>(node).loc;
                 case ASTNode::Type::Using:
                     return static_cast<UsingNode&>(node).loc;
+                case ASTNode::Type::Component:
+                    return static_cast<ComponentNode&>(node).loc;
                 default:
                     return {};
             }
@@ -72,9 +76,6 @@ namespace LOICollection::frontend {
         std::vector<std::string> hashes;
         std::vector<std::string> stack;
 
-        /* Depth-first walk of the import graph: modules are emitted in
-         * post-order, so `order` is already a valid topological order with
-         * dependencies first. */
         std::function<bool(const std::string&, const SourceLocation&)> visit =
             [&](const std::string& path, const SourceLocation& importLoc) -> bool {
                 if (std::find(order.begin(), order.end(), path) != order.end())
@@ -131,8 +132,6 @@ namespace LOICollection::frontend {
         if (!visit(entryPath, {}))
             return std::nullopt;
 
-        /* Imported files carry definitions only: a top-level statement would
-         * execute UI-building code as an import side effect. */
         for (auto& [path, program] : modules) {
             if (path == entryPath)
                 continue;
@@ -141,19 +140,12 @@ namespace LOICollection::frontend {
                 if (!isTopLevelDefinition(*part)) {
                     diagnostics.addError({},
                         "Imported file '" + displayName(path, rootDir) +
-                        "' must only contain top-level definitions (class/func/using)");
+                        "' must only contain top-level definitions (class/func/using/component)");
                     return std::nullopt;
                 }
             }
         }
 
-        /* Expand imports: each import statement is replaced in place by the
-         * target file's definitions, already expanded. Because `order` is
-         * dependencies-first, expansion never sees an unresolved import.
-         * Under the merged-definitions model a file's definitions enter the
-         * program exactly once — at the first import site; later imports of
-         * the same file contribute nothing (name clashes are rejected
-         * separately below). */
         std::unordered_map<std::string, std::vector<std::unique_ptr<ASTNode>>> expanded;
         std::unordered_set<std::string> merged;
         std::unordered_map<std::string, std::pair<std::string, size_t>> definedAt;
@@ -206,6 +198,9 @@ namespace LOICollection::frontend {
         result.program->parts = std::move(expanded.at(entryPath));
         result.files = std::move(order);
         result.hashes = std::move(hashes);
+
+        if (!ComponentExpander::expand(*result.program, diagnostics))
+            return std::nullopt;
 
         return result;
     }

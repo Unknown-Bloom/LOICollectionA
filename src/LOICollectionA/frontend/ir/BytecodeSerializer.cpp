@@ -6,9 +6,6 @@
 
 namespace LOICollection::frontend::ir {
     namespace {
-        /* Little-endian binary writer with bounds-checked reader twin. The
-         * format is private to this translation unit: any layout change
-         * bumps FORMAT_VERSION and invalidates every cache on disk. */
         class Writer {
         public:
             void raw(const void* data, size_t size) {
@@ -79,17 +76,12 @@ namespace LOICollection::frontend::ir {
             size_t pos = 0;
         };
 
-        /* Only scalar constants are serializable; runtime alternatives
-         * (objects, function refs, arrays) never appear in practice, and a
-         * chunk carrying one simply is not cached. */
         constexpr uint8_t CONST_INT = 0;
         constexpr uint8_t CONST_FLOAT = 1;
         constexpr uint8_t CONST_STRING = 2;
         constexpr uint8_t CONST_BOOL = 3;
         constexpr uint8_t CONST_NONE = 4;
 
-        /* Raw SHA-256 digest length: the checksum written between the header
-         * and the chunk payload. */
         constexpr size_t kDigestSize = 32;
 
         bool writeValue(Writer& writer, const ValueNode::ValueType& value) {
@@ -458,8 +450,6 @@ namespace LOICollection::frontend::ir {
                 })))
                 return false;
 
-            /* methodBodies is a deque: read it with a plain loop instead of
-             * the vector-typed readVector helper. */
             uint32_t bodyCount = 0;
             if (!reader.u32(bodyCount))
                 return false;

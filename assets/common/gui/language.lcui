@@ -5,14 +5,12 @@ lang = new ObservableNumber(0.0, true);
 form = new CustomForm("language.gui", {tr("language.gui.title")}) {
     label({tr("language.gui.label")}, new TextOptions());
     label(std::format({tr("language.gui.lang")}, [ {tr("name")} ]), new TextOptions());
-    spacer(new SpacingOptions());
-    divider(new DividerOptions());
+    SectionHeader();
     dropdown({tr("language.gui.dropdown")}, lang, GUIManager::value("language.names"), new DropdownOptions());
-    button(saveLabel(), on: func () -> void {
+    ConfirmBar(saveLabel(), func () -> void {
         GUIManager::callback("language.callback", [ lang.getData() ]);
 
         form.close();
-    }, new ButtonOptions());
-    closeButton();
+    });
     show();
 };

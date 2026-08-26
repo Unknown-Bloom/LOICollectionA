@@ -4,6 +4,7 @@
 #include <memory>
 #include <stdexcept>
 
+#include "LOICollectionA/frontend/ComponentExpander.h"
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
 #include "LOICollectionA/frontend/Lexer.h"
 #include "LOICollectionA/frontend/Parser.h"
@@ -22,6 +23,11 @@ namespace LOICollection::frontend {
         auto ast = parser.parse();
         if (diagnostics.hasErrors())
             throw std::runtime_error(diagnostics.getErrorMessage());
+
+        if (ast->getType() == ASTNode::Type::Program) {
+            if (!ComponentExpander::expand(static_cast<ProgramNode&>(*ast), diagnostics))
+                throw std::runtime_error(diagnostics.getErrorMessage());
+        }
 
         if (ast->getType() == ASTNode::Type::Program) {
             SemanticAnalyzer analyzer(diagnostics);

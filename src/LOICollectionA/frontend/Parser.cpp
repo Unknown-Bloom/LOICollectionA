@@ -83,8 +83,6 @@ namespace LOICollection::frontend {
             return nullptr;
         }
 
-        /* Brace-bodied branches are accepted alongside the classic `[ ... ]`
-         * form so control flow reads naturally inside declarative blocks. */
         bool braced = currentToken.type == TokenType::TOKEN_LBRACE;
         if (!braced && !eat(TokenType::TOKEN_LBRCKET)) {
             synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_COLON, TokenType::TOKEN_RBRACE });
@@ -110,9 +108,6 @@ namespace LOICollection::frontend {
             return nullptr;
         }
 
-        /* The classic form is `if (cond) [ truePart : falsePart ]`: the false
-         * branch continues inside the same brackets, so only the braced form
-         * consumes an opening brace here. */
         bool elseBraced = currentToken.type == TokenType::TOKEN_LBRACE;
         if (elseBraced && !eat(TokenType::TOKEN_LBRACE)) {
             synchronize({ TokenType::TOKEN_RBRACE });
@@ -788,8 +783,6 @@ namespace LOICollection::frontend {
             return nullptr;
         }
 
-        /* A lambda body is its own function: bare calls inside it are regular
-         * calls, not receiver calls of the enclosing declarative block (§5.1). */
         size_t savedDeclarativeDepth = this->declarativeDepth;
         this->declarativeDepth = 0;
         lambda->decl.body = parseBlock(TokenType::TOKEN_RBRACE, false);
@@ -1044,6 +1037,16 @@ namespace LOICollection::frontend {
                 continue;
             }
 
+            if (currentToken.type == TokenType::TOKEN_COMPONENT) {
+                diagnostics.addError(currentToken.loc,
+                    "Component definitions are only allowed at top level");
+
+                synchronize(stopOnColon
+                    ? std::initializer_list<TokenType>{ TokenType::TOKEN_COLON, TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE }
+                    : std::initializer_list<TokenType>{ stopToken, TokenType::TOKEN_RBRACE });
+                continue;
+            }
+
             size_t stmtStartLine = currentToken.loc.line;
             auto stmt = parseStatement();
             if (!stmt) {
@@ -1089,6 +1092,68 @@ namespace LOICollection::frontend {
         eat(TokenType::TOKEN_STRING);
 
         return std::make_unique<ImportNode>(loc, std::move(path));
+    }
+
+    std::unique_ptr<ComponentNode> Parser::parseComponent() {
+        SourceLocation loc = currentToken.loc;
+
+        if (!eat(TokenType::TOKEN_COMPONENT)) return nullptr;
+
+        if (currentToken.type != TokenType::TOKEN_IDENT) {
+            diagnostics.addError(currentToken.loc, "Expected a component name after 'component'");
+            synchronize({ TokenType::TOKEN_SEMICOLON, TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        auto node = std::make_unique<ComponentNode>(loc, std::move(currentToken.value));
+        eat(TokenType::TOKEN_IDENT);
+
+        if (!eat(TokenType::TOKEN_LPAREN)) {
+            diagnostics.addError(currentToken.loc, "Expected '(' after component name");
+            synchronize({ TokenType::TOKEN_SEMICOLON, TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        if (currentToken.type == TokenType::TOKEN_IDENT) {
+            node->params.push_back(std::move(currentToken.value));
+            eat(TokenType::TOKEN_IDENT);
+
+            while (currentToken.type == TokenType::TOKEN_COMMA) {
+                eat(TokenType::TOKEN_COMMA);
+
+                if (currentToken.type != TokenType::TOKEN_IDENT) {
+                    diagnostics.addError(currentToken.loc, "Expected a parameter name");
+                    synchronize({ TokenType::TOKEN_RPAREN, TokenType::TOKEN_RBRACE });
+                    return nullptr;
+                }
+
+                node->params.push_back(std::move(currentToken.value));
+                eat(TokenType::TOKEN_IDENT);
+            }
+        }
+
+        if (!eat(TokenType::TOKEN_RPAREN)) {
+            diagnostics.addError(currentToken.loc, "Expected ')' after component parameters");
+            synchronize({ TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        if (!eat(TokenType::TOKEN_LBRACE)) {
+            diagnostics.addError(currentToken.loc, "Expected '{' to open the component body");
+            synchronize({ TokenType::TOKEN_SEMICOLON, TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        ++this->declarativeDepth;
+        node->body = parseBlock(TokenType::TOKEN_RBRACE, false);
+        --this->declarativeDepth;
+
+        if (!eat(TokenType::TOKEN_RBRACE)) {
+            diagnostics.addError(currentToken.loc, "Expected '}' to close the component body");
+            synchronize({ TokenType::TOKEN_RBRACE, TokenType::TOKEN_SEMICOLON });
+        }
+
+        return node;
     }
 
     void Parser::bindDeclarativeReceiver(AssignmentNode& node) {
@@ -1142,9 +1207,6 @@ namespace LOICollection::frontend {
                 continue;
             }
 
-            /* `on:` named-argument sugar (§5.1): inside a declarative UI block
-             * `button(text, on: handler, options)` maps positionally onto
-             * `form.button(text, handler, options)`. The label is dropped. */
             if (this->declarativeDepth > 0 &&
                 currentToken.type == TokenType::TOKEN_IDENT && currentToken.value == "on" &&
                 peek() == TokenType::TOKEN_COLON) {
@@ -1185,6 +1247,9 @@ namespace LOICollection::frontend {
 
         if (currentToken.type == TokenType::TOKEN_IMPORT)
             return parseImport();
+
+        if (currentToken.type == TokenType::TOKEN_COMPONENT)
+            return parseComponent();
 
         if (currentToken.type == TokenType::TOKEN_WHILE)
             return parseWhileStatement();
@@ -1264,8 +1329,6 @@ namespace LOICollection::frontend {
             return std::make_unique<CompoundAssignNode>(exprLoc, std::move(expr), std::move(right), op);
         }
 
-        /* Bare calls used as statements inside a declarative UI block (§5.1)
-         * are candidates for implicit-receiver desugaring; Sema confirms. */
         if (this->declarativeDepth > 0 && expr->getType() == ASTNode::Type::FuncCall)
             static_cast<FuncCallNode&>(*expr).isFormReceiverCall = true;
 
@@ -1299,7 +1362,7 @@ namespace LOICollection::frontend {
             };
 
             if (isBareLogical(*left) || isBareLogical(*right))
-                diagnostics.addError(loc, "'??' cannot be mixed with '&&' or '||' without parentheses");
+                diagnostics.addError(loc, "'\?\?' cannot be mixed with '&&' or '||' without parentheses");
 
             left = std::make_unique<CoalesceNode>(loc, std::move(left), std::move(right));
         }
@@ -1645,9 +1708,6 @@ namespace LOICollection::frontend {
 
                 auto node = std::make_unique<NewNode>(loc, std::move(className), std::move(args));
 
-                /* Declarative UI block (§5.1): `new Form(args) { ... }`.
-                 * The body parses as a plain statement block; `on:` named
-                 * arguments are accepted while inside it. */
                 if (currentToken.type == TokenType::TOKEN_LBRACE) {
                     if (!eat(TokenType::TOKEN_LBRACE)) return nullptr;
 
@@ -1923,6 +1983,7 @@ namespace LOICollection::frontend {
             case TokenType::TOKEN_COALESCE: return "??";
             case TokenType::TOKEN_QUESTION_DOT: return "?.";
             case TokenType::TOKEN_IMPORT: return "IMPORT";
+            case TokenType::TOKEN_COMPONENT: return "COMPONENT";
             default: return "UNKNOWN";
         }
     }

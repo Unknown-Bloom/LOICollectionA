@@ -1,3 +1,5 @@
+import "generic.lcui";
+
 navigateWantedCreate = new GlobalValue();
 navigateWantedCreate.value = false;
 
@@ -10,45 +12,44 @@ createOption.tooltip = {tr("market.gui.wanted.create.tooltip")};
 mineOption = new ButtonOptions();
 mineOption.tooltip = {tr("market.gui.wanted.mine.tooltip")};
 
-wanted = new PaginatedForm("market.wanted", {tr("market.gui.title")}, GUIManager::value("market.wanted.items"), 10);
-wanted.label({tr("market.gui.wanted.list.label")}, new TextOptions());
-wanted.previousButton({tr("generic.gui.page.previous")});
-wanted.nextButton({tr("generic.gui.page.next")});
-wanted.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-wanted.divider(new DividerOptions());
-wanted.button({tr("market.gui.wanted.create")}, func () -> void {
-    if (!navigateWantedCreate.value) [
-        navigateWantedCreate.value = true;
+wanted = new PaginatedForm("market.wanted", {tr("market.gui.title")}, GUIManager::value("market.wanted.items"), 10) {
+    label({tr("market.gui.wanted.list.label")}, new TextOptions());
+    PageControls();
+    divider(new DividerOptions());
+    button({tr("market.gui.wanted.create")}, on: func () -> void {
+        if (!navigateWantedCreate.value) [
+            navigateWantedCreate.value = true;
 
-        wanted.close();
-    ]
-}, createOption);
-wanted.button({tr("market.gui.wanted.mine")}, func () -> void {
-    if (!navigateWantedMine.value) [
-        navigateWantedMine.value = true;
+            wanted.close();
+        ]
+    }, createOption);
+    button({tr("market.gui.wanted.mine")}, on: func () -> void {
+        if (!navigateWantedMine.value) [
+            navigateWantedMine.value = true;
 
-        wanted.close();
-    ]
-}, mineOption);
-wanted.closeButton();
-wanted.show(func (result) -> void {
-    if (navigateWantedCreate.value) [
-        buildWantedInventory();
-    :
-        if (navigateWantedMine.value) [
-            buildWantedMine();
+            wanted.close();
+        ]
+    }, mineOption);
+    closeButton();
+    show(func (result) -> void {
+        if (navigateWantedCreate.value) [
+            buildWantedInventory();
         :
-            if (result.selection != "") [
-                idData = GUIManager::request("market.wanted.id", [ result.selectionIndex ]);
-
-                buildWantedInfo(idData[0]);
+            if (navigateWantedMine.value) [
+                buildWantedMine();
             :
-                GUIManager::open("market", "market.open", 1);
+                if (result.selection != "") [
+                    idData = GUIManager::request("market.wanted.id", [ result.selectionIndex ]);
+
+                    buildWantedInfo(idData[0]);
+                :
+                    GUIManager::open("market", "market.open", 1);
+                ]
             ]
         ]
-    ]
-});
-wanted.show();
+    });
+    show();
+};
 
 func buildWantedInfo(id: string) -> void {
     infoData = GUIManager::request("market.wanted.info", [ id ]);
@@ -64,51 +65,49 @@ func buildWantedInfo(id: string) -> void {
     fillResult = new GlobalValue();
     fillResult.value = true;
 
-    wantedInfo = new CustomForm("market.wanted.info", {tr("market.gui.title")});
-    wantedInfo.label(infoData[0], new TextOptions());
-    wantedInfo.spacer(new SpacingOptions());
-    wantedInfo.divider(new DividerOptions());
-    wantedInfo.textField({tr("market.gui.wanted.fill.amount")}, fillAmount, fillOptions);
-    wantedInfo.button({tr("market.gui.wanted.fill")}, func () -> void {
-        fillResultData = GUIManager::request("market.wanted.fill.submit", [ id, fillAmount.getData() ]);
+    wantedInfo = new CustomForm("market.wanted.info", {tr("market.gui.title")}) {
+        label(infoData[0], new TextOptions());
+        SectionHeader();
+        textField({tr("market.gui.wanted.fill.amount")}, fillAmount, fillOptions);
+        ConfirmBar({tr("market.gui.wanted.fill")}, func () -> void {
+            fillResultData = GUIManager::request("market.wanted.fill.submit", [ id, fillAmount.getData() ]);
 
-        fillResult.value = fillResultData[0];
-        fillDone.value = true;
+            fillResult.value = fillResultData[0];
+            fillDone.value = true;
 
-        wantedInfo.close();
-    }, new ButtonOptions());
-    wantedInfo.closeButton();
-    wantedInfo.show(func (result) -> void {
-        if (fillDone.value) [
-            if (fillResult.value) [
-                GUIManager::open("market.wanted", "market.wanted", 3);
+            wantedInfo.close();
+        });
+        show(func (result) -> void {
+            if (fillDone.value) [
+                if (fillResult.value) [
+                    GUIManager::open("market.wanted", "market.wanted", 3);
+                :
+                    GUIManager::open("market.wanted", "market.wanted", 3);
+                ]
             :
                 GUIManager::open("market.wanted", "market.wanted", 3);
             ]
-        :
-            GUIManager::open("market.wanted", "market.wanted", 3);
-        ]
-    });
+        });
+    };
 
     GUIManager::switchTo("market.wanted.info", 1);
 }
 
 func buildWantedInventory() -> void {
-    wantedInventory = new PaginatedForm("market.wanted.inventory", {tr("market.gui.title")}, GUIManager::value("market.sell.inventory"), 10);
-    wantedInventory.label({tr("market.gui.sell.item.dropdown")}, new TextOptions());
-    wantedInventory.previousButton({tr("generic.gui.page.previous")});
-    wantedInventory.nextButton({tr("generic.gui.page.next")});
-    wantedInventory.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-    wantedInventory.closeButton();
-    wantedInventory.show(func (result) -> void {
-        if (result.selection != "") [
-            slotData = GUIManager::request("market.wanted.slot", [ result.selectionIndex ]);
+    wantedInventory = new PaginatedForm("market.wanted.inventory", {tr("market.gui.title")}, GUIManager::value("market.sell.inventory"), 10) {
+        label({tr("market.gui.sell.item.dropdown")}, new TextOptions());
+        PageControls();
+        closeButton();
+        show(func (result) -> void {
+            if (result.selection != "") [
+                slotData = GUIManager::request("market.wanted.slot", [ result.selectionIndex ]);
 
-            buildWantedCreate(slotData[0]);
-        :
-            GUIManager::open("market.wanted", "market.wanted", 3);
-        ]
-    });
+                buildWantedCreate(slotData[0]);
+            :
+                GUIManager::open("market.wanted", "market.wanted", 3);
+            ]
+        });
+    };
 
     GUIManager::switchTo("market.wanted.inventory", 3);
 }
@@ -133,53 +132,51 @@ func buildWantedCreate(slot: int) -> void {
     createResult = new GlobalValue();
     createResult.value = true;
 
-    wantedCreate = new CustomForm("market.wanted.create", {tr("market.gui.title")});
-    wantedCreate.label({tr("market.gui.label")}, new TextOptions());
-    wantedCreate.spacer(new SpacingOptions());
-    wantedCreate.divider(new DividerOptions());
-    wantedCreate.textField({tr("market.gui.wanted.create.name")}, wantedName, nameOptions);
-    wantedCreate.textField({tr("market.gui.wanted.create.price")}, wantedPrice, priceOptions);
-    wantedCreate.textField({tr("market.gui.wanted.create.amount")}, wantedAmount, amountOptions);
-    wantedCreate.button({tr("generic.gui.save")}, func () -> void {
-        createResultData = GUIManager::request("market.wanted.create.submit", [ slot, wantedName.getData(), wantedPrice.getData(), wantedAmount.getData() ]);
+    wantedCreate = new CustomForm("market.wanted.create", {tr("market.gui.title")}) {
+        label({tr("market.gui.label")}, new TextOptions());
+        SectionHeader();
+        textField({tr("market.gui.wanted.create.name")}, wantedName, nameOptions);
+        textField({tr("market.gui.wanted.create.price")}, wantedPrice, priceOptions);
+        textField({tr("market.gui.wanted.create.amount")}, wantedAmount, amountOptions);
+        ConfirmBar(saveLabel(), func () -> void {
+            createResultData = GUIManager::request("market.wanted.create.submit", [ slot, wantedName.getData(), wantedPrice.getData(), wantedAmount.getData() ]);
 
-        createResult.value = createResultData[0];
-        createDone.value = true;
+            createResult.value = createResultData[0];
+            createDone.value = true;
 
-        wantedCreate.close();
-    }, new ButtonOptions());
-    wantedCreate.closeButton();
-    wantedCreate.show(func (result) -> void {
-        if (createDone.value) [
-            if (createResult.value) [
-                GUIManager::open("market.wanted", "market.wanted", 3);
+            wantedCreate.close();
+        });
+        show(func (result) -> void {
+            if (createDone.value) [
+                if (createResult.value) [
+                    GUIManager::open("market.wanted", "market.wanted", 3);
+                :
+                    GUIManager::open("market.wanted", "market.wanted", 3);
+                ]
             :
                 GUIManager::open("market.wanted", "market.wanted", 3);
             ]
-        :
-            GUIManager::open("market.wanted", "market.wanted", 3);
-        ]
-    });
+        });
+    };
 
     GUIManager::switchTo("market.wanted.create", 1);
 }
 
 func buildWantedMine() -> void {
-    wantedMine = new PaginatedForm("market.wanted.mine", {tr("market.gui.title")}, GUIManager::value("market.my.wanted"), 10);
-    wantedMine.label({tr("market.gui.wanted.mine.label")}, new TextOptions());
-    wantedMine.previousButton({tr("generic.gui.page.previous")});
-    wantedMine.nextButton({tr("generic.gui.page.next")});
-    wantedMine.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-    wantedMine.closeButton();
-    wantedMine.show(func (result) -> void {
-        if (result.selection != "") [
-            idData = GUIManager::request("market.my.wanted.id", [ result.selectionIndex ]);
+    wantedMine = new PaginatedForm("market.wanted.mine", {tr("market.gui.title")}, GUIManager::value("market.my.wanted"), 10) {
+        label({tr("market.gui.wanted.mine.label")}, new TextOptions());
+        PageControls();
+        closeButton();
+        show(func (result) -> void {
+            if (result.selection != "") [
+                idData = GUIManager::request("market.my.wanted.id", [ result.selectionIndex ]);
 
-            buildWantedCancel(idData[0]);
-        :
-            GUIManager::open("market.wanted", "market.wanted", 3);
-        ]
-    });
+                buildWantedCancel(idData[0]);
+            :
+                GUIManager::open("market.wanted", "market.wanted", 3);
+            ]
+        });
+    };
 
     GUIManager::switchTo("market.wanted.mine", 3);
 }
@@ -193,30 +190,29 @@ func buildWantedCancel(id: string) -> void {
     cancelResult = new GlobalValue();
     cancelResult.value = true;
 
-    wantedCancel = new CustomForm("market.wanted.cancel", {tr("market.gui.title")});
-    wantedCancel.label(infoData[0], new TextOptions());
-    wantedCancel.spacer(new SpacingOptions());
-    wantedCancel.divider(new DividerOptions());
-    wantedCancel.button({tr("market.gui.wanted.cancel")}, func () -> void {
-        cancelResultData = GUIManager::request("market.wanted.cancel.submit", [ id ]);
+    wantedCancel = new CustomForm("market.wanted.cancel", {tr("market.gui.title")}) {
+        label(infoData[0], new TextOptions());
+        SectionHeader();
+        ConfirmBar({tr("market.gui.wanted.cancel")}, func () -> void {
+            cancelResultData = GUIManager::request("market.wanted.cancel.submit", [ id ]);
 
-        cancelResult.value = cancelResultData[0];
-        cancelDone.value = true;
+            cancelResult.value = cancelResultData[0];
+            cancelDone.value = true;
 
-        wantedCancel.close();
-    }, new ButtonOptions());
-    wantedCancel.closeButton();
-    wantedCancel.show(func (result) -> void {
-        if (cancelDone.value) [
-            if (cancelResult.value) [
-                GUIManager::open("market.wanted", "market.wanted", 3);
+            wantedCancel.close();
+        });
+        show(func (result) -> void {
+            if (cancelDone.value) [
+                if (cancelResult.value) [
+                    GUIManager::open("market.wanted", "market.wanted", 3);
+                :
+                    GUIManager::open("market.wanted", "market.wanted.mine", 3);
+                ]
             :
                 GUIManager::open("market.wanted", "market.wanted.mine", 3);
             ]
-        :
-            GUIManager::open("market.wanted", "market.wanted.mine", 3);
-        ]
-    });
+        });
+    };
 
     GUIManager::switchTo("market.wanted.cancel", 1);
 }

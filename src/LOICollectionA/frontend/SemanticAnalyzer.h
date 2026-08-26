@@ -47,12 +47,7 @@ namespace LOICollection::frontend {
 
         DiagnosticEngine& diagnostics;
 
-        /* Nested scope stack (§5.1): declarative UI blocks introduce block
-         * scoping for the declarations inside them; everything outside keeps
-         * the classic flat function-level scope. */
         std::vector<std::unordered_map<std::string, TypeInfo>> blockScopes;
-
-        /* Class names of the forms under construction, innermost last (§5.1). */
         std::vector<std::string> formReceivers;
 
         std::vector<std::reference_wrapper<ClassNode>> classes;

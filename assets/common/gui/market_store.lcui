@@ -1,18 +1,19 @@
-storeList = new PaginatedForm("market.store.list", {tr("market.gui.title")}, GUIManager::value("market.store.list"), 10);
-storeList.label({tr("market.gui.store.list.label")}, new TextOptions());
-storeList.previousButton({tr("generic.gui.page.previous")});
-storeList.nextButton({tr("generic.gui.page.next")});
-storeList.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-storeList.closeButton();
-storeList.show(func (result) -> void {
-    if (result.selection != "") [
-        idData = GUIManager::request("market.store.list.id", [ result.selectionIndex ]);
+import "generic.lcui";
 
-        buildStoreDetail(idData[0]);
-    :
-        GUIManager::open("market", "market.open", 1);
-    ]
-});
+storeList = new PaginatedForm("market.store.list", {tr("market.gui.title")}, GUIManager::value("market.store.list"), 10) {
+    label({tr("market.gui.store.list.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
+        if (result.selection != "") [
+            idData = GUIManager::request("market.store.list.id", [ result.selectionIndex ]);
+
+            buildStoreDetail(idData[0]);
+        :
+            GUIManager::open("market", "market.open", 1);
+        ]
+    });
+};
 
 mineInfoData = GUIManager::request("market.store.mine.info", []);
 
@@ -40,61 +41,58 @@ dissolveOption.tooltip = {tr("market.gui.store.mine.dissolve.tooltip")};
 auditOption = new ButtonOptions();
 auditOption.tooltip = {tr("market.gui.store.mine.audit.tooltip")};
 
-mineForm = new CustomForm("market.store.mine", {tr("market.gui.title")});
-mineForm.label(std::format({tr("market.gui.store.mine.label")}, [ mineInfoData[1], mineInfoData[3] ]), new TextOptions());
-mineForm.spacer(new SpacingOptions());
-mineForm.divider(new DividerOptions());
-mineForm.button({tr("market.gui.store.mine.upload")}, func () -> void {
-    checkData = GUIManager::request("market.store.upload.check", []);
+mineForm = new CustomForm("market.store.mine", {tr("market.gui.title")}) {
+    label(std::format({tr("market.gui.store.mine.label")}, [ mineInfoData[1], mineInfoData[3] ]), new TextOptions());
+    SectionHeader();
+    button({tr("market.gui.store.mine.upload")}, on: func () -> void {
+        checkData = GUIManager::request("market.store.upload.check", []);
 
-    if (checkData[0]) [
-        navigateUpload.value = true;
+        if (checkData[0]) [
+            navigateUpload.value = true;
+
+            mineForm.close();
+        ]
+    }, uploadOption);
+    button({tr("market.gui.store.mine.manage")}, on: func () -> void {
+        navigateManage.value = true;
 
         mineForm.close();
+    }, manageOption);
+    button({tr("market.gui.store.mine.dissolve")}, on: func () -> void {
+        navigateDissolve.value = true;
+
+        mineForm.close();
+    }, dissolveOption);
+
+    if (GUIManager::request("market.isAdmin", [])[0] && GUIManager::request("market.store.review.enabled", [])[0]) [
+        button({tr("market.gui.store.mine.audit")}, on: func () -> void {
+            navigateAudit.value = true;
+
+            mineForm.close();
+        }, auditOption);
     ]
-}, uploadOption);
-mineForm.button({tr("market.gui.store.mine.manage")}, func () -> void {
-    navigateManage.value = true;
 
-    mineForm.close();
-}, manageOption);
-mineForm.button({tr("market.gui.store.mine.dissolve")}, func () -> void {
-    navigateDissolve.value = true;
-
-    mineForm.close();
-}, dissolveOption);
-
-isAdminData = GUIManager::request("market.isAdmin", []);
-reviewEnabledData = GUIManager::request("market.store.review.enabled", []);
-
-if (isAdminData[0] && reviewEnabledData[0]) [
-    mineForm.button({tr("market.gui.store.mine.audit")}, func () -> void {
-        navigateAudit.value = true;
-
-        mineForm.close();
-    }, auditOption);
-]
-
-mineForm.closeButton();
-mineForm.show(func (result) -> void {
-    if (navigateUpload.value) [
-        GUIManager::switchTo("market.store.inventory", 3);
-    :
-        if (navigateManage.value) [
-            buildStoreMyItems();
+    closeButton();
+    show(func (result) -> void {
+        if (navigateUpload.value) [
+            GUIManager::switchTo("market.store.inventory", 3);
         :
-            if (navigateDissolve.value) [
-                buildStoreDissolve();
+            if (navigateManage.value) [
+                buildStoreMyItems();
             :
-                if (navigateAudit.value) [
-                    buildPendingReviews();
+                if (navigateDissolve.value) [
+                    buildStoreDissolve();
                 :
-                    GUIManager::open("market", "market.personal", 1);
+                    if (navigateAudit.value) [
+                        buildPendingReviews();
+                    :
+                        GUIManager::open("market", "market.personal", 1);
+                    ]
                 ]
             ]
         ]
-    ]
-});
+    });
+};
 
 createName = new ObservableString("", true);
 createIcon = new ObservableString("", true);
@@ -117,50 +115,48 @@ createDone.value = false;
 createResult = new GlobalValue();
 createResult.value = true;
 
-createForm = new CustomForm("market.store.create", {tr("market.gui.title")});
-createForm.label({tr("market.gui.store.mine.create.title")}, new TextOptions());
-createForm.label(createCostData[0], new TextOptions());
-createForm.spacer(new SpacingOptions());
-createForm.divider(new DividerOptions());
-createForm.textField({tr("market.gui.store.mine.create.name")}, createName, createNameOptions);
-createForm.textField({tr("market.gui.store.mine.create.icon")}, createIcon, createIconOptions);
-createForm.textField({tr("market.gui.store.mine.create.introduce")}, createIntroduce, createIntroduceOptions);
-createForm.button({tr("generic.gui.save")}, func () -> void {
-    createResultData = GUIManager::request("market.store.create.submit", [ createName.getData(), createIcon.getData(), createIntroduce.getData() ]);
+createForm = new CustomForm("market.store.create", {tr("market.gui.title")}) {
+    label({tr("market.gui.store.mine.create.title")}, new TextOptions());
+    label(createCostData[0], new TextOptions());
+    SectionHeader();
+    textField({tr("market.gui.store.mine.create.name")}, createName, createNameOptions);
+    textField({tr("market.gui.store.mine.create.icon")}, createIcon, createIconOptions);
+    textField({tr("market.gui.store.mine.create.introduce")}, createIntroduce, createIntroduceOptions);
+    ConfirmBar(saveLabel(), func () -> void {
+        createResultData = GUIManager::request("market.store.create.submit", [ createName.getData(), createIcon.getData(), createIntroduce.getData() ]);
 
-    createResult.value = createResultData[0];
-    createDone.value = true;
+        createResult.value = createResultData[0];
+        createDone.value = true;
 
-    createForm.close();
-}, new ButtonOptions());
-createForm.closeButton();
-createForm.show(func (result) -> void {
-    if (createDone.value) [
-        if (createResult.value) [
-            GUIManager::open("market.store", "market.store.mine", 1);
+        createForm.close();
+    });
+    show(func (result) -> void {
+        if (createDone.value) [
+            if (createResult.value) [
+                GUIManager::open("market.store", "market.store.mine", 1);
+            :
+                GUIManager::open("market.store", "market.store.create", 1);
+            ]
         :
-            GUIManager::open("market.store", "market.store.create", 1);
+            GUIManager::open("market", "market.personal", 1);
         ]
-    :
-        GUIManager::open("market", "market.personal", 1);
-    ]
-});
+    });
+};
 
-storeInventory = new PaginatedForm("market.store.inventory", {tr("market.gui.title")}, GUIManager::value("market.store.inventory"), 10);
-storeInventory.label({tr("market.gui.sell.item.dropdown")}, new TextOptions());
-storeInventory.previousButton({tr("generic.gui.page.previous")});
-storeInventory.nextButton({tr("generic.gui.page.next")});
-storeInventory.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-storeInventory.closeButton();
-storeInventory.show(func (result) -> void {
-    if (result.selection != "") [
-        slotData = GUIManager::request("market.store.sell.slot", [ result.selectionIndex ]);
+storeInventory = new PaginatedForm("market.store.inventory", {tr("market.gui.title")}, GUIManager::value("market.store.inventory"), 10) {
+    label({tr("market.gui.sell.item.dropdown")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
+        if (result.selection != "") [
+            slotData = GUIManager::request("market.store.sell.slot", [ result.selectionIndex ]);
 
-        buildStoreSellItem(slotData[0]);
-    :
-        GUIManager::open("market.store", "market.store.mine", 1);
-    ]
-});
+            buildStoreSellItem(slotData[0]);
+        :
+            GUIManager::open("market.store", "market.store.mine", 1);
+        ]
+    });
+};
 
 func buildStoreDetail(storeId: string) -> void {
     detailData = GUIManager::request("market.store.info", [ storeId ]);
@@ -177,52 +173,51 @@ func buildStoreDetail(storeId: string) -> void {
     reviewOption = new ButtonOptions();
     reviewOption.visible = reviewVisible;
 
-    detailForm = new CustomForm("market.store.detail", {tr("market.gui.title")});
-    detailForm.label(detailData[0], new TextOptions());
-    detailForm.spacer(new SpacingOptions());
-    detailForm.divider(new DividerOptions());
-    detailForm.button({tr("market.gui.store.item.buy")}, func () -> void {
-        navigateItems.value = true;
+    detailForm = new CustomForm("market.store.detail", {tr("market.gui.title")}) {
+        label(detailData[0], new TextOptions());
+        SectionHeader();
+        button({tr("market.gui.store.item.buy")}, on: func () -> void {
+            navigateItems.value = true;
 
-        detailForm.close();
-    }, new ButtonOptions());
-    detailForm.button({tr("market.gui.store.review.button")}, func () -> void {
-        navigateReviews.value = true;
+            detailForm.close();
+        }, new ButtonOptions());
+        button({tr("market.gui.store.review.button")}, on: func () -> void {
+            navigateReviews.value = true;
 
-        detailForm.close();
-    }, reviewOption);
-    detailForm.closeButton();
-    detailForm.show(func (result) -> void {
-        if (navigateItems.value) [
-            buildStoreItems(storeId);
-        :
-            if (navigateReviews.value) [
-                buildStoreReviews(storeId);
+            detailForm.close();
+        }, reviewOption);
+        closeButton();
+        show(func (result) -> void {
+            if (navigateItems.value) [
+                buildStoreItems(storeId);
             :
-                GUIManager::open("market.store", "market.store.list", 3);
+                if (navigateReviews.value) [
+                    buildStoreReviews(storeId);
+                :
+                    GUIManager::open("market.store", "market.store.list", 3);
+                ]
             ]
-        ]
-    });
+        });
+    };
 
     GUIManager::switchTo("market.store.detail", 1);
 }
 
 func buildStoreItems(storeId: string) -> void {
-    storeItems = new PaginatedForm("market.store.items", {tr("market.gui.title")}, GUIManager::request("market.store.item.list", [ storeId ]), 10);
-    storeItems.label({tr("market.gui.label")}, new TextOptions());
-    storeItems.previousButton({tr("generic.gui.page.previous")});
-    storeItems.nextButton({tr("generic.gui.page.next")});
-    storeItems.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-    storeItems.closeButton();
-    storeItems.show(func (result) -> void {
-        if (result.selection != "") [
-            idData = GUIManager::request("market.store.item.id", [ storeId, result.selectionIndex ]);
+    storeItems = new PaginatedForm("market.store.items", {tr("market.gui.title")}, GUIManager::request("market.store.item.list", [ storeId ]), 10) {
+        label({tr("market.gui.label")}, new TextOptions());
+        PageControls();
+        closeButton();
+        show(func (result) -> void {
+            if (result.selection != "") [
+                idData = GUIManager::request("market.store.item.id", [ storeId, result.selectionIndex ]);
 
-            buildStoreItemInfo(storeId, idData[0]);
-        :
-            buildStoreDetail(storeId);
-        ]
-    });
+                buildStoreItemInfo(storeId, idData[0]);
+            :
+                buildStoreDetail(storeId);
+            ]
+        });
+    };
 
     GUIManager::switchTo("market.store.items", 3);
 }
@@ -236,30 +231,29 @@ func buildStoreItemInfo(storeId: string, itemId: string) -> void {
     buyResult = new GlobalValue();
     buyResult.value = true;
 
-    itemInfo = new CustomForm("market.store.item.info", {tr("market.gui.title")});
-    itemInfo.label(itemInfoData[0], new TextOptions());
-    itemInfo.spacer(new SpacingOptions());
-    itemInfo.divider(new DividerOptions());
-    itemInfo.button({tr("market.gui.sell.item.button1")}, func () -> void {
-        buyResultData = GUIManager::request("market.store.buy.submit", [ itemId ]);
+    itemInfo = new CustomForm("market.store.item.info", {tr("market.gui.title")}) {
+        label(itemInfoData[0], new TextOptions());
+        SectionHeader();
+        ConfirmBar({tr("market.gui.sell.item.button1")}, func () -> void {
+            buyResultData = GUIManager::request("market.store.buy.submit", [ itemId ]);
 
-        buyResult.value = buyResultData[0];
-        buyDone.value = true;
+            buyResult.value = buyResultData[0];
+            buyDone.value = true;
 
-        itemInfo.close();
-    }, new ButtonOptions());
-    itemInfo.closeButton();
-    itemInfo.show(func (result) -> void {
-        if (buyDone.value) [
-            if (!buyResult.value) [
-                GUIManager::open("market.store", "market.store.list", 3);
+            itemInfo.close();
+        });
+        show(func (result) -> void {
+            if (buyDone.value) [
+                if (!buyResult.value) [
+                    GUIManager::open("market.store", "market.store.list", 3);
+                :
+                    buildStoreItems(storeId);
+                ]
             :
                 buildStoreItems(storeId);
             ]
-        :
-            buildStoreItems(storeId);
-        ]
-    });
+        });
+    };
 
     GUIManager::switchTo("market.store.item.info", 1);
 }
@@ -270,25 +264,23 @@ func buildStoreReviews(storeId: string) -> void {
     navigateReviewForm = new GlobalValue();
     navigateReviewForm.value = false;
 
-    reviews = new PaginatedForm("market.store.reviews", {tr("market.gui.title")}, reviewsData, 10);
-    reviews.label({tr("market.gui.store.reviews.label")}, new TextOptions());
-    reviews.previousButton({tr("generic.gui.page.previous")});
-    reviews.nextButton({tr("generic.gui.page.next")});
-    reviews.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-    reviews.divider(new DividerOptions());
-    reviews.button({tr("market.gui.store.review.button")}, func () -> void {
-        navigateReviewForm.value = true;
+    reviews = new PaginatedForm("market.store.reviews", {tr("market.gui.title")}, reviewsData, 10) {
+        label({tr("market.gui.store.reviews.label")}, new TextOptions());
+        PageControls();
+        divider(new DividerOptions());
+        ConfirmBar({tr("market.gui.store.review.button")}, func () -> void {
+            navigateReviewForm.value = true;
 
-        reviews.close();
-    }, new ButtonOptions());
-    reviews.closeButton();
-    reviews.show(func (result) -> void {
-        if (navigateReviewForm.value) [
-            buildReviewForm(storeId);
-        :
-            buildStoreDetail(storeId);
-        ]
-    });
+            reviews.close();
+        });
+        show(func (result) -> void {
+            if (navigateReviewForm.value) [
+                buildReviewForm(storeId);
+            :
+                buildStoreDetail(storeId);
+            ]
+        });
+    };
 
     GUIManager::switchTo("market.store.reviews", 3);
 }
@@ -316,44 +308,42 @@ func buildReviewForm(storeId: string) -> void {
     reviewResult = new GlobalValue();
     reviewResult.value = true;
 
-    reviewForm = new CustomForm("market.store.review.form", {tr("market.gui.title")});
-    reviewForm.label({tr("market.gui.store.reviews.label")}, new TextOptions());
-    reviewForm.spacer(new SpacingOptions());
-    reviewForm.divider(new DividerOptions());
-    reviewForm.dropdown({tr("market.gui.store.review.rating")}, ratingIndex, ratingItems, new DropdownOptions());
-    reviewForm.textField({tr("market.gui.store.review.content")}, reviewContent, contentOptions);
-    reviewForm.button({tr("generic.gui.save")}, func () -> void {
-        reviewResultData = GUIManager::request("market.store.review.submit", [ storeId, ratingIndex.getData(), reviewContent.getData() ]);
+    reviewForm = new CustomForm("market.store.review.form", {tr("market.gui.title")}) {
+        label({tr("market.gui.store.reviews.label")}, new TextOptions());
+        SectionHeader();
+        dropdown({tr("market.gui.store.review.rating")}, ratingIndex, ratingItems, new DropdownOptions());
+        textField({tr("market.gui.store.review.content")}, reviewContent, contentOptions);
+        ConfirmBar(saveLabel(), func () -> void {
+            reviewResultData = GUIManager::request("market.store.review.submit", [ storeId, ratingIndex.getData(), reviewContent.getData() ]);
 
-        reviewResult.value = reviewResultData[0];
-        reviewDone.value = true;
+            reviewResult.value = reviewResultData[0];
+            reviewDone.value = true;
 
-        reviewForm.close();
-    }, new ButtonOptions());
-    reviewForm.closeButton();
-    reviewForm.show(func (result) -> void {
-        buildStoreReviews(storeId);
-    });
+            reviewForm.close();
+        });
+        show(func (result) -> void {
+            buildStoreReviews(storeId);
+        });
+    };
 
     GUIManager::switchTo("market.store.review.form", 1);
 }
 
 func buildStoreMyItems() -> void {
-    myItems = new PaginatedForm("market.store.my.items", {tr("market.gui.title")}, GUIManager::value("market.store.mine.items"), 10);
-    myItems.label({tr("market.gui.label")}, new TextOptions());
-    myItems.previousButton({tr("generic.gui.page.previous")});
-    myItems.nextButton({tr("generic.gui.page.next")});
-    myItems.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-    myItems.closeButton();
-    myItems.show(func (result) -> void {
-        if (result.selection != "") [
-            idData = GUIManager::request("market.store.mine.item.id", [ result.selectionIndex ]);
+    myItems = new PaginatedForm("market.store.my.items", {tr("market.gui.title")}, GUIManager::value("market.store.mine.items"), 10) {
+        label({tr("market.gui.label")}, new TextOptions());
+        PageControls();
+        closeButton();
+        show(func (result) -> void {
+            if (result.selection != "") [
+                idData = GUIManager::request("market.store.mine.item.id", [ result.selectionIndex ]);
 
-            buildStoreMyItemInfo(idData[0]);
-        :
-            GUIManager::open("market.store", "market.store.mine", 1);
-        ]
-    });
+                buildStoreMyItemInfo(idData[0]);
+            :
+                GUIManager::open("market.store", "market.store.mine", 1);
+            ]
+        });
+    };
 
     GUIManager::switchTo("market.store.my.items", 3);
 }
@@ -364,21 +354,20 @@ func buildStoreMyItemInfo(itemId: string) -> void {
     offshelfDone = new GlobalValue();
     offshelfDone.value = false;
 
-    itemMine = new CustomForm("market.store.my.item.info", {tr("market.gui.title")});
-    itemMine.label(itemInfoData[0], new TextOptions());
-    itemMine.spacer(new SpacingOptions());
-    itemMine.divider(new DividerOptions());
-    itemMine.button({tr("market.gui.store.item.offshelf")}, func () -> void {
-        GUIManager::request("market.store.offshelf.submit", [ itemId ]);
+    itemMine = new CustomForm("market.store.my.item.info", {tr("market.gui.title")}) {
+        label(itemInfoData[0], new TextOptions());
+        SectionHeader();
+        ConfirmBar({tr("market.gui.store.item.offshelf")}, func () -> void {
+            GUIManager::request("market.store.offshelf.submit", [ itemId ]);
 
-        offshelfDone.value = true;
+            offshelfDone.value = true;
 
-        itemMine.close();
-    }, new ButtonOptions());
-    itemMine.closeButton();
-    itemMine.show(func (result) -> void {
-        buildStoreMyItems();
-    });
+            itemMine.close();
+        });
+        show(func (result) -> void {
+            buildStoreMyItems();
+        });
+    };
 
     GUIManager::switchTo("market.store.my.item.info", 1);
 }
@@ -390,36 +379,35 @@ func buildStoreDissolve() -> void {
     dissolveResult = new GlobalValue();
     dissolveResult.value = true;
 
-    dissolveForm = new CustomForm("market.store.dissolve", {tr("market.gui.title")});
-    dissolveForm.label({tr("market.gui.store.mine.dissolve.confirm")}, new TextOptions());
-    dissolveForm.spacer(new SpacingOptions());
-    dissolveForm.divider(new DividerOptions());
-    dissolveForm.button({tr("market.yes")}, func () -> void {
-        dissolveResultData = GUIManager::request("market.store.dissolve.submit", []);
+    dissolveForm = new CustomForm("market.store.dissolve", {tr("market.gui.title")}) {
+        label({tr("market.gui.store.mine.dissolve.confirm")}, new TextOptions());
+        SectionHeader();
+        button({tr("market.yes")}, on: func () -> void {
+            dissolveResultData = GUIManager::request("market.store.dissolve.submit", []);
 
-        dissolveResult.value = dissolveResultData[0];
-        dissolveDone.value = true;
+            dissolveResult.value = dissolveResultData[0];
+            dissolveDone.value = true;
 
-        dissolveForm.close();
-    }, new ButtonOptions());
-    dissolveForm.button({tr("market.no")}, func () -> void {
-        dissolveResult.value = false;
-        dissolveDone.value = true;
+            dissolveForm.close();
+        }, new ButtonOptions());
+        ConfirmBar({tr("market.no")}, func () -> void {
+            dissolveResult.value = false;
+            dissolveDone.value = true;
 
-        dissolveForm.close();
-    }, new ButtonOptions());
-    dissolveForm.closeButton();
-    dissolveForm.show(func (result) -> void {
-        if (dissolveDone.value) [
-            if (dissolveResult.value) [
-                GUIManager::open("market", "market.personal", 1);
+            dissolveForm.close();
+        });
+        show(func (result) -> void {
+            if (dissolveDone.value) [
+                if (dissolveResult.value) [
+                    GUIManager::open("market", "market.personal", 1);
+                :
+                    GUIManager::open("market.store", "market.store.mine", 1);
+                ]
             :
                 GUIManager::open("market.store", "market.store.mine", 1);
             ]
-        :
-            GUIManager::open("market.store", "market.store.mine", 1);
-        ]
-    });
+        });
+    };
 
     GUIManager::switchTo("market.store.dissolve", 1);
 }
@@ -448,34 +436,33 @@ func buildStoreSellItem(slot: int) -> void {
     sellResult = new GlobalValue();
     sellResult.value = true;
 
-    sellItemForm = new CustomForm("market.store.sell.item", {tr("market.gui.title")});
-    sellItemForm.label({tr("market.gui.label")}, new TextOptions());
-    sellItemForm.spacer(new SpacingOptions());
-    sellItemForm.divider(new DividerOptions());
-    sellItemForm.textField({tr("market.gui.sell.sellItem.input1")}, itemName, itemNameOptions);
-    sellItemForm.textField({tr("market.gui.sell.sellItem.input2")}, itemIcon, itemIconOptions);
-    sellItemForm.textField({tr("market.gui.sell.sellItem.input3")}, itemIntroduce, itemIntroduceOptions);
-    sellItemForm.textField({tr("market.gui.sell.sellItem.input4")}, itemScore, itemScoreOptions);
-    sellItemForm.button({tr("generic.gui.save")}, func () -> void {
-        sellResultData = GUIManager::request("market.store.sell.submit", [ slot, itemName.getData(), itemIcon.getData(), itemIntroduce.getData(), itemScore.getData() ]);
+    sellItemForm = new CustomForm("market.store.sell.item", {tr("market.gui.title")}) {
+        label({tr("market.gui.label")}, new TextOptions());
+        SectionHeader();
+        textField({tr("market.gui.sell.sellItem.input1")}, itemName, itemNameOptions);
+        textField({tr("market.gui.sell.sellItem.input2")}, itemIcon, itemIconOptions);
+        textField({tr("market.gui.sell.sellItem.input3")}, itemIntroduce, itemIntroduceOptions);
+        textField({tr("market.gui.sell.sellItem.input4")}, itemScore, itemScoreOptions);
+        ConfirmBar(saveLabel(), func () -> void {
+            sellResultData = GUIManager::request("market.store.sell.submit", [ slot, itemName.getData(), itemIcon.getData(), itemIntroduce.getData(), itemScore.getData() ]);
 
-        sellResult.value = sellResultData[0];
-        sellDone.value = true;
+            sellResult.value = sellResultData[0];
+            sellDone.value = true;
 
-        sellItemForm.close();
-    }, new ButtonOptions());
-    sellItemForm.closeButton();
-    sellItemForm.show(func (result) -> void {
-        if (sellDone.value) [
-            if (sellResult.value) [
-                GUIManager::open("market.store", "market.store.mine", 1);
+            sellItemForm.close();
+        });
+        show(func (result) -> void {
+            if (sellDone.value) [
+                if (sellResult.value) [
+                    GUIManager::open("market.store", "market.store.mine", 1);
+                :
+                    GUIManager::open("market.store", "market.store.inventory", 3);
+                ]
             :
                 GUIManager::open("market.store", "market.store.inventory", 3);
             ]
-        :
-            GUIManager::open("market.store", "market.store.inventory", 3);
-        ]
-    });
+        });
+    };
 
     GUIManager::switchTo("market.store.sell.item", 1);
 }
@@ -483,21 +470,20 @@ func buildStoreSellItem(slot: int) -> void {
 func buildPendingReviews() -> void {
     pendingData = GUIManager::request("market.store.reviews.pending", []);
 
-    pending = new PaginatedForm("market.store.reviews.pending", {tr("market.gui.title")}, pendingData, 10);
-    pending.label({tr("market.gui.store.mine.audit")}, new TextOptions());
-    pending.previousButton({tr("generic.gui.page.previous")});
-    pending.nextButton({tr("generic.gui.page.next")});
-    pending.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-    pending.closeButton();
-    pending.show(func (result) -> void {
-        if (result.selection != "") [
-            idData = GUIManager::request("market.store.reviews.pending.id", [ result.selectionIndex ]);
+    pending = new PaginatedForm("market.store.reviews.pending", {tr("market.gui.title")}, pendingData, 10) {
+        label({tr("market.gui.store.mine.audit")}, new TextOptions());
+        PageControls();
+        closeButton();
+        show(func (result) -> void {
+            if (result.selection != "") [
+                idData = GUIManager::request("market.store.reviews.pending.id", [ result.selectionIndex ]);
 
-            buildReviewAudit(idData[0]);
-        :
-            GUIManager::open("market.store", "market.store.mine", 1);
-        ]
-    });
+                buildReviewAudit(idData[0]);
+            :
+                GUIManager::open("market.store", "market.store.mine", 1);
+            ]
+        });
+    };
 
     GUIManager::switchTo("market.store.reviews.pending", 3);
 }
@@ -508,28 +494,27 @@ func buildReviewAudit(reviewId: string) -> void {
     auditDone = new GlobalValue();
     auditDone.value = false;
 
-    auditForm = new CustomForm("market.store.review.audit", {tr("market.gui.title")});
-    auditForm.label(auditData[0], new TextOptions());
-    auditForm.spacer(new SpacingOptions());
-    auditForm.divider(new DividerOptions());
-    auditForm.button({tr("market.gui.store.audit.approve")}, func () -> void {
-        GUIManager::request("market.store.review.audit", [ reviewId, true ]);
+    auditForm = new CustomForm("market.store.review.audit", {tr("market.gui.title")}) {
+        label(auditData[0], new TextOptions());
+        SectionHeader();
+        button({tr("market.gui.store.audit.approve")}, on: func () -> void {
+            GUIManager::request("market.store.review.audit", [ reviewId, true ]);
 
-        auditDone.value = true;
+            auditDone.value = true;
 
-        auditForm.close();
-    }, new ButtonOptions());
-    auditForm.button({tr("market.gui.store.audit.reject")}, func () -> void {
-        GUIManager::request("market.store.review.audit", [ reviewId, false ]);
+            auditForm.close();
+        }, new ButtonOptions());
+        ConfirmBar({tr("market.gui.store.audit.reject")}, func () -> void {
+            GUIManager::request("market.store.review.audit", [ reviewId, false ]);
 
-        auditDone.value = true;
+            auditDone.value = true;
 
-        auditForm.close();
-    }, new ButtonOptions());
-    auditForm.closeButton();
-    auditForm.show(func (result) -> void {
-        buildPendingReviews();
-    });
+            auditForm.close();
+        });
+        show(func (result) -> void {
+            buildPendingReviews();
+        });
+    };
 
     GUIManager::switchTo("market.store.review.audit", 1);
 }

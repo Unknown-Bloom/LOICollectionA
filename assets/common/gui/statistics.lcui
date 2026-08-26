@@ -1,36 +1,38 @@
+import "generic.lcui";
+
 pendingStatistic = new CtxValue(0);
 
 if (pendingStatistic.value != "") [
     rankingData = GUIManager::request("statistics.ranking", [ pendingStatistic.value ]);
 
-    specific = new CustomForm("statistics.specific", {tr("statistics.gui.title")});
-    specific.label(std::format({tr("statistics.gui.specific.label")}, [ rankingData[0], rankingData[1] ]), new TextOptions());
-    specific.label(rankingData[2], new TextOptions());
-    specific.closeButton();
-    specific.show(func (result) -> void {
-        GUIManager::open("statistics", "statistics.open", 3, [ "" ]);
-    });
-]
-
-open = new PaginatedForm("statistics.open", {tr("statistics.gui.title")}, GUIManager::value("statistics.names"), 10);
-open.label({tr("statistics.gui.label")}, new TextOptions());
-open.previousButton({tr("generic.gui.page.previous")});
-open.nextButton({tr("generic.gui.page.next")});
-open.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-open.closeButton();
-open.show(func (result) -> void {
-    if (result.selection != "") [
-        rankingData = GUIManager::request("statistics.ranking", [ result.selection ]);
-
-        specific = new CustomForm("statistics.specific", {tr("statistics.gui.title")});
-        specific.label(std::format({tr("statistics.gui.specific.label")}, [ rankingData[0], rankingData[1] ]), new TextOptions());
-        specific.label(rankingData[2], new TextOptions());
-        specific.closeButton();
-        specific.show(func (result) -> void {
+    specific = new CustomForm("statistics.specific", {tr("statistics.gui.title")}) {
+        label(std::format({tr("statistics.gui.specific.label")}, [ rankingData[0], rankingData[1] ]), new TextOptions());
+        label(rankingData[2], new TextOptions());
+        closeButton();
+        show(func (result) -> void {
             GUIManager::open("statistics", "statistics.open", 3, [ "" ]);
         });
+    };
+]
 
-        GUIManager::switchTo("statistics.specific", 1);
-    ]
-});
-open.show();
+open = new PaginatedForm("statistics.open", {tr("statistics.gui.title")}, GUIManager::value("statistics.names"), 10) {
+    label({tr("statistics.gui.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
+        if (result.selection != "") [
+            rankingData = GUIManager::request("statistics.ranking", [ result.selection ]);
+
+            specific = new CustomForm("statistics.specific", {tr("statistics.gui.title")}) {
+                label(std::format({tr("statistics.gui.specific.label")}, [ rankingData[0], rankingData[1] ]), new TextOptions());
+                label(rankingData[2], new TextOptions());
+                closeButton();
+                show(func (result) -> void {
+                    GUIManager::open("statistics", "statistics.open", 3, [ "" ]);
+                });
+            };
+
+            GUIManager::switchTo("statistics.specific", 1);
+        ]
+    });
+};

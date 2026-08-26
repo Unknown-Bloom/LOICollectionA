@@ -19,9 +19,6 @@ using namespace LOICollection::frontend;
 using namespace LOICollection::frontend::ir;
 using LOICollection::utils::Sha256;
 
-/* §7.3 — bytecode disk cache: provenance hashing, the serialize/deserialize
- * round trip, and every invalidation path. */
-
 namespace {
     std::shared_ptr<BytecodeChunk> compileScript(const std::string& source) {
         DiagnosticEngine diagnostics;
@@ -82,8 +79,6 @@ namespace {
 }
 
 TEST(Sha256Test, KnownVectors) {
-    /* The digest embeds a NUL byte, so the expected value must carry an
-     * explicit length — a bare literal would be strlen-truncated. */
     const std::string abcDigest(
         "\xba\x78\x16\xbf\x8f\x01\xcf\xea\x41\x41\x40\xde\x5d\xae"
         "\x22\x23\xb0\x03\x61\xa3\x96\x17\x7a\x9c\xb4\x10\xff\x61\xf2\x00\x15\xad",
@@ -97,7 +92,6 @@ TEST(Sha256Test, KnownVectors) {
         "\xb9\x24\x27\xae\x41\xe4\x64\x9b\x93\x4c\xa4\x95\x99\x1b\x78\x52\xb8\x55"
     );
 
-    /* Stable across an incremental stream. */
     Sha256 hash;
     hash.update("a");
     hash.update("bc");
@@ -161,7 +155,6 @@ TEST(BytecodeCacheTest, RejectsChangedImportHash) {
     auto blob = BytecodeSerializer::serialize(*chunk, headerFor(kSource, { libSource }));
     ASSERT_TRUE(blob.has_value());
 
-    /* Editing any imported file invalidates the whole cache. */
     auto stale = headerFor(kSource, { libSource + "\n" });
     EXPECT_FALSE(BytecodeSerializer::deserialize(blob.value(), stale).has_value());
 }

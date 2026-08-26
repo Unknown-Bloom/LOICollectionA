@@ -73,9 +73,6 @@ namespace LOICollection::frontend::ir {
 
         [[nodiscard]] static ValueNode::ValueType cloneValue(const ValueNode::ValueType& val);
 
-        /* Execution budget and call depth limits for third-party scripts (§7.2):
-         * a runaway script must abort with a diagnostic instead of hanging the
-         * server or exhausting the native stack. */
         static constexpr size_t MAX_INSTRUCTIONS = 1'000'000;
         static constexpr size_t MAX_FRAMES = 256;
     };

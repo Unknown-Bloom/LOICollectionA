@@ -79,8 +79,6 @@ namespace LOICollection::form {
 
         frontend::DiagnosticEngine diagnostics;
 
-        /* Resolve the import graph (§6.2): imports are merged into a single
-         * program before semantic analysis; each file compiles once. */
         const std::string rootDir = std::filesystem::path(path).parent_path().string();
         auto loaded = frontend::ScriptLoader::load(
             path, rootDir,
@@ -96,8 +94,6 @@ namespace LOICollection::form {
         if (!loaded)
             return ll::makeStringError(diagnostics.getErrorMessage());
 
-        /* Cache header (§7.3): source hash plus the import graph's hashes;
-         * any change invalidates the cache as a whole. */
         frontend::ir::BytecodeSerializer::Header header;
         header.sourceHash = loaded->hashes.back();
         header.importHashes.assign(loaded->hashes.begin(), loaded->hashes.end() - 1);

@@ -3,6 +3,22 @@
  * across every form. Definitions only — imported files must not carry
  * executable statements. */
 
+component PageControls() {
+    previousButton(pagePrevious());
+    nextButton(pageNext());
+    chooseButton(pageChoose(), pageChooseInput());
+}
+
+component SectionHeader() {
+    spacer(new SpacingOptions());
+    divider(new DividerOptions());
+}
+
+component ConfirmBar(confirmText, onConfirm) {
+    button(confirmText, on: onConfirm, new ButtonOptions());
+    closeButton();
+}
+
 func pagePrevious() -> string {
     return {tr("generic.gui.page.previous")};
 }

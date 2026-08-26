@@ -18,8 +18,6 @@ namespace LOICollection::frontend {
 
         DiagnosticEngine& diagnostics;
 
-        /* Depth of enclosing declarative UI blocks (§5.1). While inside one,
-         * call arguments accept the `on:` named-argument sugar. */
         size_t declarativeDepth = 0;
 
     public:
@@ -35,6 +33,7 @@ namespace LOICollection::frontend {
         std::unique_ptr<ContinueNode> parseContinueStatement();
         std::unique_ptr<UsingNode> parseUsing();
         std::unique_ptr<ImportNode> parseImport();
+        std::unique_ptr<ComponentNode> parseComponent();
         std::unique_ptr<TypeExpr> parseTypeExpr();
         std::unique_ptr<FunctionNode> parseFunction();
         std::unique_ptr<MacroNode> parseMacro();

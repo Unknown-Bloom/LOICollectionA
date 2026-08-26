@@ -144,9 +144,6 @@ TEST(StdlibMapTest, ChainedUsage) {
         "5");
 }
 
-/* The Observable* native classes bind to ll::ui observables; the standalone
- * test build drops those implementations (declarations only), so their
- * tests compile only in the full build. */
 #ifndef LOICOLLECTION_TEST_NO_OBSERVABLE
 
 TEST(StdlibObservableTest, NumberOperators) {

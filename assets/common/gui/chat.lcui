@@ -1,3 +1,5 @@
+import "generic.lcui";
+
 navigateAdd = new GlobalValue();
 navigateAdd.value = false;
 
@@ -10,33 +12,34 @@ addOption.tooltip = {tr("chat.gui.manager.add.tooltip")};
 removeOption = new ButtonOptions();
 removeOption.tooltip = {tr("chat.gui.manager.remove.tooltip")};
 
-manage = new CustomForm("chat.manage", {tr("chat.gui.title")});
-manage.label({tr("chat.gui.label")}, new TextOptions());
-manage.button({tr("chat.gui.manager.add")}, func () -> void {
-    if (!navigateAdd.value) [
-        navigateAdd.value = true;
+manage = new CustomForm("chat.manage", {tr("chat.gui.title")}) {
+    label({tr("chat.gui.label")}, new TextOptions());
+    button({tr("chat.gui.manager.add")}, on: func () -> void {
+        if (!navigateAdd.value) [
+            navigateAdd.value = true;
 
-        manage.close();
-    ]
-}, addOption);
-manage.button({tr("chat.gui.manager.remove")}, func () -> void {
-    if (!navigateRemove.value) [
-        navigateRemove.value = true;
-
-        manage.close();
-    ]
-}, removeOption);
-manage.closeButton();
-manage.show(func (result) -> void {
-    if (navigateAdd.value) [
-        GUIManager::switchTo("chat.add", 3);
-    :
-        if (navigateRemove.value) [
-            GUIManager::switchTo("chat.remove", 3);
+            manage.close();
         ]
-    ]
-});
-manage.show();
+    }, addOption);
+    button({tr("chat.gui.manager.remove")}, on: func () -> void {
+        if (!navigateRemove.value) [
+            navigateRemove.value = true;
+
+            manage.close();
+        ]
+    }, removeOption);
+    closeButton();
+    show(func (result) -> void {
+        if (navigateAdd.value) [
+            GUIManager::switchTo("chat.add", 3);
+        :
+            if (navigateRemove.value) [
+                GUIManager::switchTo("chat.remove", 3);
+            ]
+        ]
+    });
+    show();
+};
 
 navigateTitle = new GlobalValue();
 navigateTitle.value = false;
@@ -50,33 +53,34 @@ setTitleOption.tooltip = {tr("chat.gui.setTitle.tooltip")};
 setBlacklistOption = new ButtonOptions();
 setBlacklistOption.tooltip = {tr("chat.gui.setBlacklist.tooltip")};
 
-setting = new CustomForm("chat.setting", {tr("chat.gui.title")});
-setting.label({tr("chat.gui.label")}, new TextOptions());
-setting.button({tr("chat.gui.setTitle")}, func () -> void {
-    if (!navigateTitle.value) [
-        navigateTitle.value = true;
+setting = new CustomForm("chat.setting", {tr("chat.gui.title")}) {
+    label({tr("chat.gui.label")}, new TextOptions());
+    button({tr("chat.gui.setTitle")}, on: func () -> void {
+        if (!navigateTitle.value) [
+            navigateTitle.value = true;
 
-        setting.close();
-    ]
-}, setTitleOption);
-setting.button({tr("chat.gui.setBlacklist")}, func () -> void {
-    if (!navigateBlacklist.value) [
-        navigateBlacklist.value = true;
-
-        setting.close();
-    ]
-}, setBlacklistOption);
-setting.closeButton();
-setting.show(func (result) -> void {
-    if (navigateTitle.value) [
-        GUIManager::switchTo("chat.title", 3);
-    :
-        if (navigateBlacklist.value) [
-            GUIManager::switchTo("chat.blacklist", 3);
+            setting.close();
         ]
-    ]
-});
-setting.show();
+    }, setTitleOption);
+    button({tr("chat.gui.setBlacklist")}, on: func () -> void {
+        if (!navigateBlacklist.value) [
+            navigateBlacklist.value = true;
+
+            setting.close();
+        ]
+    }, setBlacklistOption);
+    closeButton();
+    show(func (result) -> void {
+        if (navigateTitle.value) [
+            GUIManager::switchTo("chat.title", 3);
+        :
+            if (navigateBlacklist.value) [
+                GUIManager::switchTo("chat.blacklist", 3);
+            ]
+        ]
+    });
+    show();
+};
 
 addInputOne = new TextFieldOptions();
 addInputOne.description = {tr("chat.gui.manager.add.input1.placeholder")};
@@ -84,20 +88,19 @@ addInputOne.description = {tr("chat.gui.manager.add.input1.placeholder")};
 addInputTwo = new TextFieldOptions();
 addInputTwo.description = {tr("chat.gui.manager.add.input2.placeholder")};
 
-add = new PaginatedForm("chat.add", {tr("chat.gui.title")}, GUIManager::value("chat.players"), 10);
-add.label({tr("chat.gui.manager.add.label")}, new TextOptions());
-add.previousButton({tr("generic.gui.page.previous")});
-add.nextButton({tr("generic.gui.page.next")});
-add.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-add.closeButton();
-add.show(func (result) -> void {
-    if (result.selection != "") [
-        playerData = GUIManager::request("chat.player.info", [ result.selectionIndex ]);
+add = new PaginatedForm("chat.add", {tr("chat.gui.title")}, GUIManager::value("chat.players"), 10) {
+    label({tr("chat.gui.manager.add.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
+        if (result.selection != "") [
+            playerData = GUIManager::request("chat.player.info", [ result.selectionIndex ]);
 
-        buildContentAdd(playerData[0]);
-    ]
-});
-add.show();
+            buildContentAdd(playerData[0]);
+        ]
+    });
+    show();
+};
 
 func buildContentAdd(targetUuid: string) -> void {
     titleField = new ObservableString("", true);
@@ -105,81 +108,78 @@ func buildContentAdd(targetUuid: string) -> void {
     submitDone = new GlobalValue();
     submitDone.value = false;
 
-    content = new CustomForm("chat.content.add", {tr("chat.gui.title")});
-    content.label({tr("chat.gui.label")}, new TextOptions());
-    content.textField({tr("chat.gui.manager.add.input1")}, titleField, addInputOne);
-    content.textField({tr("chat.gui.manager.add.input2")}, timeField, addInputTwo);
-    content.button({tr("generic.gui.save")}, func () -> void {
-        submitResult = GUIManager::request("chat.title.add", [ targetUuid, titleField.getData(), timeField.getData() ]);
+    content = new CustomForm("chat.content.add", {tr("chat.gui.title")}) {
+        label({tr("chat.gui.label")}, new TextOptions());
+        textField({tr("chat.gui.manager.add.input1")}, titleField, addInputOne);
+        textField({tr("chat.gui.manager.add.input2")}, timeField, addInputTwo);
+        ConfirmBar(saveLabel(), func () -> void {
+            submitResult = GUIManager::request("chat.title.add", [ targetUuid, titleField.getData(), timeField.getData() ]);
 
-        submitDone.value = submitResult[0];
-        content.close();
-    }, new ButtonOptions());
-    content.closeButton();
-    content.show(func (result) -> void {
-        if (!submitDone.value) [
-            GUIManager::open("chat", "chat.add", 3, []);
-        ]
-    });
+            submitDone.value = submitResult[0];
+            content.close();
+        });
+        show(func (result) -> void {
+            if (!submitDone.value) [
+                GUIManager::open("chat", "chat.add", 3, []);
+            ]
+        });
+    };
 
     GUIManager::switchTo("chat.content.add", 1);
 }
 
-remove = new PaginatedForm("chat.remove", {tr("chat.gui.title")}, GUIManager::value("chat.players"), 10);
-remove.label({tr("chat.gui.manager.remove.label")}, new TextOptions());
-remove.previousButton({tr("generic.gui.page.previous")});
-remove.nextButton({tr("generic.gui.page.next")});
-remove.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-remove.closeButton();
-remove.show(func (result) -> void {
-    if (result.selection != "") [
-        playerData = GUIManager::request("chat.player.info", [ result.selectionIndex ]);
+remove = new PaginatedForm("chat.remove", {tr("chat.gui.title")}, GUIManager::value("chat.players"), 10) {
+    label({tr("chat.gui.manager.remove.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
+        if (result.selection != "") [
+            playerData = GUIManager::request("chat.player.info", [ result.selectionIndex ]);
 
-        buildContentRemove(playerData[0]);
-    ]
-});
-remove.show();
+            buildContentRemove(playerData[0]);
+        ]
+    });
+    show();
+};
 
 func buildContentRemove(targetUuid: string) -> void {
     titlesData = GUIManager::request("chat.titles", [ targetUuid ]);
 
-    content = new PaginatedForm("chat.content.remove", {tr("chat.gui.title")}, titlesData, 10);
-    content.label({tr("chat.gui.manager.remove.select.label")}, new TextOptions());
-    content.previousButton({tr("generic.gui.page.previous")});
-    content.nextButton({tr("generic.gui.page.next")});
-    content.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-    content.closeButton();
-    content.show(func (result) -> void {
-        if (result.selection != "") [
-            GUIManager::callback("chat.title.remove", [ targetUuid, result.selection ]);
+    content = new PaginatedForm("chat.content.remove", {tr("chat.gui.title")}, titlesData, 10) {
+        label({tr("chat.gui.manager.remove.select.label")}, new TextOptions());
+        PageControls();
+        closeButton();
+        show(func (result) -> void {
+            if (result.selection != "") [
+                GUIManager::callback("chat.title.remove", [ targetUuid, result.selection ]);
 
-            GUIManager::open("chat", "chat.remove", 3, []);
-        :
-            GUIManager::open("chat", "chat.remove", 3, []);
-        ]
-    });
+                GUIManager::open("chat", "chat.remove", 3, []);
+            :
+                GUIManager::open("chat", "chat.remove", 3, []);
+            ]
+        });
+    };
 
     GUIManager::switchTo("chat.content.remove", 3);
 }
 
 titleInfo = GUIManager::request("chat.title.info", []);
 
-title = new PaginatedForm("chat.title", {tr("chat.gui.title")}, GUIManager::value("chat.titles.self"), 10);
-title.label(titleInfo[0], new TextOptions());
-title.previousButton({tr("generic.gui.page.previous")});
-title.nextButton({tr("generic.gui.page.next")});
-title.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-title.closeButton();
-title.show(func (result) -> void {
-    if (result.selection != "") [
-        GUIManager::callback("chat.title.set", [ result.selection ]);
+title = new PaginatedForm("chat.title", {tr("chat.gui.title")}, GUIManager::value("chat.titles.self"), 10) {
+    label(titleInfo[0], new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
+        if (result.selection != "") [
+            GUIManager::callback("chat.title.set", [ result.selection ]);
 
-        GUIManager::open("chat", "chat.setting", 1, []);
-    :
-        GUIManager::open("chat", "chat.setting", 1, []);
-    ]
-});
-title.show();
+            GUIManager::open("chat", "chat.setting", 1, []);
+        :
+            GUIManager::open("chat", "chat.setting", 1, []);
+        ]
+    });
+    show();
+};
 
 navigateAddBlacklist = new GlobalValue();
 navigateAddBlacklist.value = false;
@@ -187,65 +187,63 @@ navigateAddBlacklist.value = false;
 blacklistAddOption = new ButtonOptions();
 blacklistAddOption.tooltip = {tr("chat.gui.setBlacklist.add.tooltip")};
 
-blacklist = new PaginatedForm("chat.blacklist", {tr("chat.gui.title")}, GUIManager::value("chat.blacklists"), 10);
-blacklist.label({tr("chat.gui.label")}, new TextOptions());
-blacklist.previousButton({tr("generic.gui.page.previous")});
-blacklist.nextButton({tr("generic.gui.page.next")});
-blacklist.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-blacklist.closeButton();
-blacklist.divider(new DividerOptions());
-blacklist.button({tr("chat.gui.setBlacklist.add")}, func () -> void {
-    if (!navigateAddBlacklist.value) [
-        navigateAddBlacklist.value = true;
+blacklist = new PaginatedForm("chat.blacklist", {tr("chat.gui.title")}, GUIManager::value("chat.blacklists"), 10) {
+    label({tr("chat.gui.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    divider(new DividerOptions());
+    button({tr("chat.gui.setBlacklist.add")}, on: func () -> void {
+        if (!navigateAddBlacklist.value) [
+            navigateAddBlacklist.value = true;
 
-        blacklist.close();
-    ]
-}, blacklistAddOption);
-blacklist.show(func (result) -> void {
-    if (navigateAddBlacklist.value) [
-        checkData = GUIManager::request("chat.blacklist.check", []);
-        if (checkData[0]) [
-            GUIManager::switchTo("chat.blacklist.add", 3);
-        :
-            GUIManager::open("chat", "chat.setting", 1, []);
+            blacklist.close();
         ]
-    :
+    }, blacklistAddOption);
+    show(func (result) -> void {
+        if (navigateAddBlacklist.value) [
+            checkData = GUIManager::request("chat.blacklist.check", []);
+            if (checkData[0]) [
+                GUIManager::switchTo("chat.blacklist.add", 3);
+            :
+                GUIManager::open("chat", "chat.setting", 1, []);
+            ]
+        :
+            if (result.selection != "") [
+                infoData = GUIManager::request("chat.blacklist.info", [ result.selection ]);
+
+                info = new CustomForm("chat.blacklist.set", {tr("chat.gui.title")}) {
+                    label(infoData[0], new TextOptions());
+                    ConfirmBar({tr("chat.gui.setBlacklist.set.remove")}, func () -> void {
+                        GUIManager::callback("chat.blacklist.remove", [ result.selection ]);
+
+                        info.close();
+                    });
+                    show(func (result) -> void {
+                        GUIManager::open("chat", "chat.blacklist", 3, []);
+                    });
+                };
+
+                GUIManager::switchTo("chat.blacklist.set", 1);
+            :
+                GUIManager::open("chat", "chat.setting", 1, []);
+            ]
+        ]
+    });
+    show();
+};
+
+blacklistAdd = new PaginatedForm("chat.blacklist.add", {tr("chat.gui.title")}, GUIManager::value("chat.players.add"), 10) {
+    label({tr("chat.gui.setBlacklist.add.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
         if (result.selection != "") [
-            infoData = GUIManager::request("chat.blacklist.info", [ result.selection ]);
+            GUIManager::request("chat.blacklist.add.submit", [ result.selectionIndex ]);
 
-            info = new CustomForm("chat.blacklist.set", {tr("chat.gui.title")});
-            info.label(infoData[0], new TextOptions());
-            info.button({tr("chat.gui.setBlacklist.set.remove")}, func () -> void {
-                GUIManager::callback("chat.blacklist.remove", [ result.selection ]);
-
-                info.close();
-            }, new ButtonOptions());
-            info.closeButton();
-            info.show(func (result) -> void {
-                GUIManager::open("chat", "chat.blacklist", 3, []);
-            });
-
-            GUIManager::switchTo("chat.blacklist.set", 1);
+            GUIManager::open("chat", "chat.blacklist", 3, []);
         :
-            GUIManager::open("chat", "chat.setting", 1, []);
+            GUIManager::open("chat", "chat.blacklist", 3, []);
         ]
-    ]
-});
-blacklist.show();
-
-blacklistAdd = new PaginatedForm("chat.blacklist.add", {tr("chat.gui.title")}, GUIManager::value("chat.players.add"), 10);
-blacklistAdd.label({tr("chat.gui.setBlacklist.add.label")}, new TextOptions());
-blacklistAdd.previousButton({tr("generic.gui.page.previous")});
-blacklistAdd.nextButton({tr("generic.gui.page.next")});
-blacklistAdd.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-blacklistAdd.closeButton();
-blacklistAdd.show(func (result) -> void {
-    if (result.selection != "") [
-        GUIManager::request("chat.blacklist.add.submit", [ result.selectionIndex ]);
-
-        GUIManager::open("chat", "chat.blacklist", 3, []);
-    :
-        GUIManager::open("chat", "chat.blacklist", 3, []);
-    ]
-});
-blacklistAdd.show();
+    });
+    show();
+};

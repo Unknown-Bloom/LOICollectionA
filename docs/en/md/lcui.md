@@ -10,10 +10,10 @@
 The complete processing flow of a script is:
 
 ```text
-Lexer (lexical analysis) -> Parser (syntax analysis) -> SemanticAnalyzer (semantic analysis) -> Compiler (bytecode compilation) -> Optimizer (optimization) -> VM (execution)
+ScriptLoader (import resolution and merging) -> Lexer (lexical analysis) -> Parser (syntax analysis) -> SemanticAnalyzer (semantic analysis) -> Compiler (bytecode compilation) -> Optimizer (optimization) -> VM (execution)
 ```
 
-- When the plugin starts or after the `/xxx reload` command is executed, `GUIManager::load` reads the `.lcui` file, completes the compilation flow above, and caches the bytecode.
+- When the plugin starts or after the `/xxx reload` command is executed, `GUIManager::load` reads the `.lcui` file, first resolves the `import` graph (see "Multi-file Imports"), and then completes the compilation flow above; besides being cached in memory, the compiled bytecode is also written to disk as a `.lcc` file (see "Bytecode Disk Cache").
 - When a player opens a GUI, `GUIManager::open(id, formId, type[, ctx])` executes the cached script for that player; forms created in the script with `new CustomForm(...)`, `new PaginatedForm(...)`, etc. are registered with `GUIManager`, and then the form corresponding to `formId` is switched to.
 
 > For the methods and lifecycle of the native form classes, see [Native UI](./native-ui.md); for Menu/Shop-specific forms and default variables, see [LOICollectionAPI](./api.md).
@@ -21,14 +21,126 @@ Lexer (lexical analysis) -> Parser (syntax analysis) -> SemanticAnalyzer (semant
 ## A Minimal Script
 
 ```lcui
+form = new CustomForm("example.main", {tr("example.gui.title")}) {
+    label({tr("example.gui.hello")}, new TextOptions());
+    button({tr("generic.gui.close")}, on: func () -> void {
+        form.close();
+    }, new ButtonOptions());
+    closeButton();
+    show();
+};
+```
+
+## Declarative UI Blocks
+
+When creating a form, a `{ ... }` block may follow the constructor call to declare controls in display order. Method calls without a receiver inside the block are automatically applied to the form under construction. The minimal script above is fully equivalent to the manually expanded imperative form:
+
+```lcui
 form = new CustomForm("example.main", {tr("example.gui.title")});
 form.label({tr("example.gui.hello")}, new TextOptions());
-form.button({tr("generic.gui.close")}, func () -> void {
+form.button({tr("generic.gui.close")}, on: func () -> void {
     form.close();
 }, new ButtonOptions());
 form.closeButton();
 form.show();
 ```
+
+Key points:
+
+- **Receiver**: in `var = new FormClass(args) { ... }`, bare calls inside the block (e.g. `label(...)`) desugar to `var.label(...)`. The receiver variable is bound before the block body runs, so lambdas defined inside the block (such as button handlers) may reference the form under construction by name, like `form.close()` above.
+- **`on:` named argument**: inside a block (and only inside a block), methods that take a handler such as `button` accept the handler via `on: handler`, in the same argument position as the explicit form.
+- **Control flow**: statements such as `if` are allowed inside the block; which controls get added follows the actual execution order. For example, in the built-in `market_store.lcui`, the audit button is only added for admins when reviews are enabled:
+
+```lcui
+mineForm = new CustomForm("market.store.mine", {tr("market.gui.title")}) {
+    /* ... other buttons ... */
+    if (GUIManager::request("market.isAdmin", [])[0] && GUIManager::request("market.store.review.enabled", [])[0]) [
+        button({tr("market.gui.store.mine.audit")}, on: func () -> void {
+            navigateAudit.value = true;
+
+            mineForm.close();
+        }, auditOption);
+    ]
+
+    closeButton();
+};
+```
+
+- **Form classes only**: declarative blocks are only allowed on `CustomForm`, `MessageBox`, `PaginatedForm`, and `ScriptForm`; using one on another class (e.g. `new GlobalValue() { ... }`) is a compile error.
+- **Plain function fallback**: bare calls inside the block that are not form methods fall back to ordinary function resolution, so imported helpers (e.g. `pagePrevious()`, `saveLabel()`) can be called directly inside a block.
+
+## Components
+
+`component` abstracts repeated form-control combinations into reusable fragments. A component is expanded at its use site as a compile-time macro (hygienic expansion): parameters bind by name, there is zero runtime cost, and bare method calls inside the component body inherit the implicit form receiver of the use site:
+
+```lcui
+component ConfirmBar(confirmText, onConfirm) {
+    button(confirmText, on: onConfirm, new ButtonOptions());
+    closeButton();
+}
+
+form = new CustomForm("wallet.main", {tr("wallet.gui.title")}) {
+    label({tr("wallet.gui.label")}, new TextOptions());
+    ConfirmBar(saveLabel(), func () -> void {
+        form.close();
+    });
+    show();
+};
+```
+
+At compile time the above is equivalent to writing directly inside the block:
+
+```lcui
+form = new CustomForm("wallet.main", {tr("wallet.gui.title")}) {
+    label({tr("wallet.gui.label")}, new TextOptions());
+    button(saveLabel(), on: func () -> void {
+        form.close();
+    }, new ButtonOptions());
+    closeButton();
+    show();
+};
+```
+
+Rules:
+
+| Rule | Description |
+| --- | --- |
+| Definition site | Components may only be defined at script top level; defining one inside a function body or block is a compile error |
+| Use site | A component call may only appear as a statement inside a declarative UI block; calling it outside a block or using it as an expression is a compile error |
+| Parameter binding | The number of call arguments must match the component parameters; they bind positionally to the parameter names |
+| Hygienic expansion | Local variables declared inside the component body are automatically renamed; they neither capture nor shadow same-named outer variables at the use site, and each use site expands independently |
+| No recursion | A component calling itself (directly or indirectly) is a compile error |
+| Block capabilities | Control flow and local variables (block-scoped) are allowed inside the component body, with exactly the same meaning as if written by hand inside the declarative block |
+| Receiver inheritance | Expansion happens at the use site, so bare calls inside the component body act on the form receiver of the use site (`form` above) |
+| Cross-file reuse | Component definitions are top-level definitions; they may live in an `import`-ed file (e.g. `generic.lcui`) and be shared by many scripts |
+
+The shared control combinations of the built-in scripts are defined in `generic.lcui`: `PageControls()` (previous/next/jump pagination buttons), `SectionHeader()` (spacer + divider), and `ConfirmBar(confirmText, onConfirm)` (confirm button + close button).
+
+## Multi-file Imports
+
+The top of a script may use `import` to pull in the top-level definitions (`class` / `func` / `using` / `component`) of other `.lcui` files for cross-file reuse. The shared GUI vocabulary of the built-in scripts (pagination buttons, save/cancel labels, etc.) is extracted into `generic.lcui`:
+
+```lcui
+import "generic.lcui";
+
+quote = new PaginatedForm("market.quote", {tr("market.gui.title")}, GUIManager::value("market.quote.items"), 10) {
+    label({tr("market.gui.quote.list.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show();
+};
+```
+
+Rules:
+
+| Rule | Description |
+| --- | --- |
+| Path resolution | `import` paths are resolved relative to the directory of the entry script |
+| Merge order | The import graph is expanded dependencies-first (topological order); each file's definitions are merged exactly once. Diamond imports (A and B both import C) are legal, and C appears once |
+| Definition conflicts | Same-named `class` / `func` / `using` / `component` in different files raise an error listing the file and line of both definitions |
+| Definitions only | Imported files may only contain `class` / `func` / `using` / `component` / `import` — no executable statements (imports must not have side effects); the entry file is exempt |
+| Circular imports | Circular imports (e.g. A -> B -> A) raise an error with the full cycle path |
+| Missing files | An import whose file is missing or unreadable raises an error |
 
 ## Comments, Literals, and Statement Separation
 
@@ -531,23 +643,50 @@ items = makeItems();
 selected = new GlobalValue();
 selected.value = "";
 
-form = new CustomForm("example.shop", {tr("example.shop.title")});
-form.label({tr("example.shop.list")}, new TextOptions());
-form.button(items[0].format(), func () -> void {
-    selected.value = items[0].name;
-    form.close();
-}, new ButtonOptions());
-form.button(items[1].format(), func () -> void {
-    selected.value = items[1].name;
-    form.close();
-}, new ButtonOptions());
-form.closeButton();
-form.show();
+form = new CustomForm("example.shop", {tr("example.shop.title")}) {
+    label({tr("example.shop.list")}, new TextOptions());
+    button(items[0].format(), on: func () -> void {
+        selected.value = items[0].name;
+
+        form.close();
+    }, new ButtonOptions());
+    button(items[1].format(), on: func () -> void {
+        selected.value = items[1].name;
+
+        form.close();
+    }, new ButtonOptions());
+    closeButton();
+    show();
+};
 ```
+
+## Execution Budget and Call Depth
+
+To keep runaway scripts from hanging the server, the VM enforces two hard limits on every script execution:
+
+| Limit | Cap | Behavior on breach |
+| --- | --- | --- |
+| Instructions | 1,000,000 | Execution aborts with `Execution budget exhausted` |
+| Call depth | 256 call frames | Execution aborts with `Call stack depth limit exceeded` |
+
+Ordinary GUI scripts stay far below both caps; a loop that forgot its step (e.g. `while (true)`) or an unbounded recursion is aborted in time instead of dragging the server down.
+
+## Bytecode Disk Cache
+
+After compiling a script, `GUIManager::load` serializes the bytecode to a `<script>.lcc` file next to the source (e.g. `market.lcui` maps to `market.lcui.lcc`):
+
+- Subsequent loads read the `.lcc` cache first; on a hit, lexing/parsing/semantic analysis and compilation are skipped and the bytecode is reused directly.
+- The cache header records the SHA-256 of the source file and of every file in the import graph; a change to the source or any imported file, or a different cache format version, invalidates the cache as a whole and triggers recompilation.
+- The serialized data carries a checksum; a corrupted cache is discarded and recompiled.
+- The cache is purely an optimization: deleting the `.lcc` file does not affect correctness, only the next load recompiles.
 
 ## Common Constraints and Pitfalls
 
-- Classes, named functions, and `using` can only appear at the top level of a script; they cannot be nested.
+- Classes, named functions, `using`, and components can only appear at the top level of a script; they cannot be nested.
+- Declarative UI blocks are only allowed on form classes (`CustomForm` / `MessageBox` / `PaginatedForm` / `ScriptForm`); the `on:` named argument is only available inside a block.
+- Component calls may only appear as statements inside a declarative UI block; component recursion (direct or indirect) is a compile error.
+- Imported files may only contain top-level definitions (`class` / `func` / `using` / `component` / `import`); same-named definitions in different files conflict and raise an error.
+- Every script execution is capped at 1,000,000 instructions and 256 call frames; exceeding either aborts the execution.
 - `return` can only be used inside a function; `break`/`continue` can only be used inside a loop.
 - A type declaration (`x: int`) must also provide an initial value; class fields without a default value must be assigned in the constructor.
 - `None` can only be used in an `optional` context; directly reading, performing arithmetic on, or comparing an empty `optional` raises an error.
