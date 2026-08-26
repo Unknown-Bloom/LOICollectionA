@@ -377,9 +377,6 @@ namespace LOICollection::frontend::ir {
         return v;
     }
 
-    /* Shared by STORE_VAR and the DUP_STORE super-instruction: resolve the
-     * storage location (frame local, this-field, native static field, or
-     * global) in the same resolution order the language defines. */
     void VM::storeVariable(
         const BytecodeChunk& chunk,
         Frame& frame,

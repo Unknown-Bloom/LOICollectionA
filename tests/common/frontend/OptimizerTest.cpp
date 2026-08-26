@@ -466,8 +466,6 @@ TEST(OptimizerTest, FixedPointExposesPropagationAfterBranchRemoval) {
     EXPECT_FALSE(containsOp(*program.chunk, OpCode::JMP));
     EXPECT_FALSE(containsOp(*program.chunk, OpCode::JMP_IF_FALSE));
 
-    /* Both assignments fuse DUP;STORE_VAR into the DUP_STORE
-     * super-instruction, so each is three instructions instead of four. */
     ASSERT_EQ(program.chunk->code.size(), 8u);
     EXPECT_EQ(program.chunk->code[0].op, OpCode::PUSH_INT);
     EXPECT_EQ(program.chunk->code[1].op, OpCode::DUP_STORE);

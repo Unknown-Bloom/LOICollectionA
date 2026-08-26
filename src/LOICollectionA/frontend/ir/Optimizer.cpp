@@ -148,11 +148,6 @@ namespace LOICollection::frontend::ir {
         }
     }
 
-    /* Pure math:: builtins (§6.2) fold at compile time when every argument is
-     * a known constant. Semantics mirror MathBuiltin exactly, and only
-     * argument kinds that match a registered signature fold — any other
-     * combination must keep its runtime "not registered" error, and
-     * math::random never folds because it is impure. */
     bool foldPureMath(
         const std::string& name,
         const std::vector<ValueNode::ValueType>& args,
@@ -165,7 +160,7 @@ namespace LOICollection::frontend::ir {
             if (isInt(args[0])) {
                 int v = std::get<int>(args[0]);
                 if (v == std::numeric_limits<int>::min())
-                    return false; /* runtime reports the overflow error */
+                    return false;
 
                 out = std::abs(v);
                 return true;
@@ -420,15 +415,11 @@ namespace LOICollection::frontend::ir {
                 }
 
                 case OpCode::IS_NONE: {
-                    /* Fuse a preceding untargeted DUP into the DUP_IS_NONE
-                     * super-instruction (§8): the tested value stays on the
-                     * stack and the none-test rides in the same dispatch. */
                     if (i > 0 && code[i - 1].op == OpCode::DUP &&
                         !targets.contains(oldIdx) && !targets.contains(oldIdx - 1) &&
                         !foldedCode.empty() && foldedCode.back().op == OpCode::DUP) {
                         StackEntry operand = popEntry(stack);
 
-                        /* The emitted DUP is superseded by the fused op. */
                         dropped[static_cast<int>(foldedCode.size()) - 1] = true;
 
                         emittedAt = static_cast<int>(foldedCode.size());
@@ -437,8 +428,6 @@ namespace LOICollection::frontend::ir {
                         if (isKnown(operand)) {
                             bool result =
                                 std::holds_alternative<std::monostate>(knownValue(operand).value);
-                            /* removable=false: the producer also keeps a value on
-                             * the stack, so it must never be dropped by later folds. */
                             stack.emplace_back(TrackedValue{ result, emittedAt, false });
                         } else {
                             stack.emplace_back(std::monostate{});
@@ -471,9 +460,6 @@ namespace LOICollection::frontend::ir {
                 }
 
                 case OpCode::DUP_IS_NONE: {
-                    /* Value stays on the stack, a bool is pushed on top; when
-                     * the value is known the result is known too, but the
-                     * producer must stay (it also keeps the value). */
                     emittedAt = static_cast<int>(foldedCode.size());
 
                     if (stack.size() > 1 && isKnown(stack.back())) {
@@ -530,9 +516,6 @@ namespace LOICollection::frontend::ir {
                 }
 
                 case OpCode::DUP_STORE: {
-                    /* Value stays on the stack and is stored: the kept entry
-                     * becomes non-removable (a copy lives in the variable),
-                     * and the stored scalar feeds LOAD_VAR forwarding. */
                     const std::string& name = std::get<std::string>(chunk.constants[instr.operand]);
 
                     if (isKnown(stack.back()) && isScalarValue(knownValue(stack.back()).value))
@@ -565,10 +548,6 @@ namespace LOICollection::frontend::ir {
                 }
 
                 case OpCode::DUP: {
-                    /* Fuse DUP;STORE_VAR into the DUP_STORE super-instruction
-                     * (§8): the stored copy and the kept value collapse into a
-                     * single dispatch. Only when neither instruction is a
-                     * branch target. */
                     if (i + 1 < code.size() && code[i + 1].op == OpCode::STORE_VAR &&
                         !targets.contains(oldIdx) && !targets.contains(oldIdx + 1)) {
                         if (auto* known = std::get_if<TrackedValue>(&stack.back()))
@@ -839,11 +818,6 @@ namespace LOICollection::frontend::ir {
                     StackEntry cond = popEntry(stack);
                     bool folded = false;
 
-                    /* Peephole: a conditional jump immediately followed by an
-                     * unconditional jump to the same target is unconditional —
-                     * both paths reach the target and pop the condition, so
-                     * only the pop remains and the block between the JMP and
-                     * the target becomes unreachable (swept below). */
                     if (i + 1 < code.size() && code[i + 1].op == OpCode::JMP &&
                         !targets.contains(oldIdx) && !targets.contains(oldIdx + 1) &&
                         oldIdx + 1 + instr.operand == oldIdx + 2 + code[i + 1].operand) {
@@ -935,16 +909,11 @@ namespace LOICollection::frontend::ir {
                 }
 
                 case OpCode::CALL: {
-                    /* Hand-built chunks may reference functions without the
-                     * meta table; only fold when the meta entry exists. */
                     const FuncMeta* meta = instr.operand >= 0 &&
                         instr.operand < static_cast<int>(chunk.functions.size())
                         ? &chunk.functions[instr.operand]
                         : nullptr;
 
-                    /* Pure math:: builtins fold at compile time when every
-                     * argument is a known constant (§6.2); anything else keeps
-                     * the runtime call. */
                     bool foldable = meta != nullptr &&
                         meta->argCount <= static_cast<int>(stack.size()) - 1;
 
@@ -1001,8 +970,6 @@ namespace LOICollection::frontend::ir {
                 newToOld.push_back(oldIdx);
             }
 
-            /* A fused pair consumed the next instruction (e.g. DUP;STORE_VAR
-             * became DUP_STORE); skip past it so it is never re-processed. */
             if (skipNext)
                 ++i;
         }

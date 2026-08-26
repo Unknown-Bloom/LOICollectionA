@@ -68,12 +68,6 @@ namespace LOICollection::frontend {
 
     std::vector<ParamType> valuesToTypes(const CallbackTypeValues& values, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
 
-    /* Monomorphic inline-cache slots (§6.1): a slot remembers the last
-     * resolution and lets a repeat call skip signature hashing and the map
-     * lookups entirely — like a CPU branch predictor for dispatch. A miss is
-     * never slower than the uncached path: it falls back to the full lookup
-     * and refreshes the slot. Slots are stamped with the registry epoch, so
-     * any register/unregister invalidates them. */
     struct FunctionCallCacheSlot {
         std::string namespaces;
         std::string function;
@@ -226,11 +220,6 @@ namespace LOICollection::frontend {
             DiagnosticEngine& diagnostics, const SourceLocation& loc = {}
         );
 
-        /* Cached variants of the hot dispatch entry points (§6.1). They behave
-         * exactly like their uncached counterparts — same results, same
-         * diagnostics — but consult (and refresh) the caller-owned slot so a
-         * repeat call with the same shape skips signature hashing and the map
-         * lookups. */
         LOICOLLECTION_A_NDAPI ll::Expected<ObjectRef> createCached(
             const std::string& name, const CallbackTypeValues& args, const CallbackTypePlaces& placeholders,
             NativeConstructorCacheSlot& slot, DiagnosticEngine& diagnostics, const SourceLocation& loc = {}

@@ -286,8 +286,6 @@ TEST(ClassCallTest, RegisterFieldAndStaticMembers) {
     EXPECT_EQ(std::get<int>(combo.value()), 42);
 }
 
-/* ---- §6.1 monomorphic inline caches ---- */
-
 TEST(FunctionCallCacheTest, CacheHitSkipsRegistryLookup) {
     DiagnosticEngine diagnostics;
     auto& fc = FunctionCall::getInstance();
@@ -302,15 +300,12 @@ TEST(FunctionCallCacheTest, CacheHitSkipsRegistryLookup) {
     FunctionCallCacheSlot slot;
     CallbackTypeValues args = { 41 };
 
-    /* Miss: resolves through the registry and fills the slot. */
     auto first = fc.callFunctionCached(ns, "answer", args, {}, slot, diagnostics);
     ASSERT_TRUE(first.has_value());
     EXPECT_FALSE(diagnostics.hasErrors());
     EXPECT_EQ(std::get<int>(first.value()), 42);
     EXPECT_TRUE(slot.valid);
 
-    /* The registry is untouched between calls, so the next call must take the
-     * hit path: swap in a sentinel callback and check it is the one invoked. */
     slot.callback = [](const CallbackTypeValues&) -> TypedValue { return 999; };
 
     auto second = fc.callFunctionCached(ns, "answer", args, {}, slot, diagnostics);
@@ -338,8 +333,6 @@ TEST(FunctionCallCacheTest, ReregistrationInvalidatesSlot) {
     EXPECT_EQ(std::get<int>(first.value()), 1);
     EXPECT_TRUE(slot.valid);
 
-    /* Re-registering bumps the epoch: the stale slot must not serve the old
-     * behavior. */
     fc.registerFunction(ns, "val",
         [](const CallbackTypeValues&) -> TypedValue { return 2; }, sig);
 
@@ -369,12 +362,10 @@ TEST(FunctionCallCacheTest, ShapeChangeReDispatches) {
     ASSERT_TRUE(intResult.has_value());
     EXPECT_EQ(std::get<std::string>(intResult.value()), "int");
 
-    /* Different argument shape: the slot must miss and re-dispatch. */
     auto floatResult = fc.callFunctionCached(ns, "describe", { 1.5f }, {}, slot, diagnostics);
     ASSERT_TRUE(floatResult.has_value());
     EXPECT_EQ(std::get<std::string>(floatResult.value()), "float");
 
-    /* And back: still correct after the slot was re-painted. */
     auto backResult = fc.callFunctionCached(ns, "describe", { 2 }, {}, slot, diagnostics);
     ASSERT_TRUE(backResult.has_value());
     EXPECT_EQ(std::get<std::string>(backResult.value()), "int");
@@ -432,7 +423,7 @@ TEST(ClassCallCacheTest, ConstructorCacheCreatesFreshObjects) {
 
     ASSERT_TRUE(first.has_value());
     ASSERT_TRUE(second.has_value());
-    EXPECT_NE(*first, *second); /* distinct instances, never a cached result */
+    EXPECT_NE(*first, *second);
     EXPECT_EQ(std::get<int>((*first)->fields["value"]), 1);
     EXPECT_EQ(std::get<int>((*second)->fields["value"]), 2);
     EXPECT_FALSE(diagnostics.hasErrors());
@@ -457,8 +448,6 @@ TEST(ClassCallCacheTest, MethodCacheFollowsReceiverClass) {
 
     NativeMethodCacheSlot slot;
 
-    /* Same slot, alternating receiver classes: every dispatch must resolve to
-     * the receiver's own class (monomorphic miss on each switch). */
     auto l1 = cc.callMethodCached("CacheLeft", "who", {}, left, {}, slot, diagnostics);
     auto r1 = cc.callMethodCached("CacheRight", "who", {}, right, {}, slot, diagnostics);
     auto l2 = cc.callMethodCached("CacheLeft", "who", {}, left, {}, slot, diagnostics);

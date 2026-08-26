@@ -176,9 +176,6 @@ TEST(VMComparisonTest, UnknownOperator) {
     EXPECT_TRUE(diag.hasErrors());
 }
 
-/* ---- §6.1 inline caches: VM call sites must stay correct across repeated
- * runtime calls (first call fills the slot, later calls hit it). ---- */
-
 TEST(VMInlineCacheTest, RepeatedNativeFunctionCalls) {
     EXPECT_EQ(eval(
         "i = 0; "
@@ -202,8 +199,6 @@ TEST(VMInlineCacheTest, RepeatedNativeValueMethodCalls) {
 }
 
 TEST(VMInlineCacheTest, MixedShapeNativeCallsStayCorrect) {
-    /* Alternating int/float argument shapes at nearby call sites: the
-     * monomorphic slots must re-dispatch on every shape change. */
     EXPECT_EQ(eval(
         "i = 0; "
         "s = \"\"; "

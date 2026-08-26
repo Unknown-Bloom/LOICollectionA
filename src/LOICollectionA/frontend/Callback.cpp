@@ -10,10 +10,6 @@
 
 namespace LOICollection::frontend {
     namespace {
-        /* Fast inline-cache probe: reports whether the runtime argument values
-         * match a slot's recorded signature without building a type vector or
-         * touching diagnostics. Unsupported / empty values read as a mismatch
-         * so the slow path keeps reporting them. */
         bool matchesArgTypes(const CallbackTypeValues& values, const CallbackTypeArgs& types) {
             if (values.size() != types.size())
                 return false;
@@ -82,7 +78,6 @@ namespace LOICollection::frontend {
         std::unordered_map<std::string, std::unordered_map<Signature, CallbackFunc, SignatureHasher>> mFunctions;
         std::unordered_map<std::string, std::unordered_map<Signature, CallbackFuncCombination, SignatureHasher>> mFunctionCombinations;
 
-        /* Bumped on every mutation so inline-cache slots can detect staleness. */
         uint64_t epoch = 1;
     };
 
@@ -322,7 +317,6 @@ namespace LOICollection::frontend {
 
         std::unordered_map<std::string, NativeClassInfo> classes;
 
-        /* Bumped on every mutation so inline-cache slots can detect staleness. */
         uint64_t epoch = 1;
     };
 
