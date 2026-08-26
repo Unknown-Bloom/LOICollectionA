@@ -81,6 +81,7 @@ namespace LOICollection::frontend::ir {
         constexpr uint8_t CONST_STRING = 2;
         constexpr uint8_t CONST_BOOL = 3;
         constexpr uint8_t CONST_NONE = 4;
+        constexpr uint8_t CONST_ARRAY = 5;
 
         constexpr size_t kDigestSize = 32;
 
@@ -102,6 +103,17 @@ namespace LOICollection::frontend::ir {
                     writer.u8(CONST_BOOL);
                     writer.u8(std::get<bool>(value) ? 1 : 0);
                     return true;
+                case 6: {
+                    writer.u8(CONST_ARRAY);
+
+                    const auto& elements = std::get<ArrayRef>(value)->elements;
+                    writer.u32(static_cast<uint32_t>(elements.size()));
+                    for (const auto& element : elements)
+                        if (!writeValue(writer, element))
+                            return false;
+
+                    return true;
+                }
                 case 7:
                     writer.u8(CONST_NONE);
                     return true;
@@ -147,6 +159,22 @@ namespace LOICollection::frontend::ir {
                 case CONST_NONE:
                     value = std::monostate{};
                     return true;
+                case CONST_ARRAY: {
+                    uint32_t count = 0;
+                    if (!reader.u32(count)) return false;
+
+                    auto elements = std::make_shared<ArrayValue>();
+                    elements->elements.reserve(count);
+                    for (uint32_t i = 0; i < count; ++i) {
+                        ValueNode::ValueType element;
+                        if (!readValue(reader, element)) return false;
+
+                        elements->elements.push_back(std::move(element));
+                    }
+
+                    value = std::move(elements);
+                    return true;
+                }
                 default:
                     return false;
             }
@@ -178,7 +206,7 @@ namespace LOICollection::frontend::ir {
             return true;
         }
 
-        void writeChunk(Writer& writer, const BytecodeChunk& chunk);
+        bool writeChunk(Writer& writer, const BytecodeChunk& chunk);
 
         bool readChunk(Reader& reader, BytecodeChunk& chunk);
 
@@ -242,10 +270,13 @@ namespace LOICollection::frontend::ir {
             });
         }
 
-        void writeValues(Writer& writer, const std::vector<ValueNode::ValueType>& items) {
+        bool writeValues(Writer& writer, const std::vector<ValueNode::ValueType>& items) {
             writer.u32(static_cast<uint32_t>(items.size()));
             for (const auto& item : items)
-                writeValue(writer, item);
+                if (!writeValue(writer, item))
+                    return false;
+
+            return true;
         }
 
         bool readValues(Reader& reader, std::vector<ValueNode::ValueType>& items) {
@@ -286,16 +317,20 @@ namespace LOICollection::frontend::ir {
             });
         }
 
-        void writeClassMeta(Writer& writer, const ClassMeta& meta) {
+        bool writeClassMeta(Writer& writer, const ClassMeta& meta) {
             writer.str(meta.name);
             writer.i32(meta.baseClassIndex);
 
             writeStrings(writer, meta.fieldNames);
-            writeValues(writer, meta.defaults);
+            if (!writeValues(writer, meta.defaults))
+                return false;
+
             writeBools(writer, meta.hasDefault);
 
             writeStrings(writer, meta.staticFieldNames);
-            writeValues(writer, meta.staticDefaults);
+            if (!writeValues(writer, meta.staticDefaults))
+                return false;
+
             writeBools(writer, meta.staticHasDefault);
 
             writer.i32(meta.constructorIndex);
@@ -304,6 +339,7 @@ namespace LOICollection::frontend::ir {
             writeInts(writer, meta.staticMethods);
             writeStrings(writer, meta.staticMethodSignatures);
             writeInts(writer, meta.ancestorIndices);
+            return true;
         }
 
         bool readClassMeta(Reader& reader, ClassMeta& meta) {
@@ -383,11 +419,12 @@ namespace LOICollection::frontend::ir {
             return reader.i32(meta.bodyIndex) && reader.i32(meta.argCount) && readStrings(reader, meta.paramNames);
         }
 
-        void writeChunk(Writer& writer, const BytecodeChunk& chunk) {
+        bool writeChunk(Writer& writer, const BytecodeChunk& chunk) {
             writeVector<Instruction>(writer, chunk.code, [](Writer& w, const Instruction& instr) {
                 writeInstruction(w, instr);
             });
-            writeValues(writer, chunk.constants);
+            if (!writeValues(writer, chunk.constants))
+                return false;
 
             writeVector<FuncMeta>(writer, chunk.functions, [](Writer& w, const FuncMeta& meta) {
                 writeFuncMeta(w, meta);
@@ -395,9 +432,11 @@ namespace LOICollection::frontend::ir {
             writeVector<MacroMeta>(writer, chunk.macros, [](Writer& w, const MacroMeta& meta) {
                 writeMacroMeta(w, meta);
             });
-            writeVector<ClassMeta>(writer, chunk.classes, [](Writer& w, const ClassMeta& meta) {
-                writeClassMeta(w, meta);
-            });
+            writer.u32(static_cast<uint32_t>(chunk.classes.size()));
+            for (const auto& cls : chunk.classes)
+                if (!writeClassMeta(writer, cls))
+                    return false;
+
             writeVector<MethodMeta>(writer, chunk.methods, [](Writer& w, const MethodMeta& meta) {
                 writeMethodMeta(w, meta);
             });
@@ -416,7 +455,10 @@ namespace LOICollection::frontend::ir {
 
             writer.u32(static_cast<uint32_t>(chunk.methodBodies.size()));
             for (const auto& body : chunk.methodBodies)
-                writeChunk(writer, *body);
+                if (!writeChunk(writer, *body))
+                    return false;
+
+            return true;
         }
 
         bool readChunk(Reader& reader, BytecodeChunk& chunk) {
@@ -469,7 +511,8 @@ namespace LOICollection::frontend::ir {
 
     std::optional<std::string> BytecodeSerializer::serialize(const BytecodeChunk& chunk, const Header& header) {
         Writer payload;
-        writeChunk(payload, chunk);
+        if (!writeChunk(payload, chunk))
+            return std::nullopt;
 
         Writer writer;
 
