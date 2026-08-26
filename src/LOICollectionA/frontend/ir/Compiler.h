@@ -47,6 +47,7 @@ namespace LOICollection::frontend::ir {
 
         size_t methodCount = 0;
         size_t forInCounter = 0;
+        size_t declarativeCounter = 0;
 
         void visit(ValueNode& node) override;
         void visit(VariableNode& node) override;
@@ -83,6 +84,7 @@ namespace LOICollection::frontend::ir {
         void visit(ArrayNode& node) override;
         void visit(IndexAccessNode& node) override;
         void visit(UsingNode& node) override;
+        void visit(ImportNode& node) override;
 
         void registerClassMeta(ClassNode& node);
         void compileClassBodies(ClassNode& node);
@@ -94,6 +96,9 @@ namespace LOICollection::frontend::ir {
         void compileForInArray(ForInNode& node, size_t uid);
         void compileForInRange(ForInNode& node, size_t uid);
         void emitArithmeticOp(const std::string& op, const SourceLocation& loc);
+
+        void desugarDeclarativeStatements(std::unique_ptr<ASTNode>& node, const std::string& receiver);
+        void compileDeclarativeBlock(BlockNode& block, const std::string& receiverName);
 
         [[nodiscard]] std::optional<ValueNode::ValueType> constantValue(ExprNode& node) const;
 

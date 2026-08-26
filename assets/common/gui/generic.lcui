@@ -1,0 +1,28 @@
+/* Shared GUI vocabulary (§6.3): imported by the built-in feature scripts so
+ * pagination controls and common action labels stay worded consistently
+ * across every form. Definitions only — imported files must not carry
+ * executable statements. */
+
+func pagePrevious() -> string {
+    return {tr("generic.gui.page.previous")};
+}
+
+func pageNext() -> string {
+    return {tr("generic.gui.page.next")};
+}
+
+func pageChoose() -> string {
+    return {tr("generic.gui.page.choose")};
+}
+
+func pageChooseInput() -> string {
+    return {tr("generic.gui.page.choose.input")};
+}
+
+func saveLabel() -> string {
+    return {tr("generic.gui.save")};
+}
+
+func cancelLabel() -> string {
+    return {tr("generic.gui.cancel")};
+}

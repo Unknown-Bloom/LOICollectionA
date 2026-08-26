@@ -18,6 +18,10 @@ namespace LOICollection::frontend {
 
         DiagnosticEngine& diagnostics;
 
+        /* Depth of enclosing declarative UI blocks (§5.1). While inside one,
+         * call arguments accept the `on:` named-argument sugar. */
+        size_t declarativeDepth = 0;
+
     public:
         LOICOLLECTION_A_API   Parser(Lexer& l, DiagnosticEngine& diag);
 
@@ -30,6 +34,7 @@ namespace LOICollection::frontend {
         std::unique_ptr<BreakNode> parseBreakStatement();
         std::unique_ptr<ContinueNode> parseContinueStatement();
         std::unique_ptr<UsingNode> parseUsing();
+        std::unique_ptr<ImportNode> parseImport();
         std::unique_ptr<TypeExpr> parseTypeExpr();
         std::unique_ptr<FunctionNode> parseFunction();
         std::unique_ptr<MacroNode> parseMacro();
@@ -46,6 +51,9 @@ namespace LOICollection::frontend {
         std::unique_ptr<ExprNode> parseForClause();
 
         std::unique_ptr<BlockNode> parseBlock(TokenType stopToken, bool stopOnColon = false);
+        std::unique_ptr<BlockNode> parseControlBody();
+
+        void bindDeclarativeReceiver(AssignmentNode& node);
 
         std::unique_ptr<ValueNode> parseTranspile();
         std::vector<std::unique_ptr<ExprNode>> parseArgs(TokenType delimiterToken = TokenType::TOKEN_COMMA, TokenType stopToken = TokenType::TOKEN_RPAREN);

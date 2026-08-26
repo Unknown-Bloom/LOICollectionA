@@ -144,6 +144,11 @@ TEST(StdlibMapTest, ChainedUsage) {
         "5");
 }
 
+/* The Observable* native classes bind to ll::ui observables; the standalone
+ * test build drops those implementations (declarations only), so their
+ * tests compile only in the full build. */
+#ifndef LOICOLLECTION_TEST_NO_OBSERVABLE
+
 TEST(StdlibObservableTest, NumberOperators) {
     EXPECT_EQ(eval("n = new ObservableNumber(10, false); n + 5"), "15");
     EXPECT_EQ(eval("n = new ObservableNumber(10, false); n - 4"), "6");
@@ -168,3 +173,5 @@ TEST(StdlibObservableTest, BooleanOperators) {
     EXPECT_EQ(eval("b = new ObservableBoolean(true, false); b == true"), "true");
     EXPECT_EQ(eval("b = new ObservableBoolean(true, false); b != true"), "false");
 }
+
+#endif

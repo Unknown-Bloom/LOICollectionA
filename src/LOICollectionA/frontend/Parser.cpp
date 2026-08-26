@@ -78,20 +78,31 @@ namespace LOICollection::frontend {
         }
 
         auto cond = parseBoolExpression();
-        if (!cond || !eat(TokenType::TOKEN_RPAREN) || !eat(TokenType::TOKEN_LBRCKET)) {
+        if (!cond || !eat(TokenType::TOKEN_RPAREN)) {
             synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_COLON, TokenType::TOKEN_RBRACE });
             return nullptr;
         }
-        
-        auto truePart = parseBlock(TokenType::TOKEN_COLON, true);
-        if (currentToken.type == TokenType::TOKEN_RBRCKET) {
+
+        /* Brace-bodied branches are accepted alongside the classic `[ ... ]`
+         * form so control flow reads naturally inside declarative blocks. */
+        bool braced = currentToken.type == TokenType::TOKEN_LBRACE;
+        if (!braced && !eat(TokenType::TOKEN_LBRCKET)) {
+            synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_COLON, TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        auto truePart = parseBlock(braced ? TokenType::TOKEN_RBRACE : TokenType::TOKEN_COLON, !braced);
+        if (braced) {
+            if (!eat(TokenType::TOKEN_RBRACE)) {
+                synchronize({ TokenType::TOKEN_RBRACE });
+                return nullptr;
+            }
+
+            if (currentToken.type != TokenType::TOKEN_COLON)
+                return std::make_unique<IfNode>(loc, std::move(cond), std::move(truePart), nullptr);
+        } else if (currentToken.type == TokenType::TOKEN_RBRCKET) {
             if (!eat(TokenType::TOKEN_RBRCKET)) return nullptr;
-            return std::make_unique<IfNode>(
-                loc,
-                std::move(cond),
-                std::move(truePart),
-                nullptr
-            );
+            return std::make_unique<IfNode>(loc, std::move(cond), std::move(truePart), nullptr);
         }
 
         if (!eat(TokenType::TOKEN_COLON)) {
@@ -99,18 +110,57 @@ namespace LOICollection::frontend {
             return nullptr;
         }
 
-        auto falsePart = parseBlock(TokenType::TOKEN_RBRCKET, false);
+        /* The classic form is `if (cond) [ truePart : falsePart ]`: the false
+         * branch continues inside the same brackets, so only the braced form
+         * consumes an opening brace here. */
+        bool elseBraced = currentToken.type == TokenType::TOKEN_LBRACE;
+        if (elseBraced && !eat(TokenType::TOKEN_LBRACE)) {
+            synchronize({ TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        auto falsePart = parseBlock(
+            elseBraced ? TokenType::TOKEN_RBRACE : TokenType::TOKEN_RBRCKET, false
+        );
+
+        if (elseBraced) {
+            if (!eat(TokenType::TOKEN_RBRACE)) {
+                synchronize({ TokenType::TOKEN_RBRACE });
+                return nullptr;
+            }
+        } else if (!eat(TokenType::TOKEN_RBRCKET)) {
+            synchronize({ TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        return std::make_unique<IfNode>(loc, std::move(cond), std::move(truePart), std::move(falsePart));
+    }
+
+    std::unique_ptr<BlockNode> Parser::parseControlBody() {
+        if (currentToken.type == TokenType::TOKEN_LBRACE) {
+            if (!eat(TokenType::TOKEN_LBRACE)) return nullptr;
+
+            auto body = parseBlock(TokenType::TOKEN_RBRACE, false);
+            if (!eat(TokenType::TOKEN_RBRACE)) {
+                synchronize({ TokenType::TOKEN_RBRACE });
+                return nullptr;
+            }
+
+            return body;
+        }
+
+        if (!eat(TokenType::TOKEN_LBRCKET)) {
+            synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        auto body = parseBlock(TokenType::TOKEN_RBRCKET, false);
         if (!eat(TokenType::TOKEN_RBRCKET)) {
             synchronize({ TokenType::TOKEN_RBRACE });
             return nullptr;
         }
-        
-        return std::make_unique<IfNode>(
-            loc,
-            std::move(cond),
-            std::move(truePart),
-            std::move(falsePart)
-        );
+
+        return body;
     }
 
     std::unique_ptr<WhileNode> Parser::parseWhileStatement() {
@@ -123,16 +173,14 @@ namespace LOICollection::frontend {
         }
 
         auto cond = parseBoolExpression();
-        if (!cond || !eat(TokenType::TOKEN_RPAREN) || !eat(TokenType::TOKEN_LBRCKET)) {
+        if (!cond || !eat(TokenType::TOKEN_RPAREN)) {
             synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
             return nullptr;
         }
 
-        auto body = parseBlock(TokenType::TOKEN_RBRCKET, false);
-        if (!eat(TokenType::TOKEN_RBRCKET)) {
-            synchronize({ TokenType::TOKEN_RBRACE });
+        auto body = parseControlBody();
+        if (!body)
             return nullptr;
-        }
 
         return std::make_unique<WhileNode>(loc, std::move(cond), std::move(body));
     }
@@ -198,16 +246,14 @@ namespace LOICollection::frontend {
             }
         }
 
-        if (!eat(TokenType::TOKEN_RPAREN) || !eat(TokenType::TOKEN_LBRCKET)) {
+        if (!eat(TokenType::TOKEN_RPAREN)) {
             synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
             return nullptr;
         }
 
-        auto body = parseBlock(TokenType::TOKEN_RBRCKET, false);
-        if (!eat(TokenType::TOKEN_RBRCKET)) {
-            synchronize({ TokenType::TOKEN_RBRACE });
+        auto body = parseControlBody();
+        if (!body)
             return nullptr;
-        }
 
         return std::make_unique<ForNode>(loc, std::move(init), std::move(cond), std::move(step), std::move(body));
     }
@@ -260,18 +306,16 @@ namespace LOICollection::frontend {
             iterable = std::make_unique<RangeNode>(rangeLoc, std::move(iterable), std::move(end));
         }
 
-        if (!eat(TokenType::TOKEN_RPAREN) || !eat(TokenType::TOKEN_LBRCKET)) {
+        if (!eat(TokenType::TOKEN_RPAREN)) {
             synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
             return nullptr;
         }
 
         node->iterable = std::move(iterable);
-        node->body = parseBlock(TokenType::TOKEN_RBRCKET, false);
+        node->body = parseControlBody();
 
-        if (!eat(TokenType::TOKEN_RBRCKET)) {
-            synchronize({ TokenType::TOKEN_RBRACE });
+        if (!node->body)
             return nullptr;
-        }
 
         return node;
     }
@@ -306,7 +350,9 @@ namespace LOICollection::frontend {
             if (!right)
                 return nullptr;
 
-            return std::make_unique<AssignmentNode>(loc, std::move(expr), std::move(right));
+            auto assignment = std::make_unique<AssignmentNode>(loc, std::move(expr), std::move(right));
+            this->bindDeclarativeReceiver(*assignment);
+            return assignment;
         }
 
         std::string op = getCompoundAssignOp(currentToken.type);
@@ -742,7 +788,12 @@ namespace LOICollection::frontend {
             return nullptr;
         }
 
+        /* A lambda body is its own function: bare calls inside it are regular
+         * calls, not receiver calls of the enclosing declarative block (§5.1). */
+        size_t savedDeclarativeDepth = this->declarativeDepth;
+        this->declarativeDepth = 0;
         lambda->decl.body = parseBlock(TokenType::TOKEN_RBRACE, false);
+        this->declarativeDepth = savedDeclarativeDepth;
 
         if (!eat(TokenType::TOKEN_RBRACE)) {
             synchronize({ TokenType::TOKEN_RBRACE });
@@ -983,6 +1034,16 @@ namespace LOICollection::frontend {
                 continue;
             }
 
+            if (currentToken.type == TokenType::TOKEN_IMPORT) {
+                diagnostics.addError(currentToken.loc,
+                    "Import declarations are only allowed at top level");
+
+                synchronize(stopOnColon
+                    ? std::initializer_list<TokenType>{ TokenType::TOKEN_COLON, TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE }
+                    : std::initializer_list<TokenType>{ stopToken, TokenType::TOKEN_RBRACE });
+                continue;
+            }
+
             size_t stmtStartLine = currentToken.loc.line;
             auto stmt = parseStatement();
             if (!stmt) {
@@ -1011,6 +1072,34 @@ namespace LOICollection::frontend {
         }
 
         return block;
+    }
+
+    std::unique_ptr<ImportNode> Parser::parseImport() {
+        SourceLocation loc = currentToken.loc;
+
+        if (!eat(TokenType::TOKEN_IMPORT)) return nullptr;
+
+        if (currentToken.type != TokenType::TOKEN_STRING) {
+            diagnostics.addError(currentToken.loc, "Expected a string path after 'import'");
+            synchronize({ TokenType::TOKEN_SEMICOLON, TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        std::string path = std::move(currentToken.value);
+        eat(TokenType::TOKEN_STRING);
+
+        return std::make_unique<ImportNode>(loc, std::move(path));
+    }
+
+    void Parser::bindDeclarativeReceiver(AssignmentNode& node) {
+        if (node.target->getType() != ASTNode::Type::Variable || !node.value)
+            return;
+        if (node.value->getType() != ASTNode::Type::New)
+            return;
+
+        auto& newExpr = static_cast<NewNode&>(*node.value);
+        if (newExpr.declarativeBlock)
+            newExpr.receiverName = static_cast<VariableNode&>(*node.target).name;
     }
 
     std::unique_ptr<ValueNode> Parser::parseTranspile() {
@@ -1053,6 +1142,16 @@ namespace LOICollection::frontend {
                 continue;
             }
 
+            /* `on:` named-argument sugar (§5.1): inside a declarative UI block
+             * `button(text, on: handler, options)` maps positionally onto
+             * `form.button(text, handler, options)`. The label is dropped. */
+            if (this->declarativeDepth > 0 &&
+                currentToken.type == TokenType::TOKEN_IDENT && currentToken.value == "on" &&
+                peek() == TokenType::TOKEN_COLON) {
+                eat(TokenType::TOKEN_IDENT);
+                eat(TokenType::TOKEN_COLON);
+            }
+
             size_t exprOffset = currentToken.loc.offset;
             auto expr = parseBaseExpression();
             if (!expr) {
@@ -1083,6 +1182,9 @@ namespace LOICollection::frontend {
 
         if (currentToken.type == TokenType::TOKEN_CLASS)
             return parseClass();
+
+        if (currentToken.type == TokenType::TOKEN_IMPORT)
+            return parseImport();
 
         if (currentToken.type == TokenType::TOKEN_WHILE)
             return parseWhileStatement();
@@ -1127,13 +1229,14 @@ namespace LOICollection::frontend {
                 std::make_unique<VariableNode>(declLoc, std::move(name)),
                 std::move(value)
             );
+            this->bindDeclarativeReceiver(*decl);
             decl->hasDeclaredType = true;
             decl->declaredType = std::move(*type);
             return decl;
         }
 
         SourceLocation exprLoc = currentToken.loc;
-        
+
         auto expr = parseBaseExpression();
         if (!expr)
             return nullptr;
@@ -1145,7 +1248,9 @@ namespace LOICollection::frontend {
             if (!right)
                 return nullptr;
 
-            return std::make_unique<AssignmentNode>(exprLoc, std::move(expr), std::move(right));
+            auto assignment = std::make_unique<AssignmentNode>(exprLoc, std::move(expr), std::move(right));
+            this->bindDeclarativeReceiver(*assignment);
+            return assignment;
         }
 
         std::string op = getCompoundAssignOp(currentToken.type);
@@ -1158,6 +1263,11 @@ namespace LOICollection::frontend {
 
             return std::make_unique<CompoundAssignNode>(exprLoc, std::move(expr), std::move(right), op);
         }
+
+        /* Bare calls used as statements inside a declarative UI block (§5.1)
+         * are candidates for implicit-receiver desugaring; Sema confirms. */
+        if (this->declarativeDepth > 0 && expr->getType() == ASTNode::Type::FuncCall)
+            static_cast<FuncCallNode&>(*expr).isFormReceiverCall = true;
 
         return expr;
     }
@@ -1533,7 +1643,25 @@ namespace LOICollection::frontend {
 
                 if (!eat(TokenType::TOKEN_RPAREN)) return nullptr;
 
-                return std::make_unique<NewNode>(loc, std::move(className), std::move(args));
+                auto node = std::make_unique<NewNode>(loc, std::move(className), std::move(args));
+
+                /* Declarative UI block (§5.1): `new Form(args) { ... }`.
+                 * The body parses as a plain statement block; `on:` named
+                 * arguments are accepted while inside it. */
+                if (currentToken.type == TokenType::TOKEN_LBRACE) {
+                    if (!eat(TokenType::TOKEN_LBRACE)) return nullptr;
+
+                    ++this->declarativeDepth;
+                    node->declarativeBlock = parseBlock(TokenType::TOKEN_RBRACE, false);
+                    --this->declarativeDepth;
+
+                    if (!eat(TokenType::TOKEN_RBRACE)) {
+                        diagnostics.addError(currentToken.loc, "Expected '}' to close declarative UI block");
+                        synchronize({ TokenType::TOKEN_RBRACE, TokenType::TOKEN_SEMICOLON });
+                    }
+                }
+
+                return node;
             }
             case TokenType::TOKEN_LBRCKET: {
                 SourceLocation loc = currentToken.loc;
@@ -1794,6 +1922,7 @@ namespace LOICollection::frontend {
             case TokenType::TOKEN_RANGE: return "..";
             case TokenType::TOKEN_COALESCE: return "??";
             case TokenType::TOKEN_QUESTION_DOT: return "?.";
+            case TokenType::TOKEN_IMPORT: return "IMPORT";
             default: return "UNKNOWN";
         }
     }

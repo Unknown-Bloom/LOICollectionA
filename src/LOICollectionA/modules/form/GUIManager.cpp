@@ -1,6 +1,7 @@
 #include <memory>
 #include <string>
 #include <fstream>
+#include <optional>
 #include <filesystem>
 #include <functional>
 #include <unordered_map>
@@ -17,11 +18,13 @@
 #include "LOICollectionA/frontend/Lexer.h"
 #include "LOICollectionA/frontend/Parser.h"
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
+#include "LOICollectionA/frontend/ScriptLoader.h"
 #include "LOICollectionA/frontend/SemanticAnalyzer.h"
 
 #include "LOICollectionA/frontend/ir/VM.h"
 #include "LOICollectionA/frontend/ir/Compiler.h"
 #include "LOICollectionA/frontend/ir/Optimizer.h"
+#include "LOICollectionA/frontend/ir/BytecodeSerializer.h"
 
 #include "LOICollectionA/frontend/builtin/ui/form/CustomFormClass.h"
 #include "LOICollectionA/frontend/builtin/ui/form/MessageBoxClass.h"
@@ -76,18 +79,41 @@ namespace LOICollection::form {
 
         frontend::DiagnosticEngine diagnostics;
 
-        frontend::ir::Compiler mCompiler(diagnostics);
+        /* Resolve the import graph (§6.2): imports are merged into a single
+         * program before semantic analysis; each file compiles once. */
+        const std::string rootDir = std::filesystem::path(path).parent_path().string();
+        auto loaded = frontend::ScriptLoader::load(
+            path, rootDir,
+            [this](const std::string& file) -> std::optional<std::string> {
+                auto data = this->readFile(file);
+                if (!data.has_value())
+                    return std::nullopt;
 
-        frontend::Lexer mLexer(content.value(), diagnostics);
-        frontend::Parser mParser(mLexer, diagnostics);
-
-        auto mAst = mParser.parse();
-        if (diagnostics.hasErrors())
+                return data.value();
+            },
+            diagnostics
+        );
+        if (!loaded)
             return ll::makeStringError(diagnostics.getErrorMessage());
 
+        /* Cache header (§7.3): source hash plus the import graph's hashes;
+         * any change invalidates the cache as a whole. */
+        frontend::ir::BytecodeSerializer::Header header;
+        header.sourceHash = loaded->hashes.back();
+        header.importHashes.assign(loaded->hashes.begin(), loaded->hashes.end() - 1);
+
+        const std::string cachePath = path + ".lcc";
+        if (auto blob = this->readFile(cachePath); blob.has_value()) {
+            if (auto chunk = frontend::ir::BytecodeSerializer::deserialize(blob.value(), header)) {
+                this->mImpl->cache.insert_or_assign(id, std::make_shared<frontend::ir::BytecodeChunk>(std::move(*chunk)));
+                return {};
+            }
+        }
+
+        frontend::ir::Compiler mCompiler(diagnostics);
+
         frontend::SemanticAnalyzer analyzer(diagnostics);
-        if (mAst->getType() == frontend::ASTNode::Type::Program)
-            analyzer.analyze(static_cast<frontend::ProgramNode&>(*mAst));
+        analyzer.analyze(*loaded->program);
 
         if (diagnostics.hasErrors())
             return ll::makeStringError(diagnostics.getErrorMessage());
@@ -95,12 +121,18 @@ namespace LOICollection::form {
         if (diagnostics.hasWarnings())
             return ll::makeStringError(diagnostics.getWarningMessage());
 
-        auto bytecode = std::make_shared<frontend::ir::BytecodeChunk>(mCompiler.compile(*mAst));
+        auto bytecode = std::make_shared<frontend::ir::BytecodeChunk>(mCompiler.compile(*loaded->program));
         if (diagnostics.hasErrors())
             return ll::makeStringError(diagnostics.getErrorMessage());
 
         frontend::ir::Optimizer optimizer;
         optimizer.optimize(*bytecode);
+
+        if (auto blob = frontend::ir::BytecodeSerializer::serialize(*bytecode, header)) {
+            std::ofstream out(cachePath, std::ios::binary | std::ios::trunc);
+            if (out)
+                out.write(blob->data(), static_cast<std::streamsize>(blob->size()));
+        }
 
         this->mImpl->cache.insert_or_assign(id, bytecode);
 

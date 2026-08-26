@@ -81,6 +81,8 @@ namespace LOICollection::frontend {
         this->typeAliases.clear();
         this->resolvingAliases.clear();
         this->constructorAssignedMembers.clear();
+        this->blockScopes.clear();
+        this->formReceivers.clear();
 
         this->collectTypeAliases(root);
 
@@ -461,6 +463,7 @@ namespace LOICollection::frontend {
                 case ASTNode::Type::Class:
                 case ASTNode::Type::FunctionDef:
                 case ASTNode::Type::Using:
+                case ASTNode::Type::Import:
                     continue;
                 default:
                     checkStatement(*part, emptyScope);
@@ -501,6 +504,7 @@ namespace LOICollection::frontend {
             case ASTNode::Type::Class:
             case ASTNode::Type::FunctionDef:
             case ASTNode::Type::Using:
+            case ASTNode::Type::Import:
                 return;
             case ASTNode::Type::Return:
                 checkReturn(static_cast<ReturnNode&>(node), scope);
@@ -535,11 +539,20 @@ namespace LOICollection::frontend {
                     this->diagnostics.addError(forIn.loc, "for-in iterable must be an array");
                 }
 
+                /* Inside a declarative UI block the loop variables are
+                 * block-scoped (§5.1); outside they keep the flat model. */
+                auto declareLoopVar = [this](const std::string& name, TypeInfo type) {
+                    if (this->blockScopes.empty())
+                        this->globalTypes[name] = std::move(type);
+                    else
+                        this->blockScopes.back()[name] = std::move(type);
+                };
+
                 if (forIn.hasIndexVar)
-                    this->globalTypes[forIn.indexVar] = { TypeKind::Int };
-                this->globalTypes[forIn.elementVar] = isRange
+                    declareLoopVar(forIn.indexVar, TypeInfo{ TypeKind::Int });
+                declareLoopVar(forIn.elementVar, isRange
                     ? TypeInfo{ TypeKind::Int }
-                    : TypeInfo{};
+                    : TypeInfo{});
 
                 if (forIn.body)
                     checkStatement(*forIn.body, scope);
@@ -892,6 +905,26 @@ namespace LOICollection::frontend {
                             var.staticClassName = staticField->owner.get().name;
                             return rhs;
                         }
+                    }
+                }
+
+                /* Declarative UI blocks scope their declarations (§5.1): a name
+                 * bound in an enclosing block scope is updated in place, a
+                 * fresh name becomes block-local, and names visible outside
+                 * keep their existing flat update behaviour. */
+                if (!this->blockScopes.empty()) {
+                    for (auto it = this->blockScopes.rbegin(); it != this->blockScopes.rend(); ++it) {
+                        auto found = it->find(var.name);
+                        if (found != it->end()) {
+                            if (rhs.kind != TypeKind::Unknown && rhs.kind != TypeKind::None)
+                                found->second = rhs;
+                            return rhs;
+                        }
+                    }
+
+                    if (!this->isNameDefined(var.name, scope)) {
+                        this->blockScopes.back()[var.name] = rhs;
+                        return rhs;
                     }
                 }
 
@@ -1492,6 +1525,23 @@ namespace LOICollection::frontend {
         for (auto& arg : node.args)
             argTypes.push_back(checkExpr(*arg, scope));
 
+        /* Bare call inside a declarative UI block (§5.1): resolve against the
+         * form under construction first; fall back to ordinary resolution. */
+        if (node.isFormReceiverCall && !this->formReceivers.empty()) {
+            const std::string& receiverClass = this->formReceivers.back();
+            std::vector<CallbackTypeArgs> signatures =
+                ClassCall::getInstance().getMethodSignatures(receiverClass, node.name);
+
+            for (const auto& signature : signatures) {
+                if (matchesNativeSignature(signature, argTypes)) {
+                    node.receiverClassName = receiverClass;
+                    return {};
+                }
+            }
+
+            node.isFormReceiverCall = false;
+        }
+
         auto it = functionsByName.find(node.name);
         if (it == functionsByName.end() || it->second.empty()) {
             if (scope.hasMethod() && scope.methodRef().isStatic && scope.hasClass()) {
@@ -1587,6 +1637,38 @@ namespace LOICollection::frontend {
         return decl.returnType;
     }
 
+    /* Form classes allowed to carry a declarative UI block (§5.1). */
+    namespace {
+        bool isWhitelistedFormClass(const std::string& name) {
+            return name == "CustomForm" || name == "MessageBox" ||
+                   name == "PaginatedForm" || name == "ScriptForm";
+        }
+    }
+
+    void SemanticAnalyzer::checkDeclarativeBlock(NewNode& node, MethodScope& scope) {
+        if (!isWhitelistedFormClass(node.className) || !isNativeClass(node.className)) {
+            diagnostics.addError(node.loc,
+                "Declarative UI blocks are only allowed on form classes "
+                "(CustomForm, MessageBox, PaginatedForm, ScriptForm), got '" + node.className + "'");
+            return;
+        }
+
+        this->blockScopes.emplace_back();
+        this->formReceivers.push_back(node.className);
+
+        /* The receiver variable is bound before the body runs (§5.1): the
+         * block may reference the form under construction by its outer
+         * name, e.g. `form.close()` inside a lambda. */
+        if (!node.receiverName.empty())
+            this->blockScopes.back()[node.receiverName] = { TypeKind::Object, node.className };
+
+        for (auto& part : node.declarativeBlock->parts)
+            checkStatement(*part, scope);
+
+        this->formReceivers.pop_back();
+        this->blockScopes.pop_back();
+    }
+
     TypeInfo SemanticAnalyzer::checkNew(NewNode& node, MethodScope& scope) {
         size_t argCount = node.args.size();
 
@@ -1594,6 +1676,9 @@ namespace LOICollection::frontend {
         argTypes.reserve(argCount);
         for (auto& arg : node.args)
             argTypes.push_back(checkExpr(*arg, scope));
+
+        if (node.declarativeBlock)
+            this->checkDeclarativeBlock(node, scope);
 
         auto clsOpt = findClass(node.className);
         if (!clsOpt) {
@@ -1828,6 +1913,12 @@ namespace LOICollection::frontend {
     }
 
     TypeInfo SemanticAnalyzer::lookupName(const std::string& name, MethodScope& scope) {
+        for (auto it = this->blockScopes.rbegin(); it != this->blockScopes.rend(); ++it) {
+            auto found = it->find(name);
+            if (found != it->end())
+                return found->second;
+        }
+
         if (scope.hasMethod()) {
             MethodDecl& method = scope.methodRef();
             for (size_t i = 0; i < method.params.size(); ++i) {
@@ -1867,6 +1958,11 @@ namespace LOICollection::frontend {
     }
 
     bool SemanticAnalyzer::isNameDefined(const std::string& name, MethodScope& scope) const {
+        for (const auto& blockScope : this->blockScopes) {
+            if (blockScope.contains(name))
+                return true;
+        }
+
         if (scope.hasMethod()) {
             const MethodDecl& method = scope.methodRef();
             for (const auto& param : method.params) {

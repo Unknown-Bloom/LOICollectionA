@@ -251,14 +251,13 @@ namespace LOICollection::frontend::ir {
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, float>)
                 return std::abs(arg) > std::numeric_limits<float>::epsilon();
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, std::string>) {
-                auto lower = arg
-                    | std::views::transform([](char c) {
-                          return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-                      })
-                    | std::ranges::to<std::string>();
+                std::string lower;
+                for (char c : arg)
+                    lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
                 if (lower == "false") return false;
                 if (lower == "true") return true;
-                
+
                 return !arg.empty();
             }
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, bool>)
@@ -442,8 +441,8 @@ namespace LOICollection::frontend::ir {
             if (this->diagnostics.hasErrors())
                 return std::string("");
 
-            if (++executed > 1'000'000) {
-                this->diagnostics.addError(this->currentLoc, "Instruction limit exceeded (possible infinite loop)");
+            if (++executed > VM::MAX_INSTRUCTIONS) {
+                this->diagnostics.addError(this->currentLoc, "Execution budget exhausted");
                 return ValueNode::ValueType{};
             }
 

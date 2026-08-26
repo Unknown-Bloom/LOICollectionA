@@ -91,7 +91,8 @@ namespace LOICollection::frontend {
             Super, SuperCall, InstanceOf, FunctionDef, FuncCall, Lambda,
             Array, Index, Program, Block, Using,
             While, For, Break, Continue,
-            CompoundAssign, ForIn, Range, Coalesce
+            CompoundAssign, ForIn, Range, Coalesce,
+            Import
         };
         [[nodiscard]] virtual Type getType() const = 0;
         
@@ -572,6 +573,17 @@ namespace LOICollection::frontend {
         std::string className;
         std::vector<std::unique_ptr<ExprNode>> args;
 
+        /* Declarative UI block (§5.1): `new CustomForm(args) { ... }`.
+         * The block is desugared into ordered method calls on the object
+         * being constructed; the runtime model is untouched. */
+        std::unique_ptr<BlockNode> declarativeBlock;
+
+        /* Target variable when the block is the right-hand side of
+         * `form = new Form(...) { ... }`: the object is stored into the
+         * variable *before* the body runs, so lambdas inside the block can
+         * reference the form by its outer name (§5.1). */
+        std::string receiverName;
+
         NewNode(SourceLocation location, std::string name, auto&& a)
             : loc(location), className(std::move(name)), args(std::forward<decltype(a)>(a)) {}
 
@@ -779,10 +791,29 @@ namespace LOICollection::frontend {
         int methodOrdinal = -1;
         std::string staticClassName;
 
+        /* Set when the call is a bare statement inside a declarative UI
+         * block (§5.1): the receiver is the form under construction. */
+        bool isFormReceiverCall = false;
+        std::string receiverClassName;
+
         FuncCallNode(SourceLocation location, std::string n, auto&& a)
             : loc(location), name(std::move(n)), args(std::forward<decltype(a)>(a)) {}
 
         [[nodiscard]] Type getType() const override { return Type::FuncCall; }
+
+        void accept(ASTVisitor& visitor) override {
+            visitor.visit(*this);
+        }
+    };
+
+    struct ImportNode : ASTNode {
+        SourceLocation loc;
+        std::string path;
+
+        ImportNode(SourceLocation location, std::string p)
+            : loc(location), path(std::move(p)) {}
+
+        [[nodiscard]] Type getType() const override { return Type::Import; }
 
         void accept(ASTVisitor& visitor) override {
             visitor.visit(*this);
