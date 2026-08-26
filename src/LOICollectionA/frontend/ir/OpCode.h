@@ -36,8 +36,11 @@ namespace LOICollection::frontend::ir {
         INSTANCEOF,
         RETURN,
 
-        JMP_IF_FALSE, JMP_IF_TRUE, 
+        JMP_IF_FALSE, JMP_IF_TRUE,
         JMP,
-        HALT
+        HALT,
+
+        DUP_STORE,
+        DUP_IS_NONE
     };
 }

@@ -285,3 +285,243 @@ TEST(ClassCallTest, RegisterFieldAndStaticMembers) {
     EXPECT_FALSE(diagnostics.hasErrors());
     EXPECT_EQ(std::get<int>(combo.value()), 42);
 }
+
+TEST(FunctionCallCacheTest, CacheHitSkipsRegistryLookup) {
+    DiagnosticEngine diagnostics;
+    auto& fc = FunctionCall::getInstance();
+    const std::string ns = "cache_hit_ns";
+    const CallbackTypeArgs sig = { ParamType::INT };
+
+    fc.registerFunction(ns, "answer",
+        [](const CallbackTypeValues& v) -> TypedValue {
+            return std::get<int>(v[0]) + 1;
+        }, sig);
+
+    FunctionCallCacheSlot slot;
+    CallbackTypeValues args = { 41 };
+
+    auto first = fc.callFunctionCached(ns, "answer", args, {}, slot, diagnostics);
+    ASSERT_TRUE(first.has_value());
+    EXPECT_FALSE(diagnostics.hasErrors());
+    EXPECT_EQ(std::get<int>(first.value()), 42);
+    EXPECT_TRUE(slot.valid);
+
+    slot.callback = [](const CallbackTypeValues&) -> TypedValue { return 999; };
+
+    auto second = fc.callFunctionCached(ns, "answer", args, {}, slot, diagnostics);
+    ASSERT_TRUE(second.has_value());
+    EXPECT_FALSE(diagnostics.hasErrors());
+    EXPECT_EQ(std::get<int>(second.value()), 999);
+
+    fc.unregisterFunction(ns, "answer", sig, false);
+}
+
+TEST(FunctionCallCacheTest, ReregistrationInvalidatesSlot) {
+    DiagnosticEngine diagnostics;
+    auto& fc = FunctionCall::getInstance();
+    const std::string ns = "cache_invalidate_ns";
+    const CallbackTypeArgs sig = { ParamType::INT };
+
+    fc.registerFunction(ns, "val",
+        [](const CallbackTypeValues&) -> TypedValue { return 1; }, sig);
+
+    FunctionCallCacheSlot slot;
+    CallbackTypeValues args = { 0 };
+
+    auto first = fc.callFunctionCached(ns, "val", args, {}, slot, diagnostics);
+    ASSERT_TRUE(first.has_value());
+    EXPECT_EQ(std::get<int>(first.value()), 1);
+    EXPECT_TRUE(slot.valid);
+
+    fc.registerFunction(ns, "val",
+        [](const CallbackTypeValues&) -> TypedValue { return 2; }, sig);
+
+    auto second = fc.callFunctionCached(ns, "val", args, {}, slot, diagnostics);
+    ASSERT_TRUE(second.has_value());
+    EXPECT_FALSE(diagnostics.hasErrors());
+    EXPECT_EQ(std::get<int>(second.value()), 2);
+
+    fc.unregisterFunction(ns, "val", sig, false);
+}
+
+TEST(FunctionCallCacheTest, ShapeChangeReDispatches) {
+    DiagnosticEngine diagnostics;
+    auto& fc = FunctionCall::getInstance();
+    const std::string ns = "cache_shape_ns";
+
+    fc.registerFunction(ns, "describe",
+        [](const CallbackTypeValues&) -> TypedValue { return std::string("int"); },
+        { ParamType::INT });
+    fc.registerFunction(ns, "describe",
+        [](const CallbackTypeValues&) -> TypedValue { return std::string("float"); },
+        { ParamType::FLOAT });
+
+    FunctionCallCacheSlot slot;
+
+    auto intResult = fc.callFunctionCached(ns, "describe", { 1 }, {}, slot, diagnostics);
+    ASSERT_TRUE(intResult.has_value());
+    EXPECT_EQ(std::get<std::string>(intResult.value()), "int");
+
+    auto floatResult = fc.callFunctionCached(ns, "describe", { 1.5f }, {}, slot, diagnostics);
+    ASSERT_TRUE(floatResult.has_value());
+    EXPECT_EQ(std::get<std::string>(floatResult.value()), "float");
+
+    auto backResult = fc.callFunctionCached(ns, "describe", { 2 }, {}, slot, diagnostics);
+    ASSERT_TRUE(backResult.has_value());
+    EXPECT_EQ(std::get<std::string>(backResult.value()), "int");
+
+    EXPECT_FALSE(diagnostics.hasErrors());
+
+    fc.unregisterFunction(ns, "describe", { ParamType::INT }, false);
+    fc.unregisterFunction(ns, "describe", { ParamType::FLOAT }, false);
+}
+
+TEST(FunctionCallCacheTest, CombinationCallbackCached) {
+    DiagnosticEngine diagnostics;
+    auto& fc = FunctionCall::getInstance();
+    const std::string ns = "cache_combo_ns";
+
+    fc.registerFunction(ns, "scaled",
+        [](const CallbackTypeValues&, const CallbackTypePlaces& places) -> TypedValue {
+            return std::any_cast<int>(places.at(0)) * 3;
+        }, {});
+
+    FunctionCallCacheSlot slot;
+    Context ctx(14);
+
+    for (int i = 0; i < 2; ++i) {
+        auto result = fc.callFunctionCached(ns, "scaled", {}, ctx.params, slot, diagnostics);
+        ASSERT_TRUE(result.has_value());
+        EXPECT_EQ(std::get<int>(result.value()), 42);
+    }
+
+    EXPECT_TRUE(slot.valid);
+    EXPECT_TRUE(slot.isCombination);
+    EXPECT_FALSE(diagnostics.hasErrors());
+
+    fc.unregisterFunction(ns, "scaled", {}, true);
+}
+
+TEST(ClassCallCacheTest, ConstructorCacheCreatesFreshObjects) {
+    auto& cc = ClassCall::getInstance();
+    DiagnosticEngine diagnostics;
+    const std::string name = "CacheBox";
+
+    cc.registerClass(name, {});
+    cc.registerConstructor(name,
+        [](const CallbackTypeValues& args) -> ll::Expected<ObjectRef> {
+            auto obj = std::make_shared<Object>();
+            obj->className = "CacheBox";
+            obj->fields["value"] = std::get<int>(args[0]);
+            return obj;
+        }, { ParamType::INT });
+
+    NativeConstructorCacheSlot slot;
+
+    auto first = cc.createCached(name, { 1 }, {}, slot, diagnostics);
+    auto second = cc.createCached(name, { 2 }, {}, slot, diagnostics);
+
+    ASSERT_TRUE(first.has_value());
+    ASSERT_TRUE(second.has_value());
+    EXPECT_NE(*first, *second);
+    EXPECT_EQ(std::get<int>((*first)->fields["value"]), 1);
+    EXPECT_EQ(std::get<int>((*second)->fields["value"]), 2);
+    EXPECT_FALSE(diagnostics.hasErrors());
+}
+
+TEST(ClassCallCacheTest, MethodCacheFollowsReceiverClass) {
+    auto& cc = ClassCall::getInstance();
+    DiagnosticEngine diagnostics;
+
+    for (const std::string& name : { "CacheLeft", "CacheRight" }) {
+        cc.registerClass(name, {});
+        cc.registerMethod(name, "who",
+            [name](const ObjectRef&, const CallbackTypeValues&) -> TypedValue {
+                return name;
+            }, {});
+    }
+
+    auto left = std::make_shared<Object>();
+    left->className = "CacheLeft";
+    auto right = std::make_shared<Object>();
+    right->className = "CacheRight";
+
+    NativeMethodCacheSlot slot;
+
+    auto l1 = cc.callMethodCached("CacheLeft", "who", {}, left, {}, slot, diagnostics);
+    auto r1 = cc.callMethodCached("CacheRight", "who", {}, right, {}, slot, diagnostics);
+    auto l2 = cc.callMethodCached("CacheLeft", "who", {}, left, {}, slot, diagnostics);
+    auto r2 = cc.callMethodCached("CacheRight", "who", {}, right, {}, slot, diagnostics);
+
+    ASSERT_TRUE(l1.has_value());
+    ASSERT_TRUE(r1.has_value());
+    ASSERT_TRUE(l2.has_value());
+    ASSERT_TRUE(r2.has_value());
+    EXPECT_EQ(std::get<std::string>(l1.value()), "CacheLeft");
+    EXPECT_EQ(std::get<std::string>(r1.value()), "CacheRight");
+    EXPECT_EQ(std::get<std::string>(l2.value()), "CacheLeft");
+    EXPECT_EQ(std::get<std::string>(r2.value()), "CacheRight");
+    EXPECT_FALSE(diagnostics.hasErrors());
+}
+
+TEST(ClassCallCacheTest, MethodReregistrationInvalidatesSlot) {
+    auto& cc = ClassCall::getInstance();
+    DiagnosticEngine diagnostics;
+    const std::string name = "CacheFlip";
+
+    cc.registerClass(name, {});
+    cc.registerMethod(name, "get",
+        [](const ObjectRef&, const CallbackTypeValues&) -> TypedValue { return 1; }, {});
+
+    auto obj = std::make_shared<Object>();
+    obj->className = name;
+
+    NativeMethodCacheSlot slot;
+
+    auto first = cc.callMethodCached(name, "get", {}, obj, {}, slot, diagnostics);
+    ASSERT_TRUE(first.has_value());
+    EXPECT_EQ(std::get<int>(first.value()), 1);
+    EXPECT_TRUE(slot.valid);
+
+    cc.registerMethod(name, "get",
+        [](const ObjectRef&, const CallbackTypeValues&) -> TypedValue { return 2; }, {});
+
+    auto second = cc.callMethodCached(name, "get", {}, obj, {}, slot, diagnostics);
+    ASSERT_TRUE(second.has_value());
+    EXPECT_FALSE(diagnostics.hasErrors());
+    EXPECT_EQ(std::get<int>(second.value()), 2);
+}
+
+TEST(ClassCallCacheTest, StaticAndValueMethodCache) {
+    auto& cc = ClassCall::getInstance();
+    DiagnosticEngine diagnostics;
+    const std::string name = "CacheStatics";
+
+    cc.registerClass(name, {});
+    cc.registerStaticMethod(name, "double",
+        [](const CallbackTypeValues& v) -> TypedValue {
+            return std::get<int>(v[0]) * 2;
+        }, { ParamType::INT });
+    cc.registerValueMethod("CacheValueHost", "len",
+        [](const TypedValue& self, const CallbackTypeValues&) -> TypedValue {
+            return static_cast<int>(std::get<std::string>(self).size());
+        }, {});
+
+    NativeStaticMethodCacheSlot staticSlot;
+    auto s1 = cc.callStaticMethodCached(name, "double", { 21 }, {}, staticSlot, diagnostics);
+    auto s2 = cc.callStaticMethodCached(name, "double", { 21 }, {}, staticSlot, diagnostics);
+    ASSERT_TRUE(s1.has_value());
+    ASSERT_TRUE(s2.has_value());
+    EXPECT_EQ(std::get<int>(s1.value()), 42);
+    EXPECT_EQ(std::get<int>(s2.value()), 42);
+
+    NativeValueMethodCacheSlot valueSlot;
+    auto v1 = cc.callValueMethodCached("CacheValueHost", "len", { std::string("abcd") }, {}, valueSlot, diagnostics);
+    auto v2 = cc.callValueMethodCached("CacheValueHost", "len", { std::string("abcd") }, {}, valueSlot, diagnostics);
+    ASSERT_TRUE(v1.has_value());
+    ASSERT_TRUE(v2.has_value());
+    EXPECT_EQ(std::get<int>(v1.value()), 4);
+    EXPECT_EQ(std::get<int>(v2.value()), 4);
+
+    EXPECT_FALSE(diagnostics.hasErrors());
+}

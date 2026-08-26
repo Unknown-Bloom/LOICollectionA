@@ -9,6 +9,41 @@
 #include "LOICollectionA/frontend/Callback.h"
 
 namespace LOICollection::frontend {
+    namespace {
+        bool matchesArgTypes(const CallbackTypeValues& values, const CallbackTypeArgs& types) {
+            if (values.size() != types.size())
+                return false;
+
+            for (size_t i = 0; i < values.size(); ++i) {
+                bool matched = std::visit([&types, i](auto&& arg) -> bool {
+                    using T = std::decay_t<decltype(arg)>;
+
+                    if constexpr (std::is_same_v<T, int>)
+                        return types[i] == ParamType::INT;
+                    else if constexpr (std::is_same_v<T, float>)
+                        return types[i] == ParamType::FLOAT;
+                    else if constexpr (std::is_same_v<T, std::string>)
+                        return types[i] == ParamType::STRING;
+                    else if constexpr (std::is_same_v<T, bool>)
+                        return types[i] == ParamType::BOOL;
+                    else if constexpr (std::is_same_v<T, ObjectRef>)
+                        return types[i] == ParamType::OBJECT;
+                    else if constexpr (std::is_same_v<T, FunctionRefPtr>)
+                        return types[i] == ParamType::FUNCTION;
+                    else if constexpr (std::is_same_v<T, ArrayRef>)
+                        return types[i] == ParamType::ARRAY;
+                    else
+                        return false;
+                }, values[i]);
+
+                if (!matched)
+                    return false;
+            }
+
+            return true;
+        }
+    }
+
     std::vector<ParamType> valuesToTypes(const CallbackTypeValues& values, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
         std::vector<ParamType> argTypes;
         for (const auto& arg : values) {
@@ -42,6 +77,8 @@ namespace LOICollection::frontend {
     struct FunctionCall::Impl {
         std::unordered_map<std::string, std::unordered_map<Signature, CallbackFunc, SignatureHasher>> mFunctions;
         std::unordered_map<std::string, std::unordered_map<Signature, CallbackFuncCombination, SignatureHasher>> mFunctionCombinations;
+
+        uint64_t epoch = 1;
     };
 
     FunctionCall::FunctionCall() : mImpl(std::make_unique<Impl>()) {}
@@ -56,12 +93,14 @@ namespace LOICollection::frontend {
         Signature sig{ function, args.size(), args, false };
 
         this->mImpl->mFunctions[namespaces][sig] = std::move(callback);
+        ++this->mImpl->epoch;
     }
 
     void FunctionCall::registerFunction(const std::string& namespaces, const std::string& function, CallbackFuncCombination callback, const CallbackTypeArgs& args) {
         Signature sig{ function, args.size(), args, true };
 
         this->mImpl->mFunctionCombinations[namespaces][sig] = std::move(callback);
+        ++this->mImpl->epoch;
     }
 
     void FunctionCall::unregisterFunction(const std::string& namespaces, const std::string& function, const CallbackTypeArgs& args, bool isCombination) {
@@ -69,11 +108,13 @@ namespace LOICollection::frontend {
 
         if (isCombination) {
             this->mImpl->mFunctionCombinations[namespaces].erase(sig);
+            ++this->mImpl->epoch;
 
             return;
         }
 
         this->mImpl->mFunctions[namespaces].erase(sig);
+        ++this->mImpl->epoch;
     }
 
     bool FunctionCall::isRegistered(const std::string& namespaces, const std::string& function, const CallbackTypeArgs& args) const {
@@ -110,6 +151,77 @@ namespace LOICollection::frontend {
             return result;
         }
 
+        return TypedValue{};
+    }
+
+    ll::Expected<TypedValue> FunctionCall::callFunctionCached(
+        const std::string& namespaces, const std::string& function, const CallbackTypeValues& args,
+        const CallbackTypePlaces& placeholders, FunctionCallCacheSlot& slot, DiagnosticEngine& diagnostics,
+        const SourceLocation& loc
+    ) {
+        if (slot.valid && slot.epoch == this->mImpl->epoch &&
+            slot.namespaces == namespaces && slot.function == function &&
+            matchesArgTypes(args, slot.argTypes)) {
+            auto result = slot.isCombination
+                ? slot.combination(args, placeholders)
+                : slot.callback(args);
+            if (!result.has_value())
+                return ll::makeStringError("Function callback threw: " + result.error().message());
+
+            return result;
+        }
+
+        slot.valid = false;
+
+        std::vector<ParamType> argTypes = valuesToTypes(args, diagnostics, loc);
+        Signature sig{ function, argTypes.size(), argTypes, false };
+
+        auto funcsIt = this->mImpl->mFunctions.find(namespaces);
+        if (funcsIt != this->mImpl->mFunctions.end()) {
+            auto cbIt = funcsIt->second.find(sig);
+            if (cbIt != funcsIt->second.end()) {
+                auto result = cbIt->second(args);
+                if (!result.has_value())
+                    return ll::makeStringError("Function callback threw: " + result.error().message());
+
+                if (argTypes.size() == args.size()) {
+                    slot.namespaces = namespaces;
+                    slot.function = function;
+                    slot.argTypes = std::move(argTypes);
+                    slot.epoch = this->mImpl->epoch;
+                    slot.isCombination = false;
+                    slot.callback = cbIt->second;
+                    slot.valid = true;
+                }
+
+                return result;
+            }
+        }
+
+        sig.isCombination = true;
+        auto combosIt = this->mImpl->mFunctionCombinations.find(namespaces);
+        if (combosIt != this->mImpl->mFunctionCombinations.end()) {
+            auto cbIt = combosIt->second.find(sig);
+            if (cbIt != combosIt->second.end()) {
+                auto result = cbIt->second(args, placeholders);
+                if (!result.has_value())
+                    return ll::makeStringError("Function callback threw: " + result.error().message());
+
+                if (argTypes.size() == args.size()) {
+                    slot.namespaces = namespaces;
+                    slot.function = function;
+                    slot.argTypes = std::move(argTypes);
+                    slot.epoch = this->mImpl->epoch;
+                    slot.isCombination = true;
+                    slot.combination = cbIt->second;
+                    slot.valid = true;
+                }
+
+                return result;
+            }
+        }
+
+        diagnostics.addError(loc, "Function not registered: " + namespaces + "::" + function);
         return TypedValue{};
     }
     
@@ -204,6 +316,8 @@ namespace LOICollection::frontend {
         };
 
         std::unordered_map<std::string, NativeClassInfo> classes;
+
+        uint64_t epoch = 1;
     };
 
     ClassCall::ClassCall() : mImpl(std::make_unique<Impl>()) {}
@@ -221,36 +335,44 @@ namespace LOICollection::frontend {
 
         for (const auto& field : fields)
             info.fieldDefaults[field] = 0;
+
+        ++this->mImpl->epoch;
     }
 
     void ClassCall::registerConstructor(const std::string& name, NativeConstructor callback, const CallbackTypeArgs& args) {
         Signature sig{ name, args.size(), args, false };
         this->mImpl->classes[name].constructors[sig] = std::move(callback);
+        ++this->mImpl->epoch;
     }
 
     void ClassCall::registerConstructor(const std::string& name, NativeConstructorCombination callback, const CallbackTypeArgs& args) {
         Signature sig{ name, args.size(), args, true };
         this->mImpl->classes[name].constructorCombinations[sig] = std::move(callback);
+        ++this->mImpl->epoch;
     }
 
     void ClassCall::registerMethod(const std::string& className, const std::string& method, NativeMethod callback, const CallbackTypeArgs& args) {
         Signature sig{ method, args.size(), args, false };
         this->mImpl->classes[className].methods[sig] = std::move(callback);
+        ++this->mImpl->epoch;
     }
 
     void ClassCall::registerMethod(const std::string& className, const std::string& method, NativeMethodCombination callback, const CallbackTypeArgs& args) {
         Signature sig{ method, args.size(), args, true };
         this->mImpl->classes[className].methodCombinations[sig] = std::move(callback);
+        ++this->mImpl->epoch;
     }
 
     void ClassCall::registerStaticMethod(const std::string& className, const std::string& method, NativeStaticMethod callback, const CallbackTypeArgs& args) {
         Signature sig{ method, args.size(), args, false };
         this->mImpl->classes[className].staticMethods[sig] = std::move(callback);
+        ++this->mImpl->epoch;
     }
 
     void ClassCall::registerStaticMethod(const std::string& className, const std::string& method, NativeStaticMethodCombination callback, const CallbackTypeArgs& args) {
         Signature sig{ method, args.size(), args, true };
         this->mImpl->classes[className].staticMethodCombinations[sig] = std::move(callback);
+        ++this->mImpl->epoch;
     }
 
     void ClassCall::registerField(const std::string& className, const std::string& field) {
@@ -263,6 +385,7 @@ namespace LOICollection::frontend {
             info.fields.push_back(field);
 
         info.fieldDefaults[field] = defaultValue;
+        ++this->mImpl->epoch;
     }
 
     void ClassCall::registerStaticField(const std::string& className, const std::string& field) {
@@ -275,15 +398,18 @@ namespace LOICollection::frontend {
             info.staticFields.push_back(field);
 
         info.staticFieldValues[field] = defaultValue;
+        ++this->mImpl->epoch;
     }
 
     void ClassCall::registerValueMethod(const std::string& className, const std::string& method, NativeValueMethod callback, const CallbackTypeArgs& args) {
         Signature sig{ method, args.size(), args, false };
         this->mImpl->classes[className].valueMethods[sig] = std::move(callback);
+        ++this->mImpl->epoch;
     }
 
     void ClassCall::registerOperator(const std::string& className, const std::string& op, NativeOperator callback) {
         this->mImpl->classes[className].operators[op] = std::move(callback);
+        ++this->mImpl->epoch;
     }
 
     bool ClassCall::isRegistered(const std::string& name) const {
@@ -569,6 +695,268 @@ namespace LOICollection::frontend {
         auto result = opIt->second(left, right);
         if (!result.has_value())
             return ll::makeStringError("Operator callback threw: " + result.error().message());
+
+        return result;
+    }
+
+    ll::Expected<ObjectRef> ClassCall::createCached(
+        const std::string& name, const CallbackTypeValues& args, const CallbackTypePlaces& placeholders,
+        NativeConstructorCacheSlot& slot, DiagnosticEngine& diagnostics, const SourceLocation& loc
+    ) {
+        if (slot.valid && slot.epoch == this->mImpl->epoch && slot.className == name &&
+            matchesArgTypes(args, slot.argTypes)) {
+            auto result = slot.isCombination
+                ? slot.combination(args, placeholders)
+                : slot.callback(args);
+            if (!result.has_value())
+                return ll::makeStringError("Constructor callback threw: " + result.error().message());
+
+            return result;
+        }
+
+        slot.valid = false;
+
+        auto it = this->mImpl->classes.find(name);
+        if (it == this->mImpl->classes.end())
+            return ll::makeErrorCodeError(std::make_error_code(std::errc::invalid_argument));
+
+        auto& info = it->second;
+        std::vector<ParamType> argTypes = valuesToTypes(args, diagnostics, loc);
+
+        Signature sig{ name, argTypes.size(), argTypes, false };
+
+        auto ctorIt = info.constructors.find(sig);
+        if (ctorIt != info.constructors.end()) {
+            auto result = ctorIt->second(args);
+            if (!result.has_value())
+                return ll::makeStringError("Constructor callback threw: " + result.error().message());
+
+            if (argTypes.size() == args.size()) {
+                slot.className = name;
+                slot.argTypes = std::move(argTypes);
+                slot.epoch = this->mImpl->epoch;
+                slot.isCombination = false;
+                slot.callback = ctorIt->second;
+                slot.valid = true;
+            }
+
+            return result;
+        }
+
+        sig.isCombination = true;
+        auto combIt = info.constructorCombinations.find(sig);
+        if (combIt != info.constructorCombinations.end()) {
+            auto result = combIt->second(args, placeholders);
+            if (!result.has_value())
+                return ll::makeStringError("Constructor callback threw: " + result.error().message());
+
+            if (argTypes.size() == args.size()) {
+                slot.className = name;
+                slot.argTypes = std::move(argTypes);
+                slot.epoch = this->mImpl->epoch;
+                slot.isCombination = true;
+                slot.combination = combIt->second;
+                slot.valid = true;
+            }
+
+            return result;
+        }
+
+        if (info.constructors.empty() && info.constructorCombinations.empty() && args.empty()) {
+            auto obj = std::make_shared<Object>();
+            obj->className = name;
+            obj->classIndex = -1;
+            for (const auto& field : info.fields) {
+                auto defaultIt = info.fieldDefaults.find(field);
+                obj->fields[field] = defaultIt == info.fieldDefaults.end() ? ValueNode::ValueType{} : defaultIt->second;
+            }
+
+            return obj;
+        }
+
+        return ll::makeErrorCodeError(std::make_error_code(std::errc::invalid_argument));
+    }
+
+    ll::Expected<TypedValue> ClassCall::callMethodCached(
+        const std::string& className, const std::string& method, const CallbackTypeValues& args,
+        const ObjectRef& object, const CallbackTypePlaces& placeholders, NativeMethodCacheSlot& slot,
+        DiagnosticEngine& diagnostics, const SourceLocation& loc
+    ) {
+        if (slot.valid && slot.epoch == this->mImpl->epoch &&
+            slot.className == className && slot.method == method &&
+            matchesArgTypes(args, slot.argTypes)) {
+            auto result = slot.isCombination
+                ? slot.combination(object, args, placeholders)
+                : slot.callback(object, args);
+            if (!result.has_value())
+                return ll::makeStringError("Method callback threw: " + result.error().message());
+
+            return result;
+        }
+
+        slot.valid = false;
+
+        auto it = this->mImpl->classes.find(className);
+        if (it == this->mImpl->classes.end())
+            return ll::makeErrorCodeError(std::make_error_code(std::errc::invalid_argument));
+
+        auto& info = it->second;
+        std::vector<ParamType> argTypes = valuesToTypes(args, diagnostics, loc);
+
+        Signature sig{ method, argTypes.size(), argTypes, false };
+
+        auto methodIt = info.methods.find(sig);
+        if (methodIt != info.methods.end()) {
+            auto result = methodIt->second(object, args);
+            if (!result.has_value())
+                return ll::makeStringError("Method callback threw: " + result.error().message());
+
+            if (argTypes.size() == args.size()) {
+                slot.className = className;
+                slot.method = method;
+                slot.argTypes = std::move(argTypes);
+                slot.epoch = this->mImpl->epoch;
+                slot.isCombination = false;
+                slot.callback = methodIt->second;
+                slot.valid = true;
+            }
+
+            return result;
+        }
+
+        sig.isCombination = true;
+        auto combIt = info.methodCombinations.find(sig);
+        if (combIt != info.methodCombinations.end()) {
+            auto result = combIt->second(object, args, placeholders);
+            if (!result.has_value())
+                return ll::makeStringError("Method callback threw: " + result.error().message());
+
+            if (argTypes.size() == args.size()) {
+                slot.className = className;
+                slot.method = method;
+                slot.argTypes = std::move(argTypes);
+                slot.epoch = this->mImpl->epoch;
+                slot.isCombination = true;
+                slot.combination = combIt->second;
+                slot.valid = true;
+            }
+
+            return result;
+        }
+
+        return ll::makeErrorCodeError(std::make_error_code(std::errc::invalid_argument));
+    }
+
+    ll::Expected<TypedValue> ClassCall::callStaticMethodCached(
+        const std::string& className, const std::string& method, const CallbackTypeValues& args,
+        const CallbackTypePlaces& placeholders, NativeStaticMethodCacheSlot& slot,
+        DiagnosticEngine& diagnostics, const SourceLocation& loc
+    ) {
+        if (slot.valid && slot.epoch == this->mImpl->epoch &&
+            slot.className == className && slot.method == method &&
+            matchesArgTypes(args, slot.argTypes)) {
+            auto result = slot.isCombination
+                ? slot.combination(args, placeholders)
+                : slot.callback(args);
+            if (!result.has_value())
+                return ll::makeStringError("Static method callback threw: " + result.error().message());
+
+            return result;
+        }
+
+        slot.valid = false;
+
+        auto it = this->mImpl->classes.find(className);
+        if (it == this->mImpl->classes.end())
+            return ll::makeErrorCodeError(std::make_error_code(std::errc::invalid_argument));
+
+        auto& info = it->second;
+        std::vector<ParamType> argTypes = valuesToTypes(args, diagnostics, loc);
+
+        Signature sig{ method, argTypes.size(), argTypes, false };
+
+        auto methodIt = info.staticMethods.find(sig);
+        if (methodIt != info.staticMethods.end()) {
+            auto result = methodIt->second(args);
+            if (!result.has_value())
+                return ll::makeStringError("Static method callback threw: " + result.error().message());
+
+            if (argTypes.size() == args.size()) {
+                slot.className = className;
+                slot.method = method;
+                slot.argTypes = std::move(argTypes);
+                slot.epoch = this->mImpl->epoch;
+                slot.isCombination = false;
+                slot.callback = methodIt->second;
+                slot.valid = true;
+            }
+
+            return result;
+        }
+
+        sig.isCombination = true;
+        auto combIt = info.staticMethodCombinations.find(sig);
+        if (combIt != info.staticMethodCombinations.end()) {
+            auto result = combIt->second(args, placeholders);
+            if (!result.has_value())
+                return ll::makeStringError("Static method callback threw: " + result.error().message());
+
+            if (argTypes.size() == args.size()) {
+                slot.className = className;
+                slot.method = method;
+                slot.argTypes = std::move(argTypes);
+                slot.epoch = this->mImpl->epoch;
+                slot.isCombination = true;
+                slot.combination = combIt->second;
+                slot.valid = true;
+            }
+
+            return result;
+        }
+
+        return ll::makeErrorCodeError(std::make_error_code(std::errc::invalid_argument));
+    }
+
+    ll::Expected<TypedValue> ClassCall::callValueMethodCached(
+        const std::string& className, const std::string& method, const TypedValue& self, const CallbackTypeValues& args,
+        NativeValueMethodCacheSlot& slot, DiagnosticEngine& diagnostics, const SourceLocation& loc
+    ) {
+        if (slot.valid && slot.epoch == this->mImpl->epoch &&
+            slot.className == className && slot.method == method &&
+            matchesArgTypes(args, slot.argTypes)) {
+            auto result = slot.callback(self, args);
+            if (!result.has_value())
+                return ll::makeStringError("Value method callback threw: " + result.error().message());
+
+            return result;
+        }
+
+        slot.valid = false;
+
+        auto it = this->mImpl->classes.find(className);
+        if (it == this->mImpl->classes.end())
+            return ll::makeErrorCodeError(std::make_error_code(std::errc::invalid_argument));
+
+        auto& info = it->second;
+        std::vector<ParamType> argTypes = valuesToTypes(args, diagnostics, loc);
+
+        Signature sig{ method, argTypes.size(), std::move(argTypes), false };
+        auto methodIt = info.valueMethods.find(sig);
+        if (methodIt == info.valueMethods.end())
+            return ll::makeErrorCodeError(std::make_error_code(std::errc::invalid_argument));
+
+        auto result = methodIt->second(self, args);
+        if (!result.has_value())
+            return ll::makeStringError("Value method callback threw: " + result.error().message());
+
+        if (sig.args.size() == args.size()) {
+            slot.className = className;
+            slot.method = method;
+            slot.argTypes = sig.args;
+            slot.epoch = this->mImpl->epoch;
+            slot.callback = methodIt->second;
+            slot.valid = true;
+        }
 
         return result;
     }

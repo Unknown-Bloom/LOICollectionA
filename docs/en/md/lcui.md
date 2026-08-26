@@ -671,6 +671,23 @@ To keep runaway scripts from hanging the server, the VM enforces two hard limits
 
 Ordinary GUI scripts stay far below both caps; a loop that forgot its step (e.g. `while (true)`) or an unbounded recursion is aborted in time instead of dragging the server down.
 
+## Bytecode Optimization
+
+After compilation and before execution, the bytecode passes through an optimizer. Optimization only changes *how* something is computed, never *what* is computed — runtime errors still fire exactly as written, with their original source locations intact. Everything below is transparent to script authors, but knowing it helps write scripts that naturally benefit:
+
+| Optimization | Example | Effect |
+| --- | --- | --- |
+| Constant folding | `1 + 2 * 3` | Folded to `PUSH_INT 7` at compile time; nothing computed at runtime |
+| Variable forwarding | `x = 1; if (x == 1) [...]` | Later reads of `x` are replaced by the known value, and the branch folds away |
+| Pure-function folding | `math::abs(-3)`, `math::pow(2, 10)` | `math::` pure functions with all-constant arguments evaluate at compile time; impure ones like `math::random` never fold |
+| Super-instructions | `x = 1` (`DUP` + `STORE_VAR`) | Hot instruction pairs fuse into a single `DUP_STORE` / `DUP_IS_NONE`, doing two jobs in one dispatch |
+| Jump peephole | A conditional jump immediately followed by an unconditional jump to the same target | The double jump collapses and the unreachable block in between is removed |
+| Dead-code elimination | `while (false) [...]`, `if (false) [...]` | Unreachable branches are removed wholesale |
+
+The optimizer iterates these passes until the bytecode stops changing (a fixed point), so opportunities exposed by one rewrite (e.g. variable forwarding turning a condition into a constant) are picked up by the next round.
+
+At runtime there is an additional layer of **inline caching**: when a script calls the same native function or native method repeatedly (e.g. `math::abs(...)` or `arr.push(...)` inside a loop), the VM remembers the previous resolution and skips signature matching and registry lookups on a hit. This affects speed only, never behavior — on invalidation (e.g. a plugin reload mutating the registry) the VM falls back to the full lookup.
+
 ## Bytecode Disk Cache
 
 After compiling a script, `GUIManager::load` serializes the bytecode to a `<script>.lcc` file next to the source (e.g. `market.lcui` maps to `market.lcui.lcc`):
@@ -679,6 +696,8 @@ After compiling a script, `GUIManager::load` serializes the bytecode to a `<scri
 - The cache header records the SHA-256 of the source file and of every file in the import graph; a change to the source or any imported file, or a different cache format version, invalidates the cache as a whole and triggers recompilation.
 - The serialized data carries a checksum; a corrupted cache is discarded and recompiled.
 - The cache is purely an optimization: deleting the `.lcc` file does not affect correctness, only the next load recompiles.
+
+The current cache format version is v2 (since v2 the bytecode supports the `DUP_STORE` / `DUP_IS_NONE` super-instructions). After a plugin upgrade introduces a new format version, old `.lcc` caches are invalidated automatically by the version mismatch and recompiled — no manual cleanup is needed.
 
 ## Common Constraints and Pitfalls
 

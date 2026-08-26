@@ -68,6 +68,63 @@ namespace LOICollection::frontend {
 
     std::vector<ParamType> valuesToTypes(const CallbackTypeValues& values, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
 
+    struct FunctionCallCacheSlot {
+        std::string namespaces;
+        std::string function;
+        CallbackTypeArgs argTypes;
+        uint64_t epoch = 0;
+        bool isCombination = false;
+        bool valid = false;
+
+        CallbackFunc callback;
+        CallbackFuncCombination combination;
+    };
+
+    struct NativeMethodCacheSlot {
+        std::string className;
+        std::string method;
+        CallbackTypeArgs argTypes;
+        uint64_t epoch = 0;
+        bool isCombination = false;
+        bool valid = false;
+
+        NativeMethod callback;
+        NativeMethodCombination combination;
+    };
+
+    struct NativeStaticMethodCacheSlot {
+        std::string className;
+        std::string method;
+        CallbackTypeArgs argTypes;
+        uint64_t epoch = 0;
+        bool isCombination = false;
+        bool valid = false;
+
+        NativeStaticMethod callback;
+        NativeStaticMethodCombination combination;
+    };
+
+    struct NativeValueMethodCacheSlot {
+        std::string className;
+        std::string method;
+        CallbackTypeArgs argTypes;
+        uint64_t epoch = 0;
+        bool valid = false;
+
+        NativeValueMethod callback;
+    };
+
+    struct NativeConstructorCacheSlot {
+        std::string className;
+        CallbackTypeArgs argTypes;
+        uint64_t epoch = 0;
+        bool isCombination = false;
+        bool valid = false;
+
+        NativeConstructor callback;
+        NativeConstructorCombination combination;
+    };
+
     class FunctionCall {
     public:
         LOICOLLECTION_A_NDAPI static FunctionCall& getInstance();
@@ -79,6 +136,7 @@ namespace LOICollection::frontend {
         LOICOLLECTION_A_NDAPI bool isRegistered(const std::string& namespaces, const std::string& function, const CallbackTypeArgs& args) const;
 
         LOICOLLECTION_A_NDAPI ll::Expected<TypedValue> callFunction(const std::string& namespaces, const std::string& function, const CallbackTypeValues& args, const CallbackTypePlaces& placeholders, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
+        LOICOLLECTION_A_NDAPI ll::Expected<TypedValue> callFunctionCached(const std::string& namespaces, const std::string& function, const CallbackTypeValues& args, const CallbackTypePlaces& placeholders, FunctionCallCacheSlot& slot, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
 
     private:
         FunctionCall();
@@ -160,6 +218,25 @@ namespace LOICollection::frontend {
         LOICOLLECTION_A_NDAPI ll::Expected<TypedValue> callOperator(
             const std::string& className, const std::string& op, const TypedValue& left, const TypedValue& right,
             DiagnosticEngine& diagnostics, const SourceLocation& loc = {}
+        );
+
+        LOICOLLECTION_A_NDAPI ll::Expected<ObjectRef> createCached(
+            const std::string& name, const CallbackTypeValues& args, const CallbackTypePlaces& placeholders,
+            NativeConstructorCacheSlot& slot, DiagnosticEngine& diagnostics, const SourceLocation& loc = {}
+        );
+        LOICOLLECTION_A_NDAPI ll::Expected<TypedValue> callMethodCached(
+            const std::string& className, const std::string& method, const CallbackTypeValues& args,
+            const ObjectRef& object, const CallbackTypePlaces& placeholders, NativeMethodCacheSlot& slot,
+            DiagnosticEngine& diagnostics, const SourceLocation& loc = {}
+        );
+        LOICOLLECTION_A_NDAPI ll::Expected<TypedValue> callStaticMethodCached(
+            const std::string& className, const std::string& method, const CallbackTypeValues& args,
+            const CallbackTypePlaces& placeholders, NativeStaticMethodCacheSlot& slot,
+            DiagnosticEngine& diagnostics, const SourceLocation& loc = {}
+        );
+        LOICOLLECTION_A_NDAPI ll::Expected<TypedValue> callValueMethodCached(
+            const std::string& className, const std::string& method, const TypedValue& self, const CallbackTypeValues& args,
+            NativeValueMethodCacheSlot& slot, DiagnosticEngine& diagnostics, const SourceLocation& loc = {}
         );
 
     private:

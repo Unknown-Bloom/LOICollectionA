@@ -59,6 +59,12 @@ namespace LOICollection::frontend::ir {
         std::vector<ValueNode::ValueType> stack;
         std::unordered_map<std::string, ValueNode::ValueType> variables;
 
+        std::unordered_map<int, FunctionCallCacheSlot> mFunctionCallSlots;
+        std::unordered_map<int, NativeMethodCacheSlot> mNativeMethodSlots;
+        std::unordered_map<int, NativeStaticMethodCacheSlot> mNativeStaticMethodSlots;
+        std::unordered_map<int, NativeValueMethodCacheSlot> mNativeValueMethodSlots;
+        std::unordered_map<int, NativeConstructorCacheSlot> mNativeConstructorSlots;
+
         ValueNode::ValueType execute(
             const std::shared_ptr<const BytecodeChunk>& owner,
             const CallbackTypePlaces& placeholders
@@ -66,6 +72,13 @@ namespace LOICollection::frontend::ir {
 
         void push(const ValueNode::ValueType& v);
         ValueNode::ValueType pop();
+
+        void storeVariable(
+            const BytecodeChunk& chunk,
+            Frame& frame,
+            const std::string& name,
+            const ValueNode::ValueType& val
+        );
 
         bool pushFrame(Frame&& frame);
 
