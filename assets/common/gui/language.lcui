@@ -1,15 +1,16 @@
+import "generic.lcui";
+
 lang = new ObservableNumber(0.0, true);
 
-form = new CustomForm("language.gui", {tr("language.gui.title")});
-form.label({tr("language.gui.label")}, new TextOptions());
-form.label(std::format({tr("language.gui.lang")}, [ {tr("name")} ]), new TextOptions());
-form.spacer(new SpacingOptions());
-form.divider(new DividerOptions());
-form.dropdown({tr("language.gui.dropdown")}, lang, GUIManager::value("language.names"), new DropdownOptions()); 
-form.button({tr("generic.gui.save")}, func () -> void {
-    GUIManager::callback("language.callback", [ lang.getData() ]);
+form = new CustomForm("language.gui", {tr("language.gui.title")}) {
+    label({tr("language.gui.label")}, new TextOptions());
+    label(std::format({tr("language.gui.lang")}, [ {tr("name")} ]), new TextOptions());
+    SectionHeader();
+    dropdown({tr("language.gui.dropdown")}, lang, GUIManager::value("language.names"), new DropdownOptions());
+    ConfirmBar(saveLabel(), func () -> void {
+        GUIManager::callback("language.callback", [ lang.getData() ]);
 
-    form.close();
-}, new ButtonOptions());
-form.closeButton();
-form.show();
+        form.close();
+    });
+    show();
+};

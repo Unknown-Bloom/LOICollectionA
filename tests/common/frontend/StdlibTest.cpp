@@ -144,6 +144,8 @@ TEST(StdlibMapTest, ChainedUsage) {
         "5");
 }
 
+#ifndef LOICOLLECTION_TEST_NO_OBSERVABLE
+
 TEST(StdlibObservableTest, NumberOperators) {
     EXPECT_EQ(eval("n = new ObservableNumber(10, false); n + 5"), "15");
     EXPECT_EQ(eval("n = new ObservableNumber(10, false); n - 4"), "6");
@@ -168,3 +170,5 @@ TEST(StdlibObservableTest, BooleanOperators) {
     EXPECT_EQ(eval("b = new ObservableBoolean(true, false); b == true"), "true");
     EXPECT_EQ(eval("b = new ObservableBoolean(true, false); b != true"), "false");
 }
+
+#endif

@@ -1,13 +1,16 @@
+import "generic.lcui";
+
 mode = new CtxValue(0);
 targetId = new CtxValue(1);
 
 if (mode.value == "view") [
     viewData = GUIManager::request("notice.view", [ targetId.value ]);
 
-    view = new CustomForm("notice.view", viewData[0]);
-    view.label(viewData[1], new TextOptions());
-    view.closeButton();
-    view.show();
+    view = new CustomForm("notice.view", viewData[0]) {
+        label(viewData[1], new TextOptions());
+        closeButton();
+        show();
+    };
 ]
 
 if (mode.value == "content") [
@@ -22,95 +25,95 @@ if (mode.value == "content") [
     navigateRefresh = new GlobalValue();
     navigateRefresh.value = false;
 
-    content = new CustomForm("notice.content", {tr("notice.gui.title")});
-    content.label({tr("notice.gui.label")}, new TextOptions());
-    content.textField({tr("notice.gui.edit.title")}, titleField, new TextFieldOptions());
-    content.toggle({tr("notice.gui.edit.show")}, showField, new ToggleOptions());
-    content.button({tr("notice.gui.edit.lines")}, func () -> void {
-        if (!navigateLines.value) [
-            navigateLines.value = true;
+    content = new CustomForm("notice.content", {tr("notice.gui.title")}) {
+        label({tr("notice.gui.label")}, new TextOptions());
+        textField({tr("notice.gui.edit.title")}, titleField, new TextFieldOptions());
+        toggle({tr("notice.gui.edit.show")}, showField, new ToggleOptions());
+        button({tr("notice.gui.edit.lines")}, on: func () -> void {
+            if (!navigateLines.value) [
+                navigateLines.value = true;
 
-            content.close();
-        ]
-    }, new ButtonOptions());
-    content.button({tr("notice.gui.edit.addline")}, func () -> void {
-        if (!navigateRefresh.value) [
-            GUIManager::callback("notice.line.add", [ targetId.value ]);
-
-            navigateRefresh.value = true;
-            content.close();
-        ]
-    }, new ButtonOptions());
-    content.button({tr("notice.gui.edit.removeline")}, func () -> void {
-        if (!navigateRefresh.value) [
-            GUIManager::callback("notice.line.remove", [ targetId.value ]);
-
-            navigateRefresh.value = true;
-            content.close();
-        ]
-    }, new ButtonOptions());
-    content.button({tr("generic.gui.save")}, func () -> void {
-        if (!navigateRefresh.value) [
-            GUIManager::callback("notice.content.save", [ targetId.value, titleField.getData(), showField.getData() ]);
-
-            navigateRefresh.value = true;
-            content.close();
-        ]
-    }, new ButtonOptions());
-    content.closeButton();
-    content.show(func (result) -> void {
-        if (navigateLines.value) [
-            linesData = GUIManager::request("notice.lines", [ targetId.value ]);
-
-            lines = new PaginatedForm("notice.lines", {tr("notice.gui.title")}, linesData, 10);
-            lines.label({tr("notice.gui.label")}, new TextOptions());
-            lines.previousButton({tr("generic.gui.page.previous")});
-            lines.nextButton({tr("generic.gui.page.next")});
-            lines.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-            lines.closeButton();
-            lines.show(func (result) -> void {
-                if (result.selection != "") [
-                    lineData = GUIManager::request("notice.line.data", [ targetId.value, result.selectionIndex ]);
-
-                    lineField = new ObservableString(lineData[0], true);
-
-                    line = new CustomForm("notice.line", {tr("notice.gui.title")});
-                    line.label({tr("notice.gui.label")}, new TextOptions());
-                    line.textField(std::format({tr("notice.gui.edit.line")}, [ result.selectionIndex + 1 ]), lineField, new TextFieldOptions());
-                    line.button({tr("generic.gui.save")}, func () -> void {
-                        GUIManager::callback("notice.line.save", [ targetId.value, result.selectionIndex, lineField.getData() ]);
-
-                        line.close();
-                    }, new ButtonOptions());
-                    line.closeButton();
-                    line.show(func (result) -> void {
-                        GUIManager::open("notice", "notice.content", 1, [ "content", targetId.value ]);
-                    });
-
-                    GUIManager::switchTo("notice.line", 1);
-                :
-                    GUIManager::open("notice", "notice.content", 1, [ "content", targetId.value ]);
-                ]
-            });
-
-            GUIManager::switchTo("notice.lines", 3);
-        :
-            if (navigateRefresh.value) [
-                GUIManager::open("notice", "notice.content", 1, [ "content", targetId.value ]);
-            :
-                GUIManager::open("notice", "notice.edit", 1, [ "", "" ]);
+                content.close();
             ]
-        ]
-    });
+        }, new ButtonOptions());
+        button({tr("notice.gui.edit.addline")}, on: func () -> void {
+            if (!navigateRefresh.value) [
+                GUIManager::callback("notice.line.add", [ targetId.value ]);
+
+                navigateRefresh.value = true;
+                content.close();
+            ]
+        }, new ButtonOptions());
+        button({tr("notice.gui.edit.removeline")}, on: func () -> void {
+            if (!navigateRefresh.value) [
+                GUIManager::callback("notice.line.remove", [ targetId.value ]);
+
+                navigateRefresh.value = true;
+                content.close();
+            ]
+        }, new ButtonOptions());
+        ConfirmBar(saveLabel(), func () -> void {
+            if (!navigateRefresh.value) [
+                GUIManager::callback("notice.content.save", [ targetId.value, titleField.getData(), showField.getData() ]);
+
+                navigateRefresh.value = true;
+                content.close();
+            ]
+        });
+        show(func (result) -> void {
+            if (navigateLines.value) [
+                linesData = GUIManager::request("notice.lines", [ targetId.value ]);
+
+                lines = new PaginatedForm("notice.lines", {tr("notice.gui.title")}, linesData, 10) {
+                    label({tr("notice.gui.label")}, new TextOptions());
+                    PageControls();
+                    closeButton();
+                    show(func (result) -> void {
+                        if (result.selection != "") [
+                            lineData = GUIManager::request("notice.line.data", [ targetId.value, result.selectionIndex ]);
+
+                            lineField = new ObservableString(lineData[0], true);
+
+                            line = new CustomForm("notice.line", {tr("notice.gui.title")}) {
+                                label({tr("notice.gui.label")}, new TextOptions());
+                                textField(std::format({tr("notice.gui.edit.line")}, [ result.selectionIndex + 1 ]), lineField, new TextFieldOptions());
+                                ConfirmBar(saveLabel(), func () -> void {
+                                    GUIManager::callback("notice.line.save", [ targetId.value, result.selectionIndex, lineField.getData() ]);
+
+                                    line.close();
+                                });
+                                show(func (result) -> void {
+                                    GUIManager::open("notice", "notice.content", 1, [ "content", targetId.value ]);
+                                });
+                            };
+
+                            GUIManager::switchTo("notice.line", 1);
+                        :
+                            GUIManager::open("notice", "notice.content", 1, [ "content", targetId.value ]);
+                        ]
+                    });
+                };
+
+                GUIManager::switchTo("notice.lines", 3);
+            :
+                if (navigateRefresh.value) [
+                    GUIManager::open("notice", "notice.content", 1, [ "content", targetId.value ]);
+                :
+                    GUIManager::open("notice", "notice.edit", 1, [ "", "" ]);
+                ]
+            ]
+        });
+    };
 ]
 
 if (mode.value == "auto") [
     autoData = GUIManager::request("notice.auto", []);
 
-    autoView = new CustomForm("notice.auto", autoData[0]);
-    autoView.label(autoData[1], new TextOptions());
-    autoView.closeButton();
-    autoView.show();
+    autoView = new CustomForm("notice.auto", autoData[0]) {
+        label(autoData[1], new TextOptions());
+        closeButton();
+        show();
+    };
 ]
 
 closeState = new ObservableBoolean(GUIManager::value("notice.close")[0], true);
@@ -133,44 +136,45 @@ removeOption.tooltip = {tr("notice.gui.remove.tooltip")};
 editListOption = new ButtonOptions();
 editListOption.tooltip = {tr("notice.gui.edit.list.tooltip")};
 
-edit = new CustomForm("notice.edit", {tr("notice.gui.title")});
-edit.label({tr("notice.gui.label")}, new TextOptions());
-edit.button({tr("notice.gui.add")}, func () -> void {
-    if (!navigateAdd.value) [
-        navigateAdd.value = true;
+edit = new CustomForm("notice.edit", {tr("notice.gui.title")}) {
+    label({tr("notice.gui.label")}, new TextOptions());
+    button({tr("notice.gui.add")}, on: func () -> void {
+        if (!navigateAdd.value) [
+            navigateAdd.value = true;
 
-        edit.close();
-    ]
-}, addOption);
-edit.button({tr("notice.gui.remove")}, func () -> void {
-    if (!navigateRemove.value) [
-        navigateRemove.value = true;
+            edit.close();
+        ]
+    }, addOption);
+    button({tr("notice.gui.remove")}, on: func () -> void {
+        if (!navigateRemove.value) [
+            navigateRemove.value = true;
 
-        edit.close();
-    ]
-}, removeOption);
-edit.button({tr("notice.gui.edit.list")}, func () -> void {
-    if (!navigateEdit.value) [
-        navigateEdit.value = true;
+            edit.close();
+        ]
+    }, removeOption);
+    button({tr("notice.gui.edit.list")}, on: func () -> void {
+        if (!navigateEdit.value) [
+            navigateEdit.value = true;
 
-        edit.close();
-    ]
-}, editListOption);
-edit.closeButton();
-edit.show(func (result) -> void {
-    if (navigateAdd.value) [
-        GUIManager::switchTo("notice.add", 1);
-    :
-        if (navigateRemove.value) [
-            GUIManager::switchTo("notice.remove", 3);
+            edit.close();
+        ]
+    }, editListOption);
+    closeButton();
+    show(func (result) -> void {
+        if (navigateAdd.value) [
+            GUIManager::switchTo("notice.add", 1);
         :
-            if (navigateEdit.value) [
-                GUIManager::switchTo("notice.editList", 3);
+            if (navigateRemove.value) [
+                GUIManager::switchTo("notice.remove", 3);
+            :
+                if (navigateEdit.value) [
+                    GUIManager::switchTo("notice.editList", 3);
+                ]
             ]
         ]
-    ]
-});
-edit.show();
+    });
+    show();
+};
 
 addId = new ObservableString("", true);
 addTitle = new ObservableString("", true);
@@ -186,96 +190,95 @@ addInputTwo.description = {tr("notice.gui.add.input2.placeholder")};
 addInputThree = new TextFieldOptions();
 addInputThree.description = {tr("notice.gui.add.input3.placeholder")};
 
-add = new CustomForm("notice.add", {tr("notice.gui.title")});
-add.label({tr("notice.gui.label")}, new TextOptions());
-add.textField({tr("notice.gui.add.input1")}, addId, addInputOne);
-add.textField({tr("notice.gui.add.input2")}, addTitle, addInputTwo);
-add.textField({tr("notice.gui.add.input3")}, addPriority, addInputThree);
-add.toggle({tr("notice.gui.add.switch")}, addShow, new ToggleOptions());
-add.button({tr("generic.gui.save")}, func () -> void {
-    GUIManager::callback("notice.add.submit", [ addId.getData(), addTitle.getData(), addPriority.getData(), addShow.getData() ]);
+add = new CustomForm("notice.add", {tr("notice.gui.title")}) {
+    label({tr("notice.gui.label")}, new TextOptions());
+    textField({tr("notice.gui.add.input1")}, addId, addInputOne);
+    textField({tr("notice.gui.add.input2")}, addTitle, addInputTwo);
+    textField({tr("notice.gui.add.input3")}, addPriority, addInputThree);
+    toggle({tr("notice.gui.add.switch")}, addShow, new ToggleOptions());
+    ConfirmBar(saveLabel(), func () -> void {
+        GUIManager::callback("notice.add.submit", [ addId.getData(), addTitle.getData(), addPriority.getData(), addShow.getData() ]);
 
-    add.close();
-}, new ButtonOptions());
-add.closeButton();
-add.show(func (result) -> void {
-    GUIManager::open("notice", "notice.edit", 1, [ "", "" ]);
-});
-add.show();
+        add.close();
+    });
+    show(func (result) -> void {
+        GUIManager::open("notice", "notice.edit", 1, [ "", "" ]);
+    });
+    show();
+};
 
-remove = new PaginatedForm("notice.remove", {tr("notice.gui.title")}, GUIManager::value("notice.keys"), 10);
-remove.label({tr("notice.gui.label")}, new TextOptions());
-remove.previousButton({tr("generic.gui.page.previous")});
-remove.nextButton({tr("generic.gui.page.next")});
-remove.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-remove.closeButton();
-remove.show(func (result) -> void {
-    if (result.selection != "") [
-        confirmId = result.selection;
+remove = new PaginatedForm("notice.remove", {tr("notice.gui.title")}, GUIManager::value("notice.keys"), 10) {
+    label({tr("notice.gui.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
+        if (result.selection != "") [
+            confirmId = result.selection;
 
-        confirm = new MessageBox("notice.remove.info", {tr("notice.gui.title")});
-        confirm.body(std::format({tr("notice.gui.remove.content")}, [ result.selection ]));
-        confirm.button1({tr("notice.gui.remove.yes")});
-        confirm.button2({tr("notice.gui.remove.no")});
-        confirm.show(func (result) -> void {
-            if (result instanceof MessageBoxResult) [
-                if (result.selection == 0) [
-                    GUIManager::callback("notice.remove", [ confirmId ]);
-                ]
-            ]
+            confirm = new MessageBox("notice.remove.info", {tr("notice.gui.title")}) {
+                body(std::format({tr("notice.gui.remove.content")}, [ result.selection ]));
+                button1({tr("notice.gui.remove.yes")});
+                button2({tr("notice.gui.remove.no")});
+                show(func (result) -> void {
+                    if (result instanceof MessageBoxResult) [
+                        if (result.selection == 0) [
+                            GUIManager::callback("notice.remove", [ confirmId ]);
+                        ]
+                    ]
 
+                    GUIManager::open("notice", "notice.edit", 1, [ "", "" ]);
+                });
+            };
+
+            GUIManager::switchTo("notice.remove.info", 2);
+        :
             GUIManager::open("notice", "notice.edit", 1, [ "", "" ]);
-        });
+        ]
+    });
+    show();
+};
 
-        GUIManager::switchTo("notice.remove.info", 2);
-    :
-        GUIManager::open("notice", "notice.edit", 1, [ "", "" ]);
-    ]
-});
-remove.show();
+editList = new PaginatedForm("notice.editList", {tr("notice.gui.title")}, GUIManager::value("notice.keys"), 10) {
+    label({tr("notice.gui.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
+        if (result.selection != "") [
+            GUIManager::open("notice", "notice.content", 1, [ "content", result.selection ]);
+        :
+            GUIManager::open("notice", "notice.edit", 1, [ "", "" ]);
+        ]
+    });
+    show();
+};
 
-editList = new PaginatedForm("notice.editList", {tr("notice.gui.title")}, GUIManager::value("notice.keys"), 10);
-editList.label({tr("notice.gui.label")}, new TextOptions());
-editList.previousButton({tr("generic.gui.page.previous")});
-editList.nextButton({tr("generic.gui.page.next")});
-editList.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-editList.closeButton();
-editList.show(func (result) -> void {
-    if (result.selection != "") [
-        GUIManager::open("notice", "notice.content", 1, [ "content", result.selection ]);
-    :
-        GUIManager::open("notice", "notice.edit", 1, [ "", "" ]);
-    ]
-});
-editList.show();
+setting = new CustomForm("notice.setting", {tr("notice.gui.title")}) {
+    label({tr("notice.gui.label")}, new TextOptions());
+    toggle({tr("notice.gui.setting.switch1")}, closeState, new ToggleOptions());
+    ConfirmBar(saveLabel(), func () -> void {
+        GUIManager::callback("notice.setting.save", [ closeState.getData() ]);
 
-setting = new CustomForm("notice.setting", {tr("notice.gui.title")});
-setting.label({tr("notice.gui.label")}, new TextOptions());
-setting.toggle({tr("notice.gui.setting.switch1")}, closeState, new ToggleOptions());
-setting.button({tr("generic.gui.save")}, func () -> void {
-    GUIManager::callback("notice.setting.save", [ closeState.getData() ]);
+        setting.close();
+    });
+    show();
+};
 
-    setting.close();
-}, new ButtonOptions());
-setting.closeButton();
-setting.show();
+open = new PaginatedForm("notice.open", {tr("notice.gui.title")}, GUIManager::value("notice.names"), 10) {
+    label({tr("notice.gui.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
+        if (result.selection != "") [
+            viewData = GUIManager::request("notice.view", [ result.selectionIndex ]);
 
-open = new PaginatedForm("notice.open", {tr("notice.gui.title")}, GUIManager::value("notice.names"), 10);
-open.label({tr("notice.gui.label")}, new TextOptions());
-open.previousButton({tr("generic.gui.page.previous")});
-open.nextButton({tr("generic.gui.page.next")});
-open.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-open.closeButton();
-open.show(func (result) -> void {
-    if (result.selection != "") [
-        viewData = GUIManager::request("notice.view", [ result.selectionIndex ]);
+            view = new CustomForm("notice.view", viewData[0]) {
+                label(viewData[1], new TextOptions());
+                closeButton();
+                show();
+            };
 
-        view = new CustomForm("notice.view", viewData[0]);
-        view.label(viewData[1], new TextOptions());
-        view.closeButton();
-        view.show();
-
-        GUIManager::switchTo("notice.view", 1);
-    ]
-});
-open.show();
+            GUIManager::switchTo("notice.view", 1);
+        ]
+    });
+    show();
+};

@@ -1,3 +1,5 @@
+import "generic.lcui";
+
 tradeRequester = new CtxValue(0);
 tradeSeller = new CtxValue(1);
 tradeSlot = new CtxValue(2);
@@ -28,56 +30,54 @@ requestAccepted.value = false;
 requestRejected = new GlobalValue();
 requestRejected.value = false;
 
-tradeRequest = new CustomForm("market.trade.request", {tr("market.gui.title")});
-tradeRequest.label(requestInfoData[0], new TextOptions());
-tradeRequest.spacer(new SpacingOptions());
-tradeRequest.divider(new DividerOptions());
-tradeRequest.button({tr("market.yes")}, func () -> void {
-    acceptData = GUIManager::request("market.trade.request.accept", []);
+tradeRequest = new CustomForm("market.trade.request", {tr("market.gui.title")}) {
+    label(requestInfoData[0], new TextOptions());
+    SectionHeader();
+    button({tr("market.yes")}, on: func () -> void {
+        acceptData = GUIManager::request("market.trade.request.accept", []);
 
-    requestAccepted.value = acceptData[0];
-    requestFinished.value = true;
+        requestAccepted.value = acceptData[0];
+        requestFinished.value = true;
 
-    tradeRequest.close();
-}, new ButtonOptions());
-tradeRequest.button({tr("market.no")}, func () -> void {
-    requestRejected.value = true;
-    requestFinished.value = true;
+        tradeRequest.close();
+    }, new ButtonOptions());
+    ConfirmBar({tr("market.no")}, func () -> void {
+        requestRejected.value = true;
+        requestFinished.value = true;
 
-    tradeRequest.close();
-}, new ButtonOptions());
-tradeRequest.closeButton();
-tradeRequest.show(func (result) -> void {
-    if (requestFinished.value) [
-        if (requestAccepted.value) [
-            GUIManager::callback("market.trade.open.content", [ requestDestUuid, requestBuyerUuid ]);
-        :
-            if (requestRejected.value) [
-                GUIManager::callback("market.trade.request.reject", []);
+        tradeRequest.close();
+    });
+    show(func (result) -> void {
+        if (requestFinished.value) [
+            if (requestAccepted.value) [
+                GUIManager::callback("market.trade.open.content", [ requestDestUuid, requestBuyerUuid ]);
+            :
+                if (requestRejected.value) [
+                    GUIManager::callback("market.trade.request.reject", []);
+                ]
             ]
+        :
+            GUIManager::callback("market.trade.request.reject", []);
         ]
-    :
-        GUIManager::callback("market.trade.request.reject", []);
-    ]
-});
-tradeRequest.show();
+    });
+    show();
+};
 
-tradeContent = new PaginatedForm("market.trade.content", {tr("market.gui.title")}, GUIManager::value("market.trade.items"), 10);
-tradeContent.label({tr("market.gui.sell.item.dropdown")}, new TextOptions());
-tradeContent.previousButton({tr("generic.gui.page.previous")});
-tradeContent.nextButton({tr("generic.gui.page.next")});
-tradeContent.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-tradeContent.closeButton();
-tradeContent.show(func (result) -> void {
-    if (result.selection != "") [
-        slotData = GUIManager::request("market.trade.slot", [ result.selectionIndex ]);
+tradeContent = new PaginatedForm("market.trade.content", {tr("market.gui.title")}, GUIManager::value("market.trade.items"), 10) {
+    label({tr("market.gui.sell.item.dropdown")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
+        if (result.selection != "") [
+            slotData = GUIManager::request("market.trade.slot", [ result.selectionIndex ]);
 
-        GUIManager::callback("market.trade.item", [ tradeRequester.value, slotData[0] ]);
-    :
-        GUIManager::callback("market.trade.cancel", []);
-    ]
-});
-tradeContent.show();
+            GUIManager::callback("market.trade.item", [ tradeRequester.value, slotData[0] ]);
+        :
+            GUIManager::callback("market.trade.cancel", []);
+        ]
+    });
+    show();
+};
 
 tradeItemInfoData = GUIManager::request("market.trade.item.info", [ tradeSeller.value, tradeSlot.value ]);
 
@@ -89,53 +89,51 @@ priceOptions.description = {tr("market.gui.trade.input.placeholder")};
 itemDone = new GlobalValue();
 itemDone.value = false;
 
-tradeItemForm = new CustomForm("market.trade.item", {tr("market.gui.title")});
-tradeItemForm.label(tradeItemInfoData[0], new TextOptions());
-tradeItemForm.spacer(new SpacingOptions());
-tradeItemForm.divider(new DividerOptions());
-tradeItemForm.textField({tr("market.gui.trade.input")}, price, priceOptions);
-tradeItemForm.button({tr("generic.gui.save")}, func () -> void {
-    GUIManager::callback("market.trade.item.submit", [ tradeSeller.value, tradeSlot.value, price.getData() ]);
+tradeItemForm = new CustomForm("market.trade.item", {tr("market.gui.title")}) {
+    label(tradeItemInfoData[0], new TextOptions());
+    SectionHeader();
+    textField({tr("market.gui.trade.input")}, price, priceOptions);
+    ConfirmBar(saveLabel(), func () -> void {
+        GUIManager::callback("market.trade.item.submit", [ tradeSeller.value, tradeSlot.value, price.getData() ]);
 
-    itemDone.value = true;
+        itemDone.value = true;
 
-    tradeItemForm.close();
-}, new ButtonOptions());
-tradeItemForm.closeButton();
-tradeItemForm.show(func (result) -> void {
-    if (!itemDone.value) [
-        GUIManager::callback("market.trade.cancel", []);
-    ]
-});
-tradeItemForm.show();
+        tradeItemForm.close();
+    });
+    show(func (result) -> void {
+        if (!itemDone.value) [
+            GUIManager::callback("market.trade.cancel", []);
+        ]
+    });
+    show();
+};
 
 tradeConfirmInfoData = GUIManager::request("market.trade.confirm.info", [ tradeRequester.value, tradeSlot.value, tradeScore.value ]);
 
 confirmDone = new GlobalValue();
 confirmDone.value = false;
 
-tradeConfirmForm = new CustomForm("market.trade.confirm", {tr("market.gui.title")});
-tradeConfirmForm.label(tradeConfirmInfoData[0], new TextOptions());
-tradeConfirmForm.spacer(new SpacingOptions());
-tradeConfirmForm.divider(new DividerOptions());
-tradeConfirmForm.button({tr("market.yes")}, func () -> void {
-    GUIManager::callback("market.trade.accept", [ tradeSlot.value, tradeScore.value ]);
+tradeConfirmForm = new CustomForm("market.trade.confirm", {tr("market.gui.title")}) {
+    label(tradeConfirmInfoData[0], new TextOptions());
+    SectionHeader();
+    button({tr("market.yes")}, on: func () -> void {
+        GUIManager::callback("market.trade.accept", [ tradeSlot.value, tradeScore.value ]);
 
-    confirmDone.value = true;
+        confirmDone.value = true;
 
-    tradeConfirmForm.close();
-}, new ButtonOptions());
-tradeConfirmForm.button({tr("market.no")}, func () -> void {
-    GUIManager::callback("market.trade.cancel", []);
-
-    confirmDone.value = true;
-
-    tradeConfirmForm.close();
-}, new ButtonOptions());
-tradeConfirmForm.closeButton();
-tradeConfirmForm.show(func (result) -> void {
-    if (!confirmDone.value) [
+        tradeConfirmForm.close();
+    }, new ButtonOptions());
+    ConfirmBar({tr("market.no")}, func () -> void {
         GUIManager::callback("market.trade.cancel", []);
-    ]
-});
-tradeConfirmForm.show();
+
+        confirmDone.value = true;
+
+        tradeConfirmForm.close();
+    });
+    show(func (result) -> void {
+        if (!confirmDone.value) [
+            GUIManager::callback("market.trade.cancel", []);
+        ]
+    });
+    show();
+};

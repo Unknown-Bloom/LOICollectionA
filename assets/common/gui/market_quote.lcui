@@ -1,31 +1,32 @@
-quote = new PaginatedForm("market.quote", {tr("market.gui.title")}, GUIManager::value("market.quote.items"), 10);
-quote.label({tr("market.gui.quote.list.label")}, new TextOptions());
-quote.previousButton({tr("generic.gui.page.previous")});
-quote.nextButton({tr("generic.gui.page.next")});
-quote.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-quote.closeButton();
-quote.show(func (result) -> void {
-    if (result.selection != "") [
-        nameData = GUIManager::request("market.quote.id", [ result.selectionIndex ]);
+import "generic.lcui";
 
-        buildQuoteInfo(nameData[0]);
-    :
-        GUIManager::open("market", "market.open", 1);
-    ]
-});
-quote.show();
+quote = new PaginatedForm("market.quote", {tr("market.gui.title")}, GUIManager::value("market.quote.items"), 10) {
+    label({tr("market.gui.quote.list.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
+        if (result.selection != "") [
+            nameData = GUIManager::request("market.quote.id", [ result.selectionIndex ]);
+
+            buildQuoteInfo(nameData[0]);
+        :
+            GUIManager::open("market", "market.open", 1);
+        ]
+    });
+    show();
+};
 
 func buildQuoteInfo(name: string) -> void {
     infoData = GUIManager::request("market.quote.info", [ name ]);
 
-    quoteInfo = new CustomForm("market.quote.info", {tr("market.gui.title")});
-    quoteInfo.label(infoData[0], new TextOptions());
-    quoteInfo.spacer(new SpacingOptions());
-    quoteInfo.divider(new DividerOptions());
-    quoteInfo.closeButton();
-    quoteInfo.show(func (result) -> void {
-        GUIManager::open("market.quote", "market.quote", 3);
-    });
+    quoteInfo = new CustomForm("market.quote.info", {tr("market.gui.title")}) {
+        label(infoData[0], new TextOptions());
+        SectionHeader();
+        closeButton();
+        show(func (result) -> void {
+            GUIManager::open("market.quote", "market.quote", 3);
+        });
+    };
 
     GUIManager::switchTo("market.quote.info", 1);
 }

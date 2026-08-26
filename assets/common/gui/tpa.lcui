@@ -1,21 +1,24 @@
+import "generic.lcui";
+
 mode = new CtxValue(0);
 inviteId = new CtxValue(1);
 
 if (mode.value == "invite") [
     inviteData = GUIManager::request("tpa.invite.info", [ inviteId.value ]);
 
-    invite = new MessageBox("tpa.invite", {tr("tpa.gui.title")});
-    invite.body(inviteData[0]);
-    invite.button1({tr("tpa.yes")});
-    invite.button2({tr("tpa.no")});
-    invite.show(func (result) -> void {
-        response = 1;
-        if (result instanceof MessageBoxResult) [
-            response = result.selection;
-        ]
+    invite = new MessageBox("tpa.invite", {tr("tpa.gui.title")}) {
+        body(inviteData[0]);
+        button1({tr("tpa.yes")});
+        button2({tr("tpa.no")});
+        show(func (result) -> void {
+            response = 1;
+            if (result instanceof MessageBoxResult) [
+                response = result.selection;
+            ]
 
-        GUIManager::callback("tpa.invite.response", [ inviteId.value, response ]);
-    });
+            GUIManager::callback("tpa.invite.response", [ inviteId.value, response ]);
+        });
+    };
 ]
 
 navigateGeneric = new GlobalValue();
@@ -36,155 +39,153 @@ blacklistOption.tooltip = {tr("tpa.gui.setting.blacklist.tooltip")};
 addBlacklistOption = new ButtonOptions();
 addBlacklistOption.tooltip = {tr("tpa.gui.setting.blacklist.add.tooltip")};
 
-setting = new CustomForm("tpa.setting", {tr("tpa.gui.setting.title")});
-setting.label({tr("tpa.gui.setting.label")}, new TextOptions());
-setting.button({tr("tpa.gui.setting.generic")}, func () -> void {
-    if (!navigateGeneric.value) [
-        navigateGeneric.value = true;
+setting = new CustomForm("tpa.setting", {tr("tpa.gui.setting.title")}) {
+    label({tr("tpa.gui.setting.label")}, new TextOptions());
+    button({tr("tpa.gui.setting.generic")}, on: func () -> void {
+        if (!navigateGeneric.value) [
+            navigateGeneric.value = true;
 
-        setting.close();
-    ]
-}, genericOption);
-setting.button({tr("tpa.gui.setting.blacklist")}, func () -> void {
-    if (!navigateBlacklist.value) [
-        navigateBlacklist.value = true;
-
-        setting.close();
-    ]
-}, blacklistOption);
-setting.closeButton();
-setting.show(func (result) -> void {
-    if (navigateGeneric.value) [
-        GUIManager::switchTo("tpa.generic", 1);
-    :
-        if (navigateBlacklist.value) [
-            GUIManager::switchTo("tpa.blacklist", 3);
+            setting.close();
         ]
-    ]
-});
-setting.show();
+    }, genericOption);
+    button({tr("tpa.gui.setting.blacklist")}, on: func () -> void {
+        if (!navigateBlacklist.value) [
+            navigateBlacklist.value = true;
+
+            setting.close();
+        ]
+    }, blacklistOption);
+    closeButton();
+    show(func (result) -> void {
+        if (navigateGeneric.value) [
+            GUIManager::switchTo("tpa.generic", 1);
+        :
+            if (navigateBlacklist.value) [
+                GUIManager::switchTo("tpa.blacklist", 3);
+            ]
+        ]
+    });
+    show();
+};
 
 inviteState = new ObservableBoolean(GUIManager::value("tpa.invite")[0], true);
 inviteSaved = new GlobalValue();
 inviteSaved.value = false;
 
-generic = new CustomForm("tpa.generic", {tr("tpa.gui.setting.title")});
-generic.label({tr("tpa.gui.setting.label")}, new TextOptions());
-generic.toggle({tr("tpa.gui.setting.generic.switch1")}, inviteState, new ToggleOptions());
-generic.button({tr("generic.gui.save")}, func () -> void {
-    if (!inviteSaved.value) [
-        GUIManager::callback("tpa.invite.save", [ inviteState.getData() ]);
+generic = new CustomForm("tpa.generic", {tr("tpa.gui.setting.title")}) {
+    label({tr("tpa.gui.setting.label")}, new TextOptions());
+    toggle({tr("tpa.gui.setting.generic.switch1")}, inviteState, new ToggleOptions());
+    ConfirmBar(saveLabel(), func () -> void {
+        if (!inviteSaved.value) [
+            GUIManager::callback("tpa.invite.save", [ inviteState.getData() ]);
 
-        inviteSaved.value = true;
-        generic.close();
-    ]
-}, new ButtonOptions());
-generic.closeButton();
-generic.show(func (result) -> void {
-    if (!inviteSaved.value) [
-        GUIManager::open("tpa", "tpa.setting", 1, [ "", "" ]);
-    ]
-});
-generic.show();
-
-blacklist = new PaginatedForm("tpa.blacklist", {tr("tpa.gui.setting.title")}, GUIManager::value("tpa.blacklists"), 10);
-blacklist.label({tr("tpa.gui.setting.label")}, new TextOptions());
-blacklist.previousButton({tr("generic.gui.page.previous")});
-blacklist.nextButton({tr("generic.gui.page.next")});
-blacklist.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-blacklist.closeButton();
-blacklist.divider(new DividerOptions());
-blacklist.button({tr("tpa.gui.setting.blacklist.add")}, func () -> void {
-    if (!navigateAddBlacklist.value) [
-        navigateAddBlacklist.value = true;
-
-        blacklist.close();
-    ]
-}, addBlacklistOption);
-blacklist.show(func (result) -> void {
-    if (navigateAddBlacklist.value) [
-        checkData = GUIManager::request("tpa.blacklist.check", []);
-        if (checkData[0]) [
-            GUIManager::switchTo("tpa.blacklist.add", 3);
-        :
+            inviteSaved.value = true;
+            generic.close();
+        ]
+    });
+    show(func (result) -> void {
+        if (!inviteSaved.value) [
             GUIManager::open("tpa", "tpa.setting", 1, [ "", "" ]);
         ]
-    :
+    });
+    show();
+};
+
+blacklist = new PaginatedForm("tpa.blacklist", {tr("tpa.gui.setting.title")}, GUIManager::value("tpa.blacklists"), 10) {
+    label({tr("tpa.gui.setting.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    divider(new DividerOptions());
+    button({tr("tpa.gui.setting.blacklist.add")}, on: func () -> void {
+        if (!navigateAddBlacklist.value) [
+            navigateAddBlacklist.value = true;
+
+            blacklist.close();
+        ]
+    }, addBlacklistOption);
+    show(func (result) -> void {
+        if (navigateAddBlacklist.value) [
+            checkData = GUIManager::request("tpa.blacklist.check", []);
+            if (checkData[0]) [
+                GUIManager::switchTo("tpa.blacklist.add", 3);
+            :
+                GUIManager::open("tpa", "tpa.setting", 1, [ "", "" ]);
+            ]
+        :
+            if (result.selection != "") [
+                infoData = GUIManager::request("tpa.blacklist.info", [ result.selection ]);
+
+                info = new CustomForm("tpa.blacklist.set", {tr("tpa.gui.setting.title")}) {
+                    label(infoData[0], new TextOptions());
+                    ConfirmBar({tr("tpa.gui.setting.blacklist.set.remove")}, func () -> void {
+                        GUIManager::callback("tpa.blacklist.remove", [ result.selection ]);
+
+                        info.close();
+                    });
+                    show(func (result) -> void {
+                        GUIManager::open("tpa", "tpa.blacklist", 3, [ "", "" ]);
+                    });
+                };
+
+                GUIManager::switchTo("tpa.blacklist.set", 1);
+            :
+                GUIManager::open("tpa", "tpa.setting", 1, [ "", "" ]);
+            ]
+        ]
+    });
+    show();
+};
+
+blacklistAdd = new PaginatedForm("tpa.blacklist.add", {tr("tpa.gui.setting.title")}, GUIManager::value("tpa.players.add"), 10) {
+    label({tr("tpa.gui.setting.blacklist.add.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
         if (result.selection != "") [
-            infoData = GUIManager::request("tpa.blacklist.info", [ result.selection ]);
+            GUIManager::request("tpa.blacklist.add.submit", [ result.selectionIndex ]);
 
-            info = new CustomForm("tpa.blacklist.set", {tr("tpa.gui.setting.title")});
-            info.label(infoData[0], new TextOptions());
-            info.button({tr("tpa.gui.setting.blacklist.set.remove")}, func () -> void {
-                GUIManager::callback("tpa.blacklist.remove", [ result.selection ]);
-
-                info.close();
-            }, new ButtonOptions());
-            info.closeButton();
-            info.show(func (result) -> void {
-                GUIManager::open("tpa", "tpa.blacklist", 3, [ "", "" ]);
-            });
-
-            GUIManager::switchTo("tpa.blacklist.set", 1);
+            GUIManager::open("tpa", "tpa.setting", 1, [ "", "" ]);
         :
             GUIManager::open("tpa", "tpa.setting", 1, [ "", "" ]);
         ]
-    ]
-});
-blacklist.show();
+    });
+    show();
+};
 
-blacklistAdd = new PaginatedForm("tpa.blacklist.add", {tr("tpa.gui.setting.title")}, GUIManager::value("tpa.players.add"), 10);
-blacklistAdd.label({tr("tpa.gui.setting.blacklist.add.label")}, new TextOptions());
-blacklistAdd.previousButton({tr("generic.gui.page.previous")});
-blacklistAdd.nextButton({tr("generic.gui.page.next")});
-blacklistAdd.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-blacklistAdd.closeButton();
-blacklistAdd.show(func (result) -> void {
-    if (result.selection != "") [
-        GUIManager::request("tpa.blacklist.add.submit", [ result.selectionIndex ]);
+open = new PaginatedForm("tpa.open", {tr("tpa.gui.title")}, GUIManager::value("tpa.players"), 10) {
+    label({tr("tpa.gui.label2")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
+        if (result.selection != "") [
+            playerData = GUIManager::request("tpa.player.info", [ result.selectionIndex ]);
 
-        GUIManager::open("tpa", "tpa.setting", 1, [ "", "" ]);
-    :
-        GUIManager::open("tpa", "tpa.setting", 1, [ "", "" ]);
-    ]
-});
-blacklistAdd.show();
-
-open = new PaginatedForm("tpa.open", {tr("tpa.gui.title")}, GUIManager::value("tpa.players"), 10);
-open.label({tr("tpa.gui.label2")}, new TextOptions());
-open.previousButton({tr("generic.gui.page.previous")});
-open.nextButton({tr("generic.gui.page.next")});
-open.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-open.closeButton();
-open.show(func (result) -> void {
-    if (result.selection != "") [
-        playerData = GUIManager::request("tpa.player.info", [ result.selectionIndex ]);
-
-        buildContent(playerData[0]);
-    ]
-});
-open.show();
+            buildContent(playerData[0]);
+        ]
+    });
+    show();
+};
 
 func buildContent(targetUuid: string) -> void {
     typeValue = new ObservableNumber(0.0, true);
     submitDone = new GlobalValue();
     submitDone.value = false;
 
-    content = new CustomForm("tpa.content", {tr("tpa.gui.title")});
-    content.label({tr("tpa.gui.label")}, new TextOptions());
-    content.dropdown({tr("tpa.gui.dropdown")}, typeValue, GUIManager::value("tpa.types"), new DropdownOptions());
-    content.button({tr("generic.gui.save")}, func () -> void {
-        submitResult = GUIManager::request("tpa.content.submit", [ targetUuid, typeValue.getData() ]);
+    content = new CustomForm("tpa.content", {tr("tpa.gui.title")}) {
+        label({tr("tpa.gui.label")}, new TextOptions());
+        dropdown({tr("tpa.gui.dropdown")}, typeValue, GUIManager::value("tpa.types"), new DropdownOptions());
+        ConfirmBar(saveLabel(), func () -> void {
+            submitResult = GUIManager::request("tpa.content.submit", [ targetUuid, typeValue.getData() ]);
 
-        submitDone.value = submitResult[0];
-        content.close();
-    }, new ButtonOptions());
-    content.closeButton();
-    content.show(func (result) -> void {
-        if (!submitDone.value) [
-            GUIManager::open("tpa", "tpa.open", 3, [ "", "" ]);
-        ]
-    });
+            submitDone.value = submitResult[0];
+            content.close();
+        });
+        show(func (result) -> void {
+            if (!submitDone.value) [
+                GUIManager::open("tpa", "tpa.open", 3, [ "", "" ]);
+            ]
+        });
+    };
 
     GUIManager::switchTo("tpa.content", 1);
 }

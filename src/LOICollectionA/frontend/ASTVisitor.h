@@ -38,6 +38,8 @@ namespace LOICollection::frontend {
     struct ArrayNode;
     struct IndexAccessNode;
     struct UsingNode;
+    struct ImportNode;
+    struct ComponentNode;
 
     class ASTVisitor {
     public:
@@ -78,5 +80,7 @@ namespace LOICollection::frontend {
         virtual void visit(ArrayNode& node) = 0;
         virtual void visit(IndexAccessNode& node) = 0;
         virtual void visit(UsingNode& node) = 0;
+        virtual void visit(ImportNode& node) = 0;
+        virtual void visit(ComponentNode& node) = 0;
     };
 }

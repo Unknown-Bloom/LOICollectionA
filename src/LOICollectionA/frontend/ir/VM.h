@@ -73,6 +73,7 @@ namespace LOICollection::frontend::ir {
 
         [[nodiscard]] static ValueNode::ValueType cloneValue(const ValueNode::ValueType& val);
 
-        static constexpr size_t MAX_FRAMES = 1024;
+        static constexpr size_t MAX_INSTRUCTIONS = 1'000'000;
+        static constexpr size_t MAX_FRAMES = 256;
     };
 }

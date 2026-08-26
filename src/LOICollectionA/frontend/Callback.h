@@ -175,4 +175,4 @@ namespace LOICollection::frontend {
 const auto NAME##_RegisterHelper = []() -> bool {           \
     BINDER(#NAME);                                          \
     return true;                                            \
-}();                                                        \
+}();

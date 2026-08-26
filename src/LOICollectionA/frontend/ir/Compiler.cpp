@@ -12,186 +12,9 @@
 #include "LOICollectionA/frontend/ir/Compiler.h"
 
 namespace LOICollection::frontend::ir {
-    class MethodBodyCounter : public ASTVisitor {
-    public:
-        size_t count = 0;
-
-        void countNode(ASTNode& node) {
-            node.accept(*this);
-        }
-
-        void countArgs(const std::vector<std::unique_ptr<ExprNode>>& args) {
-            for (auto& arg : args)
-                countNode(*arg);
-        }
-
-        void countBody(const std::unique_ptr<ASTNode>& body) {
-            if (body)
-                countNode(*body);
-        }
-
-        void countBody(const std::unique_ptr<ExprNode>& body) {
-            if (body)
-                countNode(*body);
-        }
-
-        void visit(ValueNode&) override {}
-        void visit(VariableNode&) override {}
-        void visit(ThisNode&) override {}
-        void visit(SuperNode&) override {}
-
-        void visit(AssignmentNode& node) override {
-            countNode(*node.target);
-            countNode(*node.value);
-        }
-
-        void visit(CompoundAssignNode& node) override {
-            countNode(*node.target);
-            countNode(*node.value);
-        }
-
-        void visit(ForInNode& node) override {
-            countNode(*node.iterable);
-            countBody(node.body);
-        }
-
-        void visit(RangeNode& node) override {
-            countNode(*node.start);
-            countNode(*node.end);
-        }
-
-        void visit(CoalesceNode& node) override {
-            countNode(*node.left);
-            countNode(*node.right);
-        }
-
-        void visit(IfNode& node) override {
-            countNode(*node.condition);
-            countBody(node.trueBranch);
-            countBody(node.falseBranch);
-        }
-
-        void visit(WhileNode& node) override {
-            countBody(node.condition);
-            countBody(node.body);
-        }
-
-        void visit(ForNode& node) override {
-            countBody(node.init);
-            countBody(node.condition);
-            countBody(node.step);
-            countBody(node.body);
-        }
-
-        void visit(BreakNode&) override {}
-        void visit(ContinueNode&) override {}
-
-        void visit(CompareNode& node) override {
-            countNode(*node.left);
-            countNode(*node.right);
-        }
-
-        void visit(LogicalNode& node) override {
-            countNode(*node.left);
-            countNode(*node.right);
-        }
-
-        void visit(FunctionNode& node) override {
-            countArgs(node.args);
-        }
-
-        void visit(MacroNode& node) override {
-            countArgs(node.args);
-        }
-
-        void visit(ArithmeticNode& node) override {
-            countNode(*node.left);
-            countNode(*node.right);
-        }
-
-        void visit(UnaryNode& node) override {
-            countNode(*node.operand);
-        }
-
-        void visit(ProgramNode& node) override {
-            for (auto& part : node.parts)
-                countNode(*part);
-        }
-        void visit(BlockNode& node) override {
-            for (auto& part : node.parts)
-                countNode(*part);
-        }
-
-        void visit(ClassNode& node) override {
-            count += node.methods.size();
-
-            for (const auto& method : node.methods)
-                countBody(method.body);
-        }
-
-        void visit(ReturnNode& node) override {
-            countBody(node.value);
-        }
-
-        void visit(NewNode& node) override {
-            countArgs(node.args);
-        }
-
-        void visit(MemberAccessNode& node) override {
-            countNode(*node.target);
-        }
-
-        void visit(MethodCallNode& node) override {
-            countNode(*node.target);
-            countArgs(node.args);
-        }
-
-        void visit(SuperCallNode& node) override {
-            countArgs(node.args);
-        }
-
-        void visit(InstanceOfNode& node) override {
-            countNode(*node.target);
-        }
-
-        void visit(FunctionDefNode& node) override {
-            count++;
-            countBody(node.decl.body);
-        }
-
-        void visit(FuncCallNode& node) override {
-            countArgs(node.args);
-        }
-
-        void visit(ArrayNode& node) override {
-            for (auto& element : node.elements)
-                countNode(*element);
-        }
-
-        void visit(IndexAccessNode& node) override {
-            countNode(*node.target);
-            countNode(*node.index);
-        }
-
-        void visit(LambdaNode& node) override {
-            count++;
-            countBody(node.decl.body);
-        }
-
-        void visit(UsingNode&) override {}
-    };
-
-    size_t countMethodBodies(ASTNode& root) {
-        MethodBodyCounter counter;
-        counter.countNode(root);
-        return counter.count;
-    }
-
     Compiler::Compiler(DiagnosticEngine& diag) : current(std::ref(chunk)), diagnostics(diag) {}
 
     BytecodeChunk Compiler::compile(ASTNode& root) {
-        this->chunk.methodBodies.reserve(countMethodBodies(root));
-
         if (root.getType() == ASTNode::Type::Program) {
             auto& program = static_cast<ProgramNode&>(root);
 
@@ -862,7 +685,9 @@ namespace LOICollection::frontend::ir {
 
             bool producesValue = node.parts[i]->getType() != ASTNode::Type::Class
                 && node.parts[i]->getType() != ASTNode::Type::Return
-                && node.parts[i]->getType() != ASTNode::Type::Using;
+                && node.parts[i]->getType() != ASTNode::Type::Using
+                && node.parts[i]->getType() != ASTNode::Type::Import
+                && node.parts[i]->getType() != ASTNode::Type::Component;
 
             if (i != node.parts.size() - 1 && producesValue)
                 this->current.get().emit(OpCode::POP);
@@ -870,6 +695,10 @@ namespace LOICollection::frontend::ir {
     }
 
     void Compiler::visit(UsingNode&) {}
+
+    void Compiler::visit(ImportNode&) {}
+
+    void Compiler::visit(ComponentNode&) {}
 
     void Compiler::visit(ProgramNode& node) {
         compileSequence(node);
@@ -1021,10 +850,10 @@ namespace LOICollection::frontend::ir {
                 mm.paramNames.push_back(param.name);
 
             int bodyIdx = static_cast<int>(this->chunk.methodBodies.size());
-            this->chunk.methodBodies.push_back(BytecodeChunk{});
+            this->chunk.methodBodies.push_back(std::make_unique<BytecodeChunk>());
 
             std::reference_wrapper<BytecodeChunk> saved = this->current;
-            this->current = std::ref(chunk.methodBodies.back());
+            this->current = std::ref(*chunk.methodBodies.back());
 
             if (method.isConstructor && !node.baseClassName.empty() && !method.hasSuperCall) {
                 int ctorIdx = -1;
@@ -1084,6 +913,8 @@ namespace LOICollection::frontend::ir {
                 int metaIdx = this->addNativeCall(node.className, "", argCount);
 
                 this->current.get().emit(OpCode::NEW_NATIVE, metaIdx, node.loc);
+                if (node.declarativeBlock)
+                    this->compileDeclarativeBlock(*node.declarativeBlock, node.receiverName);
                 return;
             }
 
@@ -1092,6 +923,94 @@ namespace LOICollection::frontend::ir {
         }
 
         this->current.get().emit(OpCode::NEW, it->second, node.loc);
+
+        if (node.declarativeBlock)
+            this->compileDeclarativeBlock(*node.declarativeBlock, node.receiverName);
+    }
+
+    void Compiler::compileDeclarativeBlock(BlockNode& block, const std::string& receiverName) {
+        std::string receiver = receiverName;
+        if (receiver.empty())
+            receiver = ".form" + std::to_string(this->declarativeCounter++);
+
+        int receiverIdx = this->addConstant(receiver);
+
+        if (receiverName.empty())
+            this->current.get().emit(OpCode::DECLARE_LOCAL, receiverIdx);
+
+        this->current.get().emit(OpCode::STORE_VAR, receiverIdx);
+
+        for (auto& part : block.parts)
+            this->desugarDeclarativeStatements(part, receiver);
+
+        for (auto& part : block.parts) {
+            part->accept(*this);
+
+            bool producesValue = part->getType() != ASTNode::Type::Class
+                && part->getType() != ASTNode::Type::Return
+                && part->getType() != ASTNode::Type::Using;
+
+            if (producesValue)
+                this->current.get().emit(OpCode::POP);
+        }
+
+        this->current.get().emit(OpCode::LOAD_VAR, receiverIdx);
+    }
+
+    void Compiler::desugarDeclarativeStatements(std::unique_ptr<ASTNode>& node, const std::string& receiver) {
+        switch (node->getType()) {
+            case ASTNode::Type::Block: {
+                auto& block = static_cast<BlockNode&>(*node);
+                for (auto& part : block.parts)
+                    this->desugarDeclarativeStatements(part, receiver);
+                return;
+            }
+            case ASTNode::Type::If: {
+                auto& ifNode = static_cast<IfNode&>(*node);
+                if (ifNode.trueBranch)
+                    this->desugarDeclarativeStatements(ifNode.trueBranch, receiver);
+                if (ifNode.falseBranch)
+                    this->desugarDeclarativeStatements(ifNode.falseBranch, receiver);
+                return;
+            }
+            case ASTNode::Type::While: {
+                auto& whileNode = static_cast<WhileNode&>(*node);
+                if (whileNode.body)
+                    this->desugarDeclarativeStatements(whileNode.body, receiver);
+                return;
+            }
+            case ASTNode::Type::For: {
+                auto& forNode = static_cast<ForNode&>(*node);
+                if (forNode.body)
+                    this->desugarDeclarativeStatements(forNode.body, receiver);
+                return;
+            }
+            case ASTNode::Type::ForIn: {
+                auto& forIn = static_cast<ForInNode&>(*node);
+                if (forIn.body)
+                    this->desugarDeclarativeStatements(forIn.body, receiver);
+                return;
+            }
+            case ASTNode::Type::FuncCall: {
+                auto& call = static_cast<FuncCallNode&>(*node);
+                if (!call.isFormReceiverCall || call.receiverClassName.empty())
+                    return;
+
+                auto methodCall = std::make_unique<MethodCallNode>(
+                    call.loc,
+                    std::make_unique<VariableNode>(call.loc, receiver),
+                    call.name,
+                    std::move(call.args)
+                );
+                methodCall->className = call.receiverClassName;
+                methodCall->methodOrdinal = -1;
+
+                node = std::move(methodCall);
+                return;
+            }
+            default:
+                return;
+        }
     }
 
     void Compiler::visit(MemberAccessNode& node) {
@@ -1312,10 +1231,10 @@ namespace LOICollection::frontend::ir {
             mm.paramNames.push_back(param.name);
 
         int bodyIdx = static_cast<int>(this->chunk.methodBodies.size());
-        this->chunk.methodBodies.push_back(BytecodeChunk{});
+        this->chunk.methodBodies.push_back(std::make_unique<BytecodeChunk>());
 
         std::reference_wrapper<BytecodeChunk> saved = this->current;
-        this->current = std::ref(this->chunk.methodBodies.back());
+        this->current = std::ref(*this->chunk.methodBodies.back());
 
         if (node.decl.body)
             node.decl.body->accept(*this);
@@ -1376,10 +1295,10 @@ namespace LOICollection::frontend::ir {
 
     void Compiler::visit(LambdaNode& node) {
         int bodyIdx = static_cast<int>(this->chunk.methodBodies.size());
-        this->chunk.methodBodies.push_back(BytecodeChunk{});
+        this->chunk.methodBodies.push_back(std::make_unique<BytecodeChunk>());
 
         std::reference_wrapper<BytecodeChunk> saved = this->current;
-        this->current = std::ref(this->chunk.methodBodies.back());
+        this->current = std::ref(*this->chunk.methodBodies.back());
 
         if (node.decl.body)
             node.decl.body->accept(*this);

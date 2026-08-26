@@ -1444,9 +1444,47 @@ new ObservableString("x", true);   // 若构造参数错误
 math::sqrt(-1);     // 若原生实现检查参数并报错
 ```
 
-**解决办法**  
+**解决办法**
 
 - 根据错误内容检查参数与调用方式。
+
+---
+
+## 58. 组件错误（component）
+
+**解释**  
+组件定义或使用违反了组件系统的约束。
+
+**说明**  
+
+- 错误信息格式：  
+  - `Component definitions are only allowed at top level`（组件定义嵌套在函数体或块内）  
+  - `Duplicate component '<名称>'`（不同位置定义了同名组件）  
+  - `Component '<名称>' expects N argument(s), got M`（调用参数个数与组件参数不一致）  
+  - `Recursive component '<名称>'`（组件直接或间接调用自身）  
+  - `Component '<名称>' can only be used as a statement inside a declarative UI block`（在声明式块外调用，或把组件调用当作表达式使用）
+
+**典型错误代码**
+
+```lcui
+component Bar(a, b) {
+    divider(new DividerOptions());
+}
+
+func make() -> void {
+    component Inner(x) {          // 错误：组件只能定义在顶层
+        divider(new DividerOptions());
+    }
+}
+
+Bar("only-one");                  // 错误：参数个数不匹配，且不在声明式块内
+```
+
+**解决办法**
+
+- 把组件定义移动到脚本顶层。
+- 调用时参数个数与定义保持一致，并确保组件调用是声明式 UI 块内的语句。
+- 检查组件体内部调用的其他组件是否形成了环。
 
 > [!TIP]
 > 看到这了，听首音乐休息下吧(～￣▽￣)～

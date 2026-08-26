@@ -1,3 +1,5 @@
+import "generic.lcui";
+
 addBlacklistOption = new ButtonOptions();
 addBlacklistOption.tooltip = {tr("blacklist.gui.addBlacklist.tooltip")};
 
@@ -10,129 +12,125 @@ navigateAdd.value = false;
 navigateDelete = new GlobalValue();
 navigateDelete.value = false;
 
-open = new CustomForm("blacklist.open", {tr("blacklist.gui.title")});
-open.label({tr("blacklist.gui.label")}, new TextOptions());
-open.spacer(new SpacingOptions());
-open.divider(new DividerOptions());
-open.button({tr("blacklist.gui.addBlacklist")}, func () -> void {
-    if (!navigateAdd.value) [
-        navigateAdd.value = true;
+open = new CustomForm("blacklist.open", {tr("blacklist.gui.title")}) {
+    label({tr("blacklist.gui.label")}, new TextOptions());
+    SectionHeader();
+    button({tr("blacklist.gui.addBlacklist")}, on: func () -> void {
+        if (!navigateAdd.value) [
+            navigateAdd.value = true;
 
-        open.close();
-    ]
-}, addBlacklistOption);
-open.button({tr("blacklist.gui.removeBlacklist")}, func () -> void {
-    if (!navigateDelete.value) [
-        navigateDelete.value = true;
-
-        open.close();
-    ]
-}, removeBlacklistOption);
-open.closeButton();
-open.show(func (result) -> void {
-    if (navigateAdd.value) [
-        GUIManager::switchTo("blacklist.add", 3);
-    :
-        if (navigateDelete.value) [
-            GUIManager::switchTo("blacklist.remove", 3);
+            open.close();
         ]
-    ]
-});
-open.show();
+    }, addBlacklistOption);
+    button({tr("blacklist.gui.removeBlacklist")}, on: func () -> void {
+        if (!navigateDelete.value) [
+            navigateDelete.value = true;
 
-add = new PaginatedForm("blacklist.add", {tr("blacklist.gui.add.title")}, GUIManager::value("blacklist.players"), 10);
-add.label({tr("blacklist.gui.add.label")}, new TextOptions());
-add.previousButton({tr("generic.gui.page.previous")});
-add.nextButton({tr("generic.gui.page.next")});
-add.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-add.closeButton();
-add.show(func (result) -> void {
-    if (result.selection != "") [
-        if (GUIManager::request("blacklist.online", [ result.selection ])[0]) [
-            contentValue = new GlobalValue();
-            contentValue.value = false;
-
-            cause = new ObservableString("", true);
-            duration = new ObservableString("", true);
-
-            addInputOne = new TextFieldOptions();
-            addInputOne.description = {tr("blacklist.gui.add.input1.placeholder")};
-
-            addInputTwo = new TextFieldOptions();
-            addInputTwo.description = {tr("blacklist.gui.add.input2.placeholder")};
-
-            content = new CustomForm("blacklist.content", {tr("blacklist.gui.add.title")});
-            content.label({tr("blacklist.gui.label")}, new TextOptions());
-            content.spacer(new SpacingOptions());
-            content.divider(new DividerOptions());
-            content.textField({tr("blacklist.gui.add.input1")}, cause, addInputOne);
-            content.textField({tr("blacklist.gui.add.input2")}, duration, addInputTwo);
-            content.button({tr("generic.gui.save")}, func () -> void {
-                GUIManager::callback("blacklist.submit", [ result.selection, cause.getData(), duration.getData() ]);
-
-                contentValue.value = true;
-
-                content.close();
-            }, new ButtonOptions());
-            content.closeButton();
-            content.show(func (result) -> void {
-                if (!contentValue.value) [
-                    GUIManager::open("blacklist", "blacklist.add", 3);
-                ]
-            });
-
-            GUIManager::switchTo("blacklist.content", 1);
+            open.close();
+        ]
+    }, removeBlacklistOption);
+    closeButton();
+    show(func (result) -> void {
+        if (navigateAdd.value) [
+            GUIManager::switchTo("blacklist.add", 3);
         :
-            GUIManager::callback("blacklist.add", [ result ]);
+            if (navigateDelete.value) [
+                GUIManager::switchTo("blacklist.remove", 3);
+            ]
+        ]
+    });
+    show();
+};
 
+add = new PaginatedForm("blacklist.add", {tr("blacklist.gui.add.title")}, GUIManager::value("blacklist.players"), 10) {
+    label({tr("blacklist.gui.add.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
+        if (result.selection != "") [
+            if (GUIManager::request("blacklist.online", [ result.selection ])[0]) [
+                contentValue = new GlobalValue();
+                contentValue.value = false;
+
+                cause = new ObservableString("", true);
+                duration = new ObservableString("", true);
+
+                addInputOne = new TextFieldOptions();
+                addInputOne.description = {tr("blacklist.gui.add.input1.placeholder")};
+
+                addInputTwo = new TextFieldOptions();
+                addInputTwo.description = {tr("blacklist.gui.add.input2.placeholder")};
+
+                content = new CustomForm("blacklist.content", {tr("blacklist.gui.add.title")}) {
+                    label({tr("blacklist.gui.label")}, new TextOptions());
+                    SectionHeader();
+                    textField({tr("blacklist.gui.add.input1")}, cause, addInputOne);
+                    textField({tr("blacklist.gui.add.input2")}, duration, addInputTwo);
+                    ConfirmBar(saveLabel(), func () -> void {
+                        GUIManager::callback("blacklist.submit", [ result.selection, cause.getData(), duration.getData() ]);
+
+                        contentValue.value = true;
+
+                        content.close();
+                    });
+                    show(func (result) -> void {
+                        if (!contentValue.value) [
+                            GUIManager::open("blacklist", "blacklist.add", 3);
+                        ]
+                    });
+                };
+
+                GUIManager::switchTo("blacklist.content", 1);
+            :
+                GUIManager::callback("blacklist.add", [ result ]);
+
+                GUIManager::open("blacklist", "blacklist.open", 1);
+            ]
+        :
             GUIManager::open("blacklist", "blacklist.open", 1);
         ]
-    :
-        GUIManager::open("blacklist", "blacklist.open", 1);
-    ]
-});
+    });
+};
 
-remove = new PaginatedForm("blacklist.remove", {tr("blacklist.gui.remove.title")}, GUIManager::value("blacklist.blacklists"), 10);
-remove.label({tr("blacklist.gui.remove.label")}, new TextOptions());
-remove.previousButton({tr("generic.gui.page.previous")});
-remove.nextButton({tr("generic.gui.page.next")});
-remove.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-remove.closeButton();
-remove.show(func (result) -> void {
-    if (result.selection != "") [
-        infoData = GUIManager::request("blacklist.info", [ result.selection ]);
-        if (infoData) [
-            infoRemoved = new GlobalValue();
-            infoRemoved.value = false;
+remove = new PaginatedForm("blacklist.remove", {tr("blacklist.gui.remove.title")}, GUIManager::value("blacklist.blacklists"), 10) {
+    label({tr("blacklist.gui.remove.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
+        if (result.selection != "") [
+            infoData = GUIManager::request("blacklist.info", [ result.selection ]);
+            if (infoData) [
+                infoRemoved = new GlobalValue();
+                infoRemoved.value = false;
 
-            info = new CustomForm("blacklist.info", {tr("blacklist.gui.remove.title")});
-            info.label(
-                std::format({tr("blacklist.gui.info.label")}, infoData),
-                new TextOptions()
-            );
-            info.spacer(new SpacingOptions());
-            info.divider(new DividerOptions());
-            info.button({tr("blacklist.gui.info.remove")}, func () -> void {
-                GUIManager::callback("blacklist.info.remove", [ result.selection ]);
+                info = new CustomForm("blacklist.info", {tr("blacklist.gui.remove.title")}) {
+                    label(
+                        std::format({tr("blacklist.gui.info.label")}, infoData),
+                        new TextOptions()
+                    );
+                    SectionHeader();
+                    ConfirmBar({tr("blacklist.gui.info.remove")}, func () -> void {
+                        GUIManager::callback("blacklist.info.remove", [ result.selection ]);
 
-                infoRemoved.value = true;
+                        infoRemoved.value = true;
 
-                info.close();
-            }, new ButtonOptions());
-            info.closeButton();
-            info.show(func (result) -> void {
-                if (!infoRemoved.value) [
-                    GUIManager::open("blacklist", "blacklist.remove", 3);
-                ]
-            });
+                        info.close();
+                    });
+                    show(func (result) -> void {
+                        if (!infoRemoved.value) [
+                            GUIManager::open("blacklist", "blacklist.remove", 3);
+                        ]
+                    });
+                };
 
-            GUIManager::switchTo("blacklist.info", 1);
+                GUIManager::switchTo("blacklist.info", 1);
+            :
+                GUIManager::callback("blacklist.remove", [ result ]);
+
+                GUIManager::open("blacklist", "blacklist.remove", 3);
+            ]
         :
-            GUIManager::callback("blacklist.remove", [ result ]);
-
-            GUIManager::open("blacklist", "blacklist.remove", 3);
+            GUIManager::open("blacklist", "blacklist.open", 1);
         ]
-    :
-        GUIManager::open("blacklist", "blacklist.open", 1);
-    ]
-});
+    });
+};

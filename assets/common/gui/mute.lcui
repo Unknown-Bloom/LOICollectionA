@@ -1,3 +1,5 @@
+import "generic.lcui";
+
 addMuteOption = new ButtonOptions();
 addMuteOption.tooltip = {tr("mute.gui.addMute.tooltip")};
 
@@ -10,129 +12,125 @@ navigateAdd.value = false;
 navigateDelete = new GlobalValue();
 navigateDelete.value = false;
 
-open = new CustomForm("mute.open", {tr("mute.gui.title")});
-open.label({tr("mute.gui.label")}, new TextOptions());
-open.spacer(new SpacingOptions());
-open.divider(new DividerOptions());
-open.button({tr("mute.gui.addMute")}, func () -> void {
-    if (!navigateAdd.value) [
-        navigateAdd.value = true;
+open = new CustomForm("mute.open", {tr("mute.gui.title")}) {
+    label({tr("mute.gui.label")}, new TextOptions());
+    SectionHeader();
+    button({tr("mute.gui.addMute")}, on: func () -> void {
+        if (!navigateAdd.value) [
+            navigateAdd.value = true;
 
-        open.close();
-    ]
-}, addMuteOption);
-open.button({tr("mute.gui.removeMute")}, func () -> void {
-    if (!navigateDelete.value) [
-        navigateDelete.value = true;
-
-        open.close();
-    ]
-}, removeMuteOption);
-open.closeButton();
-open.show(func (result) -> void {
-    if (navigateAdd.value) [
-        GUIManager::switchTo("mute.add", 3);
-    :
-        if (navigateDelete.value) [
-            GUIManager::switchTo("mute.remove", 3);
+            open.close();
         ]
-    ]
-});
-open.show();
+    }, addMuteOption);
+    button({tr("mute.gui.removeMute")}, on: func () -> void {
+        if (!navigateDelete.value) [
+            navigateDelete.value = true;
 
-add = new PaginatedForm("mute.add", {tr("mute.gui.add.title")}, GUIManager::value("mute.players"), 10);
-add.label({tr("mute.gui.add.label")}, new TextOptions());
-add.previousButton({tr("generic.gui.page.previous")});
-add.nextButton({tr("generic.gui.page.next")});
-add.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-add.closeButton();
-add.show(func (result) -> void {
-    if (result.selection != "") [
-        if (GUIManager::request("mute.online", [ result.selection ])[0]) [
-            contentValue = new GlobalValue();
-            contentValue.value = false;
-
-            cause = new ObservableString("", true);
-            duration = new ObservableString("", true);
-
-            addInputOne = new TextFieldOptions();
-            addInputOne.description = {tr("mute.gui.add.input1.placeholder")};
-
-            addInputTwo = new TextFieldOptions();
-            addInputTwo.description = {tr("mute.gui.add.input2.placeholder")};
-
-            content = new CustomForm("mute.content", {tr("mute.gui.add.title")});
-            content.label({tr("mute.gui.label")}, new TextOptions());
-            content.spacer(new SpacingOptions());
-            content.divider(new DividerOptions());
-            content.textField({tr("mute.gui.add.input1")}, cause, addInputOne);
-            content.textField({tr("mute.gui.add.input2")}, duration, addInputTwo);
-            content.button({tr("generic.gui.save")}, func () -> void {
-                GUIManager::callback("mute.submit", [ result.selection, cause.getData(), duration.getData() ]);
-
-                contentValue.value = true;
-
-                content.close();
-            }, new ButtonOptions());
-            content.closeButton();
-            content.show(func (result) -> void {
-                if (!contentValue.value) [
-                    GUIManager::open("mute", "mute.add", 3);
-                ]
-            });
-
-            GUIManager::switchTo("mute.content", 1);
+            open.close();
+        ]
+    }, removeMuteOption);
+    closeButton();
+    show(func (result) -> void {
+        if (navigateAdd.value) [
+            GUIManager::switchTo("mute.add", 3);
         :
-            GUIManager::callback("mute.add", [ result ]);
+            if (navigateDelete.value) [
+                GUIManager::switchTo("mute.remove", 3);
+            ]
+        ]
+    });
+    show();
+};
 
+add = new PaginatedForm("mute.add", {tr("mute.gui.add.title")}, GUIManager::value("mute.players"), 10) {
+    label({tr("mute.gui.add.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
+        if (result.selection != "") [
+            if (GUIManager::request("mute.online", [ result.selection ])[0]) [
+                contentValue = new GlobalValue();
+                contentValue.value = false;
+
+                cause = new ObservableString("", true);
+                duration = new ObservableString("", true);
+
+                addInputOne = new TextFieldOptions();
+                addInputOne.description = {tr("mute.gui.add.input1.placeholder")};
+
+                addInputTwo = new TextFieldOptions();
+                addInputTwo.description = {tr("mute.gui.add.input2.placeholder")};
+
+                content = new CustomForm("mute.content", {tr("mute.gui.add.title")}) {
+                    label({tr("mute.gui.label")}, new TextOptions());
+                    SectionHeader();
+                    textField({tr("mute.gui.add.input1")}, cause, addInputOne);
+                    textField({tr("mute.gui.add.input2")}, duration, addInputTwo);
+                    ConfirmBar(saveLabel(), func () -> void {
+                        GUIManager::callback("mute.submit", [ result.selection, cause.getData(), duration.getData() ]);
+
+                        contentValue.value = true;
+
+                        content.close();
+                    });
+                    show(func (result) -> void {
+                        if (!contentValue.value) [
+                            GUIManager::open("mute", "mute.add", 3);
+                        ]
+                    });
+                };
+
+                GUIManager::switchTo("mute.content", 1);
+            :
+                GUIManager::callback("mute.add", [ result ]);
+
+                GUIManager::open("mute", "mute.open", 1);
+            ]
+        :
             GUIManager::open("mute", "mute.open", 1);
         ]
-    :
-        GUIManager::open("mute", "mute.open", 1);
-    ]
-});
+    });
+};
 
-remove = new PaginatedForm("mute.remove", {tr("mute.gui.remove.title")}, GUIManager::value("mute.mutes"), 10);
-remove.label({tr("mute.gui.remove.label")}, new TextOptions());
-remove.previousButton({tr("generic.gui.page.previous")});
-remove.nextButton({tr("generic.gui.page.next")});
-remove.chooseButton({tr("generic.gui.page.choose")}, {tr("generic.gui.page.choose.input")});
-remove.closeButton();
-remove.show(func (result) -> void {
-    if (result.selection != "") [
-        infoData = GUIManager::request("mute.info", [ result.selection ]);
-        if (infoData) [
-            infoRemoved = new GlobalValue();
-            infoRemoved.value = false;
+remove = new PaginatedForm("mute.remove", {tr("mute.gui.remove.title")}, GUIManager::value("mute.mutes"), 10) {
+    label({tr("mute.gui.remove.label")}, new TextOptions());
+    PageControls();
+    closeButton();
+    show(func (result) -> void {
+        if (result.selection != "") [
+            infoData = GUIManager::request("mute.info", [ result.selection ]);
+            if (infoData) [
+                infoRemoved = new GlobalValue();
+                infoRemoved.value = false;
 
-            info = new CustomForm("mute.info", {tr("mute.gui.remove.title")});
-            info.label(
-                std::format({tr("mute.gui.info.label")}, infoData),
-                new TextOptions()
-            );
-            info.spacer(new SpacingOptions());
-            info.divider(new DividerOptions());
-            info.button({tr("mute.gui.info.remove")}, func () -> void {
-                GUIManager::callback("mute.info.remove", [ result.selection ]);
+                info = new CustomForm("mute.info", {tr("mute.gui.remove.title")}) {
+                    label(
+                        std::format({tr("mute.gui.info.label")}, infoData),
+                        new TextOptions()
+                    );
+                    SectionHeader();
+                    ConfirmBar({tr("mute.gui.info.remove")}, func () -> void {
+                        GUIManager::callback("mute.info.remove", [ result.selection ]);
 
-                infoRemoved.value = true;
+                        infoRemoved.value = true;
 
-                info.close();
-            }, new ButtonOptions());
-            info.closeButton();
-            info.show(func (result) -> void {
-                if (!infoRemoved.value) [
-                    GUIManager::open("mute", "mute.remove", 3);
-                ]
-            });
+                        info.close();
+                    });
+                    show(func (result) -> void {
+                        if (!infoRemoved.value) [
+                            GUIManager::open("mute", "mute.remove", 3);
+                        ]
+                    });
+                };
 
-            GUIManager::switchTo("mute.info", 1);
+                GUIManager::switchTo("mute.info", 1);
+            :
+                GUIManager::callback("mute.remove", [ result ]);
+
+                GUIManager::open("mute", "mute.remove", 3);
+            ]
         :
-            GUIManager::callback("mute.remove", [ result ]);
-
-            GUIManager::open("mute", "mute.remove", 3);
+            GUIManager::open("mute", "mute.open", 1);
         ]
-    :
-        GUIManager::open("mute", "mute.open", 1);
-    ]
-});
+    });
+};

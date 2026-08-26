@@ -1,3 +1,5 @@
+import "generic.lcui";
+
 func getPvpLabel() -> string {
     return std::format({tr("pvp.gui.label")}, GUIManager::value("pvp.isEnable"));
 }
@@ -10,19 +12,19 @@ pvpOffOption.tooltip = {tr("pvp.gui.off.tooltip")};
 
 pvpLabel = new ObservableString(getPvpLabel(), false);
 
-open = new CustomForm("pvp.open", {tr("pvp.gui.title")});
-open.label(pvpLabel, new TextOptions());
-open.spacer(new SpacingOptions());
-open.divider(new DividerOptions());
-open.button({tr("pvp.gui.on")}, func () -> void {
-    GUIManager::callback("pvp.enable", [ true ]);
+open = new CustomForm("pvp.open", {tr("pvp.gui.title")}) {
+    label(pvpLabel, new TextOptions());
+    SectionHeader();
+    button({tr("pvp.gui.on")}, on: func () -> void {
+        GUIManager::callback("pvp.enable", [ true ]);
 
-    pvpLabel.setData(getPvpLabel());
-}, pvpOnOption);
-open.button({tr("pvp.gui.off")}, func () -> void {
-    GUIManager::callback("pvp.enable", [ false ]);
+        pvpLabel.setData(getPvpLabel());
+    }, pvpOnOption);
+    button({tr("pvp.gui.off")}, on: func () -> void {
+        GUIManager::callback("pvp.enable", [ false ]);
 
-    pvpLabel.setData(getPvpLabel());
-}, pvpOffOption);
-open.closeButton();
-open.show();
+        pvpLabel.setData(getPvpLabel());
+    }, pvpOffOption);
+    closeButton();
+    show();
+};

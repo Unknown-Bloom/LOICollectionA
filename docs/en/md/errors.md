@@ -1446,5 +1446,43 @@ math::sqrt(-1);     // If the native implementation checks the argument and repo
 
 - Check the arguments and the way of calling based on the error content.
 
+---
+
+## 58. Component errors (component)
+
+**Explanation**  
+A component definition or use violates the component system constraints.
+
+**Description**  
+
+- Error message format:  
+  - `Component definitions are only allowed at top level` (a component is defined inside a function body or block)  
+  - `Duplicate component '<name>'` (same-named components defined at different places)  
+  - `Component '<name>' expects N argument(s), got M` (the call argument count does not match the component parameters)  
+  - `Recursive component '<name>'` (a component calls itself directly or indirectly)  
+  - `Component '<name>' can only be used as a statement inside a declarative UI block` (called outside a declarative block, or used as an expression)
+
+**Typical Error Code**  
+
+```lcui
+component Bar(a, b) {
+    divider(new DividerOptions());
+}
+
+func make() -> void {
+    component Inner(x) {          // error: components may only be defined at top level
+        divider(new DividerOptions());
+    }
+}
+
+Bar("only-one");                  // error: argument count mismatch, and not inside a declarative block
+```
+
+**Solution**  
+
+- Move the component definition to the top level of the script.
+- Keep the call argument count consistent with the definition, and make sure component calls are statements inside a declarative UI block.
+- Check whether the components called inside the component body form a cycle.
+
 > [!TIP]
 > You've read this far, take a break and listen to some music(～￣▽￣)～

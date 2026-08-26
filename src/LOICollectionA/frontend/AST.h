@@ -91,7 +91,8 @@ namespace LOICollection::frontend {
             Super, SuperCall, InstanceOf, FunctionDef, FuncCall, Lambda,
             Array, Index, Program, Block, Using,
             While, For, Break, Continue,
-            CompoundAssign, ForIn, Range, Coalesce
+            CompoundAssign, ForIn, Range, Coalesce,
+            Import, Component
         };
         [[nodiscard]] virtual Type getType() const = 0;
         
@@ -571,6 +572,8 @@ namespace LOICollection::frontend {
         SourceLocation loc;
         std::string className;
         std::vector<std::unique_ptr<ExprNode>> args;
+        std::unique_ptr<BlockNode> declarativeBlock;
+        std::string receiverName;
 
         NewNode(SourceLocation location, std::string name, auto&& a)
             : loc(location), className(std::move(name)), args(std::forward<decltype(a)>(a)) {}
@@ -779,10 +782,43 @@ namespace LOICollection::frontend {
         int methodOrdinal = -1;
         std::string staticClassName;
 
+        bool isFormReceiverCall = false;
+        std::string receiverClassName;
+
         FuncCallNode(SourceLocation location, std::string n, auto&& a)
             : loc(location), name(std::move(n)), args(std::forward<decltype(a)>(a)) {}
 
         [[nodiscard]] Type getType() const override { return Type::FuncCall; }
+
+        void accept(ASTVisitor& visitor) override {
+            visitor.visit(*this);
+        }
+    };
+
+    struct ImportNode : ASTNode {
+        SourceLocation loc;
+        std::string path;
+
+        ImportNode(SourceLocation location, std::string p)
+            : loc(location), path(std::move(p)) {}
+
+        [[nodiscard]] Type getType() const override { return Type::Import; }
+
+        void accept(ASTVisitor& visitor) override {
+            visitor.visit(*this);
+        }
+    };
+
+    struct ComponentNode : ASTNode {
+        SourceLocation loc;
+        std::string name;
+        std::vector<std::string> params;
+        std::unique_ptr<BlockNode> body;
+
+        ComponentNode(SourceLocation location, std::string n)
+            : loc(location), name(std::move(n)) {}
+
+        [[nodiscard]] Type getType() const override { return Type::Component; }
 
         void accept(ASTVisitor& visitor) override {
             visitor.visit(*this);

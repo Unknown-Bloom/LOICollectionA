@@ -183,7 +183,7 @@ namespace LOICollection::frontend::ir {
         total.removed += mainStats.removed;
 
         for (auto& body : chunk.methodBodies) {
-            Stats bodyStats = this->optimizeChunk(body);
+            Stats bodyStats = this->optimizeChunk(*body);
             total.folded += bodyStats.folded;
             total.removed += bodyStats.removed;
         }

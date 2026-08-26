@@ -47,6 +47,9 @@ namespace LOICollection::frontend {
 
         DiagnosticEngine& diagnostics;
 
+        std::vector<std::unordered_map<std::string, TypeInfo>> blockScopes;
+        std::vector<std::string> formReceivers;
+
         std::vector<std::reference_wrapper<ClassNode>> classes;
         std::vector<std::reference_wrapper<ClassNode>> orderedClasses;
         std::unordered_map<std::string, std::reference_wrapper<ClassNode>> classByName;
@@ -96,6 +99,7 @@ namespace LOICollection::frontend {
         TypeInfo checkMethodCall(MethodCallNode& node, MethodScope& scope);
         TypeInfo checkFuncCall(FuncCallNode& node, MethodScope& scope);
         TypeInfo checkNew(NewNode& node, MethodScope& scope);
+        void checkDeclarativeBlock(NewNode& node, MethodScope& scope);
         TypeInfo checkSuperCall(SuperCallNode& node, MethodScope& scope);
         TypeInfo checkInstanceOf(InstanceOfNode& node, MethodScope& scope);
         TypeInfo checkReturn(ReturnNode& node, MethodScope& scope);
