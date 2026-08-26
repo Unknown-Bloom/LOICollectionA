@@ -850,10 +850,10 @@ namespace LOICollection::frontend::ir {
                 mm.paramNames.push_back(param.name);
 
             int bodyIdx = static_cast<int>(this->chunk.methodBodies.size());
-            this->chunk.methodBodies.push_back(BytecodeChunk{});
+            this->chunk.methodBodies.push_back(std::make_unique<BytecodeChunk>());
 
             std::reference_wrapper<BytecodeChunk> saved = this->current;
-            this->current = std::ref(chunk.methodBodies.back());
+            this->current = std::ref(*chunk.methodBodies.back());
 
             if (method.isConstructor && !node.baseClassName.empty() && !method.hasSuperCall) {
                 int ctorIdx = -1;
@@ -1231,10 +1231,10 @@ namespace LOICollection::frontend::ir {
             mm.paramNames.push_back(param.name);
 
         int bodyIdx = static_cast<int>(this->chunk.methodBodies.size());
-        this->chunk.methodBodies.push_back(BytecodeChunk{});
+        this->chunk.methodBodies.push_back(std::make_unique<BytecodeChunk>());
 
         std::reference_wrapper<BytecodeChunk> saved = this->current;
-        this->current = std::ref(this->chunk.methodBodies.back());
+        this->current = std::ref(*this->chunk.methodBodies.back());
 
         if (node.decl.body)
             node.decl.body->accept(*this);
@@ -1295,10 +1295,10 @@ namespace LOICollection::frontend::ir {
 
     void Compiler::visit(LambdaNode& node) {
         int bodyIdx = static_cast<int>(this->chunk.methodBodies.size());
-        this->chunk.methodBodies.push_back(BytecodeChunk{});
+        this->chunk.methodBodies.push_back(std::make_unique<BytecodeChunk>());
 
         std::reference_wrapper<BytecodeChunk> saved = this->current;
-        this->current = std::ref(this->chunk.methodBodies.back());
+        this->current = std::ref(*this->chunk.methodBodies.back());
 
         if (node.decl.body)
             node.decl.body->accept(*this);

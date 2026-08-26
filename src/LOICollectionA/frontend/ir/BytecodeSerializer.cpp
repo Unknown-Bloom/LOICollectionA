@@ -416,7 +416,7 @@ namespace LOICollection::frontend::ir {
 
             writer.u32(static_cast<uint32_t>(chunk.methodBodies.size()));
             for (const auto& body : chunk.methodBodies)
-                writeChunk(writer, body);
+                writeChunk(writer, *body);
         }
 
         bool readChunk(Reader& reader, BytecodeChunk& chunk) {
@@ -456,8 +456,8 @@ namespace LOICollection::frontend::ir {
 
             chunk.methodBodies.clear();
             for (uint32_t i = 0; i < bodyCount; ++i) {
-                BytecodeChunk body{};
-                if (!readChunk(reader, body))
+                auto body = std::make_unique<BytecodeChunk>();
+                if (!readChunk(reader, *body))
                     return false;
 
                 chunk.methodBodies.push_back(std::move(body));

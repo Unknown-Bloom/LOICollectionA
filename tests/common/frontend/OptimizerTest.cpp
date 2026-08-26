@@ -264,7 +264,7 @@ TEST(OptimizerTest, DoesNotFoldUnwrapOfEmptyOptional) {
 
     DiagnosticEngine diag;
     VM vm(diag);
-    [[maybe_unused]] auto result = vm.run(std::make_shared<BytecodeChunk>(chunk), {});
+    [[maybe_unused]] auto result = vm.run(std::make_shared<BytecodeChunk>(std::move(chunk)), {});
     EXPECT_TRUE(diag.hasErrors());
     EXPECT_NE(diag.getErrorMessage().find("Optional value is empty"), std::string::npos);
 }
@@ -401,7 +401,7 @@ TEST(OptimizerTest, PropagationInvalidatedAtBranchMerge) {
 
     bool bodyKeepsLoad = false;
     for (const auto& body : untaken.chunk->methodBodies)
-        if (containsOp(body, OpCode::LOAD_VAR))
+        if (containsOp(*body, OpCode::LOAD_VAR))
             bodyKeepsLoad = true;
 
     EXPECT_TRUE(bodyKeepsLoad);
@@ -520,7 +520,7 @@ TEST(OptimizerTest, EliminatesAlgebraicIdentities) {
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(chunk), {})), "42");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(std::move(chunk)), {})), "42");
     EXPECT_FALSE(diag.hasErrors());
 }
 
@@ -555,7 +555,7 @@ TEST(OptimizerTest, EliminatesFloatMulDivPowIdentities) {
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(chunk), {})), "2.5");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(std::move(chunk)), {})), "2.5");
     EXPECT_FALSE(diag.hasErrors());
 }
 
@@ -583,7 +583,7 @@ TEST(OptimizerTest, FloatAddZeroIsNotIdentityFolded) {
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(chunk), {})), "-0");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(std::move(chunk)), {})), "-0");
     EXPECT_FALSE(diag.hasErrors());
 }
 
@@ -646,7 +646,7 @@ TEST(OptimizerTest, FoldsIsNoneOpcode) {
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(chunk), {})), "false");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(std::move(chunk)), {})), "false");
     EXPECT_FALSE(diag.hasErrors());
 }
 
@@ -675,7 +675,7 @@ TEST(OptimizerTest, ReusesScalarConstantsWhenFolding) {
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(chunk), {})), "5");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(std::move(chunk)), {})), "5");
     EXPECT_FALSE(diag.hasErrors());
 }
 

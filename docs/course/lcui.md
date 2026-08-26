@@ -2414,7 +2414,7 @@ ValueNode::ValueType VM::callFunctionRef(
     vm.variables.clear();
     vm.variables = func->globals;
 
-    Frame callee(func->owner->methodBodies[func->bodyIndex]);
+    Frame callee(*func->owner->methodBodies[func->bodyIndex]);
     callee.hasThis = func->hasThis;
     if (func->hasThis) callee.thisObj = func->thisObj;
     callee.locals = func->captures;

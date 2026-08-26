@@ -860,7 +860,7 @@ namespace LOICollection::frontend::ir {
                     if (cls.constructorIndex != -1) {
                         const auto& ctor = chunk.methods[cls.constructorIndex];
 
-                        Frame callee(chunk.methodBodies[ctor.bodyIndex]);
+                        Frame callee(*chunk.methodBodies[ctor.bodyIndex]);
                         callee.hasThis = true;
                         callee.thisObj = obj;
                         callee.hasPending = true;
@@ -918,7 +918,7 @@ namespace LOICollection::frontend::ir {
                     for (int i = 0; i < meta.argCount; ++i)
                         args[meta.argCount - 1 - i] = this->pop();
 
-                    Frame callee(chunk.methodBodies[meta.bodyIndex]);
+                    Frame callee(*chunk.methodBodies[meta.bodyIndex]);
                     callee.hasThis = true;
                     callee.thisObj = receiver;
 
@@ -968,7 +968,7 @@ namespace LOICollection::frontend::ir {
                     for (int i = 0; i < method.argCount; ++i)
                         args[method.argCount - 1 - i] = this->pop();
 
-                    Frame callee(chunk.methodBodies[method.bodyIndex]);
+                    Frame callee(*chunk.methodBodies[method.bodyIndex]);
                     callee.hasThis = true;
                     callee.thisObj = receiver;
 
@@ -1010,7 +1010,7 @@ namespace LOICollection::frontend::ir {
                     for (int i = 0; i < ctor.argCount; ++i)
                         args[ctor.argCount - 1 - i] = this->pop();
 
-                    Frame callee(chunk.methodBodies[ctor.bodyIndex]);
+                    Frame callee(*chunk.methodBodies[ctor.bodyIndex]);
                     callee.hasThis = true;
                     callee.thisObj = receiver;
 
@@ -1100,7 +1100,7 @@ namespace LOICollection::frontend::ir {
                     for (int i = 0; i < meta.argCount; ++i)
                         args[meta.argCount - 1 - i] = this->pop();
 
-                    Frame callee(chunk.methodBodies[meta.bodyIndex]);
+                    Frame callee(*chunk.methodBodies[meta.bodyIndex]);
                     callee.hasThis = false;
 
                     for (int i = 0; i < meta.argCount; ++i)
@@ -1137,7 +1137,7 @@ namespace LOICollection::frontend::ir {
                     for (int i = 0; i < func->argCount; ++i)
                         args[func->argCount - 1 - i] = this->pop();
 
-                    Frame callee(func->owner->methodBodies[func->bodyIndex]);
+                    Frame callee(*func->owner->methodBodies[func->bodyIndex]);
                     callee.hasThis = func->hasThis;
                     if (func->hasThis)
                         callee.thisObj = func->thisObj;
@@ -1407,7 +1407,7 @@ namespace LOICollection::frontend::ir {
         vm.variables.clear();
         vm.variables = func->globals;
 
-        Frame callee(func->owner->methodBodies[func->bodyIndex]);
+        Frame callee(*func->owner->methodBodies[func->bodyIndex]);
         callee.hasThis = func->hasThis;
         if (func->hasThis)
             callee.thisObj = func->thisObj;
