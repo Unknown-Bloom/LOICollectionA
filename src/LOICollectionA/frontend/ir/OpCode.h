@@ -36,8 +36,14 @@ namespace LOICollection::frontend::ir {
         INSTANCEOF,
         RETURN,
 
-        JMP_IF_FALSE, JMP_IF_TRUE, 
+        JMP_IF_FALSE, JMP_IF_TRUE,
         JMP,
-        HALT
+        HALT,
+
+        /* Super-instructions (§8): fused pairs of the most common sequences.
+         * Appended after HALT so existing wire values stay stable; the
+         * bytecode cache format version is bumped instead. */
+        DUP_STORE,    /* DUP; STORE_VAR -> keep value, store it */
+        DUP_IS_NONE   /* DUP; IS_NONE   -> keep value, push (value is none) */
     };
 }

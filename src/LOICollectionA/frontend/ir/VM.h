@@ -59,6 +59,17 @@ namespace LOICollection::frontend::ir {
         std::vector<ValueNode::ValueType> stack;
         std::unordered_map<std::string, ValueNode::ValueType> variables;
 
+        /* Monomorphic inline-cache slots (§6.1), keyed by the call site's
+         * operand index into the chunk's native-call / function tables. Slot
+         * validation (registry epoch + resolved name + argument types) fully
+         * determines the dispatch result, so a key collision across chunks can
+         * only cause a harmless miss — never a wrong call. */
+        std::unordered_map<int, FunctionCallCacheSlot> mFunctionCallSlots;
+        std::unordered_map<int, NativeMethodCacheSlot> mNativeMethodSlots;
+        std::unordered_map<int, NativeStaticMethodCacheSlot> mNativeStaticMethodSlots;
+        std::unordered_map<int, NativeValueMethodCacheSlot> mNativeValueMethodSlots;
+        std::unordered_map<int, NativeConstructorCacheSlot> mNativeConstructorSlots;
+
         ValueNode::ValueType execute(
             const std::shared_ptr<const BytecodeChunk>& owner,
             const CallbackTypePlaces& placeholders
@@ -66,6 +77,13 @@ namespace LOICollection::frontend::ir {
 
         void push(const ValueNode::ValueType& v);
         ValueNode::ValueType pop();
+
+        void storeVariable(
+            const BytecodeChunk& chunk,
+            Frame& frame,
+            const std::string& name,
+            const ValueNode::ValueType& val
+        );
 
         bool pushFrame(Frame&& frame);
 

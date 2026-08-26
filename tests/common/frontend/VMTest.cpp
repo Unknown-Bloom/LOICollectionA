@@ -7,6 +7,8 @@
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
 #include "LOICollectionA/frontend/ir/VM.h"
 
+#include "common/frontend/CommonTest.h"
+
 using namespace LOICollection::frontend;
 using namespace LOICollection::frontend::ir;
 
@@ -172,4 +174,43 @@ TEST(VMComparisonTest, UnknownOperator) {
 
     EXPECT_FALSE(VM::applyComparison(1, 2, "~", diag));
     EXPECT_TRUE(diag.hasErrors());
+}
+
+/* ---- §6.1 inline caches: VM call sites must stay correct across repeated
+ * runtime calls (first call fills the slot, later calls hit it). ---- */
+
+TEST(VMInlineCacheTest, RepeatedNativeFunctionCalls) {
+    EXPECT_EQ(eval(
+        "i = 0; "
+        "s = 0; "
+        "while (i < 4) [ "
+        "    s = s + math::abs(0 - i - 1); "
+        "    i = i + 1; "
+        "]; "
+        "s"), "10");
+}
+
+TEST(VMInlineCacheTest, RepeatedNativeValueMethodCalls) {
+    EXPECT_EQ(eval(
+        "arr = []; "
+        "i = 0; "
+        "while (i < 3) [ "
+        "    arr.push(i); "
+        "    i = i + 1; "
+        "]; "
+        "arr.join(\",\")"), "0,1,2");
+}
+
+TEST(VMInlineCacheTest, MixedShapeNativeCallsStayCorrect) {
+    /* Alternating int/float argument shapes at nearby call sites: the
+     * monomorphic slots must re-dispatch on every shape change. */
+    EXPECT_EQ(eval(
+        "i = 0; "
+        "s = \"\"; "
+        "while (i < 2) [ "
+        "    s = s + math::abs(0 - i); "
+        "    s = s + math::abs(i - 0.5); "
+        "    i = i + 1; "
+        "]; "
+        "s"), "00.510.5");
 }

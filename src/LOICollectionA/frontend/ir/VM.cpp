@@ -377,6 +377,56 @@ namespace LOICollection::frontend::ir {
         return v;
     }
 
+    /* Shared by STORE_VAR and the DUP_STORE super-instruction: resolve the
+     * storage location (frame local, this-field, native static field, or
+     * global) in the same resolution order the language defines. */
+    void VM::storeVariable(
+        const BytecodeChunk& chunk,
+        Frame& frame,
+        const std::string& name,
+        const ValueNode::ValueType& val
+    ) {
+        auto localIt = frame.locals.find(name);
+        if (localIt != frame.locals.end()) {
+            localIt->second = val;
+            return;
+        }
+
+        if (frame.hasThis) {
+            auto obj = std::get<ObjectRef>(frame.thisObj);
+
+            if (obj->classIndex >= 0) {
+                const auto& cls = chunk.classes[obj->classIndex];
+                bool isField = std::ranges::find(cls.fieldNames, name) != cls.fieldNames.end();
+
+                if (isField) {
+                    obj->fields[name] = val;
+                    return;
+                }
+            }
+
+            auto existingIt = obj->fields.find(name);
+            if (existingIt != obj->fields.end()) {
+                existingIt->second = val;
+                return;
+            }
+        }
+
+        std::string className;
+        std::string fieldName;
+        if (splitStaticMemberName(name, className, fieldName) &&
+            std::ranges::none_of(chunk.classes, [&className](const auto& cls) {
+                return cls.name == className;
+            }) &&
+            ClassCall::getInstance().isRegistered(className) &&
+            ClassCall::getInstance().hasStaticField(className, fieldName)) {
+            ClassCall::getInstance().setStaticField(className, fieldName, val);
+            return;
+        }
+
+        this->variables[name] = val;
+    }
+
     bool VM::pushFrame(Frame&& frame) {
         if (this->frames.size() >= VM::MAX_FRAMES) {
             this->diagnostics.addError(this->currentLoc, "Call stack depth limit exceeded");
@@ -619,45 +669,30 @@ namespace LOICollection::frontend::ir {
 
                     auto val = this->pop();
 
-                    auto localIt = frame.locals.find(name);
-                    if (localIt != frame.locals.end()) {
-                        localIt->second = val;
+                    this->storeVariable(chunk, frame, name, val);
+                    break;
+                }
+
+                case OpCode::DUP_STORE: {
+                    if (this->stack.empty()) {
+                        this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP_STORE");
                         break;
                     }
 
-                    if (frame.hasThis) {
-                        auto obj = std::get<ObjectRef>(frame.thisObj);
+                    const auto& name = std::get<std::string>(cur.constants[instr.operand]);
+                    this->storeVariable(chunk, frame, name, this->stack.back());
+                    break;
+                }
 
-                        if (obj->classIndex >= 0) {
-                            const auto& cls = chunk.classes[obj->classIndex];
-                            bool isField = std::ranges::find(cls.fieldNames, name) != cls.fieldNames.end();
-
-                            if (isField) {
-                                obj->fields[name] = val;
-                                break;
-                            }
-                        }
-
-                        auto existingIt = obj->fields.find(name);
-                        if (existingIt != obj->fields.end()) {
-                            existingIt->second = val;
-                            break;
-                        }
-                    }
-
-                    std::string className;
-                    std::string fieldName;
-                    if (splitStaticMemberName(name, className, fieldName) &&
-                        std::ranges::none_of(chunk.classes, [&className](const auto& cls) {
-                            return cls.name == className;
-                        }) &&
-                        ClassCall::getInstance().isRegistered(className) &&
-                        ClassCall::getInstance().hasStaticField(className, fieldName)) {
-                        ClassCall::getInstance().setStaticField(className, fieldName, val);
+                case OpCode::DUP_IS_NONE: {
+                    if (this->stack.empty()) {
+                        this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP_IS_NONE");
                         break;
                     }
 
-                    this->variables[name] = val;
+                    this->push(ValueNode::ValueType{
+                        std::holds_alternative<std::monostate>(this->stack.back())
+                    });
                     break;
                 }
 
@@ -884,8 +919,9 @@ namespace LOICollection::frontend::ir {
                     for (int i = 0; i < meta.argCount; ++i)
                         args[meta.argCount - 1 - i] = this->pop();
 
-                    auto result = ClassCall::getInstance().create(
-                        meta.className, args, placeholders, this->diagnostics, this->currentLoc
+                    auto result = ClassCall::getInstance().createCached(
+                        meta.className, args, placeholders,
+                        this->mNativeConstructorSlots[instr.operand], this->diagnostics, this->currentLoc
                     );
 
                     if (!result.has_value()) {
@@ -1030,8 +1066,9 @@ namespace LOICollection::frontend::ir {
                         for (int i = 0; i < meta.argCount; ++i)
                             args[meta.argCount - 1 - i] = this->pop();
 
-                        auto result = ClassCall::getInstance().callStaticMethod(
-                            meta.className, meta.name, args, placeholders, this->diagnostics, this->currentLoc
+                        auto result = ClassCall::getInstance().callStaticMethodCached(
+                            meta.className, meta.name, args, placeholders,
+                            this->mNativeStaticMethodSlots[instr.operand], this->diagnostics, this->currentLoc
                         );
 
                         if (!result.has_value()) {
@@ -1057,8 +1094,9 @@ namespace LOICollection::frontend::ir {
                         for (int i = 0; i < meta.argCount; ++i)
                             args[meta.argCount - 1 - i] = this->pop();
 
-                        auto result = ClassCall::getInstance().callValueMethod(
-                            valueClassName, meta.name, receiver, args, this->diagnostics, this->currentLoc
+                        auto result = ClassCall::getInstance().callValueMethodCached(
+                            valueClassName, meta.name, receiver, args,
+                            this->mNativeValueMethodSlots[instr.operand], this->diagnostics, this->currentLoc
                         );
 
                         if (!result.has_value()) {
@@ -1078,8 +1116,9 @@ namespace LOICollection::frontend::ir {
                     for (int i = 0; i < meta.argCount; ++i)
                         args[meta.argCount - 1 - i] = this->pop();
 
-                    auto result = ClassCall::getInstance().callMethod(
-                        obj->className, meta.name, args, obj, placeholders, diagnostics, this->currentLoc
+                    auto result = ClassCall::getInstance().callMethodCached(
+                        obj->className, meta.name, args, obj, placeholders,
+                        this->mNativeMethodSlots[instr.operand], this->diagnostics, this->currentLoc
                     );
 
                     if (!result.has_value()) {
@@ -1294,10 +1333,11 @@ namespace LOICollection::frontend::ir {
 
                     auto ns = meta.name.substr(0, meta.name.find("::"));
                     auto func = meta.name.substr(meta.name.find("::") + 2);
-                    auto result = FunctionCall::getInstance().callFunction(
-                        ns, func, args, placeholders, this->diagnostics, this->currentLoc
+                    auto result = FunctionCall::getInstance().callFunctionCached(
+                        ns, func, args, placeholders,
+                        this->mFunctionCallSlots[instr.operand], this->diagnostics, this->currentLoc
                     );
-                    
+
                     if (!result.has_value()) {
                         this->diagnostics.addError(this->currentLoc, result.error().message());
                         this->push(ValueNode::ValueType{});

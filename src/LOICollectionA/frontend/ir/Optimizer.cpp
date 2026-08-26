@@ -1,8 +1,11 @@
 #include <cmath>
+#include <limits>
 #include <vector>
 #include <variant>
 #include <unordered_map>
 #include <unordered_set>
+
+#include "LOICollectionA/utils/core/MathUtils.h"
 
 #include "LOICollectionA/frontend/ir/VM.h"
 
@@ -145,6 +148,88 @@ namespace LOICollection::frontend::ir {
         }
     }
 
+    /* Pure math:: builtins (§6.2) fold at compile time when every argument is
+     * a known constant. Semantics mirror MathBuiltin exactly, and only
+     * argument kinds that match a registered signature fold — any other
+     * combination must keep its runtime "not registered" error, and
+     * math::random never folds because it is impure. */
+    bool foldPureMath(
+        const std::string& name,
+        const std::vector<ValueNode::ValueType>& args,
+        ValueNode::ValueType& out
+    ) {
+        auto isInt = [](const ValueNode::ValueType& v) { return std::holds_alternative<int>(v); };
+        auto isFloat = [](const ValueNode::ValueType& v) { return std::holds_alternative<float>(v); };
+
+        if (name == "math::abs" && args.size() == 1) {
+            if (isInt(args[0])) {
+                int v = std::get<int>(args[0]);
+                if (v == std::numeric_limits<int>::min())
+                    return false; /* runtime reports the overflow error */
+
+                out = std::abs(v);
+                return true;
+            }
+
+            if (isFloat(args[0])) {
+                out = std::abs(std::get<float>(args[0]));
+                return true;
+            }
+
+            return false;
+        }
+
+        if ((name == "math::min" || name == "math::max") && args.size() == 2) {
+            if (isInt(args[0]) && isInt(args[1])) {
+                out = name == "math::min"
+                    ? std::min(std::get<int>(args[0]), std::get<int>(args[1]))
+                    : std::max(std::get<int>(args[0]), std::get<int>(args[1]));
+                return true;
+            }
+
+            if (isFloat(args[0]) && isFloat(args[1])) {
+                out = name == "math::min"
+                    ? std::min(std::get<float>(args[0]), std::get<float>(args[1]))
+                    : std::max(std::get<float>(args[0]), std::get<float>(args[1]));
+                return true;
+            }
+
+            return false;
+        }
+
+        if ((name == "math::sqrt" || name == "math::log" || name == "math::sin" ||
+             name == "math::cos") && args.size() == 1) {
+            if (!isInt(args[0]) && !isFloat(args[0]))
+                return false;
+
+            double v = isInt(args[0]) ? std::get<int>(args[0]) : std::get<float>(args[0]);
+            out = static_cast<float>(
+                name == "math::sqrt" ? std::sqrt(v) :
+                name == "math::log" ? std::log(v) :
+                name == "math::sin" ? std::sin(v) : std::cos(v)
+            );
+            return true;
+        }
+
+        if (name == "math::pow" && args.size() == 2) {
+            if (isInt(args[0]) && isInt(args[1])) {
+                out = static_cast<float>(
+                    MathUtils::pow(std::get<int>(args[0]), std::get<int>(args[1]))
+                );
+                return true;
+            }
+
+            if (isFloat(args[0]) && isFloat(args[1])) {
+                out = static_cast<float>(std::pow(std::get<float>(args[0]), std::get<float>(args[1])));
+                return true;
+            }
+
+            return false;
+        }
+
+        return false;
+    }
+
     int addConstant(BytecodeChunk& chunk, const ValueNode::ValueType& value) {
         if (isScalarValue(value)) {
             for (size_t i = 0; i < chunk.constants.size(); ++i) {
@@ -244,6 +329,7 @@ namespace LOICollection::frontend::ir {
             const auto& instr = code[i];
             const int oldIdx = static_cast<int>(i);
             int emittedAt = -1;
+            bool skipNext = false;
 
             if (targets.contains(oldIdx)) {
                 stack.assign(1, std::monostate{});
@@ -334,6 +420,34 @@ namespace LOICollection::frontend::ir {
                 }
 
                 case OpCode::IS_NONE: {
+                    /* Fuse a preceding untargeted DUP into the DUP_IS_NONE
+                     * super-instruction (§8): the tested value stays on the
+                     * stack and the none-test rides in the same dispatch. */
+                    if (i > 0 && code[i - 1].op == OpCode::DUP &&
+                        !targets.contains(oldIdx) && !targets.contains(oldIdx - 1) &&
+                        !foldedCode.empty() && foldedCode.back().op == OpCode::DUP) {
+                        StackEntry operand = popEntry(stack);
+
+                        /* The emitted DUP is superseded by the fused op. */
+                        dropped[static_cast<int>(foldedCode.size()) - 1] = true;
+
+                        emittedAt = static_cast<int>(foldedCode.size());
+                        foldedCode.push_back({ OpCode::DUP_IS_NONE, 0, instr.loc });
+
+                        if (isKnown(operand)) {
+                            bool result =
+                                std::holds_alternative<std::monostate>(knownValue(operand).value);
+                            /* removable=false: the producer also keeps a value on
+                             * the stack, so it must never be dropped by later folds. */
+                            stack.emplace_back(TrackedValue{ result, emittedAt, false });
+                        } else {
+                            stack.emplace_back(std::monostate{});
+                        }
+
+                        stats.folded++;
+                        break;
+                    }
+
                     StackEntry operand = popEntry(stack);
 
                     if (isKnown(operand) && knownValue(operand).removable) {
@@ -352,6 +466,32 @@ namespace LOICollection::frontend::ir {
                         foldedCode.push_back(instr);
                         stack.emplace_back(std::monostate{});
                     }
+
+                    break;
+                }
+
+                case OpCode::DUP_IS_NONE: {
+                    /* Value stays on the stack, a bool is pushed on top; when
+                     * the value is known the result is known too, but the
+                     * producer must stay (it also keeps the value). */
+                    emittedAt = static_cast<int>(foldedCode.size());
+
+                    if (stack.size() > 1 && isKnown(stack.back())) {
+                        bool result = std::holds_alternative<std::monostate>(
+                            knownValue(stack.back()).value);
+
+                        if (auto* known = std::get_if<TrackedValue>(&stack.back()))
+                            known->removable = false;
+
+                        stack.emplace_back(TrackedValue{ result, emittedAt, false });
+                    } else {
+                        if (auto* known = std::get_if<TrackedValue>(&stack.back()))
+                            known->removable = false;
+
+                        stack.emplace_back(std::monostate{});
+                    }
+
+                    foldedCode.push_back(instr);
 
                     break;
                 }
@@ -389,6 +529,26 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
+                case OpCode::DUP_STORE: {
+                    /* Value stays on the stack and is stored: the kept entry
+                     * becomes non-removable (a copy lives in the variable),
+                     * and the stored scalar feeds LOAD_VAR forwarding. */
+                    const std::string& name = std::get<std::string>(chunk.constants[instr.operand]);
+
+                    if (isKnown(stack.back()) && isScalarValue(knownValue(stack.back()).value))
+                        varSlots[name] = knownValue(stack.back()).value;
+                    else
+                        varSlots.erase(name);
+
+                    if (auto* known = std::get_if<TrackedValue>(&stack.back()))
+                        known->removable = false;
+
+                    emittedAt = static_cast<int>(foldedCode.size());
+                    foldedCode.push_back(instr);
+
+                    break;
+                }
+
                 case OpCode::POP: {
                     if (!targets.contains(oldIdx) && stack.size() > 1 &&
                         isKnown(stack.back()) && knownValue(stack.back()).removable) {
@@ -405,6 +565,29 @@ namespace LOICollection::frontend::ir {
                 }
 
                 case OpCode::DUP: {
+                    /* Fuse DUP;STORE_VAR into the DUP_STORE super-instruction
+                     * (§8): the stored copy and the kept value collapse into a
+                     * single dispatch. Only when neither instruction is a
+                     * branch target. */
+                    if (i + 1 < code.size() && code[i + 1].op == OpCode::STORE_VAR &&
+                        !targets.contains(oldIdx) && !targets.contains(oldIdx + 1)) {
+                        if (auto* known = std::get_if<TrackedValue>(&stack.back()))
+                            known->removable = false;
+
+                        const auto& name =
+                            std::get<std::string>(chunk.constants[code[i + 1].operand]);
+                        if (isKnown(stack.back()) && isScalarValue(knownValue(stack.back()).value))
+                            varSlots[name] = knownValue(stack.back()).value;
+                        else
+                            varSlots.erase(name);
+
+                        emittedAt = static_cast<int>(foldedCode.size());
+                        foldedCode.push_back({ OpCode::DUP_STORE, code[i + 1].operand, instr.loc });
+                        stats.folded++;
+                        skipNext = true;
+                        break;
+                    }
+
                     if (auto* known = std::get_if<TrackedValue>(&stack.back()))
                         known->removable = false;
 
@@ -656,6 +839,27 @@ namespace LOICollection::frontend::ir {
                     StackEntry cond = popEntry(stack);
                     bool folded = false;
 
+                    /* Peephole: a conditional jump immediately followed by an
+                     * unconditional jump to the same target is unconditional —
+                     * both paths reach the target and pop the condition, so
+                     * only the pop remains and the block between the JMP and
+                     * the target becomes unreachable (swept below). */
+                    if (i + 1 < code.size() && code[i + 1].op == OpCode::JMP &&
+                        !targets.contains(oldIdx) && !targets.contains(oldIdx + 1) &&
+                        oldIdx + 1 + instr.operand == oldIdx + 2 + code[i + 1].operand) {
+                        if (isKnown(cond) && knownValue(cond).removable) {
+                            dropped[knownValue(cond).producer] = true;
+                            stats.removed++;
+                        } else {
+                            emittedAt = static_cast<int>(foldedCode.size());
+                            foldedCode.push_back({ OpCode::POP, 0, instr.loc });
+                        }
+
+                        stats.folded++;
+                        stack.assign(1, std::monostate{});
+                        break;
+                    }
+
                     if (!targets.contains(oldIdx) && isKnown(cond) && knownValue(cond).removable) {
                         dropped[knownValue(cond).producer] = true;
 
@@ -730,6 +934,58 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
+                case OpCode::CALL: {
+                    /* Hand-built chunks may reference functions without the
+                     * meta table; only fold when the meta entry exists. */
+                    const FuncMeta* meta = instr.operand >= 0 &&
+                        instr.operand < static_cast<int>(chunk.functions.size())
+                        ? &chunk.functions[instr.operand]
+                        : nullptr;
+
+                    /* Pure math:: builtins fold at compile time when every
+                     * argument is a known constant (§6.2); anything else keeps
+                     * the runtime call. */
+                    bool foldable = meta != nullptr &&
+                        meta->argCount <= static_cast<int>(stack.size()) - 1;
+
+                    std::vector<StackEntry> popped;
+                    if (foldable) {
+                        popped.reserve(meta->argCount);
+                        for (int k = 0; k < meta->argCount && foldable; ++k) {
+                            StackEntry entry = popEntry(stack);
+                            foldable = isKnown(entry) && knownValue(entry).removable;
+                            popped.push_back(std::move(entry));
+                        }
+                    }
+
+                    ValueNode::ValueType result;
+                    if (foldable) {
+                        std::vector<ValueNode::ValueType> args(popped.size());
+                        for (size_t k = 0; k < popped.size(); ++k)
+                            args[popped.size() - 1 - k] = knownValue(popped[k]).value;
+
+                        foldable = foldPureMath(meta->name, args, result);
+                    }
+
+                    if (foldable) {
+                        for (const auto& entry : popped)
+                            dropped[knownValue(entry).producer] = true;
+
+                        emitPush(chunk, foldedCode, result, instr.loc);
+                        emittedAt = static_cast<int>(foldedCode.size()) - 1;
+                        stack.emplace_back(TrackedValue{
+                            result, emittedAt, !targets.contains(oldIdx)
+                        });
+                        stats.folded++;
+                    } else {
+                        emittedAt = static_cast<int>(foldedCode.size());
+                        foldedCode.push_back(instr);
+                        stack.assign(1, std::monostate{});
+                    }
+
+                    break;
+                }
+
                 case OpCode::JMP:
                 case OpCode::RETURN:
                 case OpCode::HALT:
@@ -744,6 +1000,11 @@ namespace LOICollection::frontend::ir {
                 oldToNew[oldIdx] = emittedAt;
                 newToOld.push_back(oldIdx);
             }
+
+            /* A fused pair consumed the next instruction (e.g. DUP;STORE_VAR
+             * became DUP_STORE); skip past it so it is never re-processed. */
+            if (skipNext)
+                ++i;
         }
 
         {

@@ -466,20 +466,20 @@ TEST(OptimizerTest, FixedPointExposesPropagationAfterBranchRemoval) {
     EXPECT_FALSE(containsOp(*program.chunk, OpCode::JMP));
     EXPECT_FALSE(containsOp(*program.chunk, OpCode::JMP_IF_FALSE));
 
-    ASSERT_EQ(program.chunk->code.size(), 10u);
+    /* Both assignments fuse DUP;STORE_VAR into the DUP_STORE
+     * super-instruction, so each is three instructions instead of four. */
+    ASSERT_EQ(program.chunk->code.size(), 8u);
     EXPECT_EQ(program.chunk->code[0].op, OpCode::PUSH_INT);
-    EXPECT_EQ(program.chunk->code[1].op, OpCode::DUP);
-    EXPECT_EQ(program.chunk->code[2].op, OpCode::STORE_VAR);
-    EXPECT_EQ(program.chunk->code[3].op, OpCode::POP);
-    EXPECT_EQ(program.chunk->code[4].op, OpCode::PUSH_INT);
-    EXPECT_EQ(program.chunk->code[5].op, OpCode::DUP);
-    EXPECT_EQ(program.chunk->code[6].op, OpCode::STORE_VAR);
-    EXPECT_EQ(program.chunk->code[7].op, OpCode::POP);
-    EXPECT_EQ(program.chunk->code[8].op, OpCode::PUSH_INT);
-    EXPECT_EQ(program.chunk->code[9].op, OpCode::HALT);
+    EXPECT_EQ(program.chunk->code[1].op, OpCode::DUP_STORE);
+    EXPECT_EQ(program.chunk->code[2].op, OpCode::POP);
+    EXPECT_EQ(program.chunk->code[3].op, OpCode::PUSH_INT);
+    EXPECT_EQ(program.chunk->code[4].op, OpCode::DUP_STORE);
+    EXPECT_EQ(program.chunk->code[5].op, OpCode::POP);
+    EXPECT_EQ(program.chunk->code[6].op, OpCode::PUSH_INT);
+    EXPECT_EQ(program.chunk->code[7].op, OpCode::HALT);
 
-    EXPECT_EQ(std::get<int>(program.chunk->constants[program.chunk->code[4].operand]), 10);
-    EXPECT_EQ(std::get<int>(program.chunk->constants[program.chunk->code[8].operand]), 10);
+    EXPECT_EQ(std::get<int>(program.chunk->constants[program.chunk->code[3].operand]), 10);
+    EXPECT_EQ(std::get<int>(program.chunk->constants[program.chunk->code[6].operand]), 10);
 
     VM vm(program.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "10");
