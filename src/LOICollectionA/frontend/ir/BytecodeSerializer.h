@@ -29,6 +29,6 @@ namespace LOICollection::frontend::ir {
         BytecodeSerializer() = default;
 
         static constexpr char MAGIC[4] = { 'L', 'C', 'U', 'I' };
-        static constexpr uint32_t FORMAT_VERSION = 2;
+        static constexpr uint32_t FORMAT_VERSION = 3;
     };
 }

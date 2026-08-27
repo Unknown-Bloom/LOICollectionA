@@ -271,6 +271,18 @@
                 "callbacks": []
             }
         },
+        "menu": {
+            "enabled": true,
+            "commands": {
+                "allow": false,
+                "templates": []
+            },
+            "gui": {
+                "values": [],
+                "requests": [],
+                "callbacks": []
+            }
+        },
         "mute": {
             "enabled": true,
             "commands": {
@@ -338,6 +350,18 @@
                 "callbacks": [
                     "pvp.enable"
                 ]
+            }
+        },
+        "shop": {
+            "enabled": true,
+            "commands": {
+                "allow": false,
+                "templates": []
+            },
+            "gui": {
+                "values": [],
+                "requests": [],
+                "callbacks": []
             }
         },
         "statistics": {
