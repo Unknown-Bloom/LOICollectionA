@@ -17,6 +17,23 @@
 
 namespace LOICollection::frontend::ir {
     namespace {
+        thread_local std::shared_ptr<sandbox::SandboxBudget> tlsBudget;
+
+        struct BudgetScope {
+            std::shared_ptr<sandbox::SandboxBudget> previous;
+
+            explicit BudgetScope(std::shared_ptr<sandbox::SandboxBudget>& budget) : previous(tlsBudget) {
+                if (!previous)
+                    budget->reset();
+                else
+                    budget = previous;
+
+                tlsBudget = budget;
+            }
+
+            ~BudgetScope() { tlsBudget = std::move(previous); }
+        };
+
         bool splitStaticMemberName(const std::string& name, std::string& className, std::string& fieldName) {
             auto pos = name.find("::");
             if (pos == std::string::npos || pos == 0 || pos + 2 >= name.size())
@@ -426,7 +443,7 @@ namespace LOICollection::frontend::ir {
     }
 
     bool VM::pushFrame(Frame&& frame) {
-        if (this->frames.size() >= this->mBudget.maxFrames) {
+        if (this->frames.size() >= this->mBudget->maxFrames) {
             this->diagnostics.addError(this->currentLoc, "Call stack depth limit exceeded");
             return false;
         }
@@ -478,10 +495,10 @@ namespace LOICollection::frontend::ir {
         const auto startedAt = std::chrono::steady_clock::now();
         ValueNode::ValueType result = this->execute(chunk, placeholders);
 
-        this->mReport.executedInstructions = this->mBudget.executedInstructions;
-        this->mReport.nativeCallCount = this->mBudget.nativeCallCount;
-        this->mReport.objectCount = this->mBudget.objectCount;
-        this->mReport.allocatedBytes = this->mBudget.allocatedBytes;
+        this->mReport.executedInstructions = this->mBudget->executedInstructions;
+        this->mReport.nativeCallCount = this->mBudget->nativeCallCount;
+        this->mReport.objectCount = this->mBudget->objectCount;
+        this->mReport.allocatedBytes = this->mBudget->allocatedBytes;
         this->mReport.wallTime = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - startedAt
         );
@@ -503,7 +520,7 @@ namespace LOICollection::frontend::ir {
 
         const BytecodeChunk& chunk = *owner;
 
-        this->mBudget.reset();
+        BudgetScope budgetScope(this->mBudget);
 
         const auto fail = [this](sandbox::SandboxBudget::Violation violation, const std::string& message) {
             this->mReport.violation = violation;
@@ -514,7 +531,7 @@ namespace LOICollection::frontend::ir {
             if (this->diagnostics.hasErrors())
                 return std::string("");
 
-            if (const auto violation = this->mBudget.tickInstruction();
+            if (const auto violation = this->mBudget->tickInstruction();
                 violation != sandbox::SandboxBudget::Violation::None) {
                 fail(violation, violation == sandbox::SandboxBudget::Violation::WallTimeLimit
                     ? "Execution timeout"
@@ -541,7 +558,7 @@ namespace LOICollection::frontend::ir {
                     break;
                 case OpCode::PUSH_STR: {
                     const auto& value = std::get<std::string>(cur.constants[instr.operand]);
-                    if (const auto violation = this->mBudget.accountString(value.size());
+                    if (const auto violation = this->mBudget->accountString(value.size());
                         violation != sandbox::SandboxBudget::Violation::None) {
                         fail(violation, "String size budget exhausted");
                         break;
@@ -797,7 +814,7 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
 
-                    if (const auto violation = this->mBudget.accountArray(static_cast<std::size_t>(count));
+                    if (const auto violation = this->mBudget->accountArray(static_cast<std::size_t>(count));
                         violation != sandbox::SandboxBudget::Violation::None) {
                         fail(violation, "Array size budget exhausted");
                         break;
@@ -855,10 +872,16 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
 
-                    if (index == static_cast<int>(arr->elements.size()))
+                    if (index == static_cast<int>(arr->elements.size())) {
+                        if (static_cast<std::size_t>(index + 1) > this->mBudget->maxArrayElements) {
+                            fail(sandbox::SandboxBudget::Violation::ArrayElementLimit, "Array size budget exhausted");
+                            break;
+                        }
+
                         arr->elements.push_back(value);
-                    else
+                    } else {
                         arr->elements[index] = value;
+                    }
 
                     break;
                 }
@@ -918,7 +941,7 @@ namespace LOICollection::frontend::ir {
                 }
 
                 case OpCode::NEW: {
-                    if (const auto violation = this->mBudget.accountObject();
+                    if (const auto violation = this->mBudget->accountObject();
                         violation != sandbox::SandboxBudget::Violation::None) {
                         fail(violation, "Object count budget exhausted");
                         break;
@@ -966,7 +989,7 @@ namespace LOICollection::frontend::ir {
                 }
 
                 case OpCode::NEW_NATIVE: {
-                    if (const auto violation = this->mBudget.accountObject();
+                    if (const auto violation = this->mBudget->accountObject();
                         violation != sandbox::SandboxBudget::Violation::None) {
                         fail(violation, "Object count budget exhausted");
                         break;
@@ -1118,7 +1141,7 @@ namespace LOICollection::frontend::ir {
                 }
 
                 case OpCode::CALL_NATIVE_METHOD: {
-                    if (const auto violation = this->mBudget.accountNativeCall();
+                    if (const auto violation = this->mBudget->accountNativeCall();
                         violation != sandbox::SandboxBudget::Violation::None) {
                         fail(violation, "Native call budget exhausted");
                         break;
@@ -1276,7 +1299,17 @@ namespace LOICollection::frontend::ir {
                     auto r = this->pop();
                     auto l = this->pop();
 
-                    this->push(VM::applyArithmetic(l, r, "+", this->diagnostics, this->currentLoc));
+                    auto result = VM::applyArithmetic(l, r, "+", this->diagnostics, this->currentLoc);
+
+                    if (std::holds_alternative<std::string>(result)) {
+                        if (const auto violation = this->mBudget->accountString(std::get<std::string>(result).size());
+                            violation != sandbox::SandboxBudget::Violation::None) {
+                            fail(violation, "String size budget exhausted");
+                            break;
+                        }
+                    }
+
+                    this->push(std::move(result));
                     break;
                 }
                 case OpCode::SUB: {
@@ -1387,7 +1420,7 @@ namespace LOICollection::frontend::ir {
                 }
 
                 case OpCode::CALL: {
-                    if (const auto violation = this->mBudget.accountNativeCall();
+                    if (const auto violation = this->mBudget->accountNativeCall();
                         violation != sandbox::SandboxBudget::Violation::None) {
                         fail(violation, "Native call budget exhausted");
                         break;
@@ -1419,7 +1452,7 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
                 case OpCode::CALL_MACRO: {
-                    if (const auto violation = this->mBudget.accountNativeCall();
+                    if (const auto violation = this->mBudget->accountNativeCall();
                         violation != sandbox::SandboxBudget::Violation::None) {
                         fail(violation, "Native call budget exhausted");
                         break;

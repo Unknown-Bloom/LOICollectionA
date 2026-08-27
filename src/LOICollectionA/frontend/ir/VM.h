@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 #include <functional>
@@ -24,8 +25,8 @@ namespace LOICollection::frontend::ir {
             const Context& ctx
         );
 
-        LOICOLLECTION_A_API   void setBudget(const sandbox::SandboxBudget& budget) { mBudget = budget; }
-        [[nodiscard]] LOICOLLECTION_A_NDAPI const sandbox::SandboxBudget& budget() const { return mBudget; }
+        LOICOLLECTION_A_API   void setBudget(const sandbox::SandboxBudget& budget) { *mBudget = budget; }
+        [[nodiscard]] LOICOLLECTION_A_NDAPI const sandbox::SandboxBudget& budget() const { return *mBudget; }
         [[nodiscard]] LOICOLLECTION_A_NDAPI const sandbox::SandboxReport& report() const { return mReport; }
 
         LOICOLLECTION_A_NDAPI static ValueNode::ValueType callFunctionRef(
@@ -61,8 +62,8 @@ namespace LOICollection::frontend::ir {
         DiagnosticEngine& diagnostics;
         SourceLocation currentLoc;
 
-        sandbox::SandboxBudget mBudget;
         sandbox::SandboxReport mReport;
+        std::shared_ptr<sandbox::SandboxBudget> mBudget = std::make_shared<sandbox::SandboxBudget>();
 
         std::vector<Frame> frames;
         std::vector<ValueNode::ValueType> stack;

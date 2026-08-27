@@ -89,3 +89,16 @@ TEST(SandboxBudgetTest, ArrayElementLimit) {
     EXPECT_TRUE(result.hasErrors);
     EXPECT_EQ(result.violation, SandboxBudget::Violation::ArrayElementLimit);
 }
+
+TEST(SandboxBudgetTest, StringConcatLimit) {
+    SandboxBudget budget;
+    budget.maxStringBytes = 1024;
+
+    const RunResult result = runWithBudget(
+        "s = string::lower(\"A\"); i = 0; while (i < 30) [ s = s + s; i = i + 1; ]; s",
+        budget
+    );
+
+    EXPECT_TRUE(result.hasErrors);
+    EXPECT_EQ(result.violation, SandboxBudget::Violation::StringByteLimit);
+}

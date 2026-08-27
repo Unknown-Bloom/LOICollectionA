@@ -31,7 +31,7 @@ namespace {
             },
             "disabled.lcui": {
                 "enabled": false,
-                "commands": { "allow": true, "templates": [] },
+                "commands": { "allow": true, "templates": ["say hello"] },
                 "gui": { "values": ["anything"], "requests": [], "callbacks": [] }
             }
         }
@@ -52,24 +52,24 @@ TEST(ScriptPermissionTest, CommandDeniedWhenAllowFalse) {
     std::string error;
     auto gate = PermissionGate::fromJson(kWalletPermission, error);
     ASSERT_TRUE(gate.has_value());
-    EXPECT_FALSE(gate->isCommandAllowed("wallet.lcui", "say hello", "Steve"));
+    EXPECT_FALSE(gate->isCommandAllowed("wallet.lcui", "say hello"));
 }
 
-TEST(ScriptPermissionTest, CommandTemplateMatchesAfterPlayerSubstitution) {
+TEST(ScriptPermissionTest, CommandMatchesTemplate) {
     std::string error;
     auto gate = PermissionGate::fromJson(kWalletPermission, error);
     ASSERT_TRUE(gate.has_value());
 
-    EXPECT_TRUE(gate->isCommandAllowed("menu.lcui", "give ${player} minecraft:diamond 1", "Steve"));
-    EXPECT_FALSE(gate->isCommandAllowed("menu.lcui", "give Steve minecraft:diamond 64", "Steve"));
-    EXPECT_FALSE(gate->isCommandAllowed("menu.lcui", "op Steve", "Steve"));
+    EXPECT_TRUE(gate->isCommandAllowed("menu.lcui", "give ${player} minecraft:diamond 1"));
+    EXPECT_FALSE(gate->isCommandAllowed("menu.lcui", "give Steve minecraft:diamond 64"));
+    EXPECT_FALSE(gate->isCommandAllowed("menu.lcui", "op Steve"));
 }
 
-TEST(ScriptPermissionTest, EmptyTemplatesAllowAnyCommand) {
+TEST(ScriptPermissionTest, EmptyTemplatesDenyCommands) {
     std::string error;
     auto gate = PermissionGate::fromJson(kWalletPermission, error);
     ASSERT_TRUE(gate.has_value());
-    EXPECT_TRUE(gate->isCommandAllowed("open.lcui", "say anything", "Steve"));
+    EXPECT_FALSE(gate->isCommandAllowed("open.lcui", "say anything"));
 }
 
 TEST(ScriptPermissionTest, GuiIdWhitelist) {

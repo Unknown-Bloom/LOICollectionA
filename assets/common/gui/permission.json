@@ -1,7 +1,7 @@
 {
     "defaultPolicy": "deny",
     "scripts": {
-        "blacklist.lcui": {
+        "blacklist": {
             "enabled": true,
             "commands": {
                 "allow": false,
@@ -24,7 +24,7 @@
                 ]
             }
         },
-        "cdk.lcui": {
+        "cdk": {
             "enabled": true,
             "commands": {
                 "allow": false,
@@ -51,7 +51,7 @@
                 ]
             }
         },
-        "chat.lcui": {
+        "chat": {
             "enabled": true,
             "commands": {
                 "allow": false,
@@ -80,7 +80,7 @@
                 ]
             }
         },
-        "language.lcui": {
+        "language": {
             "enabled": true,
             "commands": {
                 "allow": false,
@@ -96,7 +96,7 @@
                 ]
             }
         },
-        "market.lcui": {
+        "market": {
             "enabled": true,
             "commands": {
                 "allow": false,
@@ -137,7 +137,7 @@
                 ]
             }
         },
-        "market_auction.lcui": {
+        "market.auction": {
             "enabled": true,
             "commands": {
                 "allow": false,
@@ -161,7 +161,7 @@
                 "callbacks": []
             }
         },
-        "market_quote.lcui": {
+        "market.quote": {
             "enabled": true,
             "commands": {
                 "allow": false,
@@ -178,7 +178,7 @@
                 "callbacks": []
             }
         },
-        "market_store.lcui": {
+        "market.store": {
             "enabled": true,
             "commands": {
                 "allow": false,
@@ -219,7 +219,7 @@
                 "callbacks": []
             }
         },
-        "market_trade.lcui": {
+        "market.trade": {
             "enabled": true,
             "commands": {
                 "allow": false,
@@ -247,7 +247,7 @@
                 ]
             }
         },
-        "market_wanted.lcui": {
+        "market.wanted": {
             "enabled": true,
             "commands": {
                 "allow": false,
@@ -271,7 +271,7 @@
                 "callbacks": []
             }
         },
-        "mute.lcui": {
+        "mute": {
             "enabled": true,
             "commands": {
                 "allow": false,
@@ -294,7 +294,7 @@
                 ]
             }
         },
-        "notice.lcui": {
+        "notice": {
             "enabled": true,
             "commands": {
                 "allow": false,
@@ -324,7 +324,7 @@
                 ]
             }
         },
-        "pvp.lcui": {
+        "pvp": {
             "enabled": true,
             "commands": {
                 "allow": false,
@@ -340,7 +340,7 @@
                 ]
             }
         },
-        "statistics.lcui": {
+        "statistics": {
             "enabled": true,
             "commands": {
                 "allow": false,
@@ -356,7 +356,7 @@
                 "callbacks": []
             }
         },
-        "tpa.lcui": {
+        "tpa": {
             "enabled": true,
             "commands": {
                 "allow": false,
@@ -385,7 +385,7 @@
                 ]
             }
         },
-        "wallet.lcui": {
+        "wallet": {
             "enabled": true,
             "commands": {
                 "allow": false,

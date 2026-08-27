@@ -143,7 +143,10 @@ namespace LOICollection::form {
         frontend::DiagnosticEngine diagnostics;
         frontend::ir::VM mVM(diagnostics);
 
-        auto result = mVM.run(it->second, {});
+        frontend::Context context;
+        context.scriptId = id;
+
+        auto result = mVM.run(it->second, context);
         if (diagnostics.hasErrors())
             return ll::makeStringError(diagnostics.getErrorMessage());
 
@@ -159,7 +162,10 @@ namespace LOICollection::form {
             auto cached = this->mImpl->cache.at(id);
 
             auto mCtx = ctx ? ctx : std::make_shared<frontend::ArrayValue>();
-            auto result = mVM.run(cached, { std::ref(player), mCtx });
+
+            frontend::Context context{ std::ref(player), mCtx };
+            context.scriptId = id;
+            auto result = mVM.run(cached, context);
             if (diagnostics.hasErrors())
                 return ll::makeStringError(diagnostics.getErrorMessage());
 
@@ -193,7 +199,10 @@ namespace LOICollection::form {
             auto cached = this->mImpl->cache.at(id);
 
             auto mCtx = ctx ? ctx : std::make_shared<frontend::ArrayValue>();
-            auto result = mVM.run(cached, { std::ref(player), mCtx });
+
+            frontend::Context context{ std::ref(player), mCtx };
+            context.scriptId = id;
+            auto result = mVM.run(cached, context);
             if (diagnostics.hasErrors())
                 return ll::makeStringError(diagnostics.getErrorMessage());
 

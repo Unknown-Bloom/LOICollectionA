@@ -30,10 +30,14 @@ namespace CommandBuiltin {
         const std::string command = std::get<std::string>(args[0]);
         const std::string scriptId = scriptIdOf(placeholders);
 
-        std::reference_wrapper<Player> player = std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0));
+        const auto playerIt = placeholders.find(0);
+        if (playerIt == placeholders.end())
+            return ll::makeStringError("mc::runCmd requires a player context");
+
+        std::reference_wrapper<Player> player = std::any_cast<std::reference_wrapper<Player>>(playerIt->second);
 
         const auto permission = ServiceProvider::getInstance().getService<sandbox::ScriptPermissionService>();
-        if (!permission || !permission->gate().isCommandAllowed(scriptId, command, std::string(player.get().mName)))
+        if (!permission || !permission->gate().isCommandAllowed(scriptId, command))
             return ll::makeStringError("Permission denied: mc::runCmd is not allowed for script '" + scriptId + "'");
 
         CommandUtils::executeCommand(player.get(), command);

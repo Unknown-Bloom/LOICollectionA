@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -56,24 +55,15 @@ namespace LOICollection::frontend::sandbox {
             return fallbackAllowed();
         }
 
-        [[nodiscard]] bool isCommandAllowed(
-            const std::string& scriptId, const std::string& command, const std::string& playerName
-        ) const {
+        [[nodiscard]] bool isCommandAllowed(const std::string& scriptId, const std::string& command) const {
             const auto* entry = find(scriptId);
             if (!entry)
                 return fallbackAllowed();
-            if (!entry->enabled || !entry->commands.allow)
+            if (!entry->enabled || !entry->commands.allow || entry->commands.templates.empty())
                 return false;
-            if (entry->commands.templates.empty())
-                return true;
 
-            const std::string resolved = replacePlayer(command, playerName);
-            for (const auto& template_ : entry->commands.templates) {
-                if (resolved == replacePlayer(template_, playerName))
-                    return true;
-            }
-
-            return false;
+            return std::find(entry->commands.templates.begin(), entry->commands.templates.end(), command)
+                != entry->commands.templates.end();
         }
 
         [[nodiscard]] bool isGuiValueAllowed(const std::string& scriptId, const std::string& id) const {
@@ -113,16 +103,6 @@ namespace LOICollection::frontend::sandbox {
 
             const auto& ids = entry->gui.*list;
             return std::find(ids.begin(), ids.end(), id) != ids.end();
-        }
-
-        static std::string replacePlayer(std::string text, const std::string& playerName) {
-            constexpr std::string_view placeholder = "${player}";
-            for (std::size_t pos = 0; (pos = text.find(placeholder, pos)) != std::string::npos;
-                 pos += playerName.size()) {
-                text.replace(pos, placeholder.size(), playerName);
-            }
-
-            return text;
         }
 
         static Config::C_ScriptPermission parse(const nlohmann::json& root) {
