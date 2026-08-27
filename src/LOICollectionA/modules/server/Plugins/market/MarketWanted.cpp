@@ -87,7 +87,6 @@ namespace LOICollection::server::Plugins {
             ctor("unit_price");
             ctor("amount_total");
             ctor("amount_filled");
-            ctor("created_at");
             ctor("expire_at");
         });
     }

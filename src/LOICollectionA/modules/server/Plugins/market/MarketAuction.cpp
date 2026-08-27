@@ -87,7 +87,6 @@ namespace LOICollection::server::Plugins {
             ctor("bidder_uuid");
             ctor("bidder_name");
             ctor("bid_count");
-            ctor("created_at");
             ctor("end_at");
             ctor("settled");
         });

@@ -90,7 +90,6 @@ namespace LOICollection::server::Plugins {
             ctor("capacity");
             ctor("count");
             ctor("people");
-            ctor("created_at");
             ctor("expire_at");
         }).and_then([this]() -> ll::Expected<void> {
             return this->mImpl->db->create("RedEnvelopeGrab", [](SQLiteStorage::ColumnCallback ctor) -> void {
