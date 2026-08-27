@@ -82,6 +82,10 @@ namespace LOICollection::frontend::sandbox {
             return isScriptEnabled(scriptId);
         }
 
+        [[nodiscard]] bool hasEntry(const std::string& scriptId) const {
+            return find(scriptId) != nullptr;
+        }
+
     private:
         using GuiList = std::vector<std::string> Config::C_ScriptGuiPermission::*;
 

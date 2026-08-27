@@ -19,16 +19,9 @@
 using namespace LOICollection::frontend;
 
 namespace CommandBuiltin {
-    namespace {
-        std::string scriptIdOf(const CallbackTypePlaces& placeholders) {
-            const auto it = placeholders.find(Context::kScriptIdKey);
-            return it == placeholders.end() ? std::string{} : std::any_cast<std::string>(it->second);
-        }
-    }
-
     ll::Expected<TypedValue> runCmd(const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
         const std::string command = std::get<std::string>(args[0]);
-        const std::string scriptId = scriptIdOf(placeholders);
+        const std::string scriptId = Context::scriptIdOf(placeholders);
 
         const auto playerIt = placeholders.find(0);
         if (playerIt == placeholders.end())
@@ -38,7 +31,10 @@ namespace CommandBuiltin {
 
         const auto permission = ServiceProvider::getInstance().getService<sandbox::ScriptPermissionService>();
         if (!permission || !permission->gate().isCommandAllowed(scriptId, command))
-            return ll::makeStringError("Permission denied: mc::runCmd is not allowed for script '" + scriptId + "'");
+            return ll::makeStringError(
+                "Permission denied: mc::runCmd '" + command + "' is not allowed for script '" + scriptId +
+                "'. Add it to permission.json under scripts." + scriptId + ".commands.templates"
+            );
 
         CommandUtils::executeCommand(player.get(), command);
 

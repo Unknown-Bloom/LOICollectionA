@@ -365,6 +365,9 @@ form.show(func (result) -> void {
 
 ```
 
+> [!IMPORTANT]
+> `menu.lcui` 与 `shop.lcui` 中直接调用的 `mc::runCmd`、`GUIManager::value/request/callback` 等能力受 `plugins/LOICollectionA/gui/permission.json` 管控。修改脚本并新增这类调用后，请同步在 `permission.json` 的 `scripts.menu` / `scripts.shop` 下补充对应的命令模板（`commands.templates`）或 GUI id（`gui.values/requests/callbacks`），否则相关调用会被拒绝并记录错误日志。
+
 > [!TIP]
 > 除 Menu 与 Shop 外，其余模块（Blacklist、Mute、Cdk、Chat、Market、Notice、Pvp、Statistics、Tpa、Wallet、Language 等）的界面文件随插件内置在 `plugins/LOICollectionA/gui` 目录下（如 `blacklist.lcui`、`mute.lcui`）。它们随插件更新，不属于可编辑的配置文件，请勿直接修改。（如果需要修改，请深入学习 lcui 具体语法）
 

@@ -274,8 +274,11 @@
         "menu": {
             "enabled": true,
             "commands": {
-                "allow": false,
-                "templates": []
+                "allow": true,
+                "templates": [
+                    "say No permission",
+                    "say No score"
+                ]
             },
             "gui": {
                 "values": [],
@@ -355,8 +358,10 @@
         "shop": {
             "enabled": true,
             "commands": {
-                "allow": false,
-                "templates": []
+                "allow": true,
+                "templates": [
+                    "say No score"
+                ]
             },
             "gui": {
                 "values": [],

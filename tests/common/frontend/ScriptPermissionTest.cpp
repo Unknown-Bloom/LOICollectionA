@@ -148,4 +148,9 @@ TEST(ScriptPermissionTest, ProductionScriptIdsAllEnabled) {
 
     for (const std::string& id : kProductionScriptIds)
         EXPECT_TRUE(gate->isScriptEnabled(id)) << id;
+
+    EXPECT_TRUE(gate->isCommandAllowed("menu", "say No permission"));
+    EXPECT_TRUE(gate->isCommandAllowed("menu", "say No score"));
+    EXPECT_TRUE(gate->isCommandAllowed("shop", "say No score"));
+    EXPECT_FALSE(gate->isCommandAllowed("shop", "say Exit Shop"));
 }

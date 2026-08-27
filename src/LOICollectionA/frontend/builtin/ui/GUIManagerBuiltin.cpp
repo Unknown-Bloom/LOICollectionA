@@ -21,8 +21,7 @@ using namespace LOICollection::frontend;
 namespace GUIManagerBuiltin {
     namespace {
         std::string scriptIdOf(const CallbackTypePlaces& placeholders) {
-            const auto it = placeholders.find(Context::kScriptIdKey);
-            return it == placeholders.end() ? std::string{} : std::any_cast<std::string>(it->second);
+            return Context::scriptIdOf(placeholders);
         }
 
         std::shared_ptr<sandbox::ScriptPermissionService> permissionService() {
@@ -32,10 +31,14 @@ namespace GUIManagerBuiltin {
 
     ll::Expected<TypedValue> value(const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
         const std::string id = std::get<std::string>(args[0]);
+        const std::string scriptId = scriptIdOf(placeholders);
 
         const auto permission = permissionService();
-        if (!permission || !permission->gate().isGuiValueAllowed(scriptIdOf(placeholders), id))
-            return ll::makeStringError("Permission denied: GUIManager::value '" + id + "'");
+        if (!permission || !permission->gate().isGuiValueAllowed(scriptId, id))
+            return ll::makeStringError(
+                "Permission denied: GUIManager::value '" + id + "' is not allowed for script '" + scriptId +
+                "'. Add it to permission.json under scripts." + scriptId + ".gui.values"
+            );
 
         return GUIManager::getInstance().getValue(
             id,
@@ -45,10 +48,14 @@ namespace GUIManagerBuiltin {
 
     ll::Expected<TypedValue> request(const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
         const std::string id = std::get<std::string>(args[0]);
+        const std::string scriptId = scriptIdOf(placeholders);
 
         const auto permission = permissionService();
-        if (!permission || !permission->gate().isGuiRequestAllowed(scriptIdOf(placeholders), id))
-            return ll::makeStringError("Permission denied: GUIManager::request '" + id + "'");
+        if (!permission || !permission->gate().isGuiRequestAllowed(scriptId, id))
+            return ll::makeStringError(
+                "Permission denied: GUIManager::request '" + id + "' is not allowed for script '" + scriptId +
+                "'. Add it to permission.json under scripts." + scriptId + ".gui.requests"
+            );
 
         return GUIManager::getInstance().getRequest(
             id,
@@ -59,10 +66,14 @@ namespace GUIManagerBuiltin {
 
     ll::Expected<TypedValue> callback(const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
         const std::string id = std::get<std::string>(args[0]);
+        const std::string scriptId = scriptIdOf(placeholders);
 
         const auto permission = permissionService();
-        if (!permission || !permission->gate().isGuiCallbackAllowed(scriptIdOf(placeholders), id))
-            return ll::makeStringError("Permission denied: GUIManager::callback '" + id + "'");
+        if (!permission || !permission->gate().isGuiCallbackAllowed(scriptId, id))
+            return ll::makeStringError(
+                "Permission denied: GUIManager::callback '" + id + "' is not allowed for script '" + scriptId +
+                "'. Add it to permission.json under scripts." + scriptId + ".gui.callbacks"
+            );
 
         auto result = GUIManager::getInstance().getCallback(
             id,
@@ -77,9 +88,13 @@ namespace GUIManagerBuiltin {
     }
 
     ll::Expected<TypedValue> open(const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
+        const std::string scriptId = scriptIdOf(placeholders);
         const auto permission = permissionService();
-        if (!permission || !permission->gate().isGuiNavigationAllowed(scriptIdOf(placeholders)))
-            return ll::makeStringError("Permission denied: GUIManager::open");
+        if (!permission || !permission->gate().isGuiNavigationAllowed(scriptId))
+            return ll::makeStringError(
+                "Permission denied: GUIManager::open is not allowed for script '" + scriptId +
+                "'. Set scripts." + scriptId + ".enabled to true in permission.json"
+            );
 
         auto result = GUIManager::getInstance().open(
             std::get<std::string>(args[0]),
@@ -96,9 +111,13 @@ namespace GUIManagerBuiltin {
     }
 
     ll::Expected<TypedValue> switchTo(const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
+        const std::string scriptId = scriptIdOf(placeholders);
         const auto permission = permissionService();
-        if (!permission || !permission->gate().isGuiNavigationAllowed(scriptIdOf(placeholders)))
-            return ll::makeStringError("Permission denied: GUIManager::switchTo");
+        if (!permission || !permission->gate().isGuiNavigationAllowed(scriptId))
+            return ll::makeStringError(
+                "Permission denied: GUIManager::switchTo is not allowed for script '" + scriptId +
+                "'. Set scripts." + scriptId + ".enabled to true in permission.json"
+            );
 
         ll::Expected<void> result;
 
