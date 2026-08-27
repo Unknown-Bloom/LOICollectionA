@@ -11,7 +11,6 @@
 #include <nlohmann/json.hpp>
 
 namespace LOICollection::frontend::sandbox {
-
     namespace Config {
         struct C_ScriptCommandPermission {
             bool allow = false;
@@ -30,21 +29,12 @@ namespace LOICollection::frontend::sandbox {
             C_ScriptGuiPermission gui;
         };
 
-        // Mirrors `assets/common/gui/permission.json`.
         struct C_ScriptPermission {
             std::string defaultPolicy = "deny";
             std::unordered_map<std::string, C_ScriptPermissionEntry> scripts;
         };
     }
 
-    // Per-script authorization for host capabilities (`mc::runCmd` and the
-    // `GUIManager::{value,request,callback}` business callbacks).  The
-    // script id is the file name relative to the `gui` directory, e.g.
-    // `"wallet.lcui"`.
-    //
-    // Note: per the design, `mc::runCmd` keeps its highest server-side
-    // permission level when a command template matches; this gate only decides
-    // *whether* a script may run a command and *which* commands it may run.
     class PermissionGate {
     public:
         PermissionGate() = default;
@@ -75,7 +65,7 @@ namespace LOICollection::frontend::sandbox {
             if (!entry->enabled || !entry->commands.allow)
                 return false;
             if (entry->commands.templates.empty())
-                return true;   // allow = true with no templates means "any command"
+                return true;
 
             const std::string resolved = replacePlayer(command, playerName);
             for (const auto& template_ : entry->commands.templates) {
@@ -98,8 +88,6 @@ namespace LOICollection::frontend::sandbox {
             return isGuiIdAllowed(scriptId, id, &Config::C_ScriptGuiPermission::callbacks);
         }
 
-        // Form navigation (`open` / `switchTo`) is low-risk and stays allowed by
-        // default unless the script is disabled or denied.
         [[nodiscard]] bool isGuiNavigationAllowed(const std::string& scriptId) const {
             return isScriptEnabled(scriptId);
         }
@@ -184,15 +172,12 @@ namespace LOICollection::frontend::sandbox {
         }
     };
 
-    // Process-wide permission gate consumed by the builtins.  Defaults to
-    // deny-all; the embedding application installs the parsed permission.json
-    // through setPermissionGate() before running scripts.
-    inline PermissionGate& permissionGate() {
-        static PermissionGate gate;
-        return gate;
-    }
+    class ScriptPermissionService {
+    public:
+        void setGate(PermissionGate gate) { mGate = std::move(gate); }
+        [[nodiscard]] const PermissionGate& gate() const { return mGate; }
 
-    inline void setPermissionGate(PermissionGate gate) {
-        permissionGate() = std::move(gate);
-    }
+    private:
+        PermissionGate mGate;
+    };
 }

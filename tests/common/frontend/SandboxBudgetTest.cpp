@@ -84,8 +84,6 @@ TEST(SandboxBudgetTest, ArrayElementLimit) {
     SandboxBudget budget;
     budget.maxArrayElements = 3;
 
-    // `n` is a runtime value (a native call result), so the literal cannot be
-    // constant-folded and the runtime MAKE_ARRAY path is exercised.
     const RunResult result = runWithBudget("n = string::length(\"abc\"); [n, n, n, n]", budget);
 
     EXPECT_TRUE(result.hasErrors);

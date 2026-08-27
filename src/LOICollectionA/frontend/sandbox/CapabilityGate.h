@@ -3,11 +3,10 @@
 #include <set>
 
 namespace LOICollection::frontend::sandbox {
-
     enum class ScriptTrustLevel {
-        Builtin,   // shipped with the plugin / developer-signed
-        Admin,     // written by an administrator
-        User,      // uploaded by players (most restricted)
+        Builtin,
+        Admin,
+        User,
     };
 
     enum class Capability {
@@ -22,8 +21,6 @@ namespace LOICollection::frontend::sandbox {
         Filesystem,
     };
 
-    // deny-by-default capability gate.  A script instance carries a set of
-    // granted capabilities; builtin call sites consult it before dispatch.
     class CapabilityGate {
     public:
         CapabilityGate() = default;
@@ -32,12 +29,6 @@ namespace LOICollection::frontend::sandbox {
         static CapabilityGate forTrustLevel(ScriptTrustLevel level) {
             switch (level) {
                 case ScriptTrustLevel::Builtin:
-                    return CapabilityGate({
-                        Capability::GuiRead, Capability::GuiWrite,
-                        Capability::ServerCommand,
-                        Capability::PlayerDataRead, Capability::PlayerDataWrite,
-                        Capability::StorageRead, Capability::StorageWrite,
-                    });
                 case ScriptTrustLevel::Admin:
                     return CapabilityGate({
                         Capability::GuiRead, Capability::GuiWrite,

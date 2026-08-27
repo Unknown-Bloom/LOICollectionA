@@ -1,9 +1,12 @@
 #include <any>
+#include <memory>
 #include <string>
 
 #include <ll/api/Expected.h>
 
 #include "LOICollectionA/include/form/GUIManager.h"
+
+#include "LOICollectionA/base/ServiceProvider.h"
 
 #include "LOICollectionA/frontend/Callback.h"
 #include "LOICollectionA/frontend/Context.h"
@@ -21,12 +24,17 @@ namespace GUIManagerBuiltin {
             const auto it = placeholders.find(Context::kScriptIdKey);
             return it == placeholders.end() ? std::string{} : std::any_cast<std::string>(it->second);
         }
+
+        std::shared_ptr<sandbox::ScriptPermissionService> permissionService() {
+            return ServiceProvider::getInstance().getService<sandbox::ScriptPermissionService>();
+        }
     }
 
     ll::Expected<TypedValue> value(const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
         const std::string id = std::get<std::string>(args[0]);
 
-        if (!sandbox::permissionGate().isGuiValueAllowed(scriptIdOf(placeholders), id))
+        const auto permission = permissionService();
+        if (!permission || !permission->gate().isGuiValueAllowed(scriptIdOf(placeholders), id))
             return ll::makeStringError("Permission denied: GUIManager::value '" + id + "'");
 
         return GUIManager::getInstance().getValue(
@@ -38,7 +46,8 @@ namespace GUIManagerBuiltin {
     ll::Expected<TypedValue> request(const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
         const std::string id = std::get<std::string>(args[0]);
 
-        if (!sandbox::permissionGate().isGuiRequestAllowed(scriptIdOf(placeholders), id))
+        const auto permission = permissionService();
+        if (!permission || !permission->gate().isGuiRequestAllowed(scriptIdOf(placeholders), id))
             return ll::makeStringError("Permission denied: GUIManager::request '" + id + "'");
 
         return GUIManager::getInstance().getRequest(
@@ -51,7 +60,8 @@ namespace GUIManagerBuiltin {
     ll::Expected<TypedValue> callback(const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
         const std::string id = std::get<std::string>(args[0]);
 
-        if (!sandbox::permissionGate().isGuiCallbackAllowed(scriptIdOf(placeholders), id))
+        const auto permission = permissionService();
+        if (!permission || !permission->gate().isGuiCallbackAllowed(scriptIdOf(placeholders), id))
             return ll::makeStringError("Permission denied: GUIManager::callback '" + id + "'");
 
         auto result = GUIManager::getInstance().getCallback(
@@ -67,7 +77,8 @@ namespace GUIManagerBuiltin {
     }
 
     ll::Expected<TypedValue> open(const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
-        if (!sandbox::permissionGate().isGuiNavigationAllowed(scriptIdOf(placeholders)))
+        const auto permission = permissionService();
+        if (!permission || !permission->gate().isGuiNavigationAllowed(scriptIdOf(placeholders)))
             return ll::makeStringError("Permission denied: GUIManager::open");
 
         auto result = GUIManager::getInstance().open(
@@ -85,7 +96,8 @@ namespace GUIManagerBuiltin {
     }
 
     ll::Expected<TypedValue> switchTo(const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
-        if (!sandbox::permissionGate().isGuiNavigationAllowed(scriptIdOf(placeholders)))
+        const auto permission = permissionService();
+        if (!permission || !permission->gate().isGuiNavigationAllowed(scriptIdOf(placeholders)))
             return ll::makeStringError("Permission denied: GUIManager::switchTo");
 
         ll::Expected<void> result;

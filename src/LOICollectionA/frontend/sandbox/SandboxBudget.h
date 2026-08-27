@@ -4,22 +4,16 @@
 #include <cstddef>
 
 namespace LOICollection::frontend::sandbox {
-
-    // Per-execution resource budget.  The VM consults this struct every
-    // iteration of its main loop; exceeding any limit aborts the run with a
-    // diagnostic instead of letting a hostile script pin the host.
     struct SandboxBudget {
-        // --- configurable limits ---
         std::size_t maxInstructions = 1'000'000;
         std::chrono::milliseconds maxWallTime{ 1000 };
         std::size_t maxFrames = 256;
         std::size_t maxNativeCalls = 100'000;
         std::size_t maxObjectCount = 100'000;
         std::size_t maxArrayElements = 100'000;
-        std::size_t maxStringBytes = 1 << 20;   // 1 MiB per string
-        std::size_t maxTotalBytes = 64 << 20;   // 64 MiB, best-effort estimate
+        std::size_t maxStringBytes = 1 << 20;
+        std::size_t maxTotalBytes = 64 << 20;
 
-        // --- runtime accounting (reset by reset()) ---
         std::chrono::steady_clock::time_point startTime{};
         std::size_t executedInstructions = 0;
         std::size_t nativeCallCount = 0;
@@ -45,9 +39,6 @@ namespace LOICollection::frontend::sandbox {
             TotalByteLimit,
         };
 
-        // Advance the instruction counter and, every 1024 instructions, sample
-        // the wall clock.  Sampling is throttled so the steady_clock call stays
-        // off the hot path.
         Violation tickInstruction() {
             if (++executedInstructions > maxInstructions)
                 return Violation::InstructionLimit;
@@ -71,7 +62,7 @@ namespace LOICollection::frontend::sandbox {
             if (elementCount > maxArrayElements)
                 return Violation::ArrayElementLimit;
 
-            allocatedBytes += elementCount * 16;   // rough per-element estimate
+            allocatedBytes += elementCount * 16;
             return allocatedBytes > maxTotalBytes ? Violation::TotalByteLimit : Violation::None;
         }
 

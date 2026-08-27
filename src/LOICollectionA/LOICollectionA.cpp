@@ -3,6 +3,8 @@
 #include <memory>
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 
 #include <ll/api/Config.h>
 #include <ll/api/io/Logger.h>
@@ -22,6 +24,8 @@
 
 #include "LOICollectionA/base/Wrapper.h"
 #include "LOICollectionA/base/ServiceProvider.h"
+
+#include "LOICollectionA/frontend/sandbox/ScriptPermission.h"
 
 #include "LOICollectionA/ConfigPlugin.h"
 
@@ -82,6 +86,24 @@ namespace LOICollection {
         ServiceProvider::getInstance().registerInstance<std::string>(std::make_shared<std::string>(guiFilePath.string()), "GuiPath");
         ServiceProvider::getInstance().registerInstance<std::string>(std::make_shared<std::string>(configDataPath.string()), "ConfigPath");
         ServiceProvider::getInstance().registerInstance<SQLiteStorage>(std::make_shared<SQLiteStorage>((dataFilePath / "settings.db").string()), "SettingsDB");
+
+        {
+            auto permission = std::make_shared<frontend::sandbox::ScriptPermissionService>();
+            const std::filesystem::path permissionPath = this->mSelf.getModDir() / this->config.ScriptPermission.PermissionFilePath;
+
+            if (std::filesystem::exists(permissionPath)) {
+                std::ifstream stream(permissionPath);
+                const std::string json((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+
+                std::string error;
+                if (auto gate = frontend::sandbox::PermissionGate::fromJson(json, error))
+                    permission->setGate(std::move(*gate));
+                else
+                    logger.error("Failed to parse script permission: {}", error);
+            }
+
+            ServiceProvider::getInstance().registerInstance(permission);
+        }
 
         std::vector<std::string> mMods = modules::ModManager::getInstance().mods();
         std::for_each(mMods.begin(), mMods.end(), [&logger](const std::string& mod) -> void {

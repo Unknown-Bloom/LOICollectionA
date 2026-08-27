@@ -5,6 +5,8 @@
 
 #include <mc/world/actor/player/Player.h>
 
+#include "LOICollectionA/base/ServiceProvider.h"
+
 #include "LOICollectionA/frontend/Callback.h"
 #include "LOICollectionA/frontend/Context.h"
 
@@ -30,12 +32,10 @@ namespace CommandBuiltin {
 
         std::reference_wrapper<Player> player = std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0));
 
-        if (!sandbox::permissionGate().isCommandAllowed(scriptId, command, std::string(player.get().mName)))
+        const auto permission = ServiceProvider::getInstance().getService<sandbox::ScriptPermissionService>();
+        if (!permission || !permission->gate().isCommandAllowed(scriptId, command, std::string(player.get().mName)))
             return ll::makeStringError("Permission denied: mc::runCmd is not allowed for script '" + scriptId + "'");
 
-        // The host executes the command with the highest server-side permission
-        // level (unchanged); the gate above only decides whether this script may
-        // issue the command, and which commands it may run.
         CommandUtils::executeCommand(player.get(), command);
 
         return TypedValue{};

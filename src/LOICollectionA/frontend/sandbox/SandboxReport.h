@@ -6,8 +6,6 @@
 #include "LOICollectionA/frontend/sandbox/SandboxBudget.h"
 
 namespace LOICollection::frontend::sandbox {
-
-    // Post-run summary returned to the host for observability / auditing.
     struct SandboxReport {
         std::size_t executedInstructions = 0;
         std::size_t nativeCallCount = 0;
