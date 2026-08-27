@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 #include <functional>
@@ -9,8 +10,10 @@
 
 #include "LOICollectionA/frontend/Callback.h"
 #include "LOICollectionA/frontend/Context.h"
-#include "LOICollectionA/frontend/ir/ByteCode.h"
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
+#include "LOICollectionA/frontend/ir/ByteCode.h"
+#include "LOICollectionA/frontend/sandbox/SandboxBudget.h"
+#include "LOICollectionA/frontend/sandbox/SandboxReport.h"
 
 namespace LOICollection::frontend::ir {
     class VM {
@@ -21,6 +24,10 @@ namespace LOICollection::frontend::ir {
             const std::shared_ptr<const BytecodeChunk>& chunk,
             const Context& ctx
         );
+
+        LOICOLLECTION_A_API   void setBudget(const sandbox::SandboxBudget& budget) { *mBudget = budget; }
+        [[nodiscard]] LOICOLLECTION_A_NDAPI const sandbox::SandboxBudget& budget() const { return *mBudget; }
+        [[nodiscard]] LOICOLLECTION_A_NDAPI const sandbox::SandboxReport& report() const { return mReport; }
 
         LOICOLLECTION_A_NDAPI static ValueNode::ValueType callFunctionRef(
             const FunctionRefPtr& func,
@@ -55,6 +62,9 @@ namespace LOICollection::frontend::ir {
         DiagnosticEngine& diagnostics;
         SourceLocation currentLoc;
 
+        sandbox::SandboxReport mReport;
+        std::shared_ptr<sandbox::SandboxBudget> mBudget = std::make_shared<sandbox::SandboxBudget>();
+
         std::vector<Frame> frames;
         std::vector<ValueNode::ValueType> stack;
         std::unordered_map<std::string, ValueNode::ValueType> variables;
@@ -85,8 +95,5 @@ namespace LOICollection::frontend::ir {
         [[nodiscard]] bool isDerived(const BytecodeChunk& chunk, int derivedClassIndex, int baseClassIndex) const;
 
         [[nodiscard]] static ValueNode::ValueType cloneValue(const ValueNode::ValueType& val);
-
-        static constexpr size_t MAX_INSTRUCTIONS = 1'000'000;
-        static constexpr size_t MAX_FRAMES = 256;
     };
 }

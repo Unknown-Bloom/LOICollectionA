@@ -54,7 +54,6 @@ namespace MapClass {
                 keys->elements.push_back(key);
 
             self->fields["keys"] = keys;
-            self->fields["length"] = static_cast<int>(handle.entries.size());
         }
     }
 
@@ -108,6 +107,10 @@ namespace MapClass {
         );
     }
 
+    ll::Expected<TypedValue> length(const ObjectRef& self, const CallbackTypeValues&) {
+        return static_cast<int>(handleOf(self).entries.size());
+    }
+
     ll::Expected<TypedValue> remove(const ObjectRef& self, const CallbackTypeValues& args) {
         auto& handle = handleOf(self);
 
@@ -128,8 +131,9 @@ namespace MapClass {
     void registerClasses(const std::string&) {
         ClassCall& classes = ClassCall::getInstance();
 
-        classes.registerClass("Map", { "keys", "length" });
+        classes.registerClass("Map", { "keys" });
         classes.registerConstructor("Map", makeMap, {});
+        classes.registerMethod("Map", "length", length, {});
 
         for (ParamType key : { ParamType::INT, ParamType::FLOAT, ParamType::STRING, ParamType::BOOL }) {
             classes.registerMethod("Map", "get", get, { key });

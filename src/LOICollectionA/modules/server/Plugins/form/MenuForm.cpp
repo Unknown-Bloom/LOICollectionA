@@ -54,6 +54,7 @@ namespace LOICollection::server::Plugins {
         auto& player = std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0)).get();
 
         auto handle = std::make_shared<MenuFormHandle>();
+        handle->scriptId = Context::scriptIdOf(placeholders);
         handle->base = std::make_unique<ll::ui::CustomForm>(player, *title);
         handle->makeResult = [handle]() -> ObjectRef {
             return makeMenuFormResult(handle);

@@ -14,6 +14,37 @@
 #include "LOICollectionA/frontend/ir/VM.h"
 
 namespace LOICollection::frontend {
+    inline std::shared_ptr<ir::BytecodeChunk> compile(const std::string& input, DiagnosticEngine& diagnostics) {
+        Lexer lexer(input, diagnostics);
+        Parser parser(lexer, diagnostics);
+
+        auto ast = parser.parse();
+        if (diagnostics.hasErrors())
+            return nullptr;
+
+        if (ast && ast->getType() == ASTNode::Type::Program) {
+            if (!ComponentExpander::expand(static_cast<ProgramNode&>(*ast), diagnostics))
+                return nullptr;
+            if (diagnostics.hasErrors())
+                return nullptr;
+
+            SemanticAnalyzer analyzer(diagnostics);
+            analyzer.analyze(static_cast<ProgramNode&>(*ast));
+            if (diagnostics.hasErrors())
+                return nullptr;
+        }
+
+        ir::Compiler compiler(diagnostics);
+        auto bytecode = std::make_shared<ir::BytecodeChunk>(compiler.compile(*ast));
+        if (diagnostics.hasErrors())
+            return nullptr;
+
+        ir::Optimizer optimizer;
+        optimizer.optimize(*bytecode);
+
+        return bytecode;
+    }
+
     inline std::string eval(const std::string& input, const Context& ctx = {}) {
         DiagnosticEngine diagnostics;
 

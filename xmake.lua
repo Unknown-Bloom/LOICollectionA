@@ -91,6 +91,7 @@ target("LOICollectionA")
         
         add_files("tests/**.cpp")
         add_includedirs("tests")
+        add_defines('LOICOLLECTION_A_PERMISSION_JSON="' .. os.projectdir():gsub("\\", "/") .. '/assets/common/gui/permission.json"')
     elseif is_mode("release") then
         add_defines("NDEBUG")
     end

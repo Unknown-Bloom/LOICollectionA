@@ -104,6 +104,10 @@ namespace ArrayClass {
         }
     }
 
+    ll::Expected<TypedValue> length(const TypedValue& self, const CallbackTypeValues&) {
+        return static_cast<int>(std::get<ArrayRef>(self)->elements.size());
+    }
+
     ll::Expected<TypedValue> push(const TypedValue& self, const CallbackTypeValues& args) {
         auto arr = std::get<ArrayRef>(self);
         arr->elements.push_back(args[0]);
@@ -231,6 +235,7 @@ namespace ArrayClass {
         }
 
         classes.registerValueMethod("Array", "pop", pop, {});
+        classes.registerValueMethod("Array", "length", length, {});
         classes.registerValueMethod("Array", "join", join, { ParamType::STRING });
         classes.registerValueMethod("Array", "slice", slice, { ParamType::INT, ParamType::INT });
         classes.registerValueMethod("Array", "sort", sort, {});

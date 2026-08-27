@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <memory>
+#include <string>
 
 #include <ll/api/ui/form/CustomForm.h>
 #include <ll/api/ui/form/MessageBox.h>
@@ -22,6 +23,7 @@ namespace ScriptFormClass {
         std::function<void(Player&)> onClosed;
         std::function<void(const ll::ui::MessageBox::Result&)> onBoxResult;
 
+        std::string scriptId;
         bool pendingSubflow = false;
     };
 }

@@ -32,6 +32,17 @@
 #include "LOICollectionA/frontend/builtin/ui/form/ScriptFormClass.h"
 
 #include "LOICollectionA/include/form/GUIManager.h"
+#include "LOICollectionA/base/ServiceProvider.h"
+#include "LOICollectionA/frontend/sandbox/ScriptPermission.h"
+
+namespace {
+    void warnIfMissingPermission(const std::string& id) {
+        const auto permission = ServiceProvider::getInstance().getService<LOICollection::frontend::sandbox::ScriptPermissionService>();
+        if (permission && !permission->gate().hasEntry(id))
+            ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA")
+                ->warn("script '{}' loaded without a permission entry — all capabilities denied", id);
+    }
+}
 
 namespace LOICollection::form {
     struct GUIManager::Impl {
@@ -102,6 +113,7 @@ namespace LOICollection::form {
         if (auto blob = this->readFile(cachePath); blob.has_value()) {
             if (auto chunk = frontend::ir::BytecodeSerializer::deserialize(blob.value(), header)) {
                 this->mImpl->cache.insert_or_assign(id, std::make_shared<frontend::ir::BytecodeChunk>(std::move(*chunk)));
+                warnIfMissingPermission(id);
                 return {};
             }
         }
@@ -131,6 +143,7 @@ namespace LOICollection::form {
         }
 
         this->mImpl->cache.insert_or_assign(id, bytecode);
+        warnIfMissingPermission(id);
 
         return {};
     }
@@ -143,7 +156,10 @@ namespace LOICollection::form {
         frontend::DiagnosticEngine diagnostics;
         frontend::ir::VM mVM(diagnostics);
 
-        auto result = mVM.run(it->second, {});
+        frontend::Context context;
+        context.scriptId = id;
+
+        auto result = mVM.run(it->second, context);
         if (diagnostics.hasErrors())
             return ll::makeStringError(diagnostics.getErrorMessage());
 
@@ -159,7 +175,10 @@ namespace LOICollection::form {
             auto cached = this->mImpl->cache.at(id);
 
             auto mCtx = ctx ? ctx : std::make_shared<frontend::ArrayValue>();
-            auto result = mVM.run(cached, { std::ref(player), mCtx });
+
+            frontend::Context context{ std::ref(player), mCtx };
+            context.scriptId = id;
+            auto result = mVM.run(cached, context);
             if (diagnostics.hasErrors())
                 return ll::makeStringError(diagnostics.getErrorMessage());
 
@@ -193,7 +212,10 @@ namespace LOICollection::form {
             auto cached = this->mImpl->cache.at(id);
 
             auto mCtx = ctx ? ctx : std::make_shared<frontend::ArrayValue>();
-            auto result = mVM.run(cached, { std::ref(player), mCtx });
+
+            frontend::Context context{ std::ref(player), mCtx };
+            context.scriptId = id;
+            auto result = mVM.run(cached, context);
             if (diagnostics.hasErrors())
                 return ll::makeStringError(diagnostics.getErrorMessage());
 
@@ -383,7 +405,9 @@ namespace LOICollection::form {
                 values.emplace_back(resultObj ? frontend::TypedValue(resultObj) : frontend::TypedValue{});
 
                 [[maybe_unused]] auto cbResult = frontend::ir::VM::callFunctionRef(
-                    handle->show, values, frontend::Context{ player }.params, diagnostics
+                    handle->show, values,
+                    frontend::Context::withScriptId(frontend::Context{ player }.params, handle->scriptId),
+                    diagnostics
                 );
 
                 if (diagnostics.hasErrors()) {

@@ -98,7 +98,9 @@ namespace LOICollection::server::Plugins {
         values.emplace_back(resultObj ? TypedValue(resultObj) : TypedValue{});
 
         [[maybe_unused]] auto cbResult = frontend::ir::VM::callFunctionRef(
-            handle->show, values, frontend::Context{ std::ref(player) }.params, diagnostics
+            handle->show, values,
+            frontend::Context::withScriptId(frontend::Context{ std::ref(player) }.params, handle->scriptId),
+            diagnostics
         );
 
         if (diagnostics.hasErrors()) {
@@ -251,6 +253,7 @@ namespace LOICollection::server::Plugins {
         auto& player = std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0)).get();
 
         auto handle = std::make_shared<ShopFormHandle>();
+        handle->scriptId = Context::scriptIdOf(placeholders);
         handle->data = hydrateShopData(dataObject);
         handle->dataObject = dataObject;
         handle->pageCount = std::max(1, (static_cast<int>(handle->data.items.size()) + handle->pageSize - 1) / handle->pageSize);

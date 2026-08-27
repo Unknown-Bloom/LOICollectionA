@@ -231,7 +231,7 @@ namespace LOICollection::frontend::ir {
             if (!reader.u64(line) || !reader.u64(column) || !reader.u64(offset))
                 return false;
 
-            if (op > static_cast<uint8_t>(OpCode::DUP_IS_NONE))
+            if (op > static_cast<uint8_t>(OpCode::LOAD_LEN))
                 return false;
 
             instr.op = static_cast<OpCode>(op);

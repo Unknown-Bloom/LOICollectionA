@@ -1,0 +1,447 @@
+{
+    "defaultPolicy": "deny",
+    "scripts": {
+        "blacklist": {
+            "enabled": true,
+            "commands": {
+                "allow": false,
+                "templates": []
+            },
+            "gui": {
+                "values": [
+                    "blacklist.blacklists",
+                    "blacklist.players"
+                ],
+                "requests": [
+                    "blacklist.info",
+                    "blacklist.online"
+                ],
+                "callbacks": [
+                    "blacklist.add",
+                    "blacklist.info.remove",
+                    "blacklist.remove",
+                    "blacklist.submit"
+                ]
+            }
+        },
+        "cdk": {
+            "enabled": true,
+            "commands": {
+                "allow": false,
+                "templates": []
+            },
+            "gui": {
+                "values": [
+                    "cdk.cdks",
+                    "cdk.inventory"
+                ],
+                "requests": [
+                    "cdk.info",
+                    "cdk.inventory.item",
+                    "cdk.inventory.slot"
+                ],
+                "callbacks": [
+                    "cdk.award.inventory.submit",
+                    "cdk.award.item.submit",
+                    "cdk.award.score.submit",
+                    "cdk.award.title.submit",
+                    "cdk.convert.submit",
+                    "cdk.new.submit",
+                    "cdk.remove"
+                ]
+            }
+        },
+        "chat": {
+            "enabled": true,
+            "commands": {
+                "allow": false,
+                "templates": []
+            },
+            "gui": {
+                "values": [
+                    "chat.blacklists",
+                    "chat.players",
+                    "chat.players.add",
+                    "chat.titles.self"
+                ],
+                "requests": [
+                    "chat.blacklist.add.submit",
+                    "chat.blacklist.check",
+                    "chat.blacklist.info",
+                    "chat.player.info",
+                    "chat.title.add",
+                    "chat.title.info",
+                    "chat.titles"
+                ],
+                "callbacks": [
+                    "chat.blacklist.remove",
+                    "chat.title.remove",
+                    "chat.title.set"
+                ]
+            }
+        },
+        "language": {
+            "enabled": true,
+            "commands": {
+                "allow": false,
+                "templates": []
+            },
+            "gui": {
+                "values": [
+                    "language.names"
+                ],
+                "requests": [],
+                "callbacks": [
+                    "language.callback"
+                ]
+            }
+        },
+        "market": {
+            "enabled": true,
+            "commands": {
+                "allow": false,
+                "templates": []
+            },
+            "gui": {
+                "values": [
+                    "market.blacklists",
+                    "market.buy.items",
+                    "market.my.items",
+                    "market.players",
+                    "market.sell.inventory"
+                ],
+                "requests": [
+                    "market.auction.enabled",
+                    "market.blacklist.add",
+                    "market.blacklist.check",
+                    "market.blacklist.info",
+                    "market.buy.id",
+                    "market.buy.submit",
+                    "market.isAdmin",
+                    "market.item.info",
+                    "market.item.offshelf",
+                    "market.item.offshelf.return",
+                    "market.my.item.id",
+                    "market.players.uuid",
+                    "market.quote.enabled",
+                    "market.sell.content.check",
+                    "market.sell.slot",
+                    "market.sell.submit",
+                    "market.store.enabled",
+                    "market.store.mine.has",
+                    "market.wanted.enabled"
+                ],
+                "callbacks": [
+                    "market.blacklist.remove",
+                    "market.trade.request"
+                ]
+            }
+        },
+        "market.auction": {
+            "enabled": true,
+            "commands": {
+                "allow": false,
+                "templates": []
+            },
+            "gui": {
+                "values": [
+                    "market.auction.items",
+                    "market.my.auction",
+                    "market.sell.inventory"
+                ],
+                "requests": [
+                    "market.auction.bid.submit",
+                    "market.auction.create.submit",
+                    "market.auction.duration.bounds",
+                    "market.auction.id",
+                    "market.auction.info",
+                    "market.auction.slot",
+                    "market.my.auction.id"
+                ],
+                "callbacks": []
+            }
+        },
+        "market.quote": {
+            "enabled": true,
+            "commands": {
+                "allow": false,
+                "templates": []
+            },
+            "gui": {
+                "values": [
+                    "market.quote.items"
+                ],
+                "requests": [
+                    "market.quote.id",
+                    "market.quote.info"
+                ],
+                "callbacks": []
+            }
+        },
+        "market.store": {
+            "enabled": true,
+            "commands": {
+                "allow": false,
+                "templates": []
+            },
+            "gui": {
+                "values": [
+                    "market.store.inventory",
+                    "market.store.list",
+                    "market.store.mine.items"
+                ],
+                "requests": [
+                    "market.isAdmin",
+                    "market.store.buy.submit",
+                    "market.store.create.cost",
+                    "market.store.create.submit",
+                    "market.store.dissolve.submit",
+                    "market.store.info",
+                    "market.store.item.id",
+                    "market.store.item.info",
+                    "market.store.item.list",
+                    "market.store.list.id",
+                    "market.store.mine.info",
+                    "market.store.mine.item.id",
+                    "market.store.offshelf.submit",
+                    "market.store.review.audit",
+                    "market.store.review.audit.info",
+                    "market.store.review.can",
+                    "market.store.review.enabled",
+                    "market.store.review.submit",
+                    "market.store.reviews",
+                    "market.store.reviews.pending",
+                    "market.store.reviews.pending.id",
+                    "market.store.sell.slot",
+                    "market.store.sell.submit",
+                    "market.store.upload.check"
+                ],
+                "callbacks": []
+            }
+        },
+        "market.trade": {
+            "enabled": true,
+            "commands": {
+                "allow": false,
+                "templates": []
+            },
+            "gui": {
+                "values": [
+                    "market.trade.items"
+                ],
+                "requests": [
+                    "market.self.uuid",
+                    "market.trade.confirm.info",
+                    "market.trade.item.info",
+                    "market.trade.request.accept",
+                    "market.trade.request.info",
+                    "market.trade.slot"
+                ],
+                "callbacks": [
+                    "market.trade.accept",
+                    "market.trade.cancel",
+                    "market.trade.item",
+                    "market.trade.item.submit",
+                    "market.trade.open.content",
+                    "market.trade.request.reject"
+                ]
+            }
+        },
+        "market.wanted": {
+            "enabled": true,
+            "commands": {
+                "allow": false,
+                "templates": []
+            },
+            "gui": {
+                "values": [
+                    "market.my.wanted",
+                    "market.sell.inventory",
+                    "market.wanted.items"
+                ],
+                "requests": [
+                    "market.my.wanted.id",
+                    "market.wanted.cancel.submit",
+                    "market.wanted.create.submit",
+                    "market.wanted.fill.submit",
+                    "market.wanted.id",
+                    "market.wanted.info",
+                    "market.wanted.slot"
+                ],
+                "callbacks": []
+            }
+        },
+        "menu": {
+            "enabled": true,
+            "commands": {
+                "allow": true,
+                "templates": [
+                    "say No permission",
+                    "say No score"
+                ]
+            },
+            "gui": {
+                "values": [],
+                "requests": [],
+                "callbacks": []
+            }
+        },
+        "mute": {
+            "enabled": true,
+            "commands": {
+                "allow": false,
+                "templates": []
+            },
+            "gui": {
+                "values": [
+                    "mute.mutes",
+                    "mute.players"
+                ],
+                "requests": [
+                    "mute.info",
+                    "mute.online"
+                ],
+                "callbacks": [
+                    "mute.add",
+                    "mute.info.remove",
+                    "mute.remove",
+                    "mute.submit"
+                ]
+            }
+        },
+        "notice": {
+            "enabled": true,
+            "commands": {
+                "allow": false,
+                "templates": []
+            },
+            "gui": {
+                "values": [
+                    "notice.close",
+                    "notice.keys",
+                    "notice.names"
+                ],
+                "requests": [
+                    "notice.auto",
+                    "notice.content.data",
+                    "notice.line.data",
+                    "notice.lines",
+                    "notice.view"
+                ],
+                "callbacks": [
+                    "notice.add.submit",
+                    "notice.content.save",
+                    "notice.line.add",
+                    "notice.line.remove",
+                    "notice.line.save",
+                    "notice.remove",
+                    "notice.setting.save"
+                ]
+            }
+        },
+        "pvp": {
+            "enabled": true,
+            "commands": {
+                "allow": false,
+                "templates": []
+            },
+            "gui": {
+                "values": [
+                    "pvp.isEnable"
+                ],
+                "requests": [],
+                "callbacks": [
+                    "pvp.enable"
+                ]
+            }
+        },
+        "shop": {
+            "enabled": true,
+            "commands": {
+                "allow": true,
+                "templates": [
+                    "say No score"
+                ]
+            },
+            "gui": {
+                "values": [],
+                "requests": [],
+                "callbacks": []
+            }
+        },
+        "statistics": {
+            "enabled": true,
+            "commands": {
+                "allow": false,
+                "templates": []
+            },
+            "gui": {
+                "values": [
+                    "statistics.names"
+                ],
+                "requests": [
+                    "statistics.ranking"
+                ],
+                "callbacks": []
+            }
+        },
+        "tpa": {
+            "enabled": true,
+            "commands": {
+                "allow": false,
+                "templates": []
+            },
+            "gui": {
+                "values": [
+                    "tpa.blacklists",
+                    "tpa.invite",
+                    "tpa.players",
+                    "tpa.players.add",
+                    "tpa.types"
+                ],
+                "requests": [
+                    "tpa.blacklist.add.submit",
+                    "tpa.blacklist.check",
+                    "tpa.blacklist.info",
+                    "tpa.content.submit",
+                    "tpa.invite.info",
+                    "tpa.player.info"
+                ],
+                "callbacks": [
+                    "tpa.blacklist.remove",
+                    "tpa.invite.response",
+                    "tpa.invite.save"
+                ]
+            }
+        },
+        "wallet": {
+            "enabled": true,
+            "commands": {
+                "allow": false,
+                "templates": []
+            },
+            "gui": {
+                "values": [
+                    "wallet.history",
+                    "wallet.players.offline",
+                    "wallet.players.online",
+                    "wallet.rank"
+                ],
+                "requests": [
+                    "wallet.bank.deposit",
+                    "wallet.bank.info",
+                    "wallet.bank.withdraw",
+                    "wallet.info",
+                    "wallet.rank.self",
+                    "wallet.redenvelope.submit",
+                    "wallet.transfer.info",
+                    "wallet.transfer.submit"
+                ],
+                "callbacks": [
+                    "wallet.transfer.confirm",
+                    "wallet.wealth"
+                ]
+            }
+        }
+    }
+}

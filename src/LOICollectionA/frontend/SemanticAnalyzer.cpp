@@ -1229,17 +1229,11 @@ namespace LOICollection::frontend {
             targetType = *targetType.optionalInner;
 
         if (targetType.kind == TypeKind::Array) {
-            if (node.memberName == "length")
-                return { TypeKind::Int };
-
             diagnostics.addError(node.loc, "Array has no member '" + node.memberName + "'");
             return {};
         }
 
         if (targetType.kind == TypeKind::String) {
-            if (node.memberName == "length")
-                return { TypeKind::Int };
-
             diagnostics.addError(node.loc, "String has no member '" + node.memberName + "'");
             return {};
         }

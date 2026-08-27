@@ -299,11 +299,16 @@ namespace Config {
         C_ServerProtableTool ProtableTool;
     };
 
+    struct C_ScriptPermission {
+        std::string PermissionFilePath = "gui/permission.json";
+    };
+
     struct C_Config {
         int version = 0;
         std::string ConsoleLanguage = "system";
         
         C_ServerConfig ServerConfig;
+        C_ScriptPermission ScriptPermission;
     };
     
     std::string GetVersion();

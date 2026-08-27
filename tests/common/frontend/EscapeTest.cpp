@@ -28,5 +28,5 @@ TEST(EscapeTest, UnknownEscapeStaysLiteral) {
 }
 
 TEST(EscapeTest, EscapeInsideLargerProgram) {
-    EXPECT_EQ(eval("s = \"line1\\nline2\"; s.length"), "11");
+    EXPECT_EQ(eval("s = \"line1\\nline2\"; s.length()"), "11");
 }
