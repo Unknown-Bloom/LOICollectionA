@@ -12,6 +12,7 @@ namespace CustomFormClass {
         std::unique_ptr<ll::ui::CustomForm> base;
 
         LOICollection::frontend::FunctionRefPtr show;
+        std::string scriptId;
     };
 
     void registerClasses(const std::string& name);

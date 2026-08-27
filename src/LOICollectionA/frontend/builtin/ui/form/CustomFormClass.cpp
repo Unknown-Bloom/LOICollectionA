@@ -38,6 +38,7 @@ namespace CustomFormClass {
         std::reference_wrapper<Player> player = std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0));
 
         auto handle = std::make_shared<CustomFormHandle>();
+        handle->scriptId = Context::scriptIdOf(placeholders);
         handle->base = std::make_unique<ll::ui::CustomForm>(player, *title);
 
         LOICollection::form::GUIManager::getInstance().registerCustomFormUI(std::get<std::string>(args[0]), handle, player);

@@ -12,6 +12,7 @@ namespace MessageBoxClass {
         std::unique_ptr<ll::ui::MessageBox> base;
 
         LOICollection::frontend::FunctionRefPtr show;
+        std::string scriptId;
     };
 
     void registerClasses(const std::string& name);

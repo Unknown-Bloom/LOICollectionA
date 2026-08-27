@@ -280,6 +280,56 @@
 > [!TIP]
 > 通常情况下，您不需要手动修改数据文件，因为在使用 `LOICollectionA` 的过程中，大部分数据文件都存在内部编辑器。从 1.15.0 起，Menu 与 Shop 改为直接编辑 lcui 数据文件，不再提供游戏内编辑器。
 
+### permission.json（gui 目录）
+
+`permission.json` 是脚本能力授权文件，位于 `plugins/LOICollectionA/gui/` 目录。它控制每个脚本允许调用的敏感能力：命令执行（`mc::runCmd`）与业务读写（`GUIManager::value/request/callback`）。
+
+> [!IMPORTANT]
+> 授权采用默认拒绝（`defaultPolicy: "deny"`）策略。脚本与授权分离：修改脚本（尤其是 `menu.lcui` / `shop.lcui`）新增能力调用后，必须同步修改 `permission.json`，否则对应调用会被拒绝并记录错误日志。
+
+| 字段 | 类型 | 说明 |
+| ---- | ---- | ---- |
+| `defaultPolicy` | string | 未在 `scripts` 中列出的脚本的默认策略，`"deny"`（拒绝）或 `"allow"`（放行），建议保持 `"deny"` |
+| `scripts.<id>` | object | 脚本授权条目，`<id>` 为脚本短 id（如 `wallet`、`market.auction`、`menu`） |
+| `scripts.<id>.enabled` | boolean | 是否允许打开该脚本 |
+| `scripts.<id>.commands.allow` | boolean | 是否允许 `mc::runCmd` |
+| `scripts.<id>.commands.templates` | string[] | 允许执行的命令白名单（原文精确匹配），为空时即使 `allow` 为 `true` 也拒绝 |
+| `scripts.<id>.gui.values` | string[] | 允许的 `GUIManager::value` id 白名单 |
+| `scripts.<id>.gui.requests` | string[] | 允许的 `GUIManager::request` id 白名单 |
+| `scripts.<id>.gui.callbacks` | string[] | 允许的 `GUIManager::callback` id 白名单 |
+
+```json
+{
+    "defaultPolicy": "deny",
+    "scripts": {
+        "menu": {
+            "enabled": true,
+            "commands": {
+                "allow": true,
+                "templates": ["say No permission", "say No score"]
+            },
+            "gui": {
+                "values": [],
+                "requests": [],
+                "callbacks": []
+            }
+        },
+        "wallet": {
+            "enabled": true,
+            "commands": { "allow": false, "templates": [] },
+            "gui": {
+                "values": ["wallet.players.online", "wallet.rank"],
+                "requests": ["wallet.info", "wallet.transfer.submit"],
+                "callbacks": ["wallet.wealth", "wallet.transfer.confirm"]
+            }
+        }
+    }
+}
+```
+
+> [!TIP]
+> 内置脚本（`blacklist`、`wallet` 等）的授权随插件更新自动维护；`menu` / `shop` 是您自行编写的脚本，其授权需要您根据脚本内实际调用的命令与 GUI id 手动同步。
+
 ### menu.lcui（config 目录）
 
 > 从 LOICollectionA 1.15.0 起，Menu 不再读取 `menu.json`。请在 `plugins/LOICollectionA/config` 目录下自行创建 `menu.lcui`，在文件内直接定义 `MenuData` 并使用 `MenuForm` 打开。表单 ID 对应 `/menu gui <Id>` 中传入的 Id。

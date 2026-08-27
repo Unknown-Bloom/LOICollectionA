@@ -45,6 +45,7 @@ namespace PaginatedFormClass {
 
         LOICollection::frontend::FunctionRefPtr show;
         std::unique_ptr<ll::ui::CustomForm> base;
+        std::string scriptId;
     };
 
     void refreshPage(const std::shared_ptr<PaginatedFormHandle>& form);
