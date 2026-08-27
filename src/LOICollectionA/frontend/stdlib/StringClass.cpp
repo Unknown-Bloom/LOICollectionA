@@ -11,6 +11,10 @@
 using namespace LOICollection::frontend;
 
 namespace StringClass {
+    ll::Expected<TypedValue> length(const TypedValue& self, const CallbackTypeValues&) {
+        return static_cast<int>(std::get<std::string>(self).size());
+    }
+
     ll::Expected<TypedValue> split(const TypedValue& self, const CallbackTypeValues& args) {
         const std::string& text = std::get<std::string>(self);
         const std::string& separator = std::get<std::string>(args[0]);
@@ -94,6 +98,7 @@ namespace StringClass {
 
         classes.registerClass("String", {});
 
+        classes.registerValueMethod("String", "length", length, {});
         classes.registerValueMethod("String", "split", split, { ParamType::STRING });
         classes.registerValueMethod("String", "contains", contains, { ParamType::STRING });
         classes.registerValueMethod("String", "startsWith", startsWith, { ParamType::STRING });

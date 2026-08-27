@@ -289,8 +289,7 @@ namespace LOICollection::frontend::ir {
 
         this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
         this->current.get().emit(OpCode::LOAD_VAR, seqIdx, node.loc);
-        int lengthIdx = this->addConstant(std::string("length"));
-        this->current.get().emit(OpCode::LOAD_FIELD, lengthIdx, node.loc);
+        this->current.get().emit(OpCode::LOAD_LEN, 0, node.loc);
         this->current.get().emit(OpCode::CMP_LT, 0, node.loc);
 
         size_t jmpFalseIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);

@@ -1,5 +1,6 @@
 #include <cmath>
 #include <cctype>
+#include <chrono>
 #include <limits>
 #include <ranges>
 #include <string>
@@ -425,7 +426,7 @@ namespace LOICollection::frontend::ir {
     }
 
     bool VM::pushFrame(Frame&& frame) {
-        if (this->frames.size() >= VM::MAX_FRAMES) {
+        if (this->frames.size() >= this->mBudget.maxFrames) {
             this->diagnostics.addError(this->currentLoc, "Call stack depth limit exceeded");
             return false;
         }
@@ -457,6 +458,7 @@ namespace LOICollection::frontend::ir {
         this->stack.clear();
         this->frames.clear();
         this->variables.clear();
+        this->mReport = sandbox::SandboxReport{};
 
         for (const auto& cls : chunk->classes) {
             for (size_t i = 0; i < cls.staticFieldNames.size(); ++i) {
@@ -469,7 +471,25 @@ namespace LOICollection::frontend::ir {
 
         this->frames.emplace_back(*chunk);
 
-        return this->execute(chunk, ctx.params);
+        CallbackTypePlaces placeholders = ctx.params;
+        if (!ctx.scriptId.empty())
+            placeholders[Context::kScriptIdKey] = ctx.scriptId;
+
+        const auto startedAt = std::chrono::steady_clock::now();
+        ValueNode::ValueType result = this->execute(chunk, placeholders);
+
+        this->mReport.executedInstructions = this->mBudget.executedInstructions;
+        this->mReport.nativeCallCount = this->mBudget.nativeCallCount;
+        this->mReport.objectCount = this->mBudget.objectCount;
+        this->mReport.allocatedBytes = this->mBudget.allocatedBytes;
+        this->mReport.wallTime = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - startedAt
+        );
+        this->mReport.hasErrors = this->diagnostics.hasErrors();
+        if (this->mReport.hasErrors)
+            this->mReport.errorMessage = this->diagnostics.getErrorMessage();
+
+        return result;
     }
 
     ValueNode::ValueType VM::execute(
@@ -483,13 +503,22 @@ namespace LOICollection::frontend::ir {
 
         const BytecodeChunk& chunk = *owner;
 
-        size_t executed = 0;
+        this->mBudget.reset();
+
+        const auto fail = [this](sandbox::SandboxBudget::Violation violation, const std::string& message) {
+            this->mReport.violation = violation;
+            this->diagnostics.addError(this->currentLoc, message);
+        };
+
         while (true) {
             if (this->diagnostics.hasErrors())
                 return std::string("");
 
-            if (++executed > VM::MAX_INSTRUCTIONS) {
-                this->diagnostics.addError(this->currentLoc, "Execution budget exhausted");
+            if (const auto violation = this->mBudget.tickInstruction();
+                violation != sandbox::SandboxBudget::Violation::None) {
+                fail(violation, violation == sandbox::SandboxBudget::Violation::WallTimeLimit
+                    ? "Execution timeout"
+                    : "Execution budget exhausted");
                 return ValueNode::ValueType{};
             }
 
@@ -506,11 +535,21 @@ namespace LOICollection::frontend::ir {
             switch (instr.op) {
                 case OpCode::PUSH_INT:
                 case OpCode::PUSH_FLOAT:
-                case OpCode::PUSH_STR:
                 case OpCode::PUSH_BOOL:
                 case OpCode::PUSH_NONE:
                     this->push(VM::cloneValue(cur.constants[instr.operand]));
                     break;
+                case OpCode::PUSH_STR: {
+                    const auto& value = std::get<std::string>(cur.constants[instr.operand]);
+                    if (const auto violation = this->mBudget.accountString(value.size());
+                        violation != sandbox::SandboxBudget::Violation::None) {
+                        fail(violation, "String size budget exhausted");
+                        break;
+                    }
+
+                    this->push(value);
+                    break;
+                }
                 case OpCode::POP:
                     this->pop();
                     break;
@@ -698,22 +737,11 @@ namespace LOICollection::frontend::ir {
                     auto objValue = this->pop();
 
                     if (std::holds_alternative<ArrayRef>(objValue)) {
-                        auto arr = std::get<ArrayRef>(objValue);
-                        if (name == "length") {
-                            this->push(static_cast<int>(arr->elements.size()));
-                            break;
-                        }
-
                         this->diagnostics.addError(this->currentLoc, "Array has no field: " + name);
                         break;
                     }
 
                     if (std::holds_alternative<std::string>(objValue)) {
-                        if (name == "length") {
-                            this->push(static_cast<int>(std::get<std::string>(objValue).size()));
-                            break;
-                        }
-
                         this->diagnostics.addError(this->currentLoc, "String has no field: " + name);
                         break;
                     }
@@ -733,6 +761,22 @@ namespace LOICollection::frontend::ir {
                     this->push(it->second);
                     break;
                 }
+                case OpCode::LOAD_LEN: {
+                    auto iterable = this->pop();
+
+                    if (std::holds_alternative<ArrayRef>(iterable)) {
+                        this->push(static_cast<int>(std::get<ArrayRef>(iterable)->elements.size()));
+                        break;
+                    }
+
+                    if (std::holds_alternative<std::string>(iterable)) {
+                        this->push(static_cast<int>(std::get<std::string>(iterable).size()));
+                        break;
+                    }
+
+                    this->diagnostics.addError(this->currentLoc, "Cannot take length of a non-iterable value");
+                    break;
+                }
                 case OpCode::STORE_FIELD: {
                     const auto& name = std::get<std::string>(cur.constants[instr.operand]);
                     auto objValue = this->pop();
@@ -750,6 +794,12 @@ namespace LOICollection::frontend::ir {
                     int count = instr.operand;
                     if (count < 0 || count > static_cast<int>(this->stack.size())) {
                         this->diagnostics.addError(this->currentLoc, "Invalid array literal size");
+                        break;
+                    }
+
+                    if (const auto violation = this->mBudget.accountArray(static_cast<std::size_t>(count));
+                        violation != sandbox::SandboxBudget::Violation::None) {
+                        fail(violation, "Array size budget exhausted");
                         break;
                     }
 
@@ -868,6 +918,12 @@ namespace LOICollection::frontend::ir {
                 }
 
                 case OpCode::NEW: {
+                    if (const auto violation = this->mBudget.accountObject();
+                        violation != sandbox::SandboxBudget::Violation::None) {
+                        fail(violation, "Object count budget exhausted");
+                        break;
+                    }
+
                     const auto& cls = chunk.classes[instr.operand];
 
                     std::vector<ValueNode::ValueType> args;
@@ -910,6 +966,12 @@ namespace LOICollection::frontend::ir {
                 }
 
                 case OpCode::NEW_NATIVE: {
+                    if (const auto violation = this->mBudget.accountObject();
+                        violation != sandbox::SandboxBudget::Violation::None) {
+                        fail(violation, "Object count budget exhausted");
+                        break;
+                    }
+
                     const auto& meta = chunk.nativeCalls[instr.operand];
 
                     std::vector<ValueNode::ValueType> args(meta.argCount);
@@ -1056,6 +1118,12 @@ namespace LOICollection::frontend::ir {
                 }
 
                 case OpCode::CALL_NATIVE_METHOD: {
+                    if (const auto violation = this->mBudget.accountNativeCall();
+                        violation != sandbox::SandboxBudget::Violation::None) {
+                        fail(violation, "Native call budget exhausted");
+                        break;
+                    }
+
                     const auto& meta = chunk.nativeCalls[instr.operand];
 
                     if (meta.isStatic) {
@@ -1319,6 +1387,12 @@ namespace LOICollection::frontend::ir {
                 }
 
                 case OpCode::CALL: {
+                    if (const auto violation = this->mBudget.accountNativeCall();
+                        violation != sandbox::SandboxBudget::Violation::None) {
+                        fail(violation, "Native call budget exhausted");
+                        break;
+                    }
+
                     const auto& meta = cur.functions[instr.operand];
 
                     CallbackTypeValues args;
@@ -1345,6 +1419,12 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
                 case OpCode::CALL_MACRO: {
+                    if (const auto violation = this->mBudget.accountNativeCall();
+                        violation != sandbox::SandboxBudget::Violation::None) {
+                        fail(violation, "Native call budget exhausted");
+                        break;
+                    }
+
                     const auto& meta = cur.macros[instr.operand];
 
                     CallbackTypeValues args;

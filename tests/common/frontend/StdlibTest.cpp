@@ -9,7 +9,7 @@ using namespace LOICollection::frontend;
 
 TEST(StdlibArrayTest, PushReturnsNewLength) {
     EXPECT_EQ(eval("arr = [1, 2]; arr.push(3)"), "3");
-    EXPECT_EQ(eval("arr = [1, 2]; arr.push(3); arr.length"), "3");
+    EXPECT_EQ(eval("arr = [1, 2]; arr.push(3); arr.length()"), "3");
     EXPECT_EQ(eval("arr = []; arr.push(\"x\"); arr"), "[x]");
 }
 
@@ -17,7 +17,7 @@ TEST(StdlibArrayTest, ValueMethodOnDynamicTarget) {
     // Method call on a dynamically typed target (member read): the dispatch is
     // deferred to the VM, which selects "Array"/"String" by the runtime value.
     EXPECT_EQ(eval("class Holder { public: value = []; } h = new Holder(); h.value.push(1); h.value.push(2); h.value"), "[1, 2]");
-    EXPECT_EQ(eval("class Holder { public: value = []; } h = new Holder(); v = h.value; v.push(7); v.length"), "1");
+    EXPECT_EQ(eval("class Holder { public: value = []; } h = new Holder(); v = h.value; v.push(7); v.length()"), "1");
     EXPECT_EQ(eval("class Holder { public: value = \"a,b\"; } h = new Holder(); h.value.split(\",\")[1]"), "b");
 }
 
@@ -110,12 +110,12 @@ TEST(StdlibMapTest, SetGetHasRemove) {
 TEST(StdlibMapTest, OverwriteKeepsInsertOrder) {
     EXPECT_EQ(eval("m = new Map(); m.set(\"a\", 1); m.set(\"b\", 2); m.set(\"a\", 9); m.get(\"a\")"), "9");
     EXPECT_EQ(eval("m = new Map(); m.set(\"a\", 1); m.set(\"b\", 2); m.set(\"a\", 9); m.keys"), "[a, b]");
-    EXPECT_EQ(eval("m = new Map(); m.set(\"a\", 1); m.set(\"b\", 2); m.set(\"a\", 9); m.length"), "2");
+    EXPECT_EQ(eval("m = new Map(); m.set(\"a\", 1); m.set(\"b\", 2); m.set(\"a\", 9); m.length()"), "2");
 }
 
 TEST(StdlibMapTest, KeysAndLengthTrackState) {
     EXPECT_EQ(eval("m = new Map(); m.keys"), "[]");
-    EXPECT_EQ(eval("m = new Map(); m.length"), "0");
+    EXPECT_EQ(eval("m = new Map(); m.length()"), "0");
     EXPECT_EQ(eval("m = new Map(); m.set(\"x\", 1); m.set(\"y\", 2); m.keys"), "[x, y]");
 }
 

@@ -20,13 +20,13 @@ TEST(ArrayTest, IndexWrite) {
 }
 
 TEST(ArrayTest, AppendAtIndexLength) {
-    EXPECT_EQ(eval("a = [1]; a[1] = 2; a.length"), "2");
+    EXPECT_EQ(eval("a = [1]; a[1] = 2; a.length()"), "2");
     EXPECT_EQ(eval("a = []; a[0] = 5; a[0]"), "5");
 }
 
 TEST(ArrayTest, Length) {
-    EXPECT_EQ(eval("[1, 2, 3].length"), "3");
-    EXPECT_EQ(eval("a = []; a.length"), "0");
+    EXPECT_EQ(eval("[1, 2, 3].length()"), "3");
+    EXPECT_EQ(eval("a = []; a.length()"), "0");
 }
 
 TEST(ArrayTest, NestedArrays) {
