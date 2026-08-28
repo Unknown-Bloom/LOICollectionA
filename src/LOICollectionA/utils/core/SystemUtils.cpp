@@ -15,20 +15,20 @@ namespace SystemUtils {
 
     std::string getNowTime(const std::string& format) {
         auto mTimeNow = std::chrono::system_clock::now();
-        auto mTimeNowSecond = std::chrono::floor<std::chrono::seconds>(mTimeNow); 
-        auto zt = std::chrono::zoned_time(std::chrono::current_zone(), mTimeNowSecond);
-        return std::vformat("{:" + format + "}", std::make_format_args(zt));
+        auto mTimeNowSecond = std::chrono::floor<std::chrono::seconds>(mTimeNow);
+        auto st = std::chrono::sys_seconds(mTimeNowSecond.time_since_epoch());
+        return std::vformat("{:" + format + "}", std::make_format_args(st));
     }
 
     std::string getTimeSpan(const std::string& str, const std::string& target, const std::string& defaultValue) {
-        std::chrono::local_seconds mTp;
+        std::chrono::sys_seconds mTp;
         if ((std::istringstream(str) >> std::chrono::parse("%Y-%m-%d %H:%M:%S", mTp)).fail())
             return defaultValue;
-        
-        std::chrono::local_seconds mTargetTp;
+
+        std::chrono::sys_seconds mTargetTp;
         if ((std::istringstream(target) >> std::chrono::parse("%Y-%m-%d %H:%M:%S", mTargetTp)).fail())
             return defaultValue;
-        
+
         auto mDuration = mTp - mTargetTp;
 
         if (mDuration.count() < 0)
@@ -121,12 +121,11 @@ namespace SystemUtils {
     }
 
     bool isPastOrPresent(const std::string& str) {
-        std::chrono::local_seconds mLocalTp;
+        std::chrono::sys_seconds mLocalTp;
         if ((std::istringstream(str) >> std::chrono::parse("%Y%m%d%H%M%S", mLocalTp)).fail())
             return false;
-        
-        auto mTargetSysTp = std::chrono::current_zone()->to_sys(mLocalTp);
-        auto mNowSysTp = std::chrono::system_clock::now();
-        return mTargetSysTp <= mNowSysTp;
+
+        auto mNowSysTp = std::chrono::sys_seconds(std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()));
+        return mLocalTp <= mNowSysTp;
     }
 }
