@@ -35,18 +35,20 @@ wanted = new PaginatedForm("market.wanted", {tr("market.gui.title")}, GUIManager
     show(func (result) -> void {
         if (navigateWantedCreate.value) [
             buildWantedInventory();
-        :
-            if (navigateWantedMine.value) [
-                buildWantedMine();
-            :
-                if (result.selection != "") [
-                    idData = GUIManager::request("market.wanted.id", [ result.selectionIndex ]);
+            return;
+        ]
 
-                    buildWantedInfo(idData[0]);
-                :
-                    GUIManager::open("market", "market.open", 1);
-                ]
-            ]
+        if (navigateWantedMine.value) [
+            buildWantedMine();
+            return;
+        ]
+
+        if (result.selection != "") [
+            idData = GUIManager::request("market.wanted.id", [ result.selectionIndex ]);
+
+            buildWantedInfo(idData[0]);
+        :
+            GUIManager::open("market", "market.open", 1);
         ]
     });
     show();

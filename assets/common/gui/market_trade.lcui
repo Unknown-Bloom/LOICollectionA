@@ -48,15 +48,17 @@ tradeRequest = new CustomForm("market.trade.request", {tr("market.gui.title")}) 
         tradeRequest.close();
     });
     show(func (result) -> void {
-        if (requestFinished.value) [
-            if (requestAccepted.value) [
-                GUIManager::callback("market.trade.open.content", [ requestDestUuid, requestBuyerUuid ]);
-            :
-                if (requestRejected.value) [
-                    GUIManager::callback("market.trade.request.reject", []);
-                ]
-            ]
-        :
+        if (!requestFinished.value) [
+            GUIManager::callback("market.trade.request.reject", []);
+            return;
+        ]
+
+        if (requestAccepted.value) [
+            GUIManager::callback("market.trade.open.content", [ requestDestUuid, requestBuyerUuid ]);
+            return;
+        ]
+
+        if (requestRejected.value) [
             GUIManager::callback("market.trade.request.reject", []);
         ]
     });

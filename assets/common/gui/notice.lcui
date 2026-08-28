@@ -99,12 +99,13 @@ if (mode.value == "content") [
                 };
 
                 GUIManager::switchTo("notice.lines", 3);
+                return;
+            ]
+
+            if (navigateRefresh.value) [
+                GUIManager::open("notice", "notice.content", 1, [ "content", targetId.value ]);
             :
-                if (navigateRefresh.value) [
-                    GUIManager::open("notice", "notice.content", 1, [ "content", targetId.value ]);
-                :
-                    GUIManager::open("notice", "notice.edit", 1, [ "", "" ]);
-                ]
+                GUIManager::open("notice", "notice.edit", 1, [ "", "" ]);
             ]
         });
     };
@@ -169,14 +170,16 @@ edit = new CustomForm("notice.edit", {tr("notice.gui.title")}) {
     show(func (result) -> void {
         if (navigateAdd.value) [
             GUIManager::switchTo("notice.add", 1);
-        :
-            if (navigateRemove.value) [
-                GUIManager::switchTo("notice.remove", 3);
-            :
-                if (navigateEdit.value) [
-                    GUIManager::switchTo("notice.editList", 3);
-                ]
-            ]
+            return;
+        ]
+
+        if (navigateRemove.value) [
+            GUIManager::switchTo("notice.remove", 3);
+            return;
+        ]
+
+        if (navigateEdit.value) [
+            GUIManager::switchTo("notice.editList", 3);
         ]
     });
     show();

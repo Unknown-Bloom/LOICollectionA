@@ -60,10 +60,11 @@ setting = new CustomForm("tpa.setting", {tr("tpa.gui.setting.title")}) {
     show(func (result) -> void {
         if (navigateGeneric.value) [
             GUIManager::switchTo("tpa.generic", 1);
-        :
-            if (navigateBlacklist.value) [
-                GUIManager::switchTo("tpa.blacklist", 3);
-            ]
+            return;
+        ]
+
+        if (navigateBlacklist.value) [
+            GUIManager::switchTo("tpa.blacklist", 3);
         ]
     });
     show();

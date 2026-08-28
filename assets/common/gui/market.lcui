@@ -120,30 +120,36 @@ marketOpen = new CustomForm("market.open", {tr("market.gui.title")}) {
     show(func (result) -> void {
         if (navigateStore.value) [
             GUIManager::open("market.store", "market.store.list", 3);
-        :
-            if (navigateQuote.value) [
-                GUIManager::open("market.quote", "market.quote", 3);
-            :
-                if (navigateWanted.value) [
-                    GUIManager::open("market.wanted", "market.wanted", 3);
-                :
-                    if (navigateAuction.value) [
-                        GUIManager::open("market.auction", "market.auction", 3);
-                    :
-                        if (navigateBuy.value) [
-                            GUIManager::switchTo("market.buy", 3);
-                        :
-                            if (navigateTrade.value) [
-                                GUIManager::switchTo("market.trade", 3);
-                            :
-                                if (navigatePersonal.value) [
-                                    GUIManager::switchTo("market.personal", 1);
-                                ]
-                            ]
-                        ]
-                    ]
-                ]
-            ]
+            return;
+        ]
+
+        if (navigateQuote.value) [
+            GUIManager::open("market.quote", "market.quote", 3);
+            return;
+        ]
+
+        if (navigateWanted.value) [
+            GUIManager::open("market.wanted", "market.wanted", 3);
+            return;
+        ]
+
+        if (navigateAuction.value) [
+            GUIManager::open("market.auction", "market.auction", 3);
+            return;
+        ]
+
+        if (navigateBuy.value) [
+            GUIManager::switchTo("market.buy", 3);
+            return;
+        ]
+
+        if (navigateTrade.value) [
+            GUIManager::switchTo("market.trade", 3);
+            return;
+        ]
+
+        if (navigatePersonal.value) [
+            GUIManager::switchTo("market.personal", 1);
         ]
     });
     show();
@@ -245,22 +251,25 @@ marketPersonal = new CustomForm("market.personal", {tr("market.gui.title")}) {
             mineForm = if (mineData[0]) [ "market.store.mine" : "market.store.create" ];
 
             GUIManager::open("market.store", mineForm, 1);
-        :
-            if (navigateSellItem.value) [
-                GUIManager::switchTo("market.sell.inventory", 3);
-            :
-                if (navigateSellContent.value) [
-                    checkData = GUIManager::request("market.sell.content.check", []);
+            return;
+        ]
 
-                    if (checkData[0]) [
-                        GUIManager::switchTo("market.sell.content", 3);
-                    ]
-                :
-                    if (navigateBlacklist.value) [
-                        GUIManager::switchTo("market.blacklist", 3);
-                    ]
-                ]
+        if (navigateSellItem.value) [
+            GUIManager::switchTo("market.sell.inventory", 3);
+            return;
+        ]
+
+        if (navigateSellContent.value) [
+            checkData = GUIManager::request("market.sell.content.check", []);
+
+            if (checkData[0]) [
+                GUIManager::switchTo("market.sell.content", 3);
             ]
+            return;
+        ]
+
+        if (navigateBlacklist.value) [
+            GUIManager::switchTo("market.blacklist", 3);
         ]
     });
     show();

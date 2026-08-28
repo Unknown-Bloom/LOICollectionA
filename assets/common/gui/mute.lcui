@@ -33,10 +33,11 @@ open = new CustomForm("mute.open", {tr("mute.gui.title")}) {
     show(func (result) -> void {
         if (navigateAdd.value) [
             GUIManager::switchTo("mute.add", 3);
-        :
-            if (navigateDelete.value) [
-                GUIManager::switchTo("mute.remove", 3);
-            ]
+            return;
+        ]
+
+        if (navigateDelete.value) [
+            GUIManager::switchTo("mute.remove", 3);
         ]
     });
     show();

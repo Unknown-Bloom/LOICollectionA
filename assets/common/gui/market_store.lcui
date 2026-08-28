@@ -77,20 +77,23 @@ mineForm = new CustomForm("market.store.mine", {tr("market.gui.title")}) {
     show(func (result) -> void {
         if (navigateUpload.value) [
             GUIManager::switchTo("market.store.inventory", 3);
+            return;
+        ]
+
+        if (navigateManage.value) [
+            buildStoreMyItems();
+            return;
+        ]
+
+        if (navigateDissolve.value) [
+            buildStoreDissolve();
+            return;
+        ]
+
+        if (navigateAudit.value) [
+            buildPendingReviews();
         :
-            if (navigateManage.value) [
-                buildStoreMyItems();
-            :
-                if (navigateDissolve.value) [
-                    buildStoreDissolve();
-                :
-                    if (navigateAudit.value) [
-                        buildPendingReviews();
-                    :
-                        GUIManager::open("market", "market.personal", 1);
-                    ]
-                ]
-            ]
+            GUIManager::open("market", "market.personal", 1);
         ]
     });
 };
@@ -192,12 +195,13 @@ func buildStoreDetail(storeId: string) -> void {
         show(func (result) -> void {
             if (navigateItems.value) [
                 buildStoreItems(storeId);
+                return;
+            ]
+
+            if (navigateReviews.value) [
+                buildStoreReviews(storeId);
             :
-                if (navigateReviews.value) [
-                    buildStoreReviews(storeId);
-                :
-                    GUIManager::open("market.store", "market.store.list", 3);
-                ]
+                GUIManager::open("market.store", "market.store.list", 3);
             ]
         });
     };

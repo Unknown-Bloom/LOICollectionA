@@ -101,26 +101,31 @@ open = new CustomForm("wallet.open", {tr("wallet.gui.title")}) {
     show(func (result) -> void {
         if (navigateOnline.value) [
             GUIManager::switchTo("wallet.transfer.online", 3);
-        :
-            if (navigateOffline.value) [
-                GUIManager::switchTo("wallet.transfer.offline", 3);
-            :
-                if (navigateRedenvelope.value) [
-                    GUIManager::switchTo("wallet.redenvelope", 1);
-                :
-                    if (navigateHistory.value) [
-                        GUIManager::switchTo("wallet.history", 3);
-                    :
-                        if (navigateBank.value) [
-                            GUIManager::switchTo("wallet.bank", 1);
-                        :
-                            if (navigateRank.value) [
-                                GUIManager::switchTo("wallet.rank", 3);
-                            ]
-                        ]
-                    ]
-                ]
-            ]
+            return;
+        ]
+
+        if (navigateOffline.value) [
+            GUIManager::switchTo("wallet.transfer.offline", 3);
+            return;
+        ]
+
+        if (navigateRedenvelope.value) [
+            GUIManager::switchTo("wallet.redenvelope", 1);
+            return;
+        ]
+
+        if (navigateHistory.value) [
+            GUIManager::switchTo("wallet.history", 3);
+            return;
+        ]
+
+        if (navigateBank.value) [
+            GUIManager::switchTo("wallet.bank", 1);
+            return;
+        ]
+
+        if (navigateRank.value) [
+            GUIManager::switchTo("wallet.rank", 3);
         ]
     });
     show();

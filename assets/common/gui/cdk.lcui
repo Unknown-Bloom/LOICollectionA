@@ -46,14 +46,16 @@ cdkOpen = new CustomForm("cdk.open", {tr("cdk.gui.title")}) {
     show(func (result) -> void {
         if (navigateNew.value) [
             GUIManager::switchTo("cdk.new", 1);
-        :
-            if (navigateRemove.value) [
-                GUIManager::switchTo("cdk.remove", 3);
-            :
-                if (navigateAward.value) [
-                    GUIManager::switchTo("cdk.award", 3);
-                ]
-            ]
+            return;
+        ]
+
+        if (navigateRemove.value) [
+            GUIManager::switchTo("cdk.remove", 3);
+            return;
+        ]
+
+        if (navigateAward.value) [
+            GUIManager::switchTo("cdk.award", 3);
         ]
     });
     show();
@@ -201,16 +203,18 @@ func buildAwardInfo(id: string) -> void {
         show(func (result) -> void {
             if (navigateScore.value) [
                 buildAwardScore(id);
+                return;
+            ]
+
+            if (navigateItem.value) [
+                buildAwardItem(id);
+                return;
+            ]
+
+            if (navigateTitle.value) [
+                buildAwardTitle(id);
             :
-                if (navigateItem.value) [
-                    buildAwardItem(id);
-                :
-                    if (navigateTitle.value) [
-                        buildAwardTitle(id);
-                    :
-                        GUIManager::open("cdk", "cdk.open", 1);
-                    ]
-                ]
+                GUIManager::open("cdk", "cdk.open", 1);
             ]
         });
     };
@@ -280,12 +284,13 @@ func buildAwardItem(id: string) -> void {
         show(func (result) -> void {
             if (navigateInventory.value) [
                 buildInventory(id);
+                return;
+            ]
+
+            if (navigateCustom.value) [
+                buildItemType(id);
             :
-                if (navigateCustom.value) [
-                    buildItemType(id);
-                :
-                    buildAwardInfo(id);
-                ]
+                buildAwardInfo(id);
             ]
         });
     };

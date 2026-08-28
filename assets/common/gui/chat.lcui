@@ -33,10 +33,11 @@ manage = new CustomForm("chat.manage", {tr("chat.gui.title")}) {
     show(func (result) -> void {
         if (navigateAdd.value) [
             GUIManager::switchTo("chat.add", 3);
-        :
-            if (navigateRemove.value) [
-                GUIManager::switchTo("chat.remove", 3);
-            ]
+            return;
+        ]
+
+        if (navigateRemove.value) [
+            GUIManager::switchTo("chat.remove", 3);
         ]
     });
     show();
@@ -75,10 +76,11 @@ setting = new CustomForm("chat.setting", {tr("chat.gui.title")}) {
     show(func (result) -> void {
         if (navigateTitle.value) [
             GUIManager::switchTo("chat.title", 3);
-        :
-            if (navigateBlacklist.value) [
-                GUIManager::switchTo("chat.blacklist", 3);
-            ]
+            return;
+        ]
+
+        if (navigateBlacklist.value) [
+            GUIManager::switchTo("chat.blacklist", 3);
         ]
     });
     show();

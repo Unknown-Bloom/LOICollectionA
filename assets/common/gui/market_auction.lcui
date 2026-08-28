@@ -35,18 +35,20 @@ auction = new PaginatedForm("market.auction", {tr("market.gui.title")}, GUIManag
     show(func (result) -> void {
         if (navigateAuctionCreate.value) [
             buildAuctionInventory();
-        :
-            if (navigateAuctionMine.value) [
-                buildAuctionMine();
-            :
-                if (result.selection != "") [
-                    idData = GUIManager::request("market.auction.id", [ result.selectionIndex ]);
+            return;
+        ]
 
-                    buildAuctionInfo(idData[0]);
-                :
-                    GUIManager::open("market", "market.open", 1);
-                ]
-            ]
+        if (navigateAuctionMine.value) [
+            buildAuctionMine();
+            return;
+        ]
+
+        if (result.selection != "") [
+            idData = GUIManager::request("market.auction.id", [ result.selectionIndex ]);
+
+            buildAuctionInfo(idData[0]);
+        :
+            GUIManager::open("market", "market.open", 1);
         ]
     });
     show();
