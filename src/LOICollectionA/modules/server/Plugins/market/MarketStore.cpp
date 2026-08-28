@@ -110,9 +110,12 @@ namespace LOICollection::server::Plugins {
                 ctor("store_id");
                 ctor("item_name");
                 ctor("price");
+                ctor("tax");
                 ctor("buyer_uuid");
                 ctor("buyer_name");
+                ctor("seller_uuid");
                 ctor("time");
+                ctor("source");
             });
         }).and_then([this]() -> ll::Expected<void> {
             return this->mImpl->db->create("StoreReview", [](SQLiteStorage::ColumnCallback ctor) -> void {

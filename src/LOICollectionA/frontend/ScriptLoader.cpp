@@ -71,6 +71,9 @@ namespace LOICollection::frontend {
         const FileReader& readFile,
         DiagnosticEngine& diagnostics
     ) {
+        const std::string entry = std::filesystem::path(entryPath).lexically_normal().generic_string();
+        const std::string root = std::filesystem::path(rootDir).lexically_normal().generic_string();
+
         std::unordered_map<std::string, std::unique_ptr<ProgramNode>> modules;
         std::vector<std::string> order;
         std::vector<std::string> hashes;
@@ -84,8 +87,8 @@ namespace LOICollection::frontend {
                 if (auto cycleAt = std::find(stack.begin(), stack.end(), path); cycleAt != stack.end()) {
                     std::string cycle;
                     for (auto it = cycleAt; it != stack.end(); ++it)
-                        cycle += displayName(*it, rootDir) + " -> ";
-                    cycle += displayName(path, rootDir);
+                        cycle += displayName(*it, root) + " -> ";
+                    cycle += displayName(path, root);
 
                     diagnostics.addError(importLoc, "Circular import detected: " + cycle);
                     return false;
@@ -113,10 +116,9 @@ namespace LOICollection::frontend {
 
                     auto& import = static_cast<ImportNode&>(*part);
 
-                    std::error_code ec;
-                    auto resolved = (std::filesystem::path(rootDir) / import.path).lexically_normal();
+                    auto resolved = (std::filesystem::path(root) / import.path).lexically_normal().generic_string();
 
-                    ok = visit(resolved.string(), import.loc) && ok;
+                    ok = visit(resolved, import.loc) && ok;
                 }
                 stack.pop_back();
 
@@ -129,17 +131,17 @@ namespace LOICollection::frontend {
                 return true;
             };
 
-        if (!visit(entryPath, {}))
+        if (!visit(entry, {}))
             return std::nullopt;
 
         for (auto& [path, program] : modules) {
-            if (path == entryPath)
+            if (path == entry)
                 continue;
 
             for (auto& part : program->parts) {
                 if (!isTopLevelDefinition(*part)) {
                     diagnostics.addError({},
-                        "Imported file '" + displayName(path, rootDir) +
+                        "Imported file '" + displayName(path, root) +
                         "' must only contain top-level definitions (class/func/using/component)");
                     return std::nullopt;
                 }
@@ -158,11 +160,10 @@ namespace LOICollection::frontend {
                 if (part->getType() == ASTNode::Type::Import) {
                     auto& import = static_cast<ImportNode&>(*part);
 
-                    std::error_code ec;
-                    auto resolved = (std::filesystem::path(rootDir) / import.path).lexically_normal();
+                    auto resolved = (std::filesystem::path(root) / import.path).lexically_normal().generic_string();
 
-                    if (merged.insert(resolved.string()).second) {
-                        auto& imported = expanded.at(resolved.string());
+                    if (merged.insert(resolved).second) {
+                        auto& imported = expanded.at(resolved);
                         for (auto& node : imported)
                             nodes.push_back(std::move(node));
                         imported.clear();
@@ -177,9 +178,9 @@ namespace LOICollection::frontend {
                     auto existing = definedAt.find(*name);
                     if (existing != definedAt.end()) {
                         diagnostics.addError(loc,
-                            "Definition '" + *name + "' from '" + displayName(path, rootDir) +
+                            "Definition '" + *name + "' from '" + displayName(path, root) +
                             "' (line " + std::to_string(loc.line) +
-                            ") conflicts with the one in '" + displayName(existing->second.first, rootDir) +
+                            ") conflicts with the one in '" + displayName(existing->second.first, root) +
                             "' (line " + std::to_string(existing->second.second) + ")");
                         return std::nullopt;
                     }
@@ -195,7 +196,7 @@ namespace LOICollection::frontend {
 
         Result result;
         result.program = std::make_unique<ProgramNode>();
-        result.program->parts = std::move(expanded.at(entryPath));
+        result.program->parts = std::move(expanded.at(entry));
         result.files = std::move(order);
         result.hashes = std::move(hashes);
 

@@ -52,7 +52,8 @@ namespace {
 
     std::filesystem::path locateProductionPermissionJson() {
 #ifdef LOICOLLECTION_A_PERMISSION_JSON
-        return LOICOLLECTION_A_PERMISSION_JSON;
+        if (std::filesystem::exists(LOICOLLECTION_A_PERMISSION_JSON))
+            return LOICOLLECTION_A_PERMISSION_JSON;
 #endif
 #ifdef _WIN32
         char* buffer = nullptr;
@@ -60,11 +61,15 @@ namespace {
         if (_dupenv_s(&buffer, &size, "LOICOLLECTION_A_PERMISSION_JSON") == 0 && buffer) {
             std::filesystem::path result(buffer);
             std::free(buffer);
-            return result;
+            if (std::filesystem::exists(result))
+                return result;
         }
 #else
-        if (const char* env = std::getenv("LOICOLLECTION_A_PERMISSION_JSON"))
-            return std::filesystem::path(env);
+        if (const char* env = std::getenv("LOICOLLECTION_A_PERMISSION_JSON")) {
+            std::filesystem::path result(env);
+            if (std::filesystem::exists(result))
+                return result;
+        }
 #endif
 
         std::filesystem::path current = std::filesystem::path(__FILE__).parent_path();
