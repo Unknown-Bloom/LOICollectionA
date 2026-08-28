@@ -40,7 +40,7 @@ namespace InventoryUtils {
         }
     }
 
-    void giveItem(Player& player, ItemStack& item, int mNumber) {
+    void giveItem(Player& player, const ItemStack& item, int mNumber) {
         std::vector<ItemStack> mItemStacks{};
         for (int count; mNumber > 0; mNumber -= count)
             mItemStacks.emplace_back(item).mCount = static_cast<uchar>(count = std::min(mNumber, 64));
