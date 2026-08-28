@@ -145,7 +145,8 @@ namespace LOICollection::server::Plugins {
                             values->elements.emplace_back(fmt::format(
                                 fmt::runtime(tr(language, "market.gui.wanted.info")),
                                 data.at("item_name"), data.at("wanted_name"), data.at("unit_price"),
-                                data.at("amount_filled"), data.at("amount_total"), data.at("expire_at")
+                                data.at("amount_filled"), data.at("amount_total"),
+                                SystemUtils::toFormatTime(data.at("expire_at"), data.at("expire_at"))
                             ));
 
                             return values;

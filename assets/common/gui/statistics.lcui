@@ -8,6 +8,7 @@ if (pendingStatistic.value != "") [
     specific = new CustomForm("statistics.specific", {tr("statistics.gui.title")}) {
         label(std::format({tr("statistics.gui.specific.label")}, [ rankingData[0], rankingData[1] ]), new TextOptions());
         label(rankingData[2], new TextOptions());
+        SectionHeader();
         closeButton();
         show(func (result) -> void {
             GUIManager::open("statistics", "statistics.open", 3, [ "" ]);
@@ -17,6 +18,7 @@ if (pendingStatistic.value != "") [
 
 open = new PaginatedForm("statistics.open", {tr("statistics.gui.title")}, GUIManager::value("statistics.names"), 10) {
     label({tr("statistics.gui.label")}, new TextOptions());
+    SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
@@ -26,6 +28,7 @@ open = new PaginatedForm("statistics.open", {tr("statistics.gui.title")}, GUIMan
             specific = new CustomForm("statistics.specific", {tr("statistics.gui.title")}) {
                 label(std::format({tr("statistics.gui.specific.label")}, [ rankingData[0], rankingData[1] ]), new TextOptions());
                 label(rankingData[2], new TextOptions());
+                SectionHeader();
                 closeButton();
                 show(func (result) -> void {
                     GUIManager::open("statistics", "statistics.open", 3, [ "" ]);

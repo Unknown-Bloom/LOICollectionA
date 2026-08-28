@@ -14,6 +14,7 @@ mineOption.tooltip = {tr("market.gui.auction.mine.tooltip")};
 
 auction = new PaginatedForm("market.auction", {tr("market.gui.title")}, GUIManager::value("market.auction.items"), 10) {
     label({tr("market.gui.auction.list.label")}, new TextOptions());
+    SectionHeader();
     PageControls();
     divider(new DividerOptions());
     button({tr("market.gui.auction.create")}, on: func () -> void {
@@ -96,6 +97,7 @@ func buildAuctionInfo(id: string) -> void {
 func buildAuctionInventory() -> void {
     auctionInventory = new PaginatedForm("market.auction.inventory", {tr("market.gui.title")}, GUIManager::value("market.sell.inventory"), 10) {
         label({tr("market.gui.sell.item.dropdown")}, new TextOptions());
+        SectionHeader();
         PageControls();
         closeButton();
         show(func (result) -> void {
@@ -167,6 +169,7 @@ func buildAuctionCreate(slot: int) -> void {
 func buildAuctionMine() -> void {
     auctionMine = new PaginatedForm("market.auction.mine", {tr("market.gui.title")}, GUIManager::value("market.my.auction"), 10) {
         label({tr("market.gui.auction.mine.label")}, new TextOptions());
+        SectionHeader();
         PageControls();
         closeButton();
         show(func (result) -> void {

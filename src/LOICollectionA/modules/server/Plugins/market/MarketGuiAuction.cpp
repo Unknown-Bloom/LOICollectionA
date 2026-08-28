@@ -51,7 +51,7 @@ namespace LOICollection::server::Plugins {
                         std::string bidder = data.at("bidder_name");
                         items.emplace_back(fmt::format(
                             fmt::runtime(tr(language.value(), "market.gui.auction.line")),
-                            data.at("item_name"), data.at("current_price"), bidder.empty() ? "-" : bidder
+                            data.at("item_name"), data.at("current_price"), bidder.empty() ? "None" : bidder
                         ), id);
                     }
 
@@ -75,9 +75,10 @@ namespace LOICollection::server::Plugins {
                         if (!language.has_value())
                             return ll::Unexpected(language.error());
 
+                        std::string bidder = data.at("bidder_name");
                         items.emplace_back(fmt::format(
                             fmt::runtime(tr(language.value(), "market.gui.auction.line")),
-                            data.at("item_name"), data.at("current_price"), data.at("bidder_name")
+                            data.at("item_name"), data.at("current_price"), bidder.empty() ? "None" : bidder
                         ), id);
                     }
 
@@ -145,7 +146,9 @@ namespace LOICollection::server::Plugins {
                             values->elements.emplace_back(fmt::format(
                                 fmt::runtime(tr(language, "market.gui.auction.info")),
                                 data.at("item_name"), data.at("seller_name"), data.at("start_price"),
-                                data.at("current_price"), data.at("bidder_name"), data.at("end_at")
+                                data.at("current_price"),
+                                data.at("bidder_name").empty() ? "None" : data.at("bidder_name"),
+                                SystemUtils::toFormatTime(data.at("end_at"), data.at("end_at"))
                             ));
 
                             return values;

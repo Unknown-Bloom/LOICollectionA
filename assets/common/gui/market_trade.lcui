@@ -65,6 +65,7 @@ tradeRequest = new CustomForm("market.trade.request", {tr("market.gui.title")}) 
 
 tradeContent = new PaginatedForm("market.trade.content", {tr("market.gui.title")}, GUIManager::value("market.trade.items"), 10) {
     label({tr("market.gui.sell.item.dropdown")}, new TextOptions());
+    SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {

@@ -2,6 +2,7 @@ import "generic.lcui";
 
 storeList = new PaginatedForm("market.store.list", {tr("market.gui.title")}, GUIManager::value("market.store.list"), 10) {
     label({tr("market.gui.store.list.label")}, new TextOptions());
+    SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
@@ -145,6 +146,7 @@ createForm = new CustomForm("market.store.create", {tr("market.gui.title")}) {
 
 storeInventory = new PaginatedForm("market.store.inventory", {tr("market.gui.title")}, GUIManager::value("market.store.inventory"), 10) {
     label({tr("market.gui.sell.item.dropdown")}, new TextOptions());
+    SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
@@ -206,6 +208,7 @@ func buildStoreDetail(storeId: string) -> void {
 func buildStoreItems(storeId: string) -> void {
     storeItems = new PaginatedForm("market.store.items", {tr("market.gui.title")}, GUIManager::request("market.store.item.list", [ storeId ]), 10) {
         label({tr("market.gui.label")}, new TextOptions());
+        SectionHeader();
         PageControls();
         closeButton();
         show(func (result) -> void {
@@ -266,6 +269,7 @@ func buildStoreReviews(storeId: string) -> void {
 
     reviews = new PaginatedForm("market.store.reviews", {tr("market.gui.title")}, reviewsData, 10) {
         label({tr("market.gui.store.reviews.label")}, new TextOptions());
+        SectionHeader();
         PageControls();
         divider(new DividerOptions());
         ConfirmBar({tr("market.gui.store.review.button")}, func () -> void {
@@ -332,6 +336,7 @@ func buildReviewForm(storeId: string) -> void {
 func buildStoreMyItems() -> void {
     myItems = new PaginatedForm("market.store.my.items", {tr("market.gui.title")}, GUIManager::value("market.store.mine.items"), 10) {
         label({tr("market.gui.label")}, new TextOptions());
+        SectionHeader();
         PageControls();
         closeButton();
         show(func (result) -> void {
@@ -472,6 +477,7 @@ func buildPendingReviews() -> void {
 
     pending = new PaginatedForm("market.store.reviews.pending", {tr("market.gui.title")}, pendingData, 10) {
         label({tr("market.gui.store.mine.audit")}, new TextOptions());
+        SectionHeader();
         PageControls();
         closeButton();
         show(func (result) -> void {

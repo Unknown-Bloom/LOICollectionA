@@ -8,6 +8,7 @@ if (mode.value == "view") [
 
     view = new CustomForm("notice.view", viewData[0]) {
         label(viewData[1], new TextOptions());
+        SectionHeader();
         closeButton();
         show();
     };
@@ -27,6 +28,7 @@ if (mode.value == "content") [
 
     content = new CustomForm("notice.content", {tr("notice.gui.title")}) {
         label({tr("notice.gui.label")}, new TextOptions());
+        SectionHeader();
         textField({tr("notice.gui.edit.title")}, titleField, new TextFieldOptions());
         toggle({tr("notice.gui.edit.show")}, showField, new ToggleOptions());
         button({tr("notice.gui.edit.lines")}, on: func () -> void {
@@ -66,6 +68,7 @@ if (mode.value == "content") [
 
                 lines = new PaginatedForm("notice.lines", {tr("notice.gui.title")}, linesData, 10) {
                     label({tr("notice.gui.label")}, new TextOptions());
+                    SectionHeader();
                     PageControls();
                     closeButton();
                     show(func (result) -> void {
@@ -76,6 +79,7 @@ if (mode.value == "content") [
 
                             line = new CustomForm("notice.line", {tr("notice.gui.title")}) {
                                 label({tr("notice.gui.label")}, new TextOptions());
+                                SectionHeader();
                                 textField(std::format({tr("notice.gui.edit.line")}, [ result.selectionIndex + 1 ]), lineField, new TextFieldOptions());
                                 ConfirmBar(saveLabel(), func () -> void {
                                     GUIManager::callback("notice.line.save", [ targetId.value, result.selectionIndex, lineField.getData() ]);
@@ -111,6 +115,7 @@ if (mode.value == "auto") [
 
     autoView = new CustomForm("notice.auto", autoData[0]) {
         label(autoData[1], new TextOptions());
+        SectionHeader();
         closeButton();
         show();
     };
@@ -138,6 +143,7 @@ editListOption.tooltip = {tr("notice.gui.edit.list.tooltip")};
 
 edit = new CustomForm("notice.edit", {tr("notice.gui.title")}) {
     label({tr("notice.gui.label")}, new TextOptions());
+    SectionHeader();
     button({tr("notice.gui.add")}, on: func () -> void {
         if (!navigateAdd.value) [
             navigateAdd.value = true;
@@ -192,6 +198,7 @@ addInputThree.description = {tr("notice.gui.add.input3.placeholder")};
 
 add = new CustomForm("notice.add", {tr("notice.gui.title")}) {
     label({tr("notice.gui.label")}, new TextOptions());
+    SectionHeader();
     textField({tr("notice.gui.add.input1")}, addId, addInputOne);
     textField({tr("notice.gui.add.input2")}, addTitle, addInputTwo);
     textField({tr("notice.gui.add.input3")}, addPriority, addInputThree);
@@ -209,6 +216,7 @@ add = new CustomForm("notice.add", {tr("notice.gui.title")}) {
 
 remove = new PaginatedForm("notice.remove", {tr("notice.gui.title")}, GUIManager::value("notice.keys"), 10) {
     label({tr("notice.gui.label")}, new TextOptions());
+    SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
@@ -240,6 +248,7 @@ remove = new PaginatedForm("notice.remove", {tr("notice.gui.title")}, GUIManager
 
 editList = new PaginatedForm("notice.editList", {tr("notice.gui.title")}, GUIManager::value("notice.keys"), 10) {
     label({tr("notice.gui.label")}, new TextOptions());
+    SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
@@ -254,6 +263,7 @@ editList = new PaginatedForm("notice.editList", {tr("notice.gui.title")}, GUIMan
 
 setting = new CustomForm("notice.setting", {tr("notice.gui.title")}) {
     label({tr("notice.gui.label")}, new TextOptions());
+    SectionHeader();
     toggle({tr("notice.gui.setting.switch1")}, closeState, new ToggleOptions());
     ConfirmBar(saveLabel(), func () -> void {
         GUIManager::callback("notice.setting.save", [ closeState.getData() ]);
@@ -265,6 +275,7 @@ setting = new CustomForm("notice.setting", {tr("notice.gui.title")}) {
 
 open = new PaginatedForm("notice.open", {tr("notice.gui.title")}, GUIManager::value("notice.names"), 10) {
     label({tr("notice.gui.label")}, new TextOptions());
+    SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
@@ -273,6 +284,7 @@ open = new PaginatedForm("notice.open", {tr("notice.gui.title")}, GUIManager::va
 
             view = new CustomForm("notice.view", viewData[0]) {
                 label(viewData[1], new TextOptions());
+                SectionHeader();
                 closeButton();
                 show();
             };

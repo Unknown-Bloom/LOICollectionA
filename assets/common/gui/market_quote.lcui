@@ -2,6 +2,7 @@ import "generic.lcui";
 
 quote = new PaginatedForm("market.quote", {tr("market.gui.title")}, GUIManager::value("market.quote.items"), 10) {
     label({tr("market.gui.quote.list.label")}, new TextOptions());
+    SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
