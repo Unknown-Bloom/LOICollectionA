@@ -181,8 +181,11 @@ namespace LOICollection::server::Plugins {
                     return false;
 
                 int currentPrice = SystemUtils::toInt(data.at("current_price"), 0);
+                bool firstBid = data.at("bidder_uuid").empty();
 
-                int minBid = static_cast<int>(std::ceil(currentPrice * this->mImpl->options.StoreAuctionMinBidIncrement));
+                int minBid = firstBid
+                    ? currentPrice
+                    : static_cast<int>(std::ceil(currentPrice * this->mImpl->options.StoreAuctionMinBidIncrement));
                 if (price < minBid)
                     return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::AuctionBidTooLow));
 

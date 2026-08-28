@@ -635,9 +635,8 @@ Config::C_Market MakeStoreScoreConfig() {
 std::string FormatTimeDaysAgo(int days) {
     auto now = std::chrono::system_clock::now();
     auto past = std::chrono::floor<std::chrono::seconds>(now - std::chrono::hours(24LL * days));
-    auto local = std::chrono::zoned_time(std::chrono::current_zone(), past);
 
-    return std::format("{:%Y-%m-%d %H:%M:%S}", local);
+    return std::format("{:%Y-%m-%d %H:%M:%S}", past);
 }
 
 TEST(MarketStoreScoreTest, Log1pCompression) {
@@ -841,6 +840,7 @@ TEST_F(MarketPluginTest, StoreBuyOnlineOwner) {
     ASSERT_TRUE(buyer.create());
 
     ASSERT_TRUE(CreateStore(*sp));
+    InventoryUtils::clearItem(*sp, "minecraft:grass_block", 2304);
     ASSERT_TRUE(GiveItem(*sp, "minecraft:grass_block", 1));
     ASSERT_TRUE(UploadStoreItem(*sp, "grass_block", 100));
 

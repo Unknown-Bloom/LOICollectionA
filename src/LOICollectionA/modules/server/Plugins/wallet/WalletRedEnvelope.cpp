@@ -133,7 +133,7 @@ namespace LOICollection::server::Plugins {
         int upper = std::min(remainingCapacity - (remainingPeople - 1), (remainingCapacity / remainingPeople) * 2);
         upper = std::max(upper, 1);
 
-        return ll::random_utils::rand(1, upper);
+        return 1 + ll::random_utils::rand(upper);
     }
 
     ll::Expected<bool> WalletRedEnvelope::grabEnvelope(Player& player, const std::string& uuid, RedEnvelopeEntry& entry) {
@@ -192,14 +192,13 @@ namespace LOICollection::server::Plugins {
         if (amount <= 0)
             return false;
 
-        std::unordered_map<std::string, std::string> update = {
-            { "capacity", std::to_string(capacity - amount) },
-            { "people", std::to_string(people + 1) }
-        };
+        auto setCapacity = this->mImpl->db->set(conn, "RedEnvelope", entry.id, "capacity", std::to_string(capacity - amount));
+        if (!setCapacity.has_value())
+            return ll::Unexpected(setCapacity.error());
 
-        auto setEnv = this->mImpl->db->set(conn, "RedEnvelope", entry.id, update);
-        if (!setEnv.has_value())
-            return ll::Unexpected(setEnv.error());
+        auto setPeople = this->mImpl->db->set(conn, "RedEnvelope", entry.id, "people", std::to_string(people + 1));
+        if (!setPeople.has_value())
+            return ll::Unexpected(setPeople.error());
 
         auto setGrab = this->mImpl->db->set(conn, "RedEnvelopeGrab", grabKey, {
             { "name", player.getRealName() },
