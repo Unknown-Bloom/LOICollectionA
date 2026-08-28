@@ -54,8 +54,18 @@ namespace {
 #ifdef LOICOLLECTION_A_PERMISSION_JSON
         return LOICOLLECTION_A_PERMISSION_JSON;
 #endif
+#ifdef _WIN32
+        char* buffer = nullptr;
+        size_t size = 0;
+        if (_dupenv_s(&buffer, &size, "LOICOLLECTION_A_PERMISSION_JSON") == 0 && buffer) {
+            std::filesystem::path result(buffer);
+            std::free(buffer);
+            return result;
+        }
+#else
         if (const char* env = std::getenv("LOICOLLECTION_A_PERMISSION_JSON"))
             return std::filesystem::path(env);
+#endif
 
         std::filesystem::path current = std::filesystem::path(__FILE__).parent_path();
         while (!current.empty()) {

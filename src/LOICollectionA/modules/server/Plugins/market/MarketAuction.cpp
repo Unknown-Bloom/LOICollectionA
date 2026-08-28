@@ -235,7 +235,7 @@ namespace LOICollection::server::Plugins {
                                         this->mImpl->logger->warn(fmt::runtime(tr({}, "market.log27")), data.at("item_name"), oldBidder);
 
                                         auto restore = this->mImpl->db->set("StoreAuction", id, data)
-                                            .and_then([this, mScoreboard, price, &player]() -> ll::Expected<void> {
+                                            .and_then([mScoreboard, price, &player]() -> ll::Expected<void> {
                                                 ScoreboardUtils::addScore(player, mScoreboard, price);
 
                                                 return {};

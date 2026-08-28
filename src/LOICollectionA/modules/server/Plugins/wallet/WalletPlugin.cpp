@@ -669,7 +669,15 @@ namespace LOICollection::server::Plugins {
 
             this->tryGrabRedEnvelope(event.self(), event.message())
                 .or_else([&event](ll::Error e) -> ll::Expected<void> {
-                    if (e.isA<ll::ErrorCodeError>() && e.as<ll::ErrorCodeError>().ec == makeErrorCode(WalletPluginErrorCode::NotInTargetList)) {
+                    if (!e.isA<ll::ErrorCodeError>())
+                        return ll::Unexpected(e);
+
+                    auto code = e.as<ll::ErrorCodeError>().ec;
+
+                    if (code == makeErrorCode(WalletPluginErrorCode::NotFound))
+                        return {};
+
+                    if (code == makeErrorCode(WalletPluginErrorCode::NotInTargetList)) {
                         return LanguagePlugin::getShared()->getLanguage(event.self())
                             .and_then([&event](const std::string& language) -> ll::Expected<void> {
                                 event.self().sendMessage(tr(language, "wallet.redenvelope.not.target"));
@@ -781,6 +789,7 @@ namespace LOICollection::server::Plugins {
         return this->mImpl->db->create("Wallet", [](SQLiteStorage::ColumnCallback ctor) -> void {
             ctor("name");
             ctor("score");
+            ctor("balance");
         }).and_then([this]() -> ll::Expected<void> {
             return this->mImpl->mLedger->createTables();
         }).and_then([this]() -> ll::Expected<void> {
