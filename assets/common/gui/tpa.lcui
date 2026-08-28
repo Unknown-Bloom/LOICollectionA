@@ -41,6 +41,7 @@ addBlacklistOption.tooltip = {tr("tpa.gui.setting.blacklist.add.tooltip")};
 
 setting = new CustomForm("tpa.setting", {tr("tpa.gui.setting.title")}) {
     label({tr("tpa.gui.setting.label")}, new TextOptions());
+    SectionHeader();
     button({tr("tpa.gui.setting.generic")}, on: func () -> void {
         if (!navigateGeneric.value) [
             navigateGeneric.value = true;
@@ -59,10 +60,11 @@ setting = new CustomForm("tpa.setting", {tr("tpa.gui.setting.title")}) {
     show(func (result) -> void {
         if (navigateGeneric.value) [
             GUIManager::switchTo("tpa.generic", 1);
-        :
-            if (navigateBlacklist.value) [
-                GUIManager::switchTo("tpa.blacklist", 3);
-            ]
+            return;
+        ]
+
+        if (navigateBlacklist.value) [
+            GUIManager::switchTo("tpa.blacklist", 3);
         ]
     });
     show();
@@ -74,6 +76,7 @@ inviteSaved.value = false;
 
 generic = new CustomForm("tpa.generic", {tr("tpa.gui.setting.title")}) {
     label({tr("tpa.gui.setting.label")}, new TextOptions());
+    SectionHeader();
     toggle({tr("tpa.gui.setting.generic.switch1")}, inviteState, new ToggleOptions());
     ConfirmBar(saveLabel(), func () -> void {
         if (!inviteSaved.value) [
@@ -93,6 +96,7 @@ generic = new CustomForm("tpa.generic", {tr("tpa.gui.setting.title")}) {
 
 blacklist = new PaginatedForm("tpa.blacklist", {tr("tpa.gui.setting.title")}, GUIManager::value("tpa.blacklists"), 10) {
     label({tr("tpa.gui.setting.label")}, new TextOptions());
+    SectionHeader();
     PageControls();
     closeButton();
     divider(new DividerOptions());
@@ -117,6 +121,7 @@ blacklist = new PaginatedForm("tpa.blacklist", {tr("tpa.gui.setting.title")}, GU
 
                 info = new CustomForm("tpa.blacklist.set", {tr("tpa.gui.setting.title")}) {
                     label(infoData[0], new TextOptions());
+                    SectionHeader();
                     ConfirmBar({tr("tpa.gui.setting.blacklist.set.remove")}, func () -> void {
                         GUIManager::callback("tpa.blacklist.remove", [ result.selection ]);
 
@@ -138,6 +143,7 @@ blacklist = new PaginatedForm("tpa.blacklist", {tr("tpa.gui.setting.title")}, GU
 
 blacklistAdd = new PaginatedForm("tpa.blacklist.add", {tr("tpa.gui.setting.title")}, GUIManager::value("tpa.players.add"), 10) {
     label({tr("tpa.gui.setting.blacklist.add.label")}, new TextOptions());
+    SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
@@ -154,6 +160,7 @@ blacklistAdd = new PaginatedForm("tpa.blacklist.add", {tr("tpa.gui.setting.title
 
 open = new PaginatedForm("tpa.open", {tr("tpa.gui.title")}, GUIManager::value("tpa.players"), 10) {
     label({tr("tpa.gui.label2")}, new TextOptions());
+    SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
@@ -173,6 +180,7 @@ func buildContent(targetUuid: string) -> void {
 
     content = new CustomForm("tpa.content", {tr("tpa.gui.title")}) {
         label({tr("tpa.gui.label")}, new TextOptions());
+        SectionHeader();
         dropdown({tr("tpa.gui.dropdown")}, typeValue, GUIManager::value("tpa.types"), new DropdownOptions());
         ConfirmBar(saveLabel(), func () -> void {
             submitResult = GUIManager::request("tpa.content.submit", [ targetUuid, typeValue.getData() ]);

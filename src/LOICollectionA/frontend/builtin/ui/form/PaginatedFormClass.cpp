@@ -70,6 +70,7 @@ namespace PaginatedFormClass {
         std::reference_wrapper<Player> player = std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0));
 
         auto handle = std::make_shared<PaginatedFormHandle>();
+        handle->scriptId = Context::scriptIdOf(placeholders);
         handle->guiId = std::get<std::string>(args[0]);
         handle->title = std::move(*title);
         handle->pageSize = args.size() >= 4

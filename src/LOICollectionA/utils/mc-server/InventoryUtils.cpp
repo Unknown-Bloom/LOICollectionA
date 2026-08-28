@@ -25,7 +25,22 @@ namespace InventoryUtils {
         }
     }
 
-    void giveItem(Player& player, ItemStack& item, int mNumber) {
+    void clearItem(Player& player, const ItemStack& item, int mNumber) {
+        auto& inventory = player.mInventory->mInventory;
+        for (int i = 0; i < inventory->getContainerSize() && mNumber > 0; ++i) {
+            const ItemStack& mItemObject = inventory->getItem(i);
+
+            if (mItemObject.matches(item)) {
+                int mCount = std::min(static_cast<int>(mItemObject.mCount), mNumber);
+
+                inventory->removeItem(i, mCount);
+
+                mNumber -= mCount;
+            }
+        }
+    }
+
+    void giveItem(Player& player, const ItemStack& item, int mNumber) {
         std::vector<ItemStack> mItemStacks{};
         for (int count; mNumber > 0; mNumber -= count)
             mItemStacks.emplace_back(item).mCount = static_cast<uchar>(count = std::min(mNumber, 64));
@@ -42,6 +57,21 @@ namespace InventoryUtils {
             const ItemStack& mItemObject = mItemInventory->getItem(i);
             
             if ((mItemObject || !mItemObject.isNull()) && mTypeName == mItemObject.getTypeName())
+                mNumber -= static_cast<int>(mItemObject.mCount);
+        }
+
+        return mNumber <= 0;
+    }
+
+    bool isItemInInventory(Player& player, const ItemStack& item, int mNumber) {
+        if (mNumber <= 0)
+            return false;
+
+        auto& mItemInventory = player.mInventory->mInventory;
+        for (int i = 0; i < mItemInventory->getContainerSize() && mNumber > 0; ++i) {
+            const ItemStack& mItemObject = mItemInventory->getItem(i);
+
+            if (mItemObject.matches(item))
                 mNumber -= static_cast<int>(mItemObject.mCount);
         }
 

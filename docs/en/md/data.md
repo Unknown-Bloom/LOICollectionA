@@ -280,6 +280,56 @@ Currently, `LOICollectionA` supports two data file formats: `Json` and `SQLite`.
 > [!TIP]
 > In most cases, you do not need to modify data files manually, because most data files have built-in editors during the use of `LOICollectionA`. Starting from 1.15.0, Menu and Shop have been changed to edit lcui data files directly, and in-game editors are no longer provided.
 
+### permission.json (gui directory)
+
+`permission.json` is the script capability authorization file, located in the `plugins/LOICollectionA/gui/` directory. It controls the sensitive capabilities each script may invoke: command execution (`mc::runCmd`) and business reads/writes (`GUIManager::value/request/callback`).
+
+> [!IMPORTANT]
+> Authorization uses a deny-by-default policy (`defaultPolicy: "deny"`). Scripts and authorization are separate: after editing a script (especially `menu.lcui` / `shop.lcui`) to add new capability calls, you must sync `permission.json` accordingly, otherwise those calls are denied and an error is logged.
+
+| Field | Type | Description |
+| ---- | ---- | ---- |
+| `defaultPolicy` | string | Default policy for scripts not listed in `scripts`: `"deny"` or `"allow"`. Keep `"deny"` |
+| `scripts.<id>` | object | Authorization entry for a script, where `<id>` is the short script id (e.g. `wallet`, `market.auction`, `menu`) |
+| `scripts.<id>.enabled` | boolean | Whether opening this script is allowed |
+| `scripts.<id>.commands.allow` | boolean | Whether `mc::runCmd` is allowed |
+| `scripts.<id>.commands.templates` | string[] | Command allowlist (exact match). When empty, commands are denied even if `allow` is `true` |
+| `scripts.<id>.gui.values` | string[] | Allowlist of `GUIManager::value` ids |
+| `scripts.<id>.gui.requests` | string[] | Allowlist of `GUIManager::request` ids |
+| `scripts.<id>.gui.callbacks` | string[] | Allowlist of `GUIManager::callback` ids |
+
+```json
+{
+    "defaultPolicy": "deny",
+    "scripts": {
+        "menu": {
+            "enabled": true,
+            "commands": {
+                "allow": true,
+                "templates": ["say No permission", "say No score"]
+            },
+            "gui": {
+                "values": [],
+                "requests": [],
+                "callbacks": []
+            }
+        },
+        "wallet": {
+            "enabled": true,
+            "commands": { "allow": false, "templates": [] },
+            "gui": {
+                "values": ["wallet.players.online", "wallet.rank"],
+                "requests": ["wallet.info", "wallet.transfer.submit"],
+                "callbacks": ["wallet.wealth", "wallet.transfer.confirm"]
+            }
+        }
+    }
+}
+```
+
+> [!TIP]
+> Authorization for built-in scripts (`blacklist`, `wallet`, etc.) is maintained automatically with plugin updates. `menu` / `shop` are scripts you write yourself, so their authorization must be synced manually based on the commands and GUI ids actually invoked in the script.
+
 ### menu.lcui (config directory)
 
 > Starting from LOICollectionA 1.15.0, Menu no longer reads `menu.json`. Please create `menu.lcui` yourself in the `plugins/LOICollectionA/config` directory, directly define `MenuData` in the file, and open it using `MenuForm`. The form ID corresponds to the Id passed in `/menu gui <Id>`.

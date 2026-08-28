@@ -14,6 +14,7 @@ mineOption.tooltip = {tr("market.gui.wanted.mine.tooltip")};
 
 wanted = new PaginatedForm("market.wanted", {tr("market.gui.title")}, GUIManager::value("market.wanted.items"), 10) {
     label({tr("market.gui.wanted.list.label")}, new TextOptions());
+    SectionHeader();
     PageControls();
     divider(new DividerOptions());
     button({tr("market.gui.wanted.create")}, on: func () -> void {
@@ -34,18 +35,20 @@ wanted = new PaginatedForm("market.wanted", {tr("market.gui.title")}, GUIManager
     show(func (result) -> void {
         if (navigateWantedCreate.value) [
             buildWantedInventory();
-        :
-            if (navigateWantedMine.value) [
-                buildWantedMine();
-            :
-                if (result.selection != "") [
-                    idData = GUIManager::request("market.wanted.id", [ result.selectionIndex ]);
+            return;
+        ]
 
-                    buildWantedInfo(idData[0]);
-                :
-                    GUIManager::open("market", "market.open", 1);
-                ]
-            ]
+        if (navigateWantedMine.value) [
+            buildWantedMine();
+            return;
+        ]
+
+        if (result.selection != "") [
+            idData = GUIManager::request("market.wanted.id", [ result.selectionIndex ]);
+
+            buildWantedInfo(idData[0]);
+        :
+            GUIManager::open("market", "market.open", 1);
         ]
     });
     show();
@@ -96,6 +99,7 @@ func buildWantedInfo(id: string) -> void {
 func buildWantedInventory() -> void {
     wantedInventory = new PaginatedForm("market.wanted.inventory", {tr("market.gui.title")}, GUIManager::value("market.sell.inventory"), 10) {
         label({tr("market.gui.sell.item.dropdown")}, new TextOptions());
+        SectionHeader();
         PageControls();
         closeButton();
         show(func (result) -> void {
@@ -165,6 +169,7 @@ func buildWantedCreate(slot: int) -> void {
 func buildWantedMine() -> void {
     wantedMine = new PaginatedForm("market.wanted.mine", {tr("market.gui.title")}, GUIManager::value("market.my.wanted"), 10) {
         label({tr("market.gui.wanted.mine.label")}, new TextOptions());
+        SectionHeader();
         PageControls();
         closeButton();
         show(func (result) -> void {

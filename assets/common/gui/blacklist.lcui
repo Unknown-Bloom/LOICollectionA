@@ -33,10 +33,11 @@ open = new CustomForm("blacklist.open", {tr("blacklist.gui.title")}) {
     show(func (result) -> void {
         if (navigateAdd.value) [
             GUIManager::switchTo("blacklist.add", 3);
-        :
-            if (navigateDelete.value) [
-                GUIManager::switchTo("blacklist.remove", 3);
-            ]
+            return;
+        ]
+
+        if (navigateDelete.value) [
+            GUIManager::switchTo("blacklist.remove", 3);
         ]
     });
     show();

@@ -113,7 +113,7 @@ namespace Config {
 
     struct C_Chat {
         bool ModuleEnabled = false;
-        std::string FormatText = "<{player}> ${0}";
+        std::string FormatText = "'<' + {player} + '> ' + ${0}";
         int BlacklistUpload = 10;
     };
 

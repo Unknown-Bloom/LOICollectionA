@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -9,6 +8,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "LOICollectionA/LOICollectionA.h"
 #include "LOICollectionA/frontend/sandbox/ScriptPermission.h"
 
 using namespace LOICollection::frontend::sandbox;
@@ -51,21 +51,7 @@ namespace {
     };
 
     std::filesystem::path locateProductionPermissionJson() {
-#ifdef LOICOLLECTION_A_PERMISSION_JSON
-        return LOICOLLECTION_A_PERMISSION_JSON;
-#endif
-        if (const char* env = std::getenv("LOICOLLECTION_A_PERMISSION_JSON"))
-            return std::filesystem::path(env);
-
-        std::filesystem::path current = std::filesystem::path(__FILE__).parent_path();
-        while (!current.empty()) {
-            std::filesystem::path candidate = current / "assets" / "common" / "gui" / "permission.json";
-            if (std::filesystem::exists(candidate))
-                return candidate;
-            current = current.parent_path();
-        }
-
-        return {};
+        return LOICollection::A::getInstance().getSelf().getModDir() / "gui" / "permission.json";
     }
 }
 

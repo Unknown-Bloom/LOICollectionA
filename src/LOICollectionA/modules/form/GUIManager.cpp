@@ -257,7 +257,9 @@ namespace LOICollection::form {
                 values.emplace_back(std::monostate{});
 
             [[maybe_unused]] auto cbResult = frontend::ir::VM::callFunctionRef(
-                handle->show, values, frontend::Context{ player }.params, diagnostics
+                handle->show, values,
+                frontend::Context::withScriptId(frontend::Context{ player }.params, handle->scriptId),
+                diagnostics
             );
 
             if (diagnostics.hasErrors()) {
@@ -312,7 +314,9 @@ namespace LOICollection::form {
             }
 
             [[maybe_unused]] auto cbResult = frontend::ir::VM::callFunctionRef(
-                handle->show, values, frontend::Context{ player }.params, diagnostics
+                handle->show, values,
+                frontend::Context::withScriptId(frontend::Context{ player }.params, handle->scriptId),
+                diagnostics
             );
 
             if (diagnostics.hasErrors()) {
@@ -358,7 +362,9 @@ namespace LOICollection::form {
                 frontend::CallbackTypeValues values{ resultObj };
 
                 [[maybe_unused]] auto cbResult = frontend::ir::VM::callFunctionRef(
-                    handle->show, values, frontend::Context{ player }.params, diagnostics
+                    handle->show, values,
+                    frontend::Context::withScriptId(frontend::Context{ player }.params, handle->scriptId),
+                    diagnostics
                 );
 
                 if (diagnostics.hasErrors()) {

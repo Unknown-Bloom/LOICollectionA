@@ -41,7 +41,7 @@ namespace LOICollection::server::Plugins {
 
         form::GUIManager::getInstance().registerValue("market.quote.items", [listTopQuoteItems](Player& player) -> ll::Expected<frontend::ArrayRef> {
             return LanguagePlugin::getShared()->getLanguage(player)
-                .and_then([listTopQuoteItems, &player](const std::string& language) -> ll::Expected<frontend::ArrayRef> {
+                .and_then([listTopQuoteItems](const std::string& language) -> ll::Expected<frontend::ArrayRef> {
                     return listTopQuoteItems(50)
                         .transform([language](const std::vector<std::pair<std::string, long long>>& items) -> frontend::ArrayRef {
                             auto values = std::make_shared<frontend::ArrayValue>();
@@ -54,7 +54,7 @@ namespace LOICollection::server::Plugins {
                 });
         });
 
-        form::GUIManager::getInstance().registerRequest("market.quote.id", [listTopQuoteItems](frontend::ArrayRef args, Player& player) -> ll::Expected<frontend::ArrayRef> {
+        form::GUIManager::getInstance().registerRequest("market.quote.id", [listTopQuoteItems](frontend::ArrayRef args, Player&) -> ll::Expected<frontend::ArrayRef> {
             if (args->elements.size() != 1 || !std::holds_alternative<int>(args->elements[0]))
                 return ll::makeStringError("market.quote.id: must take exactly one int parameter");
 

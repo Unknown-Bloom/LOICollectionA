@@ -87,7 +87,6 @@ namespace LOICollection::server::Plugins {
             ctor("bidder_uuid");
             ctor("bidder_name");
             ctor("bid_count");
-            ctor("created_at");
             ctor("end_at");
             ctor("settled");
         });
@@ -182,8 +181,11 @@ namespace LOICollection::server::Plugins {
                     return false;
 
                 int currentPrice = SystemUtils::toInt(data.at("current_price"), 0);
+                bool firstBid = data.at("bidder_uuid").empty();
 
-                int minBid = static_cast<int>(std::ceil(currentPrice * this->mImpl->options.StoreAuctionMinBidIncrement));
+                int minBid = firstBid
+                    ? currentPrice
+                    : static_cast<int>(std::ceil(currentPrice * this->mImpl->options.StoreAuctionMinBidIncrement));
                 if (price < minBid)
                     return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::AuctionBidTooLow));
 
@@ -236,7 +238,7 @@ namespace LOICollection::server::Plugins {
                                         this->mImpl->logger->warn(fmt::runtime(tr({}, "market.log27")), data.at("item_name"), oldBidder);
 
                                         auto restore = this->mImpl->db->set("StoreAuction", id, data)
-                                            .and_then([this, mScoreboard, price, &player]() -> ll::Expected<void> {
+                                            .and_then([mScoreboard, price, &player]() -> ll::Expected<void> {
                                                 ScoreboardUtils::addScore(player, mScoreboard, price);
 
                                                 return {};

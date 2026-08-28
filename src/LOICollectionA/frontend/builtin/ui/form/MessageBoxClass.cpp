@@ -10,6 +10,7 @@
 #include "LOICollectionA/include/form/GUIManager.h"
 
 #include "LOICollectionA/frontend/Callback.h"
+#include "LOICollectionA/frontend/Context.h"
 
 #include "LOICollectionA/frontend/builtin/ui/form/CustomFormOptionsClass.h"
 
@@ -27,6 +28,7 @@ namespace MessageBoxClass {
         std::reference_wrapper<Player> player = std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0));
 
         auto handle = std::make_shared<MessageBoxHandle>();
+        handle->scriptId = Context::scriptIdOf(placeholders);
         handle->base = std::make_unique<ll::ui::MessageBox>(player, *title);
 
         LOICollection::form::GUIManager::getInstance().registerMessageBoxUI(std::get<std::string>(args[0]), handle, player);
