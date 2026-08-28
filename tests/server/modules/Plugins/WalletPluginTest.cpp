@@ -44,9 +44,18 @@ protected:
     void TearDown() override {
         auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
 
-        auto result = storage->exec("DELETE FROM Wallet; DELETE FROM RedEnvelope; DELETE FROM RedEnvelopeGrab; DELETE FROM WalletFee; DELETE FROM WalletLedger; DELETE FROM WalletBank;");
-        if (!result.has_value())
-            GTEST_FAIL() << "Unable to clear data";
+        for (const char* sql : {
+            "DELETE FROM Wallet;",
+            "DELETE FROM RedEnvelope;",
+            "DELETE FROM RedEnvelopeGrab;",
+            "DELETE FROM WalletFee;",
+            "DELETE FROM WalletLedger;",
+            "DELETE FROM WalletBank;"
+        }) {
+            auto result = storage->exec(sql);
+            if (!result.has_value())
+                GTEST_FAIL() << "Unable to clear data";
+        }
 
         EXPECT_TRUE(WalletPlugin::getShared()->setExecutor(ll::thread::ServerThreadExecutor::getDefault()).has_value());
     }

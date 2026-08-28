@@ -249,7 +249,7 @@ namespace LOICollection::server::Plugins {
                 slot,
                 std::get<std::string>(args->elements[1]),
                 SystemUtils::toInt(std::get<std::string>(args->elements[2]), 0),
-                SystemUtils::toInt(std::get<std::string>(args->elements[3]), 0)
+                SystemUtils::toInt(std::get<std::string>(args->elements[3]), 0) * 60
             )
                 .transform([&player, values](bool ok) -> frontend::ArrayRef {
                     if (!ok) {

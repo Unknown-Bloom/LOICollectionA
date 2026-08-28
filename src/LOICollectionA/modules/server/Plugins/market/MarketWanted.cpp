@@ -248,7 +248,9 @@ namespace LOICollection::server::Plugins {
                                 });
                         }
 
-                        if (!InventoryUtils::isItemInInventory(player, data.at("item_type"), amount))
+                        ItemStack target = ItemStack::fromTag(CompoundTag::fromSnbt(data.at("item_data"))->mTags);
+
+                        if (!InventoryUtils::isItemInInventory(player, target, amount))
                             return false;
 
                         std::string mScoreboard = this->mImpl->options.TargetScoreboard;
@@ -259,11 +261,10 @@ namespace LOICollection::server::Plugins {
                         int sellerAmount = pay - tax;
 
                         return this->commitWantedFill(id, data, amount, pay, tax, player)
-                            .and_then([this, data, amount, pay, sellerAmount, tax, buyerUuid, &player, buyer](const std::string& saleKey) -> ll::Expected<bool> {
-                                InventoryUtils::clearItem(player, data.at("item_type"), amount);
+                            .and_then([this, data, amount, pay, sellerAmount, tax, buyerUuid, &player, buyer, target](const std::string& saleKey) -> ll::Expected<bool> {
+                                InventoryUtils::clearItem(player, target, amount);
 
-                                ItemStack mItemStack = ItemStack::fromTag(CompoundTag::fromSnbt(data.at("item_data"))->mTags);
-                                InventoryUtils::giveItem(*buyer, mItemStack, amount);
+                                InventoryUtils::giveItem(*buyer, target, amount);
 
                                 player.refreshInventory();
                                 buyer->refreshInventory();

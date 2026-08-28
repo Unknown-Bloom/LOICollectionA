@@ -108,7 +108,7 @@ open = new CustomForm("wallet.open", {tr("wallet.gui.title")}) {
                     GUIManager::switchTo("wallet.redenvelope", 1);
                 :
                     if (navigateHistory.value) [
-                        GUIManager::switchTo("wallet.history", 1);
+                        GUIManager::switchTo("wallet.history", 3);
                     :
                         if (navigateBank.value) [
                             GUIManager::switchTo("wallet.bank", 1);
