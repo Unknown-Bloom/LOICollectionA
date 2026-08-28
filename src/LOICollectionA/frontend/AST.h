@@ -850,12 +850,11 @@ namespace LOICollection::frontend {
 
         int bodyIndex = -1;
         int argCount = 0;
-        std::vector<std::string> paramNames;
 
         bool hasThis = false;
         ObjectRef thisObj;
-        
-        std::unordered_map<std::string, ValueNode::ValueType> captures;
+
+        std::vector<ValueNode::ValueType> captures;
         std::unordered_map<std::string, ValueNode::ValueType> globals;
     };
 }

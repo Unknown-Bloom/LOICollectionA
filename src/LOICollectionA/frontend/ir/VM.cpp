@@ -401,12 +401,6 @@ namespace LOICollection::frontend::ir {
         const std::string& name,
         const ValueNode::ValueType& val
     ) {
-        auto localIt = frame.locals.find(name);
-        if (localIt != frame.locals.end()) {
-            localIt->second = val;
-            return;
-        }
-
         if (frame.hasThis) {
             auto obj = std::get<ObjectRef>(frame.thisObj);
 
@@ -645,14 +639,28 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
-                case OpCode::LOAD_VAR: {
-                    const auto& name = std::get<std::string>(cur.constants[instr.operand]);
-
-                    auto localIt = frame.locals.find(name);
-                    if (localIt != frame.locals.end()) {
-                        this->push(localIt->second);
+                case OpCode::LOAD_SLOT: {
+                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.locals.size()) {
+                        this->diagnostics.addError(this->currentLoc, "Slot index out of range");
                         break;
                     }
+
+                    this->push(frame.locals[instr.operand]);
+                    break;
+                }
+
+                case OpCode::STORE_SLOT: {
+                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.locals.size()) {
+                        this->diagnostics.addError(this->currentLoc, "Slot index out of range");
+                        break;
+                    }
+
+                    frame.locals[instr.operand] = this->pop();
+                    break;
+                }
+
+                case OpCode::LOAD_VAR: {
+                    const auto& name = std::get<std::string>(cur.constants[instr.operand]);
 
                     if (frame.hasThis) {
                         auto obj = std::get<ObjectRef>(frame.thisObj);
@@ -708,21 +716,27 @@ namespace LOICollection::frontend::ir {
                     this->push(globalIt->second);
                     break;
                 }
-                case OpCode::DECLARE_LOCAL: {
-                    /* Pins a for-in loop variable to the current frame so each
-                     * iteration rebinds it; lambdas snapshot frame.locals when
-                     * created, capturing the value of their own iteration. */
-                    const auto& name = std::get<std::string>(cur.constants[instr.operand]);
-                    frame.locals.try_emplace(name, std::monostate{});
-                    break;
-                }
-
                 case OpCode::STORE_VAR: {
                     const auto& name = std::get<std::string>(cur.constants[instr.operand]);
 
                     auto val = this->pop();
 
                     this->storeVariable(chunk, frame, name, val);
+                    break;
+                }
+
+                case OpCode::DUP_STORE_SLOT: {
+                    if (this->stack.empty()) {
+                        this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP_STORE_SLOT");
+                        break;
+                    }
+
+                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.locals.size()) {
+                        this->diagnostics.addError(this->currentLoc, "Slot index out of range");
+                        break;
+                    }
+
+                    frame.locals[instr.operand] = this->stack.back();
                     break;
                 }
 
@@ -901,11 +915,13 @@ namespace LOICollection::frontend::ir {
                     func->owner = owner;
                     func->bodyIndex = meta.bodyIndex;
                     func->argCount = meta.argCount;
-                    func->paramNames = meta.paramNames;
                     func->hasThis = frame.hasThis;
                     if (frame.hasThis)
                         func->thisObj = std::get<ObjectRef>(frame.thisObj);
-                    func->captures = frame.locals;
+                    func->captures.assign(
+                        frame.locals.begin(),
+                        frame.locals.begin() + std::min(static_cast<size_t>(meta.captureCount), frame.locals.size())
+                    );
                     func->globals = this->variables;
 
                     this->push(func);
@@ -978,7 +994,7 @@ namespace LOICollection::frontend::ir {
                         callee.pendingPush = obj;
 
                         for (int i = 0; i < ctor.argCount; ++i)
-                            callee.locals[ctor.paramNames[i]] = args[i];
+                            callee.locals[i] = args[i];
 
                         if (!this->pushFrame(std::move(callee)))
                             break;
@@ -1041,7 +1057,7 @@ namespace LOICollection::frontend::ir {
                     callee.thisObj = receiver;
 
                     for (int i = 0; i < meta.argCount; ++i)
-                        callee.locals[meta.paramNames[i]] = args[i];
+                        callee.locals[i] = args[i];
 
                     if (!this->pushFrame(std::move(callee)))
                         break;
@@ -1091,7 +1107,7 @@ namespace LOICollection::frontend::ir {
                     callee.thisObj = receiver;
 
                     for (int i = 0; i < method.argCount; ++i)
-                        callee.locals[method.paramNames[i]] = args[i];
+                        callee.locals[i] = args[i];
 
                     if (!this->pushFrame(std::move(callee)))
                         break;
@@ -1133,7 +1149,7 @@ namespace LOICollection::frontend::ir {
                     callee.thisObj = receiver;
 
                     for (int i = 0; i < ctor.argCount; ++i)
-                        callee.locals[ctor.paramNames[i]] = args[i];
+                        callee.locals[i] = args[i];
 
                     if (!this->pushFrame(std::move(callee)))
                         break;
@@ -1231,7 +1247,7 @@ namespace LOICollection::frontend::ir {
                     callee.hasThis = false;
 
                     for (int i = 0; i < meta.argCount; ++i)
-                        callee.locals[meta.paramNames[i]] = args[i];
+                        callee.locals[i] = args[i];
 
                     if (!this->pushFrame(std::move(callee)))
                         break;
@@ -1268,10 +1284,17 @@ namespace LOICollection::frontend::ir {
                     callee.hasThis = func->hasThis;
                     if (func->hasThis)
                         callee.thisObj = func->thisObj;
-                    callee.locals = func->captures;
+
+                    const size_t paramBase = func->captures.size();
+                    if (paramBase + static_cast<size_t>(func->argCount) > callee.locals.size()) {
+                        this->diagnostics.addError(this->currentLoc, "Lambda frame is too small for its parameters");
+                        break;
+                    }
+
+                    std::copy_n(func->captures.begin(), paramBase, callee.locals.begin());
 
                     for (int i = 0; i < func->argCount; ++i)
-                        callee.locals[func->paramNames[i]] = args[i];
+                        callee.locals[paramBase + i] = args[i];
 
                     if (!this->pushFrame(std::move(callee)))
                         break;
@@ -1561,10 +1584,17 @@ namespace LOICollection::frontend::ir {
         callee.hasThis = func->hasThis;
         if (func->hasThis)
             callee.thisObj = func->thisObj;
-        callee.locals = func->captures;
+
+        const size_t paramBase = func->captures.size();
+        if (paramBase + static_cast<size_t>(func->argCount) > callee.locals.size()) {
+            diagnostics.addError({}, "Lambda frame is too small for its parameters");
+            return std::monostate{};
+        }
+
+        std::copy_n(func->captures.begin(), paramBase, callee.locals.begin());
 
         for (int i = 0; i < func->argCount; ++i)
-            callee.locals[func->paramNames[i]] = args[i];
+            callee.locals[paramBase + i] = args[i];
 
         vm.frames.push_back(std::move(callee));
         return vm.execute(func->owner, placeholders);

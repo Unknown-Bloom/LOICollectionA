@@ -61,7 +61,6 @@ namespace LOICollection::frontend::ir {
 
     struct MethodMeta {
         std::string name;
-        std::vector<std::string> paramNames;
         int argCount = 0;
         int classIndex = -1;
         int bodyIndex = -1;
@@ -70,7 +69,7 @@ namespace LOICollection::frontend::ir {
     struct LambdaMeta {
         int bodyIndex = -1;
         int argCount = 0;
-        std::vector<std::string> paramNames;
+        int captureCount = 0;
     };
 
     struct NativeCallMeta {
@@ -97,6 +96,8 @@ namespace LOICollection::frontend::ir {
          * MSVC STL's std::deque does not support an incomplete value type
          * (a self-referencing member), while libstdc++ accepts it. */
         std::deque<std::unique_ptr<BytecodeChunk>> methodBodies;
+
+        int slotCount = 0;
 
         size_t emit(OpCode op, int operand = 0, const SourceLocation& loc = {}) {
             this->code.push_back({op, operand, loc});

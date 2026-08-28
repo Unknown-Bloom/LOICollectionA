@@ -48,15 +48,16 @@ namespace LOICollection::frontend::ir {
             std::reference_wrapper<const BytecodeChunk> chunk;
 
             size_t ip = 0;
-            std::unordered_map<std::string, ValueNode::ValueType> locals;
+            std::vector<ValueNode::ValueType> locals;
 
             ValueNode::ValueType thisObj;
             bool hasThis = false;
-            
+
             ValueNode::ValueType pendingPush;
             bool hasPending = false;
 
-            explicit Frame(const BytecodeChunk& chunkRef) : chunk(chunkRef) {}
+            explicit Frame(const BytecodeChunk& chunkRef)
+                : chunk(chunkRef), locals(chunkRef.slotCount) {}
         };
 
         DiagnosticEngine& diagnostics;

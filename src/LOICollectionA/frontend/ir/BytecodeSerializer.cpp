@@ -213,9 +213,6 @@ namespace LOICollection::frontend::ir {
         void writeInstruction(Writer& writer, const Instruction& instr) {
             writer.u8(static_cast<uint8_t>(instr.op));
             writer.i32(instr.operand);
-            writer.u64(instr.loc.line);
-            writer.u64(instr.loc.column);
-            writer.u64(instr.loc.offset);
         }
 
         bool readInstruction(Reader& reader, Instruction& instr) {
@@ -225,19 +222,50 @@ namespace LOICollection::frontend::ir {
             if (!reader.u8(op) || !reader.i32(operand))
                 return false;
 
-            uint64_t line = 0;
-            uint64_t column = 0;
-            uint64_t offset = 0;
-            if (!reader.u64(line) || !reader.u64(column) || !reader.u64(offset))
-                return false;
-
             if (op > static_cast<uint8_t>(OpCode::LOAD_LEN))
                 return false;
 
             instr.op = static_cast<OpCode>(op);
             instr.operand = operand;
-            instr.loc = SourceLocation(line, column, offset);
             return true;
+        }
+
+        void writeDebugInfo(Writer& writer, const BytecodeChunk& chunk) {
+            for (const auto& instr : chunk.code) {
+                writer.u64(instr.loc.line);
+                writer.u64(instr.loc.column);
+                writer.u64(instr.loc.offset);
+            }
+
+            for (const auto& body : chunk.methodBodies)
+                writeDebugInfo(writer, *body);
+        }
+
+        bool readDebugInfo(Reader& reader, BytecodeChunk& chunk) {
+            for (auto& instr : chunk.code) {
+                uint64_t line = 0;
+                uint64_t column = 0;
+                uint64_t offset = 0;
+
+                if (!reader.u64(line) || !reader.u64(column) || !reader.u64(offset))
+                    return false;
+
+                instr.loc = SourceLocation(line, column, offset);
+            }
+
+            for (auto& body : chunk.methodBodies)
+                if (!readDebugInfo(reader, *body))
+                    return false;
+
+            return true;
+        }
+
+        size_t countInstructions(const BytecodeChunk& chunk) {
+            size_t total = chunk.code.size();
+            for (const auto& body : chunk.methodBodies)
+                total += countInstructions(*body);
+
+            return total;
         }
 
         void writeFuncMeta(Writer& writer, const FuncMeta& meta) {
@@ -360,7 +388,6 @@ namespace LOICollection::frontend::ir {
 
         void writeMethodMeta(Writer& writer, const MethodMeta& meta) {
             writer.str(meta.name);
-            writeStrings(writer, meta.paramNames);
             writer.i32(meta.argCount);
             writer.i32(meta.classIndex);
             writer.i32(meta.bodyIndex);
@@ -368,7 +395,6 @@ namespace LOICollection::frontend::ir {
 
         bool readMethodMeta(Reader& reader, MethodMeta& meta) {
             return reader.str(meta.name)
-                && readStrings(reader, meta.paramNames)
                 && reader.i32(meta.argCount)
                 && reader.i32(meta.classIndex)
                 && reader.i32(meta.bodyIndex);
@@ -412,11 +438,11 @@ namespace LOICollection::frontend::ir {
         void writeLambdaMeta(Writer& writer, const LambdaMeta& meta) {
             writer.i32(meta.bodyIndex);
             writer.i32(meta.argCount);
-            writeStrings(writer, meta.paramNames);
+            writer.i32(meta.captureCount);
         }
 
         bool readLambdaMeta(Reader& reader, LambdaMeta& meta) {
-            return reader.i32(meta.bodyIndex) && reader.i32(meta.argCount) && readStrings(reader, meta.paramNames);
+            return reader.i32(meta.bodyIndex) && reader.i32(meta.argCount) && reader.i32(meta.captureCount);
         }
 
         bool writeChunk(Writer& writer, const BytecodeChunk& chunk) {
@@ -452,6 +478,8 @@ namespace LOICollection::frontend::ir {
             writeVector<LambdaMeta>(writer, chunk.lambdas, [](Writer& w, const LambdaMeta& meta) {
                 writeLambdaMeta(w, meta);
             });
+
+            writer.i32(chunk.slotCount);
 
             writer.u32(static_cast<uint32_t>(chunk.methodBodies.size()));
             for (const auto& body : chunk.methodBodies)
@@ -489,7 +517,11 @@ namespace LOICollection::frontend::ir {
                 })
                 && readVector<LambdaMeta>(reader, chunk.lambdas, [](Reader& r, LambdaMeta& meta) -> bool {
                     return readLambdaMeta(r, meta);
-                })))
+                })
+                && reader.i32(chunk.slotCount)))
+                return false;
+
+            if (chunk.slotCount < 0)
                 return false;
 
             uint32_t bodyCount = 0;
@@ -509,7 +541,9 @@ namespace LOICollection::frontend::ir {
         }
     }
 
-    std::optional<std::string> BytecodeSerializer::serialize(const BytecodeChunk& chunk, const Header& header) {
+    std::optional<std::string> BytecodeSerializer::serialize(
+        const BytecodeChunk& chunk, const Header& header, std::string* bodyChecksum
+    ) {
         Writer payload;
         if (!writeChunk(payload, chunk))
             return std::nullopt;
@@ -528,10 +562,15 @@ namespace LOICollection::frontend::ir {
         writer.raw(checksum.data(), checksum.size());
         writer.raw(body.data(), body.size());
 
+        if (bodyChecksum)
+            *bodyChecksum = checksum;
+
         return writer.take();
     }
 
-    std::optional<BytecodeChunk> BytecodeSerializer::deserialize(const std::string& blob, const Header& expected) {
+    std::optional<BytecodeChunk> BytecodeSerializer::deserialize(
+        const std::string& blob, const Header& expected, std::string* bodyChecksum
+    ) {
         Reader reader(blob);
 
         char magic[sizeof(MAGIC)] = {};
@@ -565,10 +604,54 @@ namespace LOICollection::frontend::ir {
         if (utils::Sha256::compute(body) != checksum)
             return std::nullopt;
 
+        if (bodyChecksum)
+            *bodyChecksum = checksum;
+
         BytecodeChunk chunk;
         if (!readChunk(reader, chunk) || !reader.done())
             return std::nullopt;
 
         return chunk;
+    }
+
+    std::optional<std::string> BytecodeSerializer::serializeDebugInfo(
+        const BytecodeChunk& chunk, const std::string& bodyChecksum
+    ) {
+        if (bodyChecksum.size() != kDigestSize)
+            return std::nullopt;
+
+        Writer writer;
+
+        writer.raw(DEBUG_MAGIC, sizeof(DEBUG_MAGIC));
+        writer.u32(FORMAT_VERSION);
+        writer.raw(bodyChecksum.data(), bodyChecksum.size());
+        writer.u64(countInstructions(chunk));
+        writeDebugInfo(writer, chunk);
+
+        return writer.take();
+    }
+
+    bool BytecodeSerializer::attachDebugInfo(
+        BytecodeChunk& chunk, const std::string& debugBlob, const std::string& bodyChecksum
+    ) {
+        Reader reader(debugBlob);
+
+        char magic[sizeof(DEBUG_MAGIC)] = {};
+        uint32_t version = 0;
+        if (!reader.raw(magic, sizeof(magic)) || std::memcmp(magic, DEBUG_MAGIC, sizeof(DEBUG_MAGIC)) != 0)
+            return false;
+
+        if (!reader.u32(version) || version != FORMAT_VERSION)
+            return false;
+
+        std::string checksum(bodyChecksum.size(), '\0');
+        if (checksum.empty() || !reader.raw(checksum.data(), checksum.size()) || checksum != bodyChecksum)
+            return false;
+
+        uint64_t count = 0;
+        if (!reader.u64(count) || count != countInstructions(chunk))
+            return false;
+
+        return readDebugInfo(reader, chunk) && reader.done();
     }
 }
