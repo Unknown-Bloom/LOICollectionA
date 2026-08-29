@@ -89,6 +89,9 @@ namespace GUIManagerBuiltin {
 
     ll::Expected<TypedValue> open(const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
         const std::string scriptId = scriptIdOf(placeholders);
+        const std::string targetScript = std::get<std::string>(args[0]);
+        const std::string formId = std::get<std::string>(args[1]);
+
         const auto permission = permissionService();
         if (!permission || !permission->gate().isGuiNavigationAllowed(scriptId))
             return ll::makeStringError(
@@ -96,9 +99,16 @@ namespace GUIManagerBuiltin {
                 "'. Set scripts." + scriptId + ".enabled to true in permission.json"
             );
 
+        if (!permission->gate().isGuiNavigationTargetAllowed(scriptId, targetScript, formId))
+            return ll::makeStringError(
+                "Permission denied: GUIManager::open target '" + targetScript + "/" + formId +
+                "' is not allowed for script '" + scriptId +
+                "'. Add '" + targetScript + "' to permission.json under scripts." + scriptId + ".gui.navigations"
+            );
+
         auto result = GUIManager::getInstance().open(
-            std::get<std::string>(args[0]),
-            std::get<std::string>(args[1]),
+            targetScript,
+            formId,
             static_cast<GUIManagerType>(std::get<int>(args[2])),
             std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0)),
             args.size() >= 4 ? std::get<ArrayRef>(args[3]) : ArrayRef{}
