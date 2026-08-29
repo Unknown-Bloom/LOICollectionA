@@ -569,3 +569,7 @@ docs/.vitepress/cache/
 .npm-cache/
 .pnpm-store/
 .pnpm-cache/
+
+# LCUI bytecode packages (generated at runtime)
+*.lcp
+*.lcp.dbg

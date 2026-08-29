@@ -13,7 +13,9 @@ namespace LOICollection::frontend::ir {
     class BytecodeSerializer {
     public:
         struct Header {
-            std::string sourceHash;
+            std::string scriptId;
+            std::string abiFingerprint;
+            std::optional<std::string> sourceHash;
             std::vector<std::string> importHashes;
         };
 
@@ -36,8 +38,8 @@ namespace LOICollection::frontend::ir {
     private:
         BytecodeSerializer() = default;
 
-        static constexpr char MAGIC[4] = { 'L', 'C', 'U', 'I' };
+        static constexpr char MAGIC[4] = { 'L', 'C', 'U', 'P' };
         static constexpr char DEBUG_MAGIC[4] = { 'L', 'C', 'U', 'D' };
-        static constexpr uint32_t FORMAT_VERSION = 4;
+        static constexpr uint32_t FORMAT_VERSION = 5;
     };
 }

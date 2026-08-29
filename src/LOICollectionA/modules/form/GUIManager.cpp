@@ -24,6 +24,7 @@
 #include "LOICollectionA/frontend/ir/VM.h"
 #include "LOICollectionA/frontend/ir/Compiler.h"
 #include "LOICollectionA/frontend/ir/Optimizer.h"
+#include "LOICollectionA/frontend/ir/Abi.h"
 #include "LOICollectionA/frontend/ir/BytecodeSerializer.h"
 
 #include "LOICollectionA/frontend/builtin/ui/form/CustomFormClass.h"
@@ -109,37 +110,43 @@ namespace LOICollection::form {
     }
 
     ll::Expected<void> GUIManager::load(const std::string& id, const std::string& path) {
-        auto content = this->readFile(path);
-        if (!content.has_value())
-            return ll::Unexpected(content.error());
-
         frontend::DiagnosticEngine diagnostics;
 
-        const std::string rootDir = std::filesystem::path(path).parent_path().string();
-        auto loaded = frontend::ScriptLoader::load(
-            path, rootDir,
-            [this](const std::string& file) -> std::optional<std::string> {
-                auto data = this->readFile(file);
-                if (!data.has_value())
-                    return std::nullopt;
-
-                return data.value();
-            },
-            diagnostics
-        );
-        if (!loaded)
-            return ll::makeStringError(diagnostics.getErrorMessage());
-
         frontend::ir::BytecodeSerializer::Header header;
-        header.sourceHash = loaded->hashes.back();
-        header.importHashes.assign(loaded->hashes.begin(), loaded->hashes.end() - 1);
+        header.scriptId = id;
+        header.abiFingerprint = frontend::ir::abiFingerprint();
 
-        const std::string cachePath = path + ".lcc";
-        if (auto blob = this->readFile(cachePath); blob.has_value()) {
+        std::optional<frontend::ScriptLoader::Result> loaded;
+
+        const bool hasSource = this->readFile(path).has_value();
+
+        if (hasSource) {
+            const std::string rootDir = std::filesystem::path(path).parent_path().string();
+            auto result = frontend::ScriptLoader::load(
+                path, rootDir,
+                [this](const std::string& file) -> std::optional<std::string> {
+                    auto data = this->readFile(file);
+                    if (!data.has_value())
+                        return std::nullopt;
+
+                    return data.value();
+                },
+                diagnostics
+            );
+            if (!result)
+                return ll::makeStringError(diagnostics.getErrorMessage());
+
+            loaded = std::move(result);
+            header.sourceHash = loaded->hashes.back();
+            header.importHashes.assign(loaded->hashes.begin(), loaded->hashes.end() - 1);
+        }
+
+        const std::string packagePath = path + ".lcp";
+        if (auto blob = this->readFile(packagePath); blob.has_value()) {
             std::string bodyChecksum;
 
             if (auto chunk = frontend::ir::BytecodeSerializer::deserialize(blob.value(), header, &bodyChecksum)) {
-                if (auto debug = this->readFile(cachePath + ".dbg"); debug.has_value())
+                if (auto debug = this->readFile(packagePath + ".dbg"); debug.has_value())
                     frontend::ir::BytecodeSerializer::attachDebugInfo(*chunk, debug.value(), bodyChecksum);
 
                 this->mImpl->cache.insert_or_assign(id, std::make_shared<frontend::ir::BytecodeChunk>(std::move(*chunk)));
@@ -147,6 +154,11 @@ namespace LOICollection::form {
                 return {};
             }
         }
+
+        if (!loaded)
+            return ll::makeStringError(
+                "load: Script '" + id + "' has no readable source and no valid bytecode package"
+            );
 
         frontend::ir::Compiler mCompiler(diagnostics);
 
@@ -169,12 +181,12 @@ namespace LOICollection::form {
         std::string bodyChecksum;
 
         if (auto blob = frontend::ir::BytecodeSerializer::serialize(*bytecode, header, &bodyChecksum)) {
-            std::ofstream out(cachePath, std::ios::binary | std::ios::trunc);
+            std::ofstream out(packagePath, std::ios::binary | std::ios::trunc);
             if (out)
                 out.write(blob->data(), static_cast<std::streamsize>(blob->size()));
 
             if (auto debug = frontend::ir::BytecodeSerializer::serializeDebugInfo(*bytecode, bodyChecksum)) {
-                std::ofstream debugOut(cachePath + ".dbg", std::ios::binary | std::ios::trunc);
+                std::ofstream debugOut(packagePath + ".dbg", std::ios::binary | std::ios::trunc);
                 if (debugOut)
                     debugOut.write(debug->data(), static_cast<std::streamsize>(debug->size()));
             }
