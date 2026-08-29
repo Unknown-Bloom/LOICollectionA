@@ -12,9 +12,23 @@
 #include "LOICollectionA/frontend/ir/Compiler.h"
 
 namespace LOICollection::frontend::ir {
+    namespace {
+        std::string qualifiedName(const VariableNode& node) {
+            return node.isStaticField ? node.staticClassName + "::" + node.name : node.name;
+        }
+
+        std::string qualifiedName(const MemberAccessNode& node) {
+            return node.isStaticAccess
+                ? node.staticClassName + "::" + node.memberName
+                : node.memberName;
+        }
+    }
+
     Compiler::Compiler(DiagnosticEngine& diag) : current(std::ref(chunk)), diagnostics(diag) {}
 
     BytecodeChunk Compiler::compile(ASTNode& root) {
+        this->pushScope(false, 0);
+
         if (root.getType() == ASTNode::Type::Program) {
             auto& program = static_cast<ProgramNode&>(root);
 
@@ -81,6 +95,8 @@ namespace LOICollection::frontend::ir {
 
         this->current.get().emit(OpCode::HALT);
 
+        this->chunk.slotCount = this->closeScope();
+
         return std::move(chunk);
     }
 
@@ -101,10 +117,7 @@ namespace LOICollection::frontend::ir {
     }
 
     void Compiler::visit(VariableNode& node) {
-        int idx = node.isStaticField
-            ? this->addConstant(node.staticClassName + "::" + node.name)
-            : this->addConstant(node.name);
-        this->current.get().emit(OpCode::LOAD_VAR, idx, node.loc);
+        this->emitLoad(qualifiedName(node), node.loc);
 
         if (node.type.kind == TypeKind::Optional && !node.preserveOptional)
             this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
@@ -123,17 +136,13 @@ namespace LOICollection::frontend::ir {
         switch (node.target->getType()) {
             case ASTNode::Type::Variable: {
                 auto& var = static_cast<VariableNode&>(*node.target);
-                int idx = var.isStaticField
-                    ? this->addConstant(var.staticClassName + "::" + var.name)
-                    : this->addConstant(var.name);
-                this->current.get().emit(OpCode::STORE_VAR, idx, node.loc);
+                this->emitStore(qualifiedName(var), node.loc);
                 break;
             }
             case ASTNode::Type::MemberAccess: {
                 auto& member = static_cast<MemberAccessNode&>(*node.target);
                 if (member.isStaticAccess) {
-                    int idx = this->addConstant(member.staticClassName + "::" + member.memberName);
-                    this->current.get().emit(OpCode::STORE_VAR, idx, node.loc);
+                    this->emitStore(qualifiedName(member), node.loc);
                     break;
                 }
 
@@ -160,11 +169,9 @@ namespace LOICollection::frontend::ir {
         switch (node.target->getType()) {
             case ASTNode::Type::Variable: {
                 auto& var = static_cast<VariableNode&>(*node.target);
-                int idx = var.isStaticField
-                    ? this->addConstant(var.staticClassName + "::" + var.name)
-                    : this->addConstant(var.name);
+                const std::string name = qualifiedName(var);
 
-                this->current.get().emit(OpCode::LOAD_VAR, idx, node.loc);
+                this->emitLoad(name, node.loc);
                 if (var.type.kind == TypeKind::Optional && !var.preserveOptional)
                     this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
 
@@ -172,15 +179,15 @@ namespace LOICollection::frontend::ir {
                 this->emitArithmeticOp(node.op, node.loc);
 
                 this->current.get().emit(OpCode::DUP, 0, node.loc);
-                this->current.get().emit(OpCode::STORE_VAR, idx, node.loc);
+                this->emitStore(name, node.loc);
                 break;
             }
             case ASTNode::Type::MemberAccess: {
                 auto& member = static_cast<MemberAccessNode&>(*node.target);
                 if (member.isStaticAccess) {
-                    int idx = this->addConstant(member.staticClassName + "::" + member.memberName);
+                    const std::string name = qualifiedName(member);
 
-                    this->current.get().emit(OpCode::LOAD_VAR, idx, node.loc);
+                    this->emitLoad(name, node.loc);
                     if (member.type.kind == TypeKind::Optional && !member.preserveOptional)
                         this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
 
@@ -188,7 +195,7 @@ namespace LOICollection::frontend::ir {
                     this->emitArithmeticOp(node.op, node.loc);
 
                     this->current.get().emit(OpCode::DUP, 0, node.loc);
-                    this->current.get().emit(OpCode::STORE_VAR, idx, node.loc);
+                    this->emitStore(name, node.loc);
                     break;
                 }
 
@@ -265,30 +272,22 @@ namespace LOICollection::frontend::ir {
     }
 
     void Compiler::compileForInArray(ForInNode& node, size_t uid) {
-        int seqIdx = this->addConstant("__forin_seq_" + std::to_string(uid));
-        int idxIdx = this->addConstant("__forin_idx_" + std::to_string(uid));
-
-        /* Loop variables live in the frame's locals so each iteration rebinds
-         * them: a lambda created inside the body snapshots the current value
-         * instead of following a shared slot after the loop ends. */
-        int elemIdx = this->addConstant(node.elementVar);
-        this->current.get().emit(OpCode::DECLARE_LOCAL, elemIdx, node.loc);
-        if (node.hasIndexVar) {
-            int indexVarIdx = this->addConstant(node.indexVar);
-            this->current.get().emit(OpCode::DECLARE_LOCAL, indexVarIdx, node.loc);
-        }
+        const int seqSlot = this->declareSlot("__forin_seq_" + std::to_string(uid));
+        const int idxSlot = this->declareSlot("__forin_idx_" + std::to_string(uid));
+        const int elemSlot = this->declareSlot(node.elementVar);
+        const int indexSlot = node.hasIndexVar ? this->declareSlot(node.indexVar) : -1;
 
         this->compileValue(*node.iterable, node.loc);
-        this->current.get().emit(OpCode::STORE_VAR, seqIdx, node.loc);
+        this->current.get().emit(OpCode::STORE_SLOT, seqSlot, node.loc);
 
         int zeroIdx = this->addConstant(0);
         this->current.get().emit(OpCode::PUSH_INT, zeroIdx, node.loc);
-        this->current.get().emit(OpCode::STORE_VAR, idxIdx, node.loc);
+        this->current.get().emit(OpCode::STORE_SLOT, idxSlot, node.loc);
 
         size_t loopStart = this->current.get().currentIP();
 
-        this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
-        this->current.get().emit(OpCode::LOAD_VAR, seqIdx, node.loc);
+        this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
+        this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, node.loc);
         this->current.get().emit(OpCode::LOAD_LEN, 0, node.loc);
         this->current.get().emit(OpCode::CMP_LT, 0, node.loc);
 
@@ -297,22 +296,21 @@ namespace LOICollection::frontend::ir {
         this->loopStack.push_back(LoopContext{});
         this->loopStack.back().continueTarget = loopStart;
 
-        this->current.get().emit(OpCode::LOAD_VAR, seqIdx, node.loc);
-        this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
+        this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, node.loc);
+        this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
         this->current.get().emit(OpCode::LOAD_INDEX, 0, node.loc);
-        this->current.get().emit(OpCode::STORE_VAR, elemIdx, node.loc);
+        this->current.get().emit(OpCode::STORE_SLOT, elemSlot, node.loc);
 
-        if (node.hasIndexVar) {
-            int indexVarIdx = this->addConstant(node.indexVar);
-            this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
-            this->current.get().emit(OpCode::STORE_VAR, indexVarIdx, node.loc);
+        if (indexSlot >= 0) {
+            this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
+            this->current.get().emit(OpCode::STORE_SLOT, indexSlot, node.loc);
         }
 
         int oneIdx = this->addConstant(1);
-        this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
+        this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
         this->current.get().emit(OpCode::PUSH_INT, oneIdx, node.loc);
         this->current.get().emit(OpCode::ADD, 0, node.loc);
-        this->current.get().emit(OpCode::STORE_VAR, idxIdx, node.loc);
+        this->current.get().emit(OpCode::STORE_SLOT, idxSlot, node.loc);
 
         node.body->accept(*this);
         this->current.get().emit(OpCode::POP, 0, node.loc);
@@ -337,26 +335,20 @@ namespace LOICollection::frontend::ir {
     void Compiler::compileForInRange(ForInNode& node, size_t uid) {
         auto& range = static_cast<RangeNode&>(*node.iterable);
 
-        int idxIdx = this->addConstant("__forin_idx_" + std::to_string(uid));
-        int endIdx = this->addConstant("__forin_end_" + std::to_string(uid));
-        int dirIdx = this->addConstant("__forin_dir_" + std::to_string(uid));
-
-        /* Same per-iteration binding as the array form: see compileForInArray. */
-        int elemIdx = this->addConstant(node.elementVar);
-        this->current.get().emit(OpCode::DECLARE_LOCAL, elemIdx, node.loc);
-        if (node.hasIndexVar) {
-            int indexVarIdx = this->addConstant(node.indexVar);
-            this->current.get().emit(OpCode::DECLARE_LOCAL, indexVarIdx, node.loc);
-        }
+        const int idxSlot = this->declareSlot("__forin_idx_" + std::to_string(uid));
+        const int endSlot = this->declareSlot("__forin_end_" + std::to_string(uid));
+        const int dirSlot = this->declareSlot("__forin_dir_" + std::to_string(uid));
+        const int elemSlot = this->declareSlot(node.elementVar);
+        const int indexSlot = node.hasIndexVar ? this->declareSlot(node.indexVar) : -1;
 
         this->compileValue(*range.start, node.loc);
-        this->current.get().emit(OpCode::STORE_VAR, idxIdx, node.loc);
+        this->current.get().emit(OpCode::STORE_SLOT, idxSlot, node.loc);
 
         this->compileValue(*range.end, node.loc);
-        this->current.get().emit(OpCode::STORE_VAR, endIdx, node.loc);
+        this->current.get().emit(OpCode::STORE_SLOT, endSlot, node.loc);
 
-        this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
-        this->current.get().emit(OpCode::LOAD_VAR, endIdx, node.loc);
+        this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
+        this->current.get().emit(OpCode::LOAD_SLOT, endSlot, node.loc);
         this->current.get().emit(OpCode::CMP_LE, 0, node.loc);
 
         size_t jmpDescIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
@@ -375,14 +367,14 @@ namespace LOICollection::frontend::ir {
         int dirEndPos = static_cast<int>(this->current.get().currentIP());
         this->current.get().patchJump(jmpDirEndIdx, dirEndPos - static_cast<int>(jmpDirEndIdx) - 1);
 
-        this->current.get().emit(OpCode::STORE_VAR, dirIdx, node.loc);
+        this->current.get().emit(OpCode::STORE_SLOT, dirSlot, node.loc);
 
         size_t loopStart = this->current.get().currentIP();
 
-        this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
-        this->current.get().emit(OpCode::LOAD_VAR, endIdx, node.loc);
+        this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
+        this->current.get().emit(OpCode::LOAD_SLOT, endSlot, node.loc);
         this->current.get().emit(OpCode::SUB, 0, node.loc);
-        this->current.get().emit(OpCode::LOAD_VAR, dirIdx, node.loc);
+        this->current.get().emit(OpCode::LOAD_SLOT, dirSlot, node.loc);
         this->current.get().emit(OpCode::MUL, 0, node.loc);
         int zeroIdx = this->addConstant(0);
         this->current.get().emit(OpCode::PUSH_INT, zeroIdx, node.loc);
@@ -393,19 +385,18 @@ namespace LOICollection::frontend::ir {
         this->loopStack.push_back(LoopContext{});
         this->loopStack.back().continueTarget = loopStart;
 
-        this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
-        this->current.get().emit(OpCode::STORE_VAR, elemIdx, node.loc);
+        this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
+        this->current.get().emit(OpCode::STORE_SLOT, elemSlot, node.loc);
 
-        if (node.hasIndexVar) {
-            int indexVarIdx = this->addConstant(node.indexVar);
-            this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
-            this->current.get().emit(OpCode::STORE_VAR, indexVarIdx, node.loc);
+        if (indexSlot >= 0) {
+            this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
+            this->current.get().emit(OpCode::STORE_SLOT, indexSlot, node.loc);
         }
 
-        this->current.get().emit(OpCode::LOAD_VAR, idxIdx, node.loc);
-        this->current.get().emit(OpCode::LOAD_VAR, dirIdx, node.loc);
+        this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
+        this->current.get().emit(OpCode::LOAD_SLOT, dirSlot, node.loc);
         this->current.get().emit(OpCode::ADD, 0, node.loc);
-        this->current.get().emit(OpCode::STORE_VAR, idxIdx, node.loc);
+        this->current.get().emit(OpCode::STORE_SLOT, idxSlot, node.loc);
 
         node.body->accept(*this);
         this->current.get().emit(OpCode::POP, 0, node.loc);
@@ -845,14 +836,18 @@ namespace LOICollection::frontend::ir {
             mm.name = method.name;
             mm.classIndex = classIdx;
             mm.argCount = static_cast<int>(method.params.size());
-            for (const auto& param : method.params)
-                mm.paramNames.push_back(param.name);
 
             int bodyIdx = static_cast<int>(this->chunk.methodBodies.size());
-            this->chunk.methodBodies.push_back(std::make_unique<BytecodeChunk>());
+            auto body = std::make_unique<BytecodeChunk>();
+            BytecodeChunk& bodyChunk = *body;
+            this->chunk.methodBodies.push_back(std::move(body));
 
             std::reference_wrapper<BytecodeChunk> saved = this->current;
-            this->current = std::ref(*chunk.methodBodies.back());
+            this->current = std::ref(bodyChunk);
+
+            this->pushScope(true, 0);
+            for (const auto& param : method.params)
+                this->declareSlot(param.name);
 
             if (method.isConstructor && !node.baseClassName.empty() && !method.hasSuperCall) {
                 int ctorIdx = -1;
@@ -884,6 +879,8 @@ namespace LOICollection::frontend::ir {
             this->current.get().emit(OpCode::RETURN);
 
             this->current = saved;
+            bodyChunk.slotCount = this->closeScope();
+
             mm.bodyIndex = bodyIdx;
 
             this->chunk.methods.push_back(std::move(mm));
@@ -929,15 +926,17 @@ namespace LOICollection::frontend::ir {
 
     void Compiler::compileDeclarativeBlock(BlockNode& block, const std::string& receiverName) {
         std::string receiver = receiverName;
-        if (receiver.empty())
+        int receiverSlot = -1;
+
+        if (receiver.empty()) {
             receiver = ".form" + std::to_string(this->declarativeCounter++);
+            receiverSlot = this->declareSlot(receiver);
+        }
 
-        int receiverIdx = this->addConstant(receiver);
-
-        if (receiverName.empty())
-            this->current.get().emit(OpCode::DECLARE_LOCAL, receiverIdx);
-
-        this->current.get().emit(OpCode::STORE_VAR, receiverIdx);
+        if (receiverSlot >= 0)
+            this->current.get().emit(OpCode::STORE_SLOT, receiverSlot);
+        else
+            this->emitStore(receiver, {});
 
         for (auto& part : block.parts)
             this->desugarDeclarativeStatements(part, receiver);
@@ -953,7 +952,10 @@ namespace LOICollection::frontend::ir {
                 this->current.get().emit(OpCode::POP);
         }
 
-        this->current.get().emit(OpCode::LOAD_VAR, receiverIdx);
+        if (receiverSlot >= 0)
+            this->current.get().emit(OpCode::LOAD_SLOT, receiverSlot);
+        else
+            this->emitLoad(receiver, {});
     }
 
     void Compiler::desugarDeclarativeStatements(std::unique_ptr<ASTNode>& node, const std::string& receiver) {
@@ -1014,8 +1016,7 @@ namespace LOICollection::frontend::ir {
 
     void Compiler::visit(MemberAccessNode& node) {
         if (node.isStaticAccess) {
-            int idx = this->addConstant(node.staticClassName + "::" + node.memberName);
-            this->current.get().emit(OpCode::LOAD_VAR, idx, node.loc);
+            this->emitLoad(qualifiedName(node), node.loc);
 
             if (node.type.kind == TypeKind::Optional && !node.preserveOptional)
                 this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
@@ -1226,14 +1227,18 @@ namespace LOICollection::frontend::ir {
         mm.name = node.name;
         mm.classIndex = -1;
         mm.argCount = static_cast<int>(node.decl.params.size());
-        for (const auto& param : node.decl.params)
-            mm.paramNames.push_back(param.name);
 
         int bodyIdx = static_cast<int>(this->chunk.methodBodies.size());
-        this->chunk.methodBodies.push_back(std::make_unique<BytecodeChunk>());
+        auto body = std::make_unique<BytecodeChunk>();
+        BytecodeChunk& bodyChunk = *body;
+        this->chunk.methodBodies.push_back(std::move(body));
 
         std::reference_wrapper<BytecodeChunk> saved = this->current;
-        this->current = std::ref(*this->chunk.methodBodies.back());
+        this->current = std::ref(bodyChunk);
+
+        this->pushScope(false, 0);
+        for (const auto& param : node.decl.params)
+            this->declareSlot(param.name);
 
         if (node.decl.body)
             node.decl.body->accept(*this);
@@ -1245,6 +1250,8 @@ namespace LOICollection::frontend::ir {
         this->current.get().emit(OpCode::RETURN);
 
         this->current = saved;
+        bodyChunk.slotCount = this->closeScope();
+
         mm.bodyIndex = bodyIdx;
 
         this->chunk.methods.push_back(std::move(mm));
@@ -1274,8 +1281,7 @@ namespace LOICollection::frontend::ir {
         }
 
         if (node.isCallable) {
-            int idx = this->addConstant(node.resolvedName);
-            this->current.get().emit(OpCode::LOAD_VAR, idx, node.loc);
+            this->emitLoad(node.resolvedName, node.loc);
 
             int argCount = static_cast<int>(node.args.size());
             this->current.get().emit(OpCode::CALL_LAMBDA, argCount, node.loc);
@@ -1294,10 +1300,16 @@ namespace LOICollection::frontend::ir {
 
     void Compiler::visit(LambdaNode& node) {
         int bodyIdx = static_cast<int>(this->chunk.methodBodies.size());
-        this->chunk.methodBodies.push_back(std::make_unique<BytecodeChunk>());
+        auto body = std::make_unique<BytecodeChunk>();
+        BytecodeChunk& bodyChunk = *body;
+        this->chunk.methodBodies.push_back(std::move(body));
 
         std::reference_wrapper<BytecodeChunk> saved = this->current;
-        this->current = std::ref(*this->chunk.methodBodies.back());
+        this->current = std::ref(bodyChunk);
+
+        this->pushScope(false, this->scopes.back().next, true);
+        for (const auto& param : node.decl.params)
+            this->declareSlot(param.name);
 
         if (node.decl.body)
             node.decl.body->accept(*this);
@@ -1310,12 +1322,10 @@ namespace LOICollection::frontend::ir {
 
         this->current = saved;
 
-        std::vector<std::string> paramNames;
-        paramNames.reserve(node.decl.params.size());
-        for (const auto& param : node.decl.params)
-            paramNames.push_back(param.name);
+        const int captureCount = this->scopes.back().base;
+        bodyChunk.slotCount = this->closeScope();
 
-        int lambdaIdx = this->addLambda(bodyIdx, static_cast<int>(node.decl.params.size()), paramNames);
+        int lambdaIdx = this->addLambda(bodyIdx, static_cast<int>(node.decl.params.size()), captureCount);
         this->current.get().emit(OpCode::MAKE_LAMBDA, lambdaIdx, node.loc);
     }
 
@@ -1345,8 +1355,8 @@ namespace LOICollection::frontend::ir {
         return static_cast<int>(this->current.get().macros.size() - 1);
     }
 
-    int Compiler::addLambda(int bodyIndex, int argCount, const std::vector<std::string>& paramNames) {
-        this->current.get().lambdas.push_back({bodyIndex, argCount, paramNames});
+    int Compiler::addLambda(int bodyIndex, int argCount, int captureCount) {
+        this->current.get().lambdas.push_back({bodyIndex, argCount, captureCount});
         return static_cast<int>(this->current.get().lambdas.size() - 1);
     }
 
@@ -1358,6 +1368,60 @@ namespace LOICollection::frontend::ir {
     int Compiler::addSuperCall(int constructorIndex, int argCount) {
         this->current.get().superCalls.push_back({constructorIndex, argCount});
         return static_cast<int>(this->current.get().superCalls.size() - 1);
+    }
+
+    void Compiler::pushScope(bool hasThis, int base, bool inherits) {
+        Scope scope;
+        scope.base = base;
+        scope.next = base;
+        scope.hasThis = hasThis || (!this->scopes.empty() && this->scopes.back().hasThis);
+        scope.inherits = inherits;
+        this->scopes.push_back(std::move(scope));
+    }
+
+    int Compiler::closeScope() {
+        const int slotCount = this->scopes.back().next;
+        this->scopes.pop_back();
+        return slotCount;
+    }
+
+    int Compiler::declareSlot(const std::string& name) {
+        Scope& scope = this->scopes.back();
+        auto [it, inserted] = scope.slots.emplace(name, scope.next);
+        if (inserted)
+            ++scope.next;
+
+        return it->second;
+    }
+
+    std::optional<int> Compiler::resolveSlot(const std::string& name) const {
+        for (auto scope = this->scopes.rbegin(); scope != this->scopes.rend(); ++scope) {
+            if (auto it = scope->slots.find(name); it != scope->slots.end())
+                return it->second;
+
+            if (!scope->inherits)
+                break;
+        }
+
+        return std::nullopt;
+    }
+
+    void Compiler::emitLoad(const std::string& name, const SourceLocation& loc) {
+        if (auto slot = this->resolveSlot(name)) {
+            this->current.get().emit(OpCode::LOAD_SLOT, *slot, loc);
+            return;
+        }
+
+        this->current.get().emit(OpCode::LOAD_VAR, this->addConstant(name), loc);
+    }
+
+    void Compiler::emitStore(const std::string& name, const SourceLocation& loc) {
+        if (auto slot = this->resolveSlot(name)) {
+            this->current.get().emit(OpCode::STORE_SLOT, *slot, loc);
+            return;
+        }
+
+        this->current.get().emit(OpCode::STORE_VAR, this->addConstant(name), loc);
     }
 
     std::string Compiler::methodSignature(const MethodDecl& method) const {

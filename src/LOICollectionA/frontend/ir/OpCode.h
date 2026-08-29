@@ -7,7 +7,8 @@ namespace LOICollection::frontend::ir {
         PUSH_INT, PUSH_FLOAT, PUSH_STR, PUSH_BOOL, PUSH_NONE,
         POP, DUP, DUP2, ROT3, SWAP2, UNWRAP, TYPE_OF, HAS_VALUE, IS_NONE,
 
-        LOAD_VAR, STORE_VAR, DECLARE_LOCAL,
+        LOAD_VAR, STORE_VAR,
+        LOAD_SLOT, STORE_SLOT,
 
         ADD, SUB, MUL, DIV, MOD, POW,
 
@@ -41,6 +42,7 @@ namespace LOICollection::frontend::ir {
         HALT,
 
         DUP_STORE,
+        DUP_STORE_SLOT,
         DUP_IS_NONE,
         LOAD_LEN
     };

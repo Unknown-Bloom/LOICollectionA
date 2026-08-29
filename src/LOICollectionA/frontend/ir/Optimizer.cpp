@@ -95,6 +95,10 @@ namespace LOICollection::frontend::ir {
         }
     }
 
+    bool isStoreOp(OpCode op) {
+        return op == OpCode::STORE_VAR || op == OpCode::STORE_SLOT;
+    }
+
     // `kept op identity == kept`, applicable when the kept operand is a known number of a
     // compatible kind. Divided by type-promotion rules: `x / 1` and `x ^ 1` always produce
     // floats, and float `x + 0.0` flips -0.0, so those combinations stay untouched.
@@ -314,11 +318,13 @@ namespace LOICollection::frontend::ir {
         std::vector<bool> dropped(code.size(), false);
         std::vector<StackEntry> stack{ std::monostate{} };
 
-        // Straight-line scalar constants per variable name (the pool may hold the same
-        // name at several indices, so keying by the string is the only stable identity).
-        // Entries are dropped at merge points and around ops that can execute script
-        // code, so a forwarded LOAD_VAR always reproduces the stored value.
-        std::unordered_map<std::string, ValueNode::ValueType> varSlots;
+        std::unordered_map<int, ValueNode::ValueType> slotValues;
+        std::unordered_map<std::string, ValueNode::ValueType> nameValues;
+
+        const auto clearTracked = [&slotValues, &nameValues] {
+            slotValues.clear();
+            nameValues.clear();
+        };
 
         for (size_t i = 0; i < code.size(); ++i) {
             const auto& instr = code[i];
@@ -328,9 +334,9 @@ namespace LOICollection::frontend::ir {
 
             if (targets.contains(oldIdx)) {
                 stack.assign(1, std::monostate{});
-                varSlots.clear();
+                clearTracked();
             } else if (canWriteVariables(instr.op)) {
-                varSlots.clear();
+                clearTracked();
             }
 
             switch (instr.op) {
@@ -482,11 +488,10 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
-                case OpCode::LOAD_VAR: {
-                    const std::string& name = std::get<std::string>(chunk.constants[instr.operand]);
-                    auto slot = varSlots.find(name);
+                case OpCode::LOAD_SLOT: {
+                    auto slot = slotValues.find(instr.operand);
 
-                    if (slot != varSlots.end()) {
+                    if (slot != slotValues.end()) {
                         emitPush(chunk, foldedCode, slot->second, instr.loc);
                         emittedAt = static_cast<int>(foldedCode.size()) - 1;
                         stack.emplace_back(TrackedValue{ slot->second, emittedAt, true });
@@ -500,14 +505,61 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
+                case OpCode::LOAD_VAR: {
+                    const std::string& name = std::get<std::string>(chunk.constants[instr.operand]);
+                    auto slot = nameValues.find(name);
+
+                    if (slot != nameValues.end()) {
+                        emitPush(chunk, foldedCode, slot->second, instr.loc);
+                        emittedAt = static_cast<int>(foldedCode.size()) - 1;
+                        stack.emplace_back(TrackedValue{ slot->second, emittedAt, true });
+                        stats.folded++;
+                    } else {
+                        emittedAt = static_cast<int>(foldedCode.size());
+                        foldedCode.push_back(instr);
+                        stack.emplace_back(std::monostate{});
+                    }
+
+                    break;
+                }
+
+                case OpCode::STORE_SLOT: {
+                    StackEntry value = popEntry(stack);
+
+                    if (isKnown(value) && isScalarValue(knownValue(value).value))
+                        slotValues[instr.operand] = knownValue(value).value;
+                    else
+                        slotValues.erase(instr.operand);
+
+                    emittedAt = static_cast<int>(foldedCode.size());
+                    foldedCode.push_back(instr);
+
+                    break;
+                }
+
                 case OpCode::STORE_VAR: {
                     StackEntry value = popEntry(stack);
                     const std::string& name = std::get<std::string>(chunk.constants[instr.operand]);
 
                     if (isKnown(value) && isScalarValue(knownValue(value).value))
-                        varSlots[name] = knownValue(value).value;
+                        nameValues[name] = knownValue(value).value;
                     else
-                        varSlots.erase(name);
+                        nameValues.erase(name);
+
+                    emittedAt = static_cast<int>(foldedCode.size());
+                    foldedCode.push_back(instr);
+
+                    break;
+                }
+
+                case OpCode::DUP_STORE_SLOT: {
+                    if (isKnown(stack.back()) && isScalarValue(knownValue(stack.back()).value))
+                        slotValues[instr.operand] = knownValue(stack.back()).value;
+                    else
+                        slotValues.erase(instr.operand);
+
+                    if (auto* known = std::get_if<TrackedValue>(&stack.back()))
+                        known->removable = false;
 
                     emittedAt = static_cast<int>(foldedCode.size());
                     foldedCode.push_back(instr);
@@ -519,9 +571,9 @@ namespace LOICollection::frontend::ir {
                     const std::string& name = std::get<std::string>(chunk.constants[instr.operand]);
 
                     if (isKnown(stack.back()) && isScalarValue(knownValue(stack.back()).value))
-                        varSlots[name] = knownValue(stack.back()).value;
+                        nameValues[name] = knownValue(stack.back()).value;
                     else
-                        varSlots.erase(name);
+                        nameValues.erase(name);
 
                     if (auto* known = std::get_if<TrackedValue>(&stack.back()))
                         known->removable = false;
@@ -548,20 +600,35 @@ namespace LOICollection::frontend::ir {
                 }
 
                 case OpCode::DUP: {
-                    if (i + 1 < code.size() && code[i + 1].op == OpCode::STORE_VAR &&
+                    if (i + 1 < code.size() && isStoreOp(code[i + 1].op) &&
                         !targets.contains(oldIdx) && !targets.contains(oldIdx + 1)) {
                         if (auto* known = std::get_if<TrackedValue>(&stack.back()))
                             known->removable = false;
 
-                        const auto& name =
-                            std::get<std::string>(chunk.constants[code[i + 1].operand]);
-                        if (isKnown(stack.back()) && isScalarValue(knownValue(stack.back()).value))
-                            varSlots[name] = knownValue(stack.back()).value;
-                        else
-                            varSlots.erase(name);
+                        const bool scalar = isKnown(stack.back()) &&
+                            isScalarValue(knownValue(stack.back()).value);
+
+                        if (code[i + 1].op == OpCode::STORE_SLOT) {
+                            if (scalar)
+                                slotValues[code[i + 1].operand] = knownValue(stack.back()).value;
+                            else
+                                slotValues.erase(code[i + 1].operand);
+                        } else {
+                            const auto& name =
+                                std::get<std::string>(chunk.constants[code[i + 1].operand]);
+
+                            if (scalar)
+                                nameValues[name] = knownValue(stack.back()).value;
+                            else
+                                nameValues.erase(name);
+                        }
 
                         emittedAt = static_cast<int>(foldedCode.size());
-                        foldedCode.push_back({ OpCode::DUP_STORE, code[i + 1].operand, instr.loc });
+                        foldedCode.push_back({
+                            code[i + 1].op == OpCode::STORE_SLOT ? OpCode::DUP_STORE_SLOT : OpCode::DUP_STORE,
+                            code[i + 1].operand,
+                            instr.loc
+                        });
                         stats.folded++;
                         skipNext = true;
                         break;

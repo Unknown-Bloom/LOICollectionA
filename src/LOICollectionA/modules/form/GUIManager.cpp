@@ -111,7 +111,12 @@ namespace LOICollection::form {
 
         const std::string cachePath = path + ".lcc";
         if (auto blob = this->readFile(cachePath); blob.has_value()) {
-            if (auto chunk = frontend::ir::BytecodeSerializer::deserialize(blob.value(), header)) {
+            std::string bodyChecksum;
+
+            if (auto chunk = frontend::ir::BytecodeSerializer::deserialize(blob.value(), header, &bodyChecksum)) {
+                if (auto debug = this->readFile(cachePath + ".dbg"); debug.has_value())
+                    frontend::ir::BytecodeSerializer::attachDebugInfo(*chunk, debug.value(), bodyChecksum);
+
                 this->mImpl->cache.insert_or_assign(id, std::make_shared<frontend::ir::BytecodeChunk>(std::move(*chunk)));
                 warnIfMissingPermission(id);
                 return {};
@@ -136,10 +141,18 @@ namespace LOICollection::form {
         frontend::ir::Optimizer optimizer;
         optimizer.optimize(*bytecode);
 
-        if (auto blob = frontend::ir::BytecodeSerializer::serialize(*bytecode, header)) {
+        std::string bodyChecksum;
+
+        if (auto blob = frontend::ir::BytecodeSerializer::serialize(*bytecode, header, &bodyChecksum)) {
             std::ofstream out(cachePath, std::ios::binary | std::ios::trunc);
             if (out)
                 out.write(blob->data(), static_cast<std::streamsize>(blob->size()));
+
+            if (auto debug = frontend::ir::BytecodeSerializer::serializeDebugInfo(*bytecode, bodyChecksum)) {
+                std::ofstream debugOut(cachePath + ".dbg", std::ios::binary | std::ios::trunc);
+                if (debugOut)
+                    debugOut.write(debug->data(), static_cast<std::streamsize>(debug->size()));
+            }
         }
 
         this->mImpl->cache.insert_or_assign(id, bytecode);
