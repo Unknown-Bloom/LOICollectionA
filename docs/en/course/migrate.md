@@ -40,14 +40,14 @@ Here, `data migration` refers to migrating the specified lower-version data in `
 3. If you have customized `GuiPath`, please confirm that `ServerConfig.Plugins.Menu.GuiPath` and `ServerConfig.Plugins.Shop.GuiPath` in `config.json` point to the newly created lcui files (defaulting to `menu.lcui` and `shop.lcui` respectively).
 4. The data files of other modules (such as `notice.json` and `cdk.json`) and database files are not affected; the interfaces of other modules are now loaded from the plugin's built-in `gui` directory and do not need migration.
 
-## For upgrading from version 1.15.0 to version 1.16.0
+## For upgrading from version 1.15.1 to version 1.16.0
 
 > [!WARNING]
-> 1.16.0 tightens authorization for cross-script navigation. If a script you wrote calls `GUIManager::open` to navigate to another script, you must add the grant after upgrading, otherwise the navigation is denied.
+> 1.16.0 introduces a script sandbox and authorization mechanism. Earlier versions had no `permission.json`, and scripts could freely run `mc::runCmd`, read and write GUI data, and navigate to other scripts. After upgrading these calls are denied by default, so scripts you wrote (such as `menu.lcui` / `shop.lcui`) must be granted authorization to keep working.
 
-1. The bytecode cache format changes from `.lcc` to `.lcp` (a self-contained bytecode package). Old caches are invalidated and recompiled on first start, so no manual action is required; to clean up, delete the `.lcc` and `.lcc.dbg` files under `plugins/LOICollectionA/gui/`.
-2. `gui/permission.json` gains a `scripts.<id>.gui.navigations` field declaring which scripts or forms a script may navigate to. This file is overwritten by the copy shipped with the plugin on upgrade, so **authorization for scripts you wrote must be re-entered**.
-3. If your `menu.lcui` / `shop.lcui` contains cross-script navigation such as `GUIManager::open("<other script id>", ...)`, add the target under the matching entry in `permission.json`, for example:
+1. `permission.json` is a new file in 1.16.0, located in `plugins/LOICollectionA/gui/`, with a deny-by-default policy (`defaultPolicy: "deny"`). It governs `mc::runCmd`, `GUIManager::value/request/callback`, and cross-script navigation via `GUIManager::open`. Authorization for built-in scripts (`blacklist`, `wallet`, etc.) ships with the plugin and needs no action.
+2. If your `menu.lcui` / `shop.lcui` invokes any of the above, fill in the allowlists under `scripts.menu` / `scripts.shop` based on what the script actually calls: commands go in `commands.templates` (with `commands.allow` set to `true`), data ids go in `gui.values` / `gui.requests` / `gui.callbacks`.
+3. If the script contains cross-script navigation such as `GUIManager::open("<other script id>", ...)`, also declare the target in `gui.navigations`, for example:
 
     ```json
     "menu": {
@@ -63,4 +63,5 @@ Here, `data migration` refers to migrating the specified lower-version data in `
     ```
 
 4. Opening a script's own form (`GUIManager::open("wallet", ...)` inside `wallet`) is unaffected and needs no grant.
-5. Authorization for built-in scripts is maintained by the plugin and needs no manual work. If the log shows `is not allowed for script` after upgrading, a cross-script navigation is missing its grant — add the script id from the message to `navigations`.
+5. 1.16.0 also introduces a bytecode cache: compiled scripts are stored next to the source as `.lcp` and reused on later starts to skip compilation. The plugin generates and invalidates it automatically; deleting one only causes a recompile on the next start and does not affect correctness.
+6. If the log shows `is not allowed for script` after upgrading, a capability is missing its grant — add the script id from the message to the matching allowlist.

@@ -40,14 +40,14 @@
 3. 如自定义过 `GuiPath`，请确认 `config.json` 中的 `ServerConfig.Plugins.Menu.GuiPath` 与 `ServerConfig.Plugins.Shop.GuiPath` 指向新创建的 lcui 文件（默认分别为 `menu.lcui` 与 `shop.lcui`）。
 4. 其余模块的数据文件（如 `notice.json`、`cdk.json`）与数据库文件不受影响；其余模块的界面已改由插件内置的 `gui` 目录加载，无需迁移。
 
-## 对于 1.15.0 版本升至 1.16.0 版本
+## 对于 1.15.1 版本升至 1.16.0 版本
 
 > [!WARNING]
-> 1.16.0 收紧了跨脚本跳转的授权。自行编写的脚本若调用了 `GUIManager::open` 跳转到其他脚本，升级后必须补充授权，否则跳转会被拒绝。
+> 1.16.0 引入了脚本沙箱与授权机制。此前版本没有 `permission.json`，脚本可自由执行 `mc::runCmd`、读写 GUI 数据、跳转到其他脚本；升级后这些调用默认被拒绝，自行编写的脚本（如 `menu.lcui` / `shop.lcui`）必须补配授权才能继续工作。
 
-1. 字节码缓存格式由 `.lcc` 变更为 `.lcp`（自包含字节码包）。旧缓存会在首次启动时自动失效并重新编译，无需手动处理；如希望清理，可删除 `plugins/LOICollectionA/gui/` 下的 `.lcc` 与 `.lcc.dbg` 文件。
-2. `gui/permission.json` 新增 `scripts.<id>.gui.navigations` 字段，用于声明该脚本允许跳转到哪些脚本或表单。升级时该文件会被插件附带的版本覆盖，因此**自写脚本的授权配置需要重新填写**。
-3. 若您的 `menu.lcui` / `shop.lcui` 中存在 `GUIManager::open("<其他脚本 id>", ...)` 这类跨脚本跳转，请在 `permission.json` 的对应条目下补上目标，例如：
+1. `permission.json` 是 1.16.0 新增的授权文件，位于 `plugins/LOICollectionA/gui/`，默认策略为拒绝（`defaultPolicy: "deny"`）。它管控 `mc::runCmd`、`GUIManager::value/request/callback` 以及 `GUIManager::open` 的跨脚本跳转。内置脚本（`blacklist`、`wallet` 等）的授权已随插件提供，无需干预。
+2. 若您的 `menu.lcui` / `shop.lcui` 中调用了上述能力，请按脚本内实际调用的内容，在 `scripts.menu` / `scripts.shop` 下填写白名单：命令填入 `commands.templates`（并将 `commands.allow` 置为 `true`），数据 id 填入 `gui.values` / `gui.requests` / `gui.callbacks`。
+3. 若脚本中存在 `GUIManager::open("<其他脚本 id>", ...)` 这类跨脚本跳转，还需在 `gui.navigations` 中声明目标，例如：
 
     ```json
     "menu": {
@@ -63,4 +63,5 @@
     ```
 
 4. 打开自身表单（`wallet` 内调用 `GUIManager::open("wallet", ...)`）不受此限制，无需授权。
-5. 内置脚本的授权已由插件自动维护，无需手动干预。若升级后日志出现 `is not allowed for script` 提示，说明有跨脚本跳转缺少授权，按提示中的脚本 id 补进 `navigations` 即可。
+5. 1.16.0 同时引入了字节码缓存：脚本编译产物以 `.lcp` 形式存放在源文件旁，后续启动直接复用以跳过编译。它由插件自动生成与失效，删除后只会让下次启动重新编译，不影响正确性。
+6. 若升级后日志出现 `is not allowed for script` 提示，说明某项能力缺少授权，按提示中的脚本 id 与能力类型补进对应的白名单即可。
