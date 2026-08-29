@@ -282,7 +282,7 @@ Currently, `LOICollectionA` supports two data file formats: `Json` and `SQLite`.
 
 ### permission.json (gui directory)
 
-`permission.json` is the script capability authorization file, located in the `plugins/LOICollectionA/gui/` directory. It controls the sensitive capabilities each script may invoke: command execution (`mc::runCmd`) and business reads/writes (`GUIManager::value/request/callback`).
+`permission.json` is the script capability authorization file, located in the `plugins/LOICollectionA/gui/` directory. It controls the sensitive capabilities each script may invoke: command execution (`mc::runCmd`), business reads/writes (`GUIManager::value/request/callback`), and cross-script navigation (`GUIManager::open`).
 
 > [!IMPORTANT]
 > Authorization uses a deny-by-default policy (`defaultPolicy: "deny"`). Scripts and authorization are separate: after editing a script (especially `menu.lcui` / `shop.lcui`) to add new capability calls, you must sync `permission.json` accordingly, otherwise those calls are denied and an error is logged.
@@ -297,6 +297,7 @@ Currently, `LOICollectionA` supports two data file formats: `Json` and `SQLite`.
 | `scripts.<id>.gui.values` | string[] | Allowlist of `GUIManager::value` ids |
 | `scripts.<id>.gui.requests` | string[] | Allowlist of `GUIManager::request` ids |
 | `scripts.<id>.gui.callbacks` | string[] | Allowlist of `GUIManager::callback` ids |
+| `scripts.<id>.gui.navigations` | string[] | Allowlist of target script ids or form ids this script may navigate to via `GUIManager::open`. When empty, only its own forms may be opened |
 
 ```json
 {
@@ -311,7 +312,8 @@ Currently, `LOICollectionA` supports two data file formats: `Json` and `SQLite`.
             "gui": {
                 "values": [],
                 "requests": [],
-                "callbacks": []
+                "callbacks": [],
+                "navigations": ["wallet", "market"]
             }
         },
         "wallet": {
@@ -320,12 +322,16 @@ Currently, `LOICollectionA` supports two data file formats: `Json` and `SQLite`.
             "gui": {
                 "values": ["wallet.players.online", "wallet.rank"],
                 "requests": ["wallet.info", "wallet.transfer.submit"],
-                "callbacks": ["wallet.wealth", "wallet.transfer.confirm"]
+                "callbacks": ["wallet.wealth", "wallet.transfer.confirm"],
+                "navigations": []
             }
         }
     }
 }
 ```
+
+> [!NOTE]
+> `navigations` only constrains **cross-script** navigation. A script opening one of its own forms (`GUIManager::open("wallet", ...)` inside `wallet`) needs no grant. The target script must also be listed in `scripts` with `enabled` set to `true`.
 
 > [!TIP]
 > Authorization for built-in scripts (`blacklist`, `wallet`, etc.) is maintained automatically with plugin updates. `menu` / `shop` are scripts you write yourself, so their authorization must be synced manually based on the commands and GUI ids actually invoked in the script.

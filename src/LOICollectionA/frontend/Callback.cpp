@@ -42,6 +42,24 @@ namespace LOICollection::frontend {
 
             return true;
         }
+
+        std::string canonicalSignature(const Signature& sig) {
+            std::string out = sig.name + "/" + std::to_string(sig.argsCount) + (sig.isCombination ? "/c" : "/p");
+            for (const auto& arg : sig.args)
+                out += ":" + std::to_string(static_cast<int>(arg));
+
+            return out;
+        }
+
+        std::string canonicalShape(std::vector<std::string> parts) {
+            std::sort(parts.begin(), parts.end());
+
+            std::string out;
+            for (auto& part : parts)
+                out += std::move(part) + "\n";
+
+            return out;
+        }
     }
 
     std::vector<ParamType> valuesToTypes(const CallbackTypeValues& values, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
@@ -123,6 +141,20 @@ namespace LOICollection::frontend {
 
         sig.isCombination = true;
         return result || this->mImpl->mFunctionCombinations[namespaces].find(sig) != this->mImpl->mFunctionCombinations[namespaces].end();
+    }
+
+    std::string FunctionCall::exportShape() const {
+        std::vector<std::string> parts;
+
+        for (const auto& [namespaces, functions] : this->mImpl->mFunctions)
+            for (const auto& entry : functions)
+                parts.push_back(namespaces + "::" + canonicalSignature(entry.first));
+
+        for (const auto& [namespaces, functions] : this->mImpl->mFunctionCombinations)
+            for (const auto& entry : functions)
+                parts.push_back(namespaces + "::" + canonicalSignature(entry.first));
+
+        return canonicalShape(std::move(parts));
     }
 
    ll::Expected<TypedValue> FunctionCall::callFunction(const std::string& namespaces, const std::string& function, const CallbackTypeValues& args, const CallbackTypePlaces& placeholders, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
@@ -268,6 +300,18 @@ namespace LOICollection::frontend {
 
         sig.isCombination = true;
         return result || this->mImpl->mMacroCombinations.find(sig) != this->mImpl->mMacroCombinations.end();
+    }
+
+    std::string MacroCall::exportShape() const {
+        std::vector<std::string> parts;
+
+        for (const auto& entry : this->mImpl->mMacros)
+            parts.push_back("macro " + canonicalSignature(entry.first));
+
+        for (const auto& entry : this->mImpl->mMacroCombinations)
+            parts.push_back("macro " + canonicalSignature(entry.first));
+
+        return canonicalShape(std::move(parts));
     }
 
     ll::Expected<TypedValue> MacroCall::callMacro(const std::string& name, const CallbackTypeValues& args, const CallbackTypePlaces& placeholders, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
@@ -516,6 +560,44 @@ namespace LOICollection::frontend {
         }
 
         return result;
+    }
+
+    std::string ClassCall::exportShape() const {
+        std::vector<std::string> parts;
+
+        for (const auto& [name, info] : this->mImpl->classes) {
+            for (const auto& field : info.fields)
+                parts.push_back("field " + name + "." + field);
+
+            for (const auto& field : info.staticFields)
+                parts.push_back("staticField " + name + "." + field);
+
+            for (const auto& entry : info.constructors)
+                parts.push_back("constructor " + name + " " + canonicalSignature(entry.first));
+
+            for (const auto& entry : info.constructorCombinations)
+                parts.push_back("constructor " + name + " " + canonicalSignature(entry.first));
+
+            for (const auto& entry : info.methods)
+                parts.push_back("method " + name + " " + canonicalSignature(entry.first));
+
+            for (const auto& entry : info.methodCombinations)
+                parts.push_back("method " + name + " " + canonicalSignature(entry.first));
+
+            for (const auto& entry : info.staticMethods)
+                parts.push_back("staticMethod " + name + " " + canonicalSignature(entry.first));
+
+            for (const auto& entry : info.staticMethodCombinations)
+                parts.push_back("staticMethod " + name + " " + canonicalSignature(entry.first));
+
+            for (const auto& entry : info.valueMethods)
+                parts.push_back("valueMethod " + name + " " + canonicalSignature(entry.first));
+
+            for (const auto& entry : info.operators)
+                parts.push_back("operator " + name + " " + entry.first);
+        }
+
+        return canonicalShape(std::move(parts));
     }
 
     ll::Expected<TypedValue> ClassCall::getStaticField(const std::string& className, const std::string& field) const {

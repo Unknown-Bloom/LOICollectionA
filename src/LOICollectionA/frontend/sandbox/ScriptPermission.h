@@ -20,6 +20,7 @@ namespace LOICollection::frontend::sandbox {
             std::vector<std::string> values;
             std::vector<std::string> requests;
             std::vector<std::string> callbacks;
+            std::vector<std::string> navigations;
         };
 
         struct C_ScriptPermissionEntry {
@@ -82,6 +83,24 @@ namespace LOICollection::frontend::sandbox {
             return isScriptEnabled(scriptId);
         }
 
+        [[nodiscard]] bool isGuiNavigationTargetAllowed(
+            const std::string& scriptId, const std::string& targetScript, const std::string& formId
+        ) const {
+            if (targetScript == scriptId)
+                return true;
+
+            const auto* entry = find(scriptId);
+            if (!entry)
+                return fallbackAllowed();
+            if (!entry->enabled)
+                return false;
+
+            const auto& targets = entry->gui.navigations;
+            return std::any_of(targets.begin(), targets.end(), [&](const std::string& target) {
+                return target == targetScript || target == formId;
+            });
+        }
+
         [[nodiscard]] bool hasEntry(const std::string& scriptId) const {
             return find(scriptId) != nullptr;
         }
@@ -137,6 +156,7 @@ namespace LOICollection::frontend::sandbox {
                     readList(gui, "values", entry.gui.values);
                     readList(gui, "requests", entry.gui.requests);
                     readList(gui, "callbacks", entry.gui.callbacks);
+                    readList(gui, "navigations", entry.gui.navigations);
                 }
 
                 result.scripts.emplace(scriptId, std::move(entry));

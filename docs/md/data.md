@@ -282,7 +282,7 @@
 
 ### permission.json（gui 目录）
 
-`permission.json` 是脚本能力授权文件，位于 `plugins/LOICollectionA/gui/` 目录。它控制每个脚本允许调用的敏感能力：命令执行（`mc::runCmd`）与业务读写（`GUIManager::value/request/callback`）。
+`permission.json` 是脚本能力授权文件，位于 `plugins/LOICollectionA/gui/` 目录。它控制每个脚本允许调用的敏感能力：命令执行（`mc::runCmd`）、业务读写（`GUIManager::value/request/callback`）与跨脚本跳转（`GUIManager::open`）。
 
 > [!IMPORTANT]
 > 授权采用默认拒绝（`defaultPolicy: "deny"`）策略。脚本与授权分离：修改脚本（尤其是 `menu.lcui` / `shop.lcui`）新增能力调用后，必须同步修改 `permission.json`，否则对应调用会被拒绝并记录错误日志。
@@ -297,6 +297,7 @@
 | `scripts.<id>.gui.values` | string[] | 允许的 `GUIManager::value` id 白名单 |
 | `scripts.<id>.gui.requests` | string[] | 允许的 `GUIManager::request` id 白名单 |
 | `scripts.<id>.gui.callbacks` | string[] | 允许的 `GUIManager::callback` id 白名单 |
+| `scripts.<id>.gui.navigations` | string[] | 允许通过 `GUIManager::open` 跳转到的目标脚本 id 或表单 id 白名单；为空时仅允许打开自身 |
 
 ```json
 {
@@ -311,7 +312,8 @@
             "gui": {
                 "values": [],
                 "requests": [],
-                "callbacks": []
+                "callbacks": [],
+                "navigations": ["wallet", "market"]
             }
         },
         "wallet": {
@@ -320,12 +322,16 @@
             "gui": {
                 "values": ["wallet.players.online", "wallet.rank"],
                 "requests": ["wallet.info", "wallet.transfer.submit"],
-                "callbacks": ["wallet.wealth", "wallet.transfer.confirm"]
+                "callbacks": ["wallet.wealth", "wallet.transfer.confirm"],
+                "navigations": []
             }
         }
     }
 }
 ```
+
+> [!NOTE]
+> `navigations` 只约束**跨脚本**跳转。脚本打开自己的表单（`GUIManager::open("wallet", ...)` 出现在 `wallet` 内）无需授权。跳转的目标脚本自身也必须在 `scripts` 中列出且 `enabled` 为 `true`。
 
 > [!TIP]
 > 内置脚本（`blacklist`、`wallet` 等）的授权随插件更新自动维护；`menu` / `shop` 是您自行编写的脚本，其授权需要您根据脚本内实际调用的命令与 GUI id 手动同步。

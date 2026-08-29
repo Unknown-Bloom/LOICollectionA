@@ -13,7 +13,7 @@ The complete processing flow of a script is:
 ScriptLoader (import resolution and merging) -> Lexer (lexical analysis) -> Parser (syntax analysis) -> SemanticAnalyzer (semantic analysis) -> Compiler (bytecode compilation) -> Optimizer (optimization) -> VM (execution)
 ```
 
-- When the plugin starts or after the `/xxx reload` command is executed, `GUIManager::load` reads the `.lcui` file, first resolves the `import` graph (see "Multi-file Imports"), and then completes the compilation flow above; besides being cached in memory, the compiled bytecode is also written to disk as a `.lcc` file (see "Bytecode Disk Cache").
+- When the plugin starts or after the `/xxx reload` command is executed, `GUIManager::load` reads the `.lcui` file, first resolves the `import` graph (see "Multi-file Imports"), and then completes the compilation flow above; besides being cached in memory, the compiled bytecode is also written to disk as a `.lcp` file (see "Bytecode Package").
 - When a player opens a GUI, `GUIManager::open(id, formId, type[, ctx])` executes the cached script for that player; forms created in the script with `new CustomForm(...)`, `new PaginatedForm(...)`, etc. are registered with `GUIManager`, and then the form corresponding to `formId` is switched to.
 
 > For the methods and lifecycle of the native form classes, see [Native UI](./native-ui.md); for Menu/Shop-specific forms and default variables, see [LOICollectionAPI](./api.md).
@@ -569,6 +569,9 @@ text = std::format({tr("example.gui.info")}, [ 1, "two" ]);
 
 > The `type` in `GUIManager::open` and `GUIManager::switchTo` is an integer: `1` is CustomForm, `2` is MessageBox, `3` is PaginatedForm, `4` is ScriptForm.
 
+> [!NOTE]
+> When `GUIManager::open` navigates to **another script**, the target script id must be declared in `scripts.<id>.gui.navigations` in `gui/permission.json`, otherwise the call is denied. Opening a script's own form needs no declaration.
+
 ### Macros `{...}`
 
 Call a macro with `{name}` or `{name(parameters)}`, for example `{tr("language.gui.title")}`. `tr` returns the translated text for the current player's language; default variables such as `{player}`, `{server_tps}`, and `{score(name)}` are also used in macro form; see [LOICollectionAPI](./api.md) for the full list.
@@ -688,16 +691,18 @@ The optimizer iterates these passes until the bytecode stops changing (a fixed p
 
 At runtime there is an additional layer of **inline caching**: when a script calls the same native function or native method repeatedly (e.g. `math::abs(...)` or `arr.push(...)` inside a loop), the VM remembers the previous resolution and skips signature matching and registry lookups on a hit. This affects speed only, never behavior — on invalidation (e.g. a plugin reload mutating the registry) the VM falls back to the full lookup.
 
-## Bytecode Disk Cache
+## Bytecode Package
 
-After compiling a script, `GUIManager::load` serializes the bytecode to a `<script>.lcc` file next to the source (e.g. `market.lcui` maps to `market.lcui.lcc`):
+After compiling a script, `GUIManager::load` serializes the bytecode to a `<script>.lcp` file next to the source (e.g. `market.lcui` maps to `market.lcui.lcp`):
 
-- Subsequent loads read the `.lcc` cache first; on a hit, lexing/parsing/semantic analysis and compilation are skipped and the bytecode is reused directly.
-- The cache header records the SHA-256 of the source file and of every file in the import graph; a change to the source or any imported file, or a different cache format version, invalidates the cache as a whole and triggers recompilation.
-- The serialized data carries a checksum; a corrupted cache is discarded and recompiled.
-- The cache is purely an optimization: deleting the `.lcc` file does not affect correctness, only the next load recompiles.
+- Subsequent loads read the `.lcp` package first; on a hit, lexing/parsing/semantic analysis and compilation are skipped and the bytecode is reused directly.
+- The package header records the script id and an **ABI fingerprint** — a hash over the shape of every registered native class, function and macro. A plugin upgrade that changes any native signature alters the fingerprint, which invalidates old packages and triggers recompilation.
+- When the source is present, the package additionally records the SHA-256 of the entry file and of every file in the import graph; a change to any of them triggers recompilation.
+- The serialized data carries a checksum; a corrupted package is discarded and recompiled.
+- A package is self-contained: with the `.lcui` source removed, the script still loads as long as the ABI fingerprint matches. This is how closed-source scripts are distributed.
+- Debug information lives in a separate `.lcp.dbg` file; when it is missing the bytecode still executes, only line/column information is lost.
 
-The current cache format version is v2 (since v2 the bytecode supports the `DUP_STORE` / `DUP_IS_NONE` super-instructions). After a plugin upgrade introduces a new format version, old `.lcc` caches are invalidated automatically by the version mismatch and recompiled — no manual cleanup is needed.
+The current package format version is v5.
 
 ## Common Constraints and Pitfalls
 
