@@ -646,6 +646,53 @@ namespace LOICollection::frontend::ir {
         return chunk;
     }
 
+    std::optional<BytecodeSerializer::Header> BytecodeSerializer::peekHeader(const std::string& blob) {
+        Reader reader(blob);
+
+        char magic[sizeof(MAGIC)] = {};
+        uint32_t version = 0;
+        if (!reader.raw(magic, sizeof(magic)) || std::memcmp(magic, MAGIC, sizeof(MAGIC)) != 0)
+            return std::nullopt;
+
+        if (!reader.u32(version) || version != FORMAT_VERSION)
+            return std::nullopt;
+
+        Header header;
+        if (!reader.str(header.scriptId))
+            return std::nullopt;
+
+        header.abiFingerprint.resize(kDigestSize);
+        if (!reader.raw(header.abiFingerprint.data(), header.abiFingerprint.size()))
+            return std::nullopt;
+
+        uint8_t hasSource = 0;
+        if (!reader.u8(hasSource))
+            return std::nullopt;
+
+        if (hasSource != 0) {
+            std::string sourceHash(kDigestSize, '\0');
+            if (!reader.raw(sourceHash.data(), sourceHash.size()))
+                return std::nullopt;
+
+            header.sourceHash = std::move(sourceHash);
+        }
+
+        uint32_t importCount = 0;
+        if (!reader.u32(importCount) || importCount > reader.remaining() / kDigestSize)
+            return std::nullopt;
+
+        header.importHashes.reserve(importCount);
+        for (uint32_t i = 0; i < importCount; ++i) {
+            std::string hash(kDigestSize, '\0');
+            if (!reader.raw(hash.data(), hash.size()))
+                return std::nullopt;
+
+            header.importHashes.push_back(std::move(hash));
+        }
+
+        return header;
+    }
+
     std::optional<std::string> BytecodeSerializer::serializeDebugInfo(
         const BytecodeChunk& chunk, const std::string& bodyChecksum
     ) {

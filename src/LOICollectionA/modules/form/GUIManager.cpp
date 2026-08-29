@@ -27,6 +27,8 @@
 #include "LOICollectionA/frontend/ir/Abi.h"
 #include "LOICollectionA/frontend/ir/BytecodeSerializer.h"
 
+#include "LOICollectionA/utils/core/Sha256.h"
+
 #include "LOICollectionA/frontend/builtin/ui/form/CustomFormClass.h"
 #include "LOICollectionA/frontend/builtin/ui/form/MessageBoxClass.h"
 #include "LOICollectionA/frontend/builtin/ui/form/PaginatedFormClass.h"
@@ -58,6 +60,35 @@ namespace {
             registry.erase(owner);
 
         return true;
+    }
+
+    void warnRejectedPackage(
+        const std::string& id,
+        const std::string& blob,
+        const LOICollection::frontend::ir::BytecodeSerializer::Header& expected
+    ) {
+        using LOICollection::frontend::ir::BytecodeSerializer;
+        using LOICollection::utils::Sha256;
+
+        auto logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
+
+        auto stored = BytecodeSerializer::peekHeader(blob);
+        if (!stored) {
+            logger->warn("script '{}' has an unreadable bytecode package — recompiling", id);
+            return;
+        }
+
+        if (stored->scriptId != expected.scriptId)
+            logger->warn(
+                "script '{}' rejected a package built for script '{}' — recompiling", id, stored->scriptId
+            );
+        else if (stored->abiFingerprint != expected.abiFingerprint)
+            logger->warn(
+                "script '{}' rejected a package with a different ABI (package {}, plugin {}) — recompiling",
+                id, Sha256::toHex(stored->abiFingerprint), Sha256::toHex(expected.abiFingerprint)
+            );
+        else
+            logger->warn("script '{}' has a stale or corrupt bytecode package — recompiling", id);
     }
 
     template <typename Registry>
@@ -152,6 +183,8 @@ namespace LOICollection::form {
                 this->mImpl->cache.insert_or_assign(id, std::make_shared<frontend::ir::BytecodeChunk>(std::move(*chunk)));
                 warnIfMissingPermission(id);
                 return {};
+            } else {
+                warnRejectedPackage(id, blob.value(), header);
             }
         }
 

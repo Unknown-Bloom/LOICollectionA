@@ -27,6 +27,8 @@ namespace LOICollection::frontend::ir {
             const std::string& blob, const Header& expected, std::string* bodyChecksum = nullptr
         );
 
+        LOICOLLECTION_A_NDAPI static std::optional<Header> peekHeader(const std::string& blob);
+
         LOICOLLECTION_A_NDAPI static std::optional<std::string> serializeDebugInfo(
             const BytecodeChunk& chunk, const std::string& bodyChecksum
         );
