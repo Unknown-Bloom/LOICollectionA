@@ -309,6 +309,9 @@ if (dog instanceof Animal) [
 > [!TIP]
 > `GUIManager::open` 与 `GUIManager::switchTo` 中的 `type` 为整数：`1` 为 CustomForm，`2` 为 MessageBox，`3` 为 PaginatedForm，`4` 为 ScriptForm。
 
+> [!NOTE]
+> `GUIManager::open` 跳转到其他脚本时，需要在 `gui/permission.json` 的 `scripts.<id>.gui.navigations` 中声明目标脚本 id，否则调用会被拒绝。打开自身表单无需声明。
+
 ### 常用内置类
 
 | 类 | 说明 |

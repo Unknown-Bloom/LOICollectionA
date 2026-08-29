@@ -569,6 +569,9 @@ text = std::format({tr("example.gui.info")}, [ 1, "two" ]);
 
 > The `type` in `GUIManager::open` and `GUIManager::switchTo` is an integer: `1` is CustomForm, `2` is MessageBox, `3` is PaginatedForm, `4` is ScriptForm.
 
+> [!NOTE]
+> When `GUIManager::open` navigates to **another script**, the target script id must be declared in `scripts.<id>.gui.navigations` in `gui/permission.json`, otherwise the call is denied. Opening a script's own form needs no declaration.
+
 ### Macros `{...}`
 
 Call a macro with `{name}` or `{name(parameters)}`, for example `{tr("language.gui.title")}`. `tr` returns the translated text for the current player's language; default variables such as `{player}`, `{server_tps}`, and `{score(name)}` are also used in macro form; see [LOICollectionAPI](./api.md) for the full list.

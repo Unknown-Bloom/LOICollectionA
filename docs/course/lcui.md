@@ -2349,6 +2349,9 @@ GUIManager::open("menu", "main", 4);
 
 注意 `GUIManager::open` 的玩家不是参数，而是从 `placeholders.at(0)` 里自动取出——脚本作者永远不需要知道 `Player&` 长什么样。
 
+> [!NOTE]
+> `GUIManager::open` 跳转到**其他脚本**时，需要在 `gui/permission.json` 的 `scripts.<id>.gui.navigations` 中声明目标脚本 id，否则调用会被拒绝。打开自身表单无需声明。字段含义详见 [数据文件](../md/data.md) 中的 `permission.json` 一节。
+
 ### 表单 Handle：NativeHandle 的封装范式
 
 现在看"注册表里到底存了什么"。四种 Handle 都是 `NativeHandle` 的子类，而 `NativeHandle` 只是 AST 层的一个多态基类：

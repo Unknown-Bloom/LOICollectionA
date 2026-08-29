@@ -731,6 +731,9 @@ text = std::format({tr("example.gui.info")}, [ 1, "two" ]);
 
 > `GUIManager::open` 与 `GUIManager::switchTo` 中的 `type` 为整数：`1` 为 CustomForm，`2` 为 MessageBox，`3` 为 PaginatedForm，`4` 为 ScriptForm。
 
+> [!NOTE]
+> `GUIManager::open` 跳转到其他脚本时，需要在 `gui/permission.json` 的 `scripts.<id>.gui.navigations` 中声明目标脚本 id，否则调用会被拒绝。打开自身表单无需声明。
+
 ### 宏 `{...}`
 
 使用 `{名称}` 或 `{名称(参数)}` 调用宏，例如 `{tr("language.gui.title")}`。`tr` 返回当前玩家语言的翻译文本；`{player}`、`{server_tps}`、`{score(名称)}` 等默认变量也以宏形式使用，完整列表见 [LOICollectionAPI](./api.md)。
