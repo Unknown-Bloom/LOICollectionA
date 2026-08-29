@@ -25,5 +25,14 @@ namespace ScriptFormClass {
 
         std::string scriptId;
         bool pendingSubflow = false;
+
+        void release() override {
+            this->show.reset();
+            this->makeResult = nullptr;
+            this->onClosed = nullptr;
+            this->onBoxResult = nullptr;
+        }
+
+        ~ScriptFormHandle() override { this->release(); }
     };
 }

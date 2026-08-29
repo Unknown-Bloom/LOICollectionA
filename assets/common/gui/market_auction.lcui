@@ -21,14 +21,14 @@ auction = new PaginatedForm("market.auction", {tr("market.gui.title")}, GUIManag
         if (!navigateAuctionCreate.value) [
             navigateAuctionCreate.value = true;
 
-            auction.close();
+            this.close();
         ]
     }, createOption);
     button({tr("market.gui.auction.mine")}, on: func () -> void {
         if (!navigateAuctionMine.value) [
             navigateAuctionMine.value = true;
 
-            auction.close();
+            this.close();
         ]
     }, mineOption);
     closeButton();
@@ -78,7 +78,7 @@ func buildAuctionInfo(id: string) -> void {
             bidResult.value = bidResultData[0];
             bidDone.value = true;
 
-            auctionInfo.close();
+            this.close();
         });
         show(func (result) -> void {
             if (bidDone.value) [
@@ -150,7 +150,7 @@ func buildAuctionCreate(slot: int) -> void {
             createResult.value = createResultData[0];
             createDone.value = true;
 
-            auctionCreate.close();
+            this.close();
         });
         show(func (result) -> void {
             if (createDone.value) [

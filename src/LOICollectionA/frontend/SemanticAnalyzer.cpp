@@ -7,6 +7,8 @@
 #include <unordered_set>
 #include <utility>
 
+#include "LOICollectionA/base/ScopeGuard.h"
+
 #include "LOICollectionA/frontend/Callback.h"
 
 #include "LOICollectionA/frontend/SemanticAnalyzer.h"
@@ -83,6 +85,9 @@ namespace LOICollection::frontend {
         this->constructorAssignedMembers.clear();
         this->blockScopes.clear();
         this->formReceivers.clear();
+        this->receiverBindings.clear();
+        this->receiverCaptures.clear();
+        this->closureDepth = 0;
 
         this->collectTypeAliases(root);
 
@@ -512,6 +517,9 @@ namespace LOICollection::frontend {
                 return;
             case ASTNode::Type::While: {
                 auto& whileNode = static_cast<WhileNode&>(node);
+                ++scope.loopDepth;
+                auto loops = make_scope_guard([&scope] { --scope.loopDepth; });
+
                 if (whileNode.condition)
                     checkExpr(*whileNode.condition, scope);
                 if (whileNode.body)
@@ -520,6 +528,9 @@ namespace LOICollection::frontend {
             }
             case ASTNode::Type::For: {
                 auto& forNode = static_cast<ForNode&>(node);
+                ++scope.loopDepth;
+                auto loops = make_scope_guard([&scope] { --scope.loopDepth; });
+
                 if (forNode.init)
                     checkExpr(*forNode.init, scope);
                 if (forNode.condition)
@@ -532,6 +543,10 @@ namespace LOICollection::frontend {
             }
             case ASTNode::Type::ForIn: {
                 auto& forIn = static_cast<ForInNode&>(node);
+
+                ++scope.loopDepth;
+                auto loops = make_scope_guard([&scope] { --scope.loopDepth; });
+
                 TypeInfo iterableType = checkExpr(*forIn.iterable, scope);
 
                 bool isRange = forIn.iterable->getType() == ASTNode::Type::Range;
@@ -558,7 +573,14 @@ namespace LOICollection::frontend {
                 return;
             }
             case ASTNode::Type::Break:
+                if (scope.loopDepth == 0)
+                    this->diagnostics.addError(static_cast<BreakNode&>(node).loc,
+                        "'break' can only be used inside a loop");
+                return;
             case ASTNode::Type::Continue:
+                if (scope.loopDepth == 0)
+                    this->diagnostics.addError(static_cast<ContinueNode&>(node).loc,
+                        "'continue' can only be used inside a loop");
                 return;
             case ASTNode::Type::Block:
                 for (auto& part : static_cast<BlockNode&>(node).parts)
@@ -611,7 +633,7 @@ namespace LOICollection::frontend {
                 TypeInfo left = checkExpr(*coalesce.left, scope);
                 TypeInfo right = checkExpr(*coalesce.right, scope);
 
-                // None / empty optional is meaningful for '??': keep the raw value.
+                
                 coalesce.left->preserveOptional = true;
 
                 while (left.kind == TypeKind::Optional)
@@ -644,6 +666,16 @@ namespace LOICollection::frontend {
             case ASTNode::Type::Variable: {
                 auto& var = static_cast<VariableNode&>(node);
                 TypeInfo type = lookupName(var.name, scope);
+
+                if (this->closureDepth > 0) {
+                    for (const auto& binding : this->receiverBindings) {
+                        if (binding.name != var.name)
+                            continue;
+
+                        this->receiverCaptures.push_back({ var.name, var.loc });
+                        break;
+                    }
+                }
 
                 if (scope.hasClass()) {
                     bool isParam = false;
@@ -687,17 +719,20 @@ namespace LOICollection::frontend {
 
             case ASTNode::Type::This: {
                 auto& self = static_cast<ThisNode&>(node);
-                if (!scope.hasMethod() || !scope.hasClass()) {
-                    diagnostics.addError(self.loc, "'this' is only available inside class methods");
-                    return {};
+                if (scope.hasMethod() && scope.hasClass()) {
+                    if (scope.methodRef().isStatic) {
+                        diagnostics.addError(self.loc, "'this' is not available inside static methods");
+                        return {};
+                    }
+
+                    return { TypeKind::Object, scope.classRef().name };
                 }
 
-                if (scope.methodRef().isStatic) {
-                    diagnostics.addError(self.loc, "'this' is not available inside static methods");
-                    return {};
-                }
+                if (this->closureDepth > 0 && !this->receiverBindings.empty())
+                    return { TypeKind::Object, this->receiverBindings.back().className };
 
-                return { TypeKind::Object, scope.classRef().name };
+                diagnostics.addError(self.loc, "'this' is only available inside class methods");
+                return {};
             }
 
             case ASTNode::Type::Super: {
@@ -970,8 +1005,8 @@ namespace LOICollection::frontend {
                 }
 
                 if (rhs.kind == TypeKind::None) {
-                    // Dynamic variables may hold 'None' (e.g. before a '??' fallback);
-                    // the inferred type stays dynamic so later assignments remain valid.
+                    
+                    
                     globalTypes[var.name] = TypeInfo{};
                     return rhs;
                 }
@@ -1157,7 +1192,7 @@ namespace LOICollection::frontend {
 
         bool safeMaybeNone = false;
         if (node.isSafe) {
-            // None / empty optional short-circuits a safe chain: keep the raw target.
+            
             node.target->preserveOptional = true;
             safeMaybeNone = targetType.kind == TypeKind::Optional ||
                             targetType.kind == TypeKind::Unknown;
@@ -1274,17 +1309,49 @@ namespace LOICollection::frontend {
         return {};
     }
 
+    std::string SemanticAnalyzer::receiverVariable(MethodCallNode& node) const {
+        if (node.isStaticCall || node.target->getType() != ASTNode::Type::Variable)
+            return {};
+
+        const std::string& name = static_cast<VariableNode&>(*node.target).name;
+        if (this->classByName.contains(name) || isNativeClass(name))
+            return {};
+
+        return name;
+    }
+
+    void SemanticAnalyzer::reportReceiverCaptures(const std::string& name) {
+        std::vector<ReceiverCapture> remaining;
+        for (auto& capture : this->receiverCaptures) {
+            if (capture.name != name) {
+                remaining.push_back(capture);
+                continue;
+            }
+
+            this->diagnostics.addError(capture.loc,
+                "Callback captures its receiver '" + name +
+                "'; the closure would retain the object and leak it, use 'this' instead");
+        }
+
+        this->receiverCaptures = std::move(remaining);
+    }
+
     TypeInfo SemanticAnalyzer::checkMethodCall(MethodCallNode& node, MethodScope& scope) {
         size_t argCount = node.args.size();
 
-        std::vector<TypeInfo> argTypes;
-        argTypes.reserve(argCount);
-        for (auto& arg : node.args)
-            argTypes.push_back(checkExpr(*arg, scope));
+        auto checkArgs = [&] {
+            std::vector<TypeInfo> types;
+            types.reserve(argCount);
+            for (auto& arg : node.args)
+                types.push_back(checkExpr(*arg, scope));
+            return types;
+        };
 
         if (node.target->getType() == ASTNode::Type::Variable) {
             auto& var = static_cast<VariableNode&>(*node.target);
             if (auto clsOpt = this->findClass(var.name)) {
+                std::vector<TypeInfo> argTypes = checkArgs();
+
                 auto staticMethod = this->findStaticMethod(
                     clsOpt->get(), node.methodName, argTypes, scope
                 );
@@ -1314,6 +1381,8 @@ namespace LOICollection::frontend {
             }
 
             if (isNativeClass(var.name)) {
+                std::vector<TypeInfo> argTypes = checkArgs();
+
                 std::vector<CallbackTypeArgs> signatures =
                     ClassCall::getInstance().getStaticMethodSignatures(var.name, node.methodName);
 
@@ -1338,6 +1407,21 @@ namespace LOICollection::frontend {
         while (targetType.kind == TypeKind::Optional)
             targetType = *targetType.optionalInner;
 
+        std::string receiverVar;
+        if (targetType.kind == TypeKind::Object)
+            receiverVar = this->receiverVariable(node);
+
+        std::vector<TypeInfo> argTypes;
+        if (!receiverVar.empty()) {
+            this->receiverBindings.push_back({ receiverVar, targetType.className });
+            auto binding = make_scope_guard([this] { this->receiverBindings.pop_back(); });
+
+            argTypes = checkArgs();
+            this->reportReceiverCaptures(receiverVar);
+        } else {
+            argTypes = checkArgs();
+        }
+
         if (targetType.kind == TypeKind::Array || targetType.kind == TypeKind::String) {
             const std::string& className = targetType.kind == TypeKind::Array ? "Array" : "String";
             std::vector<CallbackTypeArgs> signatures =
@@ -1358,9 +1442,9 @@ namespace LOICollection::frontend {
         }
 
         if (targetType.kind == TypeKind::Unknown) {
-            /* Dynamically typed target (e.g. a member read of an object or native
-             * instance): defer the value-method dispatch to the VM, which selects
-             * the value class by the runtime type of the receiver. */
+            
+
+
             for (const char* className : { "Array", "String" }) {
                 std::vector<CallbackTypeArgs> signatures =
                     ClassCall::getInstance().getValueMethodSignatures(className, node.methodName);
@@ -1882,6 +1966,9 @@ namespace LOICollection::frontend {
         if (scope.hasClass())
             lambdaScope.cls = scope.cls;
         lambdaScope.method = std::ref(decl);
+
+        ++this->closureDepth;
+        auto closure = make_scope_guard([this] { --this->closureDepth; });
 
         if (decl.body)
             checkStatement(*decl.body, lambdaScope);

@@ -18,7 +18,11 @@
 namespace LOICollection::frontend::ir {
     class VM {
     public:
-        LOICOLLECTION_A_NDAPI VM(DiagnosticEngine& diag) : diagnostics(diag) {}
+        LOICOLLECTION_A_NDAPI VM(DiagnosticEngine& diag) : VM(diag, std::make_shared<GlobalsTable>()) {}
+
+        LOICOLLECTION_A_NDAPI VM(DiagnosticEngine& diag, std::shared_ptr<GlobalsTable> globals)
+            : diagnostics(diag),
+              globals(std::move(globals)) {}
 
         LOICOLLECTION_A_NDAPI ValueNode::ValueType run(
             const std::shared_ptr<const BytecodeChunk>& chunk,
@@ -68,7 +72,8 @@ namespace LOICollection::frontend::ir {
 
         std::vector<Frame> frames;
         std::vector<ValueNode::ValueType> stack;
-        std::unordered_map<std::string, ValueNode::ValueType> variables;
+
+        std::shared_ptr<GlobalsTable> globals;
 
         std::unordered_map<int, FunctionCallCacheSlot> mFunctionCallSlots;
         std::unordered_map<int, NativeMethodCacheSlot> mNativeMethodSlots;

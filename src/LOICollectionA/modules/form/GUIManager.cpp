@@ -42,6 +42,31 @@ namespace {
             ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA")
                 ->warn("script '{}' loaded without a permission entry — all capabilities denied", id);
     }
+
+    template <typename Registry>
+    bool eraseForm(Registry& registry, const std::string& uuid, const std::string& id) {
+        auto owner = registry.find(uuid);
+        if (owner == registry.end())
+            return false;
+
+        if (auto handle = owner->second.find(id); handle != owner->second.end())
+            handle->second->release();
+
+        owner->second.erase(id);
+        if (owner->second.empty())
+            registry.erase(owner);
+
+        return true;
+    }
+
+    template <typename Registry>
+    void releaseHandles(Registry& registry) {
+        for (auto& [_, handles] : registry)
+            for (auto& [_, handle] : handles)
+                handle->release();
+
+        registry.clear();
+    }
 }
 
 namespace LOICollection::form {
@@ -487,59 +512,46 @@ namespace LOICollection::form {
     }
 
     bool GUIManager::unregisterCustomFormUI(const std::string& id, Player& player) {
-        std::string uuid = player.getUuid().asString();
-
-        if (auto it = this->mImpl->forms.find(uuid); it != this->mImpl->forms.end()) {
-            it->second.erase(id);
-            if (it->second.empty())
-                this->mImpl->forms.erase(it);
-
-            return true;
-        }
-
-        return false;
+        return eraseForm(this->mImpl->forms, player.getUuid().asString(), id);
     }
 
     bool GUIManager::unregisterPaginatedFormUI(const std::string& id, Player& player) {
-        std::string uuid = player.getUuid().asString();
-
-        if (auto it = this->mImpl->paginatedForms.find(uuid); it != this->mImpl->paginatedForms.end()) {
-            it->second.erase(id);
-            if (it->second.empty())
-                this->mImpl->paginatedForms.erase(it);
-
-            return true;
-        }
-
-        return false;
+        return eraseForm(this->mImpl->paginatedForms, player.getUuid().asString(), id);
     }
 
     bool GUIManager::unregisterMessageBoxUI(const std::string& id, Player& player) {
-        std::string uuid = player.getUuid().asString();
-
-        if (auto it = this->mImpl->boxs.find(uuid); it != this->mImpl->boxs.end()) {
-            it->second.erase(id);
-            if (it->second.empty())
-                this->mImpl->boxs.erase(it);
-
-            return true;
-        }
-
-        return false;
+        return eraseForm(this->mImpl->boxs, player.getUuid().asString(), id);
     }
 
     bool GUIManager::unregisterScriptFormUI(const std::string& id, Player& player) {
-        std::string uuid = player.getUuid().asString();
+        return eraseForm(this->mImpl->scriptForms, player.getUuid().asString(), id);
+    }
 
-        if (auto it = this->mImpl->scriptForms.find(uuid); it != this->mImpl->scriptForms.end()) {
-            it->second.erase(id);
-            if (it->second.empty())
-                this->mImpl->scriptForms.erase(it);
+    void GUIManager::releasePlayerUI(Player& player) {
+        const std::string uuid = player.getUuid().asString();
 
-            return true;
-        }
+        auto drop = [&uuid](auto& registry) {
+            if (auto it = registry.find(uuid); it != registry.end()) {
+                for (auto& [_, handle] : it->second)
+                    handle->release();
 
-        return false;
+                registry.erase(it);
+            }
+        };
+
+        drop(this->mImpl->forms);
+        drop(this->mImpl->boxs);
+        drop(this->mImpl->paginatedForms);
+        drop(this->mImpl->scriptForms);
+    }
+
+    void GUIManager::releaseAllUI() {
+        this->mImpl->cache.clear();
+
+        releaseHandles(this->mImpl->forms);
+        releaseHandles(this->mImpl->boxs);
+        releaseHandles(this->mImpl->paginatedForms);
+        releaseHandles(this->mImpl->scriptForms);
     }
 
     ll::Expected<std::shared_ptr<CustomFormClass::CustomFormHandle>> GUIManager::getCustomFormUI(const std::string& id, Player& player) {

@@ -8,6 +8,7 @@
 #include <unordered_set>
 
 #include "LOICollectionA/base/Macro.h"
+#include "LOICollectionA/base/ScopeGuard.h"
 
 #include "LOICollectionA/frontend/AST.h"
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
@@ -123,6 +124,8 @@ namespace LOICollection::frontend::ir {
         int addSuperCall(int constructorIndex, int argCount);
 
         [[nodiscard]] std::string methodSignature(const MethodDecl& method) const;
+
+        [[nodiscard]] auto suspendLoops();
 
         void pushScope(bool hasThis, int base, bool inherits = false);
         int closeScope();

@@ -71,49 +71,49 @@ marketOpen = new CustomForm("market.open", {tr("market.gui.title")}) {
         if (!navigateBuy.value) [
             navigateBuy.value = true;
 
-            marketOpen.close();
+            this.close();
         ]
     }, worldbuyOption);
     button({tr("market.gui.store")}, on: func () -> void {
         if (!navigateStore.value) [
             navigateStore.value = true;
 
-            marketOpen.close();
+            this.close();
         ]
     }, storeOption);
     button({tr("market.gui.quote")}, on: func () -> void {
         if (!navigateQuote.value) [
             navigateQuote.value = true;
 
-            marketOpen.close();
+            this.close();
         ]
     }, quoteOption);
     button({tr("market.gui.wanted")}, on: func () -> void {
         if (!navigateWanted.value) [
             navigateWanted.value = true;
 
-            marketOpen.close();
+            this.close();
         ]
     }, wantedOption);
     button({tr("market.gui.auction")}, on: func () -> void {
         if (!navigateAuction.value) [
             navigateAuction.value = true;
 
-            marketOpen.close();
+            this.close();
         ]
     }, auctionOption);
     button({tr("market.gui.trade")}, on: func () -> void {
         if (!navigateTrade.value) [
             navigateTrade.value = true;
 
-            marketOpen.close();
+            this.close();
         ]
     }, tradeOption);
     button({tr("market.gui.personal")}, on: func () -> void {
         if (!navigatePersonal.value) [
             navigatePersonal.value = true;
 
-            marketOpen.close();
+            this.close();
         ]
     }, personalOption);
     closeButton();
@@ -220,28 +220,28 @@ marketPersonal = new CustomForm("market.personal", {tr("market.gui.title")}) {
         if (!navigateSellItem.value) [
             navigateSellItem.value = true;
 
-            marketPersonal.close();
+            this.close();
         ]
     }, sellItemOption);
     button({tr("market.gui.personal.sellItemContent")}, on: func () -> void {
         if (!navigateSellContent.value) [
             navigateSellContent.value = true;
 
-            marketPersonal.close();
+            this.close();
         ]
     }, sellItemContentOption);
     button({tr("market.gui.store.mine")}, on: func () -> void {
         if (!navigateStoreMine.value) [
             navigateStoreMine.value = true;
 
-            marketPersonal.close();
+            this.close();
         ]
     }, storeMineOption);
     button({tr("market.gui.personal.blacklist")}, on: func () -> void {
         if (!navigateBlacklist.value) [
             navigateBlacklist.value = true;
 
-            marketPersonal.close();
+            this.close();
         ]
     }, blacklistOption);
     closeButton();
@@ -325,7 +325,7 @@ blacklist = new PaginatedForm("market.blacklist", {tr("market.gui.title")}, GUIM
         if (!navigateBlacklistAdd.value) [
             navigateBlacklistAdd.value = true;
 
-            blacklist.close();
+            this.close();
         ]
     }, blacklistAddOption);
     show(func (result) -> void {
@@ -387,7 +387,7 @@ func buildItemInfo(id: string) -> void {
             buyResult.value = buyResultData[0];
             buyDone.value = true;
 
-            itemInfo.close();
+            this.close();
         }, buyItemOption);
 
         if (GUIManager::request("market.isAdmin", [])[0]) [
@@ -396,7 +396,7 @@ func buildItemInfo(id: string) -> void {
 
                 offshelfDone.value = true;
 
-                itemInfo.close();
+                this.close();
             }, delistItemOption);
         ]
 
@@ -431,7 +431,7 @@ func buildItemContent(id: string) -> void {
 
             offshelfReturnDone.value = true;
 
-            itemMine.close();
+            this.close();
         }, delistItemOption);
         closeButton();
         show(func (result) -> void {
@@ -481,7 +481,7 @@ func buildSellItem(slot: int) -> void {
             sellResult.value = sellResultData[0];
             sellDone.value = true;
 
-            sellItemForm.close();
+            this.close();
         });
         show(func (result) -> void {
             if (!sellDone.value) [
@@ -520,7 +520,7 @@ func buildTradeType(uuid: string) -> void {
         ConfirmBar(saveLabel(), func () -> void {
             typeDone.value = true;
 
-            tradeType.close();
+            this.close();
         });
         show(func (result) -> void {
             if (typeDone.value) [
@@ -552,7 +552,7 @@ func buildBlacklistSet(id: string) -> void {
 
             removeDone.value = true;
 
-            blacklistInfo.close();
+            this.close();
         });
         show(func (result) -> void {
             if (!removeDone.value) [

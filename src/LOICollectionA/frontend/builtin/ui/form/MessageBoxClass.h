@@ -13,6 +13,12 @@ namespace MessageBoxClass {
 
         LOICollection::frontend::FunctionRefPtr show;
         std::string scriptId;
+
+        void release() override {
+            this->show.reset();
+        }
+
+        ~MessageBoxHandle() override { this->release(); }
     };
 
     void registerClasses(const std::string& name);

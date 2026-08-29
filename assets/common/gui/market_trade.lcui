@@ -39,13 +39,13 @@ tradeRequest = new CustomForm("market.trade.request", {tr("market.gui.title")}) 
         requestAccepted.value = acceptData[0];
         requestFinished.value = true;
 
-        tradeRequest.close();
+        this.close();
     }, new ButtonOptions());
     ConfirmBar({tr("market.no")}, func () -> void {
         requestRejected.value = true;
         requestFinished.value = true;
 
-        tradeRequest.close();
+        this.close();
     });
     show(func (result) -> void {
         if (!requestFinished.value) [
@@ -101,7 +101,7 @@ tradeItemForm = new CustomForm("market.trade.item", {tr("market.gui.title")}) {
 
         itemDone.value = true;
 
-        tradeItemForm.close();
+        this.close();
     });
     show(func (result) -> void {
         if (!itemDone.value) [
@@ -124,14 +124,14 @@ tradeConfirmForm = new CustomForm("market.trade.confirm", {tr("market.gui.title"
 
         confirmDone.value = true;
 
-        tradeConfirmForm.close();
+        this.close();
     }, new ButtonOptions());
     ConfirmBar({tr("market.no")}, func () -> void {
         GUIManager::callback("market.trade.cancel", []);
 
         confirmDone.value = true;
 
-        tradeConfirmForm.close();
+        this.close();
     });
     show(func (result) -> void {
         if (!confirmDone.value) [

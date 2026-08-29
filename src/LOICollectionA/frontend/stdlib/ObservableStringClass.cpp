@@ -62,7 +62,9 @@ namespace ObservableStringClass {
         if (func->argCount != 1)
             return ll::makeStringError("Subscribe function only needs one string parameter");
 
-        return static_cast<ObservableStringHandle*>(self->native.get())->base->subscribe([func, placeholders](const std::string& value) -> void {
+        auto* handle = static_cast<ObservableStringHandle*>(self->native.get());
+
+        auto id = handle->base->subscribe([func, placeholders](const std::string& value) -> void {
             DiagnosticEngine diagnostics;
 
             [[maybe_unused]] auto result = ir::VM::callFunctionRef(func, { value }, placeholders, diagnostics);
@@ -72,10 +74,18 @@ namespace ObservableStringClass {
                     ->error("ObservableString::subscribe callback: {}", diagnostics.getErrorMessage());
             }
         });
+
+        handle->subscriptions.push_back(id);
+        return id;
     }
 
     bool unsubscribe(const ObjectRef& self, const CallbackTypeValues& args) {
-        return static_cast<ObservableStringHandle*>(self->native.get())->base->unsubscribe(std::get<int>(args[0]));
+        auto* handle = static_cast<ObservableStringHandle*>(self->native.get());
+        auto id = static_cast<ObservableStringHandle::SubscriptionId>(std::get<int>(args[0]));
+
+        std::erase(handle->subscriptions, id);
+
+        return handle->base->unsubscribe(id);
     }
 
     void registerClasses(const std::string&) {
@@ -89,14 +99,14 @@ namespace ObservableStringClass {
         classes.registerMethod("ObservableString", "subscribe", subscribe, { ParamType::FUNCTION });
         classes.registerMethod("ObservableString", "unsubscribe", unsubscribe, { ParamType::INT });
 
-        // "obs + x" mirrors "getData() + x"; "obs == x" compares the stored text.
+        
         classes.registerOperator("ObservableString", "+", [](const TypedValue& left, const TypedValue& right) -> ll::Expected<TypedValue> {
             auto l = stringOperand(left);
             if (!l)
                 return ll::makeStringError("ObservableString operators require string operands");
 
-            /* Unwrap an ObservableString right side to its data; other types
-             * still stringify so "obs + number" keeps concatenating. */
+            
+
             if (auto r = stringOperand(right))
                 return *l + *r;
             return *l + ir::VM::valueToString(right);

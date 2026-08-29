@@ -827,6 +827,8 @@ namespace LOICollection::frontend {
 
     struct NativeHandle {
         virtual ~NativeHandle() = default;
+
+        virtual void release() {}
     };
 
     struct Object {
@@ -845,6 +847,8 @@ namespace LOICollection::frontend {
         struct BytecodeChunk;
     }
 
+    using GlobalsTable = std::unordered_map<std::string, ValueNode::ValueType>;
+
     struct FunctionRef {
         std::shared_ptr<const ir::BytecodeChunk> owner;
 
@@ -852,9 +856,9 @@ namespace LOICollection::frontend {
         int argCount = 0;
 
         bool hasThis = false;
-        ObjectRef thisObj;
+        std::weak_ptr<Object> thisObj;
 
         std::vector<ValueNode::ValueType> captures;
-        std::unordered_map<std::string, ValueNode::ValueType> globals;
+        std::weak_ptr<GlobalsTable> globals;
     };
 }

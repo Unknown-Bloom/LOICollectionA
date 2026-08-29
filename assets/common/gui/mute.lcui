@@ -19,14 +19,14 @@ open = new CustomForm("mute.open", {tr("mute.gui.title")}) {
         if (!navigateAdd.value) [
             navigateAdd.value = true;
 
-            open.close();
+            this.close();
         ]
     }, addMuteOption);
     button({tr("mute.gui.removeMute")}, on: func () -> void {
         if (!navigateDelete.value) [
             navigateDelete.value = true;
 
-            open.close();
+            this.close();
         ]
     }, removeMuteOption);
     closeButton();
@@ -72,7 +72,7 @@ add = new PaginatedForm("mute.add", {tr("mute.gui.add.title")}, GUIManager::valu
 
                         contentValue.value = true;
 
-                        content.close();
+                        this.close();
                     });
                     show(func (result) -> void {
                         if (!contentValue.value) [
@@ -115,7 +115,7 @@ remove = new PaginatedForm("mute.remove", {tr("mute.gui.remove.title")}, GUIMana
 
                         infoRemoved.value = true;
 
-                        info.close();
+                        this.close();
                     });
                     show(func (result) -> void {
                         if (!infoRemoved.value) [

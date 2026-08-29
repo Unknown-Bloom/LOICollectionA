@@ -75,8 +75,10 @@ namespace ObservableUIRawMessageClass {
         if (func->argCount != 1)
             return ll::makeStringError("Subscribe function only needs one bool parameter");
 
-        return static_cast<ObservableUIRawMessageHandle*>(self->native.get())->base->subscribe([
-            option = static_cast<ObservableUIRawMessageHandle*>(self->native.get())->base->isClientWritable(), func, placeholders
+        auto* owner = static_cast<ObservableUIRawMessageHandle*>(self->native.get());
+
+        auto id = owner->base->subscribe([
+            option = owner->base->isClientWritable(), func, placeholders
         ](const ll::ui::UIRawMessage& value) -> void {
             auto handle = std::make_shared<ObservableUIRawMessageHandle>();
             handle->base = std::make_unique<ll::ui::ObservableUIRawMessage>(
@@ -97,10 +99,18 @@ namespace ObservableUIRawMessageClass {
                     ->error("ObservableUIRawMessage::subscribe callback: {}", diagnostics.getErrorMessage());
             }
         });
+
+        owner->subscriptions.push_back(id);
+        return id;
     }
 
     bool unsubscribe(const ObjectRef& self, const CallbackTypeValues& args) {
-        return static_cast<ObservableUIRawMessageHandle*>(self->native.get())->base->unsubscribe(std::get<int>(args[0]));
+        auto* owner = static_cast<ObservableUIRawMessageHandle*>(self->native.get());
+        auto id = static_cast<ObservableUIRawMessageHandle::SubscriptionId>(std::get<int>(args[0]));
+
+        std::erase(owner->subscriptions, id);
+
+        return owner->base->unsubscribe(id);
     }
 
     void registerClasses(const std::string&) {

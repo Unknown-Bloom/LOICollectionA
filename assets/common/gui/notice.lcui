@@ -35,7 +35,7 @@ if (mode.value == "content") [
             if (!navigateLines.value) [
                 navigateLines.value = true;
 
-                content.close();
+                this.close();
             ]
         }, new ButtonOptions());
         button({tr("notice.gui.edit.addline")}, on: func () -> void {
@@ -43,7 +43,7 @@ if (mode.value == "content") [
                 GUIManager::callback("notice.line.add", [ targetId.value ]);
 
                 navigateRefresh.value = true;
-                content.close();
+                this.close();
             ]
         }, new ButtonOptions());
         button({tr("notice.gui.edit.removeline")}, on: func () -> void {
@@ -51,7 +51,7 @@ if (mode.value == "content") [
                 GUIManager::callback("notice.line.remove", [ targetId.value ]);
 
                 navigateRefresh.value = true;
-                content.close();
+                this.close();
             ]
         }, new ButtonOptions());
         ConfirmBar(saveLabel(), func () -> void {
@@ -59,7 +59,7 @@ if (mode.value == "content") [
                 GUIManager::callback("notice.content.save", [ targetId.value, titleField.getData(), showField.getData() ]);
 
                 navigateRefresh.value = true;
-                content.close();
+                this.close();
             ]
         });
         show(func (result) -> void {
@@ -84,7 +84,7 @@ if (mode.value == "content") [
                                 ConfirmBar(saveLabel(), func () -> void {
                                     GUIManager::callback("notice.line.save", [ targetId.value, result.selectionIndex, lineField.getData() ]);
 
-                                    line.close();
+                                    this.close();
                                 });
                                 show(func (result) -> void {
                                     GUIManager::open("notice", "notice.content", 1, [ "content", targetId.value ]);
@@ -149,21 +149,21 @@ edit = new CustomForm("notice.edit", {tr("notice.gui.title")}) {
         if (!navigateAdd.value) [
             navigateAdd.value = true;
 
-            edit.close();
+            this.close();
         ]
     }, addOption);
     button({tr("notice.gui.remove")}, on: func () -> void {
         if (!navigateRemove.value) [
             navigateRemove.value = true;
 
-            edit.close();
+            this.close();
         ]
     }, removeOption);
     button({tr("notice.gui.edit.list")}, on: func () -> void {
         if (!navigateEdit.value) [
             navigateEdit.value = true;
 
-            edit.close();
+            this.close();
         ]
     }, editListOption);
     closeButton();
@@ -209,7 +209,7 @@ add = new CustomForm("notice.add", {tr("notice.gui.title")}) {
     ConfirmBar(saveLabel(), func () -> void {
         GUIManager::callback("notice.add.submit", [ addId.getData(), addTitle.getData(), addPriority.getData(), addShow.getData() ]);
 
-        add.close();
+        this.close();
     });
     show(func (result) -> void {
         GUIManager::open("notice", "notice.edit", 1, [ "", "" ]);
@@ -271,7 +271,7 @@ setting = new CustomForm("notice.setting", {tr("notice.gui.title")}) {
     ConfirmBar(saveLabel(), func () -> void {
         GUIManager::callback("notice.setting.save", [ closeState.getData() ]);
 
-        setting.close();
+        this.close();
     });
     show();
 };

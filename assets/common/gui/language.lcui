@@ -10,7 +10,7 @@ form = new CustomForm("language.gui", {tr("language.gui.title")}) {
     ConfirmBar(saveLabel(), func () -> void {
         GUIManager::callback("language.callback", [ lang.getData() ]);
 
-        form.close();
+        this.close();
     });
     show();
 };

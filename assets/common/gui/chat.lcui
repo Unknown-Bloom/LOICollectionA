@@ -19,14 +19,14 @@ manage = new CustomForm("chat.manage", {tr("chat.gui.title")}) {
         if (!navigateAdd.value) [
             navigateAdd.value = true;
 
-            manage.close();
+            this.close();
         ]
     }, addOption);
     button({tr("chat.gui.manager.remove")}, on: func () -> void {
         if (!navigateRemove.value) [
             navigateRemove.value = true;
 
-            manage.close();
+            this.close();
         ]
     }, removeOption);
     closeButton();
@@ -62,14 +62,14 @@ setting = new CustomForm("chat.setting", {tr("chat.gui.title")}) {
         if (!navigateTitle.value) [
             navigateTitle.value = true;
 
-            setting.close();
+            this.close();
         ]
     }, setTitleOption);
     button({tr("chat.gui.setBlacklist")}, on: func () -> void {
         if (!navigateBlacklist.value) [
             navigateBlacklist.value = true;
 
-            setting.close();
+            this.close();
         ]
     }, setBlacklistOption);
     closeButton();
@@ -122,7 +122,7 @@ func buildContentAdd(targetUuid: string) -> void {
             submitResult = GUIManager::request("chat.title.add", [ targetUuid, titleField.getData(), timeField.getData() ]);
 
             submitDone.value = submitResult[0];
-            content.close();
+            this.close();
         });
         show(func (result) -> void {
             if (!submitDone.value) [
@@ -206,7 +206,7 @@ blacklist = new PaginatedForm("chat.blacklist", {tr("chat.gui.title")}, GUIManag
         if (!navigateAddBlacklist.value) [
             navigateAddBlacklist.value = true;
 
-            blacklist.close();
+            this.close();
         ]
     }, blacklistAddOption);
     show(func (result) -> void {
@@ -227,7 +227,7 @@ blacklist = new PaginatedForm("chat.blacklist", {tr("chat.gui.title")}, GUIManag
                     ConfirmBar({tr("chat.gui.setBlacklist.set.remove")}, func () -> void {
                         GUIManager::callback("chat.blacklist.remove", [ result.selection ]);
 
-                        info.close();
+                        this.close();
                     });
                     show(func (result) -> void {
                         GUIManager::open("chat", "chat.blacklist", 3, []);

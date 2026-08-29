@@ -19,14 +19,14 @@ open = new CustomForm("blacklist.open", {tr("blacklist.gui.title")}) {
         if (!navigateAdd.value) [
             navigateAdd.value = true;
 
-            open.close();
+            this.close();
         ]
     }, addBlacklistOption);
     button({tr("blacklist.gui.removeBlacklist")}, on: func () -> void {
         if (!navigateDelete.value) [
             navigateDelete.value = true;
 
-            open.close();
+            this.close();
         ]
     }, removeBlacklistOption);
     closeButton();
@@ -72,7 +72,7 @@ add = new PaginatedForm("blacklist.add", {tr("blacklist.gui.add.title")}, GUIMan
 
                         contentValue.value = true;
 
-                        content.close();
+                        this.close();
                     });
                     show(func (result) -> void {
                         if (!contentValue.value) [
@@ -115,7 +115,7 @@ remove = new PaginatedForm("blacklist.remove", {tr("blacklist.gui.remove.title")
 
                         infoRemoved.value = true;
 
-                        info.close();
+                        this.close();
                     });
                     show(func (result) -> void {
                         if (!infoRemoved.value) [

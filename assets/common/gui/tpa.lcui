@@ -46,14 +46,14 @@ setting = new CustomForm("tpa.setting", {tr("tpa.gui.setting.title")}) {
         if (!navigateGeneric.value) [
             navigateGeneric.value = true;
 
-            setting.close();
+            this.close();
         ]
     }, genericOption);
     button({tr("tpa.gui.setting.blacklist")}, on: func () -> void {
         if (!navigateBlacklist.value) [
             navigateBlacklist.value = true;
 
-            setting.close();
+            this.close();
         ]
     }, blacklistOption);
     closeButton();
@@ -83,7 +83,7 @@ generic = new CustomForm("tpa.generic", {tr("tpa.gui.setting.title")}) {
             GUIManager::callback("tpa.invite.save", [ inviteState.getData() ]);
 
             inviteSaved.value = true;
-            generic.close();
+            this.close();
         ]
     });
     show(func (result) -> void {
@@ -104,7 +104,7 @@ blacklist = new PaginatedForm("tpa.blacklist", {tr("tpa.gui.setting.title")}, GU
         if (!navigateAddBlacklist.value) [
             navigateAddBlacklist.value = true;
 
-            blacklist.close();
+            this.close();
         ]
     }, addBlacklistOption);
     show(func (result) -> void {
@@ -125,7 +125,7 @@ blacklist = new PaginatedForm("tpa.blacklist", {tr("tpa.gui.setting.title")}, GU
                     ConfirmBar({tr("tpa.gui.setting.blacklist.set.remove")}, func () -> void {
                         GUIManager::callback("tpa.blacklist.remove", [ result.selection ]);
 
-                        info.close();
+                        this.close();
                     });
                     show(func (result) -> void {
                         GUIManager::open("tpa", "tpa.blacklist", 3, [ "", "" ]);
@@ -186,7 +186,7 @@ func buildContent(targetUuid: string) -> void {
             submitResult = GUIManager::request("tpa.content.submit", [ targetUuid, typeValue.getData() ]);
 
             submitDone.value = submitResult[0];
-            content.close();
+            this.close();
         });
         show(func (result) -> void {
             if (!submitDone.value) [

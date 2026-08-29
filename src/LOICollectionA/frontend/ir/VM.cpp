@@ -146,8 +146,8 @@ namespace LOICollection::frontend::ir {
             }
         }
 
-        /* Fall back to the right operand's operator so "literal + observable"
-         * works like "observable + literal" instead of silently stringifying. */
+        
+
         if (auto rightObj = std::get_if<ObjectRef>(&right)) {
             if (ClassCall::getInstance().hasOperator((*rightObj)->className, op)) {
                 auto result = ClassCall::getInstance().callOperator(
@@ -307,8 +307,8 @@ namespace LOICollection::frontend::ir {
             }
         }
 
-        /* Mirror the arithmetic fallback: "literal == observable" dispatches on
-         * the right operand's operator. */
+        
+
         if (auto rightObj = std::get_if<ObjectRef>(&right)) {
             if (ClassCall::getInstance().hasOperator((*rightObj)->className, op)) {
                 auto result = ClassCall::getInstance().callOperator(
@@ -433,7 +433,7 @@ namespace LOICollection::frontend::ir {
             return;
         }
 
-        this->variables[name] = val;
+        (*this->globals)[name] = val;
     }
 
     bool VM::pushFrame(Frame&& frame) {
@@ -468,12 +468,12 @@ namespace LOICollection::frontend::ir {
 
         this->stack.clear();
         this->frames.clear();
-        this->variables.clear();
+        this->globals->clear();
         this->mReport = sandbox::SandboxReport{};
 
         for (const auto& cls : chunk->classes) {
             for (size_t i = 0; i < cls.staticFieldNames.size(); ++i) {
-                this->variables[cls.name + "::" + cls.staticFieldNames[i]] =
+                (*this->globals)[cls.name + "::" + cls.staticFieldNames[i]] =
                     cls.staticHasDefault[i]
                         ? VM::cloneValue(cls.staticDefaults[i])
                         : ValueNode::ValueType{};
@@ -707,8 +707,8 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
 
-                    auto globalIt = this->variables.find(name);
-                    if (globalIt == this->variables.end()) {
+                    auto globalIt = this->globals->find(name);
+                    if (globalIt == this->globals->end()) {
                         this->diagnostics.addError(this->currentLoc, "Undefined variable: " + name);
                         break;
                     }
@@ -808,6 +808,32 @@ namespace LOICollection::frontend::ir {
                     this->diagnostics.addError(this->currentLoc, "Cannot take length of a non-iterable value");
                     break;
                 }
+                case OpCode::BIND_THIS: {
+                    if (instr.operand <= 0 || this->stack.empty())
+                        break;
+
+                    const size_t depth = static_cast<size_t>(instr.operand);
+                    if (depth >= this->stack.size())
+                        break;
+
+                    const auto* self = std::get_if<ObjectRef>(&this->stack.back());
+                    if (!self || !*self)
+                        break;
+
+                    auto& slot = this->stack[this->stack.size() - 1 - depth];
+                    auto* func = std::get_if<FunctionRefPtr>(&slot);
+                    if (!func || !*func)
+                        break;
+
+                    (*func)->hasThis = true;
+                    (*func)->thisObj = *self;
+
+                    for (auto& captured : (*func)->captures) {
+                        if (const auto* held = std::get_if<ObjectRef>(&captured); held && *held == *self)
+                            captured = std::monostate{};
+                    }
+                    break;
+                }
                 case OpCode::STORE_FIELD: {
                     const auto& name = std::get<std::string>(cur.constants[instr.operand]);
                     auto objValue = this->pop();
@@ -886,6 +912,12 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
 
+                    if (auto* nested = std::get_if<ArrayRef>(&value); nested && nested->get() == arr.get()) {
+                        this->diagnostics.addError(this->currentLoc,
+                            "Circular reference: an array cannot contain itself");
+                        break;
+                    }
+
                     if (index == static_cast<int>(arr->elements.size())) {
                         if (static_cast<std::size_t>(index + 1) > this->mBudget->maxArrayElements) {
                             fail(sandbox::SandboxBudget::Violation::ArrayElementLimit, "Array size budget exhausted");
@@ -922,7 +954,7 @@ namespace LOICollection::frontend::ir {
                         frame.locals.begin(),
                         frame.locals.begin() + std::min(static_cast<size_t>(meta.captureCount), frame.locals.size())
                     );
-                    func->globals = this->variables;
+                    func->globals = this->globals;
 
                     this->push(func);
                     break;
@@ -1282,8 +1314,15 @@ namespace LOICollection::frontend::ir {
 
                     Frame callee(*func->owner->methodBodies[func->bodyIndex]);
                     callee.hasThis = func->hasThis;
-                    if (func->hasThis)
-                        callee.thisObj = func->thisObj;
+                    if (func->hasThis) {
+                        auto self = func->thisObj.lock();
+                        if (!self) {
+                            this->diagnostics.addError(this->currentLoc, "Method receiver has been released");
+                            break;
+                        }
+
+                        callee.thisObj = self;
+                    }
 
                     const size_t paramBase = func->captures.size();
                     if (paramBase + static_cast<size_t>(func->argCount) > callee.locals.size()) {
@@ -1574,16 +1613,25 @@ namespace LOICollection::frontend::ir {
             ~CallDepthGuard() { --depth; }
         } depthGuard{ nativeCallDepth };
 
-        VM vm(diagnostics);
+        auto snapshot = func->globals.lock();
+        VM vm(diagnostics, snapshot
+            ? std::make_shared<GlobalsTable>(*snapshot)
+            : std::make_shared<GlobalsTable>());
+
         vm.stack.clear();
         vm.frames.clear();
-        vm.variables.clear();
-        vm.variables = func->globals;
 
         Frame callee(*func->owner->methodBodies[func->bodyIndex]);
         callee.hasThis = func->hasThis;
-        if (func->hasThis)
-            callee.thisObj = func->thisObj;
+        if (func->hasThis) {
+            auto self = func->thisObj.lock();
+            if (!self) {
+                diagnostics.addError({}, "Method receiver has been released");
+                return std::monostate{};
+            }
+
+            callee.thisObj = self;
+        }
 
         const size_t paramBase = func->captures.size();
         if (paramBase + static_cast<size_t>(func->argCount) > callee.locals.size()) {

@@ -65,6 +65,39 @@ TEST(LambdaTest, CaptureThis) {
         "3");
 }
 
+TEST(LambdaTest, CapturedObjectOutlivesCreatingFrame) {
+    EXPECT_EQ(eval(
+        "class A { "
+        "public: "
+        "x = 3; "
+        "} "
+        "cb = func () -> int { return 0; }; "
+        "func make(c) -> int { "
+        "cb = func () -> int { return c.x; }; "
+        "return 0; "
+        "} "
+        "make(new A()); "
+        "cb()"),
+        "3");
+}
+
+TEST(LambdaTest, CapturedThisOutlivesCreatingFrame) {
+    EXPECT_EQ(eval(
+        "cb = func () -> int { return 0; }; "
+        "class A { "
+        "public: "
+        "x = 3; "
+        "func make() -> int { "
+        "cb = func () -> int { return this.x; }; "
+        "return 0; "
+        "} "
+        "} "
+        "a = new A(); "
+        "a.make(); "
+        "cb()"),
+        "3");
+}
+
 TEST(LambdaTest, WrongArgumentCount) {
     EXPECT_THROW(eval("f = func (a: int) -> int { return a; }; f()"), std::runtime_error);
 }

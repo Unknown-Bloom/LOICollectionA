@@ -24,6 +24,8 @@ namespace LOICollection::frontend {
             std::optional<std::reference_wrapper<ClassNode>> cls;
             std::optional<std::reference_wrapper<MethodDecl>> method;
 
+            int loopDepth = 0;
+
             [[nodiscard]] bool hasClass() const { return cls.has_value(); }
             [[nodiscard]] bool hasMethod() const { return method.has_value(); }
             [[nodiscard]] ClassNode& classRef() const { return cls->get(); }
@@ -45,10 +47,23 @@ namespace LOICollection::frontend {
             std::reference_wrapper<ClassNode> owner;
         };
 
+        struct ReceiverBinding {
+            std::string name;
+            std::string className;
+        };
+
+        struct ReceiverCapture {
+            std::string name;
+            SourceLocation loc;
+        };
+
         DiagnosticEngine& diagnostics;
 
         std::vector<std::unordered_map<std::string, TypeInfo>> blockScopes;
         std::vector<std::string> formReceivers;
+        std::vector<ReceiverBinding> receiverBindings;
+        std::vector<ReceiverCapture> receiverCaptures;
+        int closureDepth = 0;
 
         std::vector<std::reference_wrapper<ClassNode>> classes;
         std::vector<std::reference_wrapper<ClassNode>> orderedClasses;
@@ -75,6 +90,8 @@ namespace LOICollection::frontend {
         [[nodiscard]] bool isNumeric(const TypeInfo& type) const;
         [[nodiscard]] bool isNameDefined(const std::string& name, MethodScope& scope) const;
         [[nodiscard]] bool isAssignableTo(const TypeInfo& target, const TypeInfo& from) const;
+        [[nodiscard]] std::string receiverVariable(MethodCallNode& node) const;
+        void reportReceiverCaptures(const std::string& name);
 
         void registerClass(ClassNode& node);
         void collectTypeAliases(ProgramNode& root);

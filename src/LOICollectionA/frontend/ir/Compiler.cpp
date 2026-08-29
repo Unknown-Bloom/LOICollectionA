@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <iterator>
 #include <memory>
+#include <utility>
 #include <vector>
 #include <functional>
 #include <unordered_map>
@@ -25,6 +26,14 @@ namespace LOICollection::frontend::ir {
     }
 
     Compiler::Compiler(DiagnosticEngine& diag) : current(std::ref(chunk)), diagnostics(diag) {}
+
+    auto Compiler::suspendLoops() {
+        auto saved = std::exchange(this->loopStack, {});
+
+        return make_scope_guard([this, saved = std::move(saved)]() mutable {
+            this->loopStack = std::move(saved);
+        });
+    }
 
     BytecodeChunk Compiler::compile(ASTNode& root) {
         this->pushScope(false, 0);
@@ -844,6 +853,7 @@ namespace LOICollection::frontend::ir {
 
             std::reference_wrapper<BytecodeChunk> saved = this->current;
             this->current = std::ref(bodyChunk);
+            auto loops = this->suspendLoops();
 
             this->pushScope(true, 0);
             for (const auto& param : method.params)
@@ -1048,7 +1058,7 @@ namespace LOICollection::frontend::ir {
                     this->current.get().emit(OpCode::HAS_VALUE, 0, node.loc);
                     break;
                 case MemberAccessNode::MemberKind::Value:
-                    // The target is known to be non-None here: unwrapping is an identity.
+                    
                     this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
                     break;
                 default: {
@@ -1128,8 +1138,15 @@ namespace LOICollection::frontend::ir {
     }
 
     void Compiler::visit(MethodCallNode& node) {
-        for (auto& arg : node.args)
-            this->compileValue(*arg, node.loc);
+        const bool bindsReceiver = !this->scopes.back().hasThis;
+
+        std::vector<int> callbackArgs;
+        for (size_t i = 0; i < node.args.size(); ++i) {
+            this->compileValue(*node.args[i], node.loc);
+
+            if (bindsReceiver && node.args[i]->getType() == ASTNode::Type::Lambda)
+                callbackArgs.push_back(static_cast<int>(i));
+        }
 
         if (node.isStaticCall) {
             if (ClassCall::getInstance().isRegistered(node.staticClassName)) {
@@ -1151,6 +1168,10 @@ namespace LOICollection::frontend::ir {
         }
 
         this->compileValue(*node.target, node.loc);
+
+        for (int arg : callbackArgs)
+            this->current.get().emit(
+                OpCode::BIND_THIS, static_cast<int>(node.args.size()) - arg, node.loc);
 
         auto it = classMethodIndices.find(node.className);
         if (it != classMethodIndices.end() && node.methodOrdinal >= 0 &&
@@ -1235,6 +1256,7 @@ namespace LOICollection::frontend::ir {
 
         std::reference_wrapper<BytecodeChunk> saved = this->current;
         this->current = std::ref(bodyChunk);
+        auto loops = this->suspendLoops();
 
         this->pushScope(false, 0);
         for (const auto& param : node.decl.params)
@@ -1306,6 +1328,7 @@ namespace LOICollection::frontend::ir {
 
         std::reference_wrapper<BytecodeChunk> saved = this->current;
         this->current = std::ref(bodyChunk);
+        auto loops = this->suspendLoops();
 
         this->pushScope(false, this->scopes.back().next, true);
         for (const auto& param : node.decl.params)

@@ -21,6 +21,7 @@
 #include "LOICollectionA/include/ModuleBase.h"
 #include "LOICollectionA/include/ModManager.h"
 #include "LOICollectionA/include/CallbackUtils.h"
+#include "LOICollectionA/include/form/GUIManager.h"
 
 #include "LOICollectionA/base/Wrapper.h"
 #include "LOICollectionA/base/ServiceProvider.h"
@@ -180,6 +181,8 @@ namespace LOICollection {
 
     bool A::disable() {
         ll::io::Logger& logger = this->mSelf.getLogger();
+
+        form::GUIManager::getInstance().releaseAllUI();
 
         std::vector<std::string> mMods = modules::ModManager::getInstance().mods();
         std::for_each(mMods.begin(), mMods.end(), [&logger](const std::string& mod) -> void {

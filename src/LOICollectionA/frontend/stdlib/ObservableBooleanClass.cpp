@@ -62,7 +62,9 @@ namespace ObservableBooleanClass {
         if (func->argCount != 1)
             return ll::makeStringError("Subscribe function only needs one bool parameter");
 
-        return static_cast<ObservableBooleanHandle*>(self->native.get())->base->subscribe([func, placeholders](const bool& value) -> void {
+        auto* handle = static_cast<ObservableBooleanHandle*>(self->native.get());
+
+        auto id = handle->base->subscribe([func, placeholders](const bool& value) -> void {
             DiagnosticEngine diagnostics;
 
             [[maybe_unused]] auto result = ir::VM::callFunctionRef(func, { value }, placeholders, diagnostics);
@@ -72,10 +74,18 @@ namespace ObservableBooleanClass {
                     ->error("ObservableBoolean::subscribe callback: {}", diagnostics.getErrorMessage());
             }
         });
+
+        handle->subscriptions.push_back(id);
+        return id;
     }
 
     bool unsubscribe(const ObjectRef& self, const CallbackTypeValues& args) {
-        return static_cast<ObservableBooleanHandle*>(self->native.get())->base->unsubscribe(std::get<int>(args[0]));
+        auto* handle = static_cast<ObservableBooleanHandle*>(self->native.get());
+        auto id = static_cast<ObservableBooleanHandle::SubscriptionId>(std::get<int>(args[0]));
+
+        std::erase(handle->subscriptions, id);
+
+        return handle->base->unsubscribe(id);
     }
 
     void registerClasses(const std::string&) {
@@ -89,7 +99,7 @@ namespace ObservableBooleanClass {
         classes.registerMethod("ObservableBoolean", "subscribe", subscribe, { ParamType::FUNCTION });
         classes.registerMethod("ObservableBoolean", "unsubscribe", unsubscribe, { ParamType::INT });
 
-        // "obs == x" mirrors "getData() == x".
+        
         for (const std::string& op : { "==", "!=" })
             classes.registerOperator("ObservableBoolean", op, [op](const TypedValue& left, const TypedValue& right) -> ll::Expected<TypedValue> {
                 auto l = boolOperand(left);

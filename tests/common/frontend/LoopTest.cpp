@@ -125,3 +125,57 @@ TEST(LoopTest, BreakOutsideLoopFails) {
 TEST(LoopTest, ContinueOutsideLoopFails) {
     EXPECT_THROW(eval("continue;"), std::runtime_error);
 }
+
+TEST(LoopTest, BreakInsideAnonFunctionFails) {
+    EXPECT_THROW(eval(
+        "for (i = 0; i < 3; i = i + 1) [ "
+        "    f = func () { break; }; "
+        "]"), std::runtime_error);
+}
+
+TEST(LoopTest, ContinueInsideAnonFunctionFails) {
+    EXPECT_THROW(eval(
+        "while (true) [ "
+        "    f = func () { continue; }; "
+        "    break; "
+        "]"), std::runtime_error);
+}
+
+TEST(LoopTest, BreakInsideNamedFunctionFails) {
+    EXPECT_THROW(eval(
+        "while (true) [ "
+        "    func inner() { break; }; "
+        "    break; "
+        "]"), std::runtime_error);
+}
+
+TEST(LoopTest, LoopInsideAnonFunctionIsIsolated) {
+    EXPECT_EQ(eval(
+        "f = func () -> int { "
+        "    s = 0; "
+        "    for (j = 0; j < 10; j = j + 1) [ "
+        "        if (j == 3) [ break; ]; "
+        "        s = s + j; "
+        "    ]; "
+        "    return s; "
+        "}; "
+        "f()"), "3");
+}
+
+TEST(LoopTest, LoopInsideClassMethodIsIsolated) {
+    EXPECT_EQ(eval(
+        "class Counter { "
+        "public: "
+        "func sum() -> int { "
+        "    s = 0; "
+        "    i = 0; "
+        "    while (i < 10) [ "
+        "        i = i + 1; "
+        "        if (i == 4) [ break; ]; "
+        "        s = s + i; "
+        "    ]; "
+        "    return s; "
+        "} "
+        "} "
+        "new Counter().sum()"), "6");
+}

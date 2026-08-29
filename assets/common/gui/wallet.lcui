@@ -51,21 +51,21 @@ open = new CustomForm("wallet.open", {tr("wallet.gui.title")}) {
         if (!navigateOnline.value) [
             navigateOnline.value = true;
 
-            open.close();
+            this.close();
         ]
     }, onlineOption);
     button({tr("wallet.gui.offlineTransfer")}, on: func () -> void {
         if (!navigateOffline.value) [
             navigateOffline.value = true;
 
-            open.close();
+            this.close();
         ]
     }, offlineOption);
     button({tr("wallet.gui.redenvelope")}, on: func () -> void {
         if (!navigateRedenvelope.value) [
             navigateRedenvelope.value = true;
 
-            open.close();
+            this.close();
         ]
     }, redenvelopeOption);
     button({tr("wallet.gui.wealth")}, on: func () -> void {
@@ -73,28 +73,28 @@ open = new CustomForm("wallet.open", {tr("wallet.gui.title")}) {
             GUIManager::callback("wallet.wealth", []);
 
             navigateWealth.value = true;
-            open.close();
+            this.close();
         ]
     }, wealthOption);
     button({tr("wallet.gui.history")}, on: func () -> void {
         if (!navigateHistory.value) [
             navigateHistory.value = true;
 
-            open.close();
+            this.close();
         ]
     }, historyOption);
     button({tr("wallet.gui.bank")}, on: func () -> void {
         if (!navigateBank.value) [
             navigateBank.value = true;
 
-            open.close();
+            this.close();
         ]
     }, bankOption);
     button({tr("wallet.gui.rank")}, on: func () -> void {
         if (!navigateRank.value) [
             navigateRank.value = true;
 
-            open.close();
+            this.close();
         ]
     }, rankOption);
     closeButton();
@@ -174,7 +174,7 @@ func buildTransferContent(transferType: string, index: int) -> void {
                 GUIManager::switchTo("wallet.confirm", 2);
             :
                 submitDone.value = submitResult[0];
-                content.close();
+                this.close();
             ]
         });
         show(func (result) -> void {
@@ -250,7 +250,7 @@ redenvelope = new CustomForm("wallet.redenvelope", {tr("wallet.gui.title")}) {
         submitResult = GUIManager::request("wallet.redenvelope.submit", [ redeemScore.getData(), redeemCount.getData(), redeemKey.getData(), redeemTargets.getData() ]);
 
         redeemDone.value = submitResult[0];
-        redenvelope.close();
+        this.close();
     });
     show(func (result) -> void {
         if (!redeemDone.value) [
@@ -295,13 +295,13 @@ bank = new CustomForm("wallet.bank", {tr("wallet.gui.title")}) {
         bankResult = GUIManager::request("wallet.bank.deposit", [ bankDepositInput.getData() ]);
 
         bankDone.value = bankResult[0];
-        bank.close();
+        this.close();
     }, new ButtonOptions());
     ConfirmBar({tr("wallet.gui.bank.withdraw.button")}, func () -> void {
         bankResult = GUIManager::request("wallet.bank.withdraw", []);
 
         bankDone.value = bankResult[0];
-        bank.close();
+        this.close();
     });
     show(func (result) -> void {
         if (!bankDone.value) [

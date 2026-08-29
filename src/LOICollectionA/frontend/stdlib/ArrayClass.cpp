@@ -51,10 +51,10 @@ namespace ArrayClass {
             DiagnosticEngine diagnostics;
             bool failed = false;
 
-            /* Script comparators are not trusted to satisfy the strict weak
-             * ordering required by std::sort (violating it is UB). A bottom-up
-             * merge sort keeps every access in bounds even for inconsistent
-             * comparators; on failure the array is left in a valid state. */
+            
+
+
+
             auto less = [&](const TypedValue& left, const TypedValue& right) -> bool {
                 if (failed)
                     return false;
@@ -110,6 +110,10 @@ namespace ArrayClass {
 
     ll::Expected<TypedValue> push(const TypedValue& self, const CallbackTypeValues& args) {
         auto arr = std::get<ArrayRef>(self);
+
+        if (auto* nested = std::get_if<ArrayRef>(&args[0]); nested && nested->get() == arr.get())
+            return ll::makeStringError("Circular reference: an array cannot contain itself");
+
         arr->elements.push_back(args[0]);
 
         return static_cast<int>(arr->elements.size());

@@ -44,6 +44,7 @@ namespace LOICollection::frontend::ir {
         DUP_STORE,
         DUP_STORE_SLOT,
         DUP_IS_NONE,
-        LOAD_LEN
+        LOAD_LEN,
+        BIND_THIS
     };
 }

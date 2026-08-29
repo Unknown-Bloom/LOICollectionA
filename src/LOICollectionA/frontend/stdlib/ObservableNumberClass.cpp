@@ -109,7 +109,9 @@ namespace ObservableNumberClass {
         if (func->argCount != 1)
             return ll::makeStringError("Subscribe function only needs one float parameter");
 
-        return static_cast<ObservableNumberHandle*>(self->native.get())->base->subscribe([func, placeholders](const double& value) -> void {
+        auto* handle = static_cast<ObservableNumberHandle*>(self->native.get());
+
+        auto id = handle->base->subscribe([func, placeholders](const double& value) -> void {
             DiagnosticEngine diagnostics;
 
             [[maybe_unused]] auto result = ir::VM::callFunctionRef(func, { static_cast<float>(value) }, placeholders, diagnostics);
@@ -119,10 +121,18 @@ namespace ObservableNumberClass {
                     ->error("ObservableNumber::subscribe callback: {}", diagnostics.getErrorMessage());
             }
         });
+
+        handle->subscriptions.push_back(id);
+        return id;
     }
 
     bool unsubscribe(const ObjectRef& self, const CallbackTypeValues& args) {
-        return static_cast<ObservableNumberHandle*>(self->native.get())->base->unsubscribe(std::get<int>(args[0]));
+        auto* handle = static_cast<ObservableNumberHandle*>(self->native.get());
+        auto id = static_cast<ObservableNumberHandle::SubscriptionId>(std::get<int>(args[0]));
+
+        std::erase(handle->subscriptions, id);
+
+        return handle->base->unsubscribe(id);
     }
 
     void registerClasses(const std::string&) {

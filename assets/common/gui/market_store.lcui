@@ -51,25 +51,25 @@ mineForm = new CustomForm("market.store.mine", {tr("market.gui.title")}) {
         if (checkData[0]) [
             navigateUpload.value = true;
 
-            mineForm.close();
+            this.close();
         ]
     }, uploadOption);
     button({tr("market.gui.store.mine.manage")}, on: func () -> void {
         navigateManage.value = true;
 
-        mineForm.close();
+        this.close();
     }, manageOption);
     button({tr("market.gui.store.mine.dissolve")}, on: func () -> void {
         navigateDissolve.value = true;
 
-        mineForm.close();
+        this.close();
     }, dissolveOption);
 
     if (GUIManager::request("market.isAdmin", [])[0] && GUIManager::request("market.store.review.enabled", [])[0]) [
         button({tr("market.gui.store.mine.audit")}, on: func () -> void {
             navigateAudit.value = true;
 
-            mineForm.close();
+            this.close();
         }, auditOption);
     ]
 
@@ -132,7 +132,7 @@ createForm = new CustomForm("market.store.create", {tr("market.gui.title")}) {
         createResult.value = createResultData[0];
         createDone.value = true;
 
-        createForm.close();
+        this.close();
     });
     show(func (result) -> void {
         if (createDone.value) [
@@ -184,12 +184,12 @@ func buildStoreDetail(storeId: string) -> void {
         button({tr("market.gui.store.item.buy")}, on: func () -> void {
             navigateItems.value = true;
 
-            detailForm.close();
+            this.close();
         }, new ButtonOptions());
         button({tr("market.gui.store.review.button")}, on: func () -> void {
             navigateReviews.value = true;
 
-            detailForm.close();
+            this.close();
         }, reviewOption);
         closeButton();
         show(func (result) -> void {
@@ -247,7 +247,7 @@ func buildStoreItemInfo(storeId: string, itemId: string) -> void {
             buyResult.value = buyResultData[0];
             buyDone.value = true;
 
-            itemInfo.close();
+            this.close();
         });
         show(func (result) -> void {
             if (buyDone.value) [
@@ -279,7 +279,7 @@ func buildStoreReviews(storeId: string) -> void {
         ConfirmBar({tr("market.gui.store.review.button")}, func () -> void {
             navigateReviewForm.value = true;
 
-            reviews.close();
+            this.close();
         });
         show(func (result) -> void {
             if (navigateReviewForm.value) [
@@ -327,7 +327,7 @@ func buildReviewForm(storeId: string) -> void {
             reviewResult.value = reviewResultData[0];
             reviewDone.value = true;
 
-            reviewForm.close();
+            this.close();
         });
         show(func (result) -> void {
             buildStoreReviews(storeId);
@@ -371,7 +371,7 @@ func buildStoreMyItemInfo(itemId: string) -> void {
 
             offshelfDone.value = true;
 
-            itemMine.close();
+            this.close();
         });
         show(func (result) -> void {
             buildStoreMyItems();
@@ -397,13 +397,13 @@ func buildStoreDissolve() -> void {
             dissolveResult.value = dissolveResultData[0];
             dissolveDone.value = true;
 
-            dissolveForm.close();
+            this.close();
         }, new ButtonOptions());
         ConfirmBar({tr("market.no")}, func () -> void {
             dissolveResult.value = false;
             dissolveDone.value = true;
 
-            dissolveForm.close();
+            this.close();
         });
         show(func (result) -> void {
             if (dissolveDone.value) [
@@ -458,7 +458,7 @@ func buildStoreSellItem(slot: int) -> void {
             sellResult.value = sellResultData[0];
             sellDone.value = true;
 
-            sellItemForm.close();
+            this.close();
         });
         show(func (result) -> void {
             if (sellDone.value) [
@@ -512,14 +512,14 @@ func buildReviewAudit(reviewId: string) -> void {
 
             auditDone.value = true;
 
-            auditForm.close();
+            this.close();
         }, new ButtonOptions());
         ConfirmBar({tr("market.gui.store.audit.reject")}, func () -> void {
             GUIManager::request("market.store.review.audit", [ reviewId, false ]);
 
             auditDone.value = true;
 
-            auditForm.close();
+            this.close();
         });
         show(func (result) -> void {
             buildPendingReviews();

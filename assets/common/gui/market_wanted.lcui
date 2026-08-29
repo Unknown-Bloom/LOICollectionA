@@ -21,14 +21,14 @@ wanted = new PaginatedForm("market.wanted", {tr("market.gui.title")}, GUIManager
         if (!navigateWantedCreate.value) [
             navigateWantedCreate.value = true;
 
-            wanted.close();
+            this.close();
         ]
     }, createOption);
     button({tr("market.gui.wanted.mine")}, on: func () -> void {
         if (!navigateWantedMine.value) [
             navigateWantedMine.value = true;
 
-            wanted.close();
+            this.close();
         ]
     }, mineOption);
     closeButton();
@@ -78,7 +78,7 @@ func buildWantedInfo(id: string) -> void {
             fillResult.value = fillResultData[0];
             fillDone.value = true;
 
-            wantedInfo.close();
+            this.close();
         });
         show(func (result) -> void {
             if (fillDone.value) [
@@ -148,7 +148,7 @@ func buildWantedCreate(slot: int) -> void {
             createResult.value = createResultData[0];
             createDone.value = true;
 
-            wantedCreate.close();
+            this.close();
         });
         show(func (result) -> void {
             if (createDone.value) [
@@ -204,7 +204,7 @@ func buildWantedCancel(id: string) -> void {
             cancelResult.value = cancelResultData[0];
             cancelDone.value = true;
 
-            wantedCancel.close();
+            this.close();
         });
         show(func (result) -> void {
             if (cancelDone.value) [

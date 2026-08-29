@@ -13,6 +13,12 @@ namespace CustomFormClass {
 
         LOICollection::frontend::FunctionRefPtr show;
         std::string scriptId;
+
+        void release() override {
+            this->show.reset();
+        }
+
+        ~CustomFormHandle() override { this->release(); }
     };
 
     void registerClasses(const std::string& name);

@@ -25,21 +25,21 @@ cdkOpen = new CustomForm("cdk.open", {tr("cdk.gui.title")}) {
         if (!navigateNew.value) [
             navigateNew.value = true;
 
-            cdkOpen.close();
+            this.close();
         ]
     }, addCdkOption);
     button({tr("cdk.gui.removeCdk")}, on: func () -> void {
         if (!navigateRemove.value) [
             navigateRemove.value = true;
 
-            cdkOpen.close();
+            this.close();
         ]
     }, removeCdkOption);
     button({tr("cdk.gui.addAward")}, on: func () -> void {
         if (!navigateAward.value) [
             navigateAward.value = true;
 
-            cdkOpen.close();
+            this.close();
         ]
     }, addAwardOption);
     closeButton();
@@ -73,7 +73,7 @@ convert = new CustomForm("cdk.convert", {tr("cdk.gui.title")}) {
     ConfirmBar(saveLabel(), func () -> void {
         GUIManager::callback("cdk.convert.submit", [ cdkInput.getData() ]);
 
-        convert.close();
+        this.close();
     });
     show();
 };
@@ -102,7 +102,7 @@ cdkNew = new CustomForm("cdk.new", {tr("cdk.gui.title")}) {
 
         newDone.value = true;
 
-        cdkNew.close();
+        this.close();
     });
     show(func (result) -> void {
         if (!newDone.value) [
@@ -152,7 +152,7 @@ func buildRemoveInfo(id: string) -> void {
 
             removeDone.value = true;
 
-            removeInfo.close();
+            this.close();
         });
         show(func (result) -> void {
             if (!removeDone.value) [
@@ -183,21 +183,21 @@ func buildAwardInfo(id: string) -> void {
             if (!navigateScore.value) [
                 navigateScore.value = true;
 
-                awardInfo.close();
+                this.close();
             ]
         }, new ButtonOptions());
         button({tr("cdk.gui.award.item")}, on: func () -> void {
             if (!navigateItem.value) [
                 navigateItem.value = true;
 
-                awardInfo.close();
+                this.close();
             ]
         }, new ButtonOptions());
         ConfirmBar({tr("cdk.gui.award.title")}, func () -> void {
             if (!navigateTitle.value) [
                 navigateTitle.value = true;
 
-                awardInfo.close();
+                this.close();
             ]
         });
         show(func (result) -> void {
@@ -245,7 +245,7 @@ func buildAwardScore(id: string) -> void {
 
             scoreDone.value = true;
 
-            awardScore.close();
+            this.close();
         });
         show(func (result) -> void {
             if (!scoreDone.value) [
@@ -271,14 +271,14 @@ func buildAwardItem(id: string) -> void {
             if (!navigateInventory.value) [
                 navigateInventory.value = true;
 
-                awardItem.close();
+                this.close();
             ]
         }, new ButtonOptions());
         ConfirmBar({tr("cdk.gui.award.item.custom")}, func () -> void {
             if (!navigateCustom.value) [
                 navigateCustom.value = true;
 
-                awardItem.close();
+                this.close();
             ]
         });
         show(func (result) -> void {
@@ -321,7 +321,7 @@ func buildItemType(id: string) -> void {
         ConfirmBar(saveLabel(), func () -> void {
             typeDone.value = true;
 
-            itemType.close();
+            this.close();
         });
         show(func (result) -> void {
             if (typeDone.value) [
@@ -376,7 +376,7 @@ func buildItemCommon(id: string, itemType: string) -> void {
 
             itemCommonDone.value = true;
 
-            itemCommon.close();
+            this.close();
         });
         show(func (result) -> void {
             if (!itemCommonDone.value) [
@@ -421,7 +421,7 @@ func buildInventoryConfirm(id: string, slot: int) -> void {
 
             inventoryConfirmDone.value = true;
 
-            inventoryConfirm.close();
+            this.close();
         });
         show(func (result) -> void {
             if (!inventoryConfirmDone.value) [
@@ -456,7 +456,7 @@ func buildAwardTitle(id: string) -> void {
 
             titleDone.value = true;
 
-            awardTitle.close();
+            this.close();
         });
         show(func (result) -> void {
             if (!titleDone.value) [

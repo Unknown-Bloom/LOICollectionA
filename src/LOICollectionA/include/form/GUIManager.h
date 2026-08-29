@@ -78,6 +78,9 @@ namespace LOICollection::form {
         LOICOLLECTION_A_API   bool unregisterPaginatedFormUI(const std::string& id, Player& player);
         LOICOLLECTION_A_API   bool unregisterScriptFormUI(const std::string& id, Player& player);
 
+        LOICOLLECTION_A_API   void releasePlayerUI(Player& player);
+        LOICOLLECTION_A_API   void releaseAllUI();
+
         LOICOLLECTION_A_NDAPI ll::Expected<std::shared_ptr<CustomFormClass::CustomFormHandle>> getCustomFormUI(const std::string& id, Player& player);
         LOICOLLECTION_A_NDAPI ll::Expected<std::shared_ptr<MessageBoxClass::MessageBoxHandle>> getMessageBoxUI(const std::string& id, Player& player);
         LOICOLLECTION_A_NDAPI ll::Expected<std::shared_ptr<PaginatedFormClass::PaginatedFormHandle>> getPaginatedFormUI(const std::string& id, Player& player);
