@@ -728,6 +728,9 @@ namespace LOICollection::frontend {
                     return { TypeKind::Object, scope.classRef().name };
                 }
 
+                if (!this->formReceivers.empty())
+                    return { TypeKind::Object, this->formReceivers.back() };
+
                 if (this->closureDepth > 0 && !this->receiverBindings.empty())
                     return { TypeKind::Object, this->receiverBindings.back().className };
 
