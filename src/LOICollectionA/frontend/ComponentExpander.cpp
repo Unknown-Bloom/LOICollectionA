@@ -145,6 +145,7 @@ namespace LOICollection::frontend {
                     );
                     copy->declaredType = assign.declaredType;
                     copy->hasDeclaredType = assign.hasDeclaredType;
+                    copy->isDeclaration = assign.isDeclaration;
                     return copy;
                 }
                 case ASTNode::Type::CompoundAssign: {

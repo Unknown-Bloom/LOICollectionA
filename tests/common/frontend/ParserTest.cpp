@@ -83,7 +83,7 @@ TEST(ParserEvalTest, MoreSyntaxErrors) {
     EXPECT_THROW(eval("if(1)"), std::runtime_error);
     EXPECT_THROW(eval("class Foo {"), std::runtime_error);
     EXPECT_THROW(eval("func foo("), std::runtime_error);
-    EXPECT_THROW(eval("a = "), std::runtime_error);
+    EXPECT_THROW(eval("let a = "), std::runtime_error);
     EXPECT_THROW(eval("}"), std::runtime_error);
     EXPECT_THROW(eval("1 2"), std::runtime_error);
 }
@@ -120,12 +120,12 @@ TEST(ParserEvalTest, ArithmeticPrecedence) {
 }
 
 TEST(ParserEvalTest, ArithmeticWithoutSpaces) {
-    EXPECT_EQ(eval("a = 1; b = 2; a+b"), "3");
-    EXPECT_EQ(eval("a = 5; b = 3; a-b"), "2");
-    EXPECT_EQ(eval("a = 6; b = 7; a*b"), "42");
-    EXPECT_EQ(eval("a = 9; b = 2; a/b"), "4.5");
-    EXPECT_EQ(eval("a = 10; b = 3; a%b"), "1");
-    EXPECT_EQ(eval("a = 2; b = 3; a^b"), "8");
+    EXPECT_EQ(eval("let a = 1; let b = 2; a+b"), "3");
+    EXPECT_EQ(eval("let a = 5; let b = 3; a-b"), "2");
+    EXPECT_EQ(eval("let a = 6; let b = 7; a*b"), "42");
+    EXPECT_EQ(eval("let a = 9; let b = 2; a/b"), "4.5");
+    EXPECT_EQ(eval("let a = 10; let b = 3; a%b"), "1");
+    EXPECT_EQ(eval("let a = 2; let b = 3; a^b"), "8");
 }
 
 TEST(ParserEvalTest, FractionalPower) {
@@ -159,8 +159,8 @@ TEST(ParserEvalTest, MoreComparisons) {
 }
 
 TEST(ParserEvalTest, ComparisonTypeMismatchAtRuntime) {
-    EXPECT_THROW(eval("a = 1; b = \"1\"; a == b"), std::runtime_error);
-    EXPECT_THROW(eval("a = 1.5; b = \"1.5\"; a == b"), std::runtime_error);
+    EXPECT_THROW(eval("let a = 1; let b = \"1\"; a == b"), std::runtime_error);
+    EXPECT_THROW(eval("let a = 1.5; let b = \"1.5\"; a == b"), std::runtime_error);
 }
 
 TEST(ParserEvalTest, Truthiness) {
@@ -174,10 +174,10 @@ TEST(ParserEvalTest, Truthiness) {
 }
 
 TEST(ParserEvalTest, VariableReassignment) {
-    EXPECT_EQ(eval("a = 1; a = 2; a"), "2");
-    EXPECT_EQ(eval("a = 1; a = a + 1; a"), "2");
-    EXPECT_EQ(eval("a = 1; a = \"str\"; a"), "str");
-    EXPECT_EQ(eval("a = 1; b = a; a = 5; b"), "1");
+    EXPECT_EQ(eval("let a = 1; a = 2; a"), "2");
+    EXPECT_EQ(eval("let a = 1; a = a + 1; a"), "2");
+    EXPECT_THROW(eval("let a = 1; a = \"str\"; a"), std::runtime_error);
+    EXPECT_EQ(eval("let a = 1; let b = a; a = 5; b"), "1");
 }
 
 TEST(ParserEvalTest, UndefinedVariable) {
@@ -185,8 +185,8 @@ TEST(ParserEvalTest, UndefinedVariable) {
 }
 
 TEST(ParserEvalTest, StatementSeparation) {
-    EXPECT_EQ(eval("a = 1; b = 2; a + b"), "3");
-    EXPECT_EQ(eval("a = 1\nb = 2\na + b"), "3");
+    EXPECT_EQ(eval("let a = 1; let b = 2; a + b"), "3");
+    EXPECT_EQ(eval("let a = 1\nlet b = 2\na + b"), "3");
 }
 
 TEST(ParserEvalTest, StringConcatenationWithOtherTypes) {

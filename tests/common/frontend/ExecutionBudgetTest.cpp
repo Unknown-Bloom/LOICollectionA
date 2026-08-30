@@ -22,7 +22,7 @@ namespace {
 TEST(ExecutionBudgetTest, InfiniteLoopExhaustsBudget) {
     const std::string message = failureOf(R"(
         while (true) {
-            x = 1;
+            let x = 1;
         }
     )");
 
@@ -35,7 +35,7 @@ TEST(ExecutionBudgetTest, UnboundedRecursionHitsDepthLimit) {
             return boom(n);
         }
 
-        result = boom(1);
+        let result = boom(1);
     )");
 
     EXPECT_NE(message.find("Call stack depth limit exceeded"), std::string::npos) << message;
@@ -43,8 +43,8 @@ TEST(ExecutionBudgetTest, UnboundedRecursionHitsDepthLimit) {
 
 TEST(ExecutionBudgetTest, BoundedLoopCompletesWithinBudget) {
     EXPECT_EQ(eval(R"(
-        total = 0;
-        i = 0;
+        let total = 0;
+        let i = 0;
         while (i < 10000) {
             total = total + 1;
             i = i + 1;

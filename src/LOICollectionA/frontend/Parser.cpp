@@ -334,6 +334,11 @@ namespace LOICollection::frontend {
     std::unique_ptr<ExprNode> Parser::parseForClause() {
         SourceLocation loc = currentToken.loc;
 
+        if (currentToken.type == TokenType::TOKEN_LET) {
+            auto decl = parseVariableDeclaration();
+            return decl ? std::unique_ptr<ExprNode>(std::move(decl)) : nullptr;
+        }
+
         auto expr = parseBaseExpression();
         if (!expr)
             return nullptr;
@@ -1238,6 +1243,61 @@ namespace LOICollection::frontend {
         return args;
     }
 
+    std::unique_ptr<AssignmentNode> Parser::parseVariableDeclaration() {
+        const bool hasLet = currentToken.type == TokenType::TOKEN_LET;
+        SourceLocation declLoc = currentToken.loc;
+
+        if (hasLet && !eat(TokenType::TOKEN_LET))
+            return nullptr;
+
+        if (currentToken.type != TokenType::TOKEN_IDENT) {
+            this->diagnostics.addError(currentToken.loc,
+                hasLet ? "Expected a variable name after 'let'" : "Expected a variable name");
+            return nullptr;
+        }
+
+        std::string name = currentToken.value;
+        if (!eat(TokenType::TOKEN_IDENT))
+            return nullptr;
+
+        std::optional<TypeExpr> type;
+        if (currentToken.type == TokenType::TOKEN_COLON) {
+            if (!eat(TokenType::TOKEN_COLON))
+                return nullptr;
+
+            auto parsed = parseTypeExpr();
+            if (!parsed)
+                return nullptr;
+
+            type = std::move(*parsed);
+        }
+
+        std::unique_ptr<ExprNode> value;
+        if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "=") {
+            if (!eat(TokenType::TOKEN_OP))
+                return nullptr;
+
+            value = parseBaseExpression();
+            if (!value)
+                return nullptr;
+        }
+
+        auto decl = std::make_unique<AssignmentNode>(
+            declLoc,
+            std::make_unique<VariableNode>(declLoc, std::move(name)),
+            std::move(value)
+        );
+        this->bindDeclarativeReceiver(*decl);
+        decl->isDeclaration = hasLet;
+
+        if (type) {
+            decl->hasDeclaredType = true;
+            decl->declaredType = std::move(*type);
+        }
+
+        return decl;
+    }
+
     std::unique_ptr<ASTNode> Parser::parseStatement() {
         if (currentToken.type == TokenType::TOKEN_FUNC && peek() != TokenType::TOKEN_LPAREN)
             return parseFunctionDefinition();
@@ -1269,36 +1329,9 @@ namespace LOICollection::frontend {
         if (currentToken.type == TokenType::TOKEN_USING)
             return parseUsing();
 
-        if (currentToken.type == TokenType::TOKEN_IDENT && peek() == TokenType::TOKEN_COLON) {
-            SourceLocation declLoc = currentToken.loc;
-            std::string name = currentToken.value;
-
-            if (!eat(TokenType::TOKEN_IDENT)) return nullptr;
-            if (!eat(TokenType::TOKEN_COLON)) return nullptr;
-
-            auto type = parseTypeExpr();
-            if (!type)
-                return nullptr;
-
-            std::unique_ptr<ExprNode> value;
-            if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "=") {
-                if (!eat(TokenType::TOKEN_OP)) return nullptr;
-
-                value = parseBaseExpression();
-                if (!value)
-                    return nullptr;
-            }
-
-            auto decl = std::make_unique<AssignmentNode>(
-                declLoc,
-                std::make_unique<VariableNode>(declLoc, std::move(name)),
-                std::move(value)
-            );
-            this->bindDeclarativeReceiver(*decl);
-            decl->hasDeclaredType = true;
-            decl->declaredType = std::move(*type);
-            return decl;
-        }
+        if (currentToken.type == TokenType::TOKEN_LET ||
+            (currentToken.type == TokenType::TOKEN_IDENT && peek() == TokenType::TOKEN_COLON))
+            return parseVariableDeclaration();
 
         SourceLocation exprLoc = currentToken.loc;
 
@@ -1984,6 +2017,7 @@ namespace LOICollection::frontend {
             case TokenType::TOKEN_QUESTION_DOT: return "?.";
             case TokenType::TOKEN_IMPORT: return "IMPORT";
             case TokenType::TOKEN_COMPONENT: return "COMPONENT";
+            case TokenType::TOKEN_LET: return "LET";
             default: return "UNKNOWN";
         }
     }

@@ -47,6 +47,8 @@ namespace LOICollection::frontend {
 
         std::unique_ptr<ReturnNode> parseReturn();
 
+        std::unique_ptr<AssignmentNode> parseVariableDeclaration();
+
         std::unique_ptr<ExprNode> parseForClause();
 
         std::unique_ptr<BlockNode> parseBlock(TokenType stopToken, bool stopOnColon = false);

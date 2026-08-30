@@ -55,7 +55,7 @@ TEST(FunctionTest, ClassObjectParameter) {
 }
 
 TEST(FunctionTest, ImplicitEmptyReturn) {
-    EXPECT_EQ(eval("func noret() { a = 1; } noret()"), "");
+    EXPECT_EQ(eval("func noret() { let a = 1; } noret()"), "");
 }
 
 TEST(FunctionTest, Overloads) {
@@ -74,7 +74,7 @@ TEST(FunctionTest, Overloads) {
 TEST(FunctionTest, MultipleStatementsInBody) {
     EXPECT_EQ(eval(
         "func compute(x: int) -> int { "
-        "y = x * 2; "
+        "let y = x * 2; "
         "y = y + 1; "
         "return y; "
         "} "

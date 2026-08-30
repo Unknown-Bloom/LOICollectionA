@@ -58,11 +58,11 @@ namespace {
     }
 
     const std::string kSource = R"(
-        twice = func (n) -> int {
+        let twice = func (n) -> int {
             return n * 2;
         };
 
-        result = twice(21);
+        let result = twice(21);
     )";
 
     BytecodeSerializer::Header headerFor(

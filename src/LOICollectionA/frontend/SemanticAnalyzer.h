@@ -92,6 +92,7 @@ namespace LOICollection::frontend {
         [[nodiscard]] bool isAssignableTo(const TypeInfo& target, const TypeInfo& from) const;
         [[nodiscard]] std::string receiverVariable(MethodCallNode& node) const;
         void reportReceiverCaptures(const std::string& name);
+        void requireLet(AssignmentNode& node, const VariableNode& var);
 
         void registerClass(ClassNode& node);
         void collectTypeAliases(ProgramNode& root);

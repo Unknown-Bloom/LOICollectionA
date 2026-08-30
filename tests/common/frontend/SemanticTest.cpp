@@ -16,7 +16,7 @@ TEST(SemanticTest, AnalyzeIsIdempotent) {
         "x = 1; "
         "func get() -> int { return x; } "
         "} "
-        "a = new A(); "
+        "let a = new A(); "
         "a.get()",
         diagnostics);
     Parser parser(lexer, diagnostics);
@@ -39,8 +39,8 @@ TEST(SemanticTest, UntypedConstructorIsDynamic) {
         "public: "
         "x; "
         "} "
-        "a = new A(1); "
-        "b = new A(\"s\"); "
+        "let a = new A(1); "
+        "let b = new A(\"s\"); "
         "a.x + b.x"),
         "1s");
 }

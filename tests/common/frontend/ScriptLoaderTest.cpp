@@ -58,7 +58,7 @@ namespace {
 
 TEST(ScriptLoaderTest, ResolvesAndMergesNestedImports) {
     FileMap files = {
-        {"/main.lcui", "import \"lib.lcui\";\nresult = helper();"},
+        {"/main.lcui", "import \"lib.lcui\";\nlet result = helper();"},
         {"/lib.lcui", "import \"sub.lcui\";\n\nfunc helper() -> int {\n    return base() + 1;\n}"},
         {"/sub.lcui", "func base() -> int {\n    return 41;\n}"},
     };
@@ -68,7 +68,7 @@ TEST(ScriptLoaderTest, ResolvesAndMergesNestedImports) {
 
 TEST(ScriptLoaderTest, DiamondImportsMergeDefinitionsOnce) {
     FileMap files = {
-        {"/main.lcui", "import \"a.lcui\";\nimport \"b.lcui\";\nresult = aVal() + bVal();"},
+        {"/main.lcui", "import \"a.lcui\";\nimport \"b.lcui\";\nlet result = aVal() + bVal();"},
         {"/a.lcui", "import \"common.lcui\";\n\nfunc aVal() -> int {\n    return base() + 1;\n}"},
         {"/b.lcui", "import \"common.lcui\";\n\nfunc bVal() -> int {\n    return base() + 2;\n}"},
         {"/common.lcui", "func base() -> int {\n    return 40;\n}"},
@@ -79,7 +79,7 @@ TEST(ScriptLoaderTest, DiamondImportsMergeDefinitionsOnce) {
 
 TEST(ScriptLoaderTest, HashesMatchFileContentsInDependencyOrder) {
     FileMap files = {
-        {"/main.lcui", "import \"lib.lcui\";\nresult = helper();"},
+        {"/main.lcui", "import \"lib.lcui\";\nlet result = helper();"},
         {"/lib.lcui", "func helper() -> int {\n    return 42;\n}"},
     };
 
@@ -109,8 +109,8 @@ TEST(ScriptLoaderTest, DetectsCircularImports) {
 
 TEST(ScriptLoaderTest, RejectsExecutableStatementsInImportedFile) {
     FileMap files = {
-        {"/main.lcui", "import \"lib.lcui\";\nresult = 1;"},
-        {"/lib.lcui", "sideEffect = 1;\n\nfunc helper() -> int {\n    return 42;\n}"},
+        {"/main.lcui", "import \"lib.lcui\";\nlet result = 1;"},
+        {"/lib.lcui", "let sideEffect = 1;\n\nfunc helper() -> int {\n    return 42;\n}"},
     };
 
     DiagnosticEngine diagnostics;

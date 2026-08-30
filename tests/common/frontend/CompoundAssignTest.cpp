@@ -8,57 +8,57 @@
 using namespace LOICollection::frontend;
 
 TEST(CompoundAssignTest, BasicArithmetic) {
-    EXPECT_EQ(eval("i = 0; i += 5; i"), "5");
-    EXPECT_EQ(eval("i = 10; i -= 3; i"), "7");
-    EXPECT_EQ(eval("i = 3; i *= 4; i"), "12");
-    EXPECT_EQ(eval("i = 10; i /= 4; i"), "2.5");
-    EXPECT_EQ(eval("i = 10; i %= 3; i"), "1");
+    EXPECT_EQ(eval("let i = 0; i += 5; i"), "5");
+    EXPECT_EQ(eval("let i = 10; i -= 3; i"), "7");
+    EXPECT_EQ(eval("let i = 3; i *= 4; i"), "12");
+    EXPECT_EQ(eval("let i = 10; i /= 4; i"), "2.5");
+    EXPECT_EQ(eval("let i = 10; i %= 3; i"), "1");
 }
 
 TEST(CompoundAssignTest, StringConcat) {
-    EXPECT_EQ(eval("s = \"a\"; s += \"b\"; s"), "ab");
+    EXPECT_EQ(eval("let s = \"a\"; s += \"b\"; s"), "ab");
 }
 
 TEST(CompoundAssignTest, PostfixIncrementDecrement) {
-    EXPECT_EQ(eval("i = 0; i++; i"), "1");
-    EXPECT_EQ(eval("i = 5; i--; i"), "4");
+    EXPECT_EQ(eval("let i = 0; i++; i"), "1");
+    EXPECT_EQ(eval("let i = 5; i--; i"), "4");
 }
 
 TEST(CompoundAssignTest, PrefixIncrementDecrement) {
-    EXPECT_EQ(eval("i = 0; ++i; i"), "1");
-    EXPECT_EQ(eval("i = 5; --i; i"), "4");
+    EXPECT_EQ(eval("let i = 0; ++i; i"), "1");
+    EXPECT_EQ(eval("let i = 5; --i; i"), "4");
 }
 
 TEST(CompoundAssignTest, IndexTarget) {
-    EXPECT_EQ(eval("arr = [1, 2, 3]; arr[1] += 10; arr[1]"), "12");
-    EXPECT_EQ(eval("arr = [1, 2, 3]; arr[0]++; arr[0]"), "2");
-    EXPECT_EQ(eval("arr = [1, 2, 3]; i = 1; arr[i] *= 5; arr[1]"), "10");
+    EXPECT_EQ(eval("let arr = [1, 2, 3]; arr[1] += 10; arr[1]"), "12");
+    EXPECT_EQ(eval("let arr = [1, 2, 3]; arr[0]++; arr[0]"), "2");
+    EXPECT_EQ(eval("let arr = [1, 2, 3]; let i = 1; arr[i] *= 5; arr[1]"), "10");
 }
 
 TEST(CompoundAssignTest, IndexTargetPreservesOtherElements) {
-    EXPECT_EQ(eval("arr = [1, 2, 3]; arr[1] += 10; arr"), "[1, 12, 3]");
+    EXPECT_EQ(eval("let arr = [1, 2, 3]; arr[1] += 10; arr"), "[1, 12, 3]");
 }
 
 TEST(CompoundAssignTest, IndexTargetEvaluatedExactlyOnce) {
     // The index expression of "arr[n()] += 1" must be evaluated exactly once;
     // a second evaluation would double the side effect inside n().
     EXPECT_EQ(eval(
-        "calls = 0; "
-        "arr = [10, 20]; "
+        "let calls = 0; "
+        "let arr = [10, 20]; "
         "func n() -> int { calls += 1; return 1; } "
         "arr[n()] += 5; "
         "calls"),
         "1");
     EXPECT_EQ(eval(
-        "calls = 0; "
-        "arr = [10, 20]; "
+        "let calls = 0; "
+        "let arr = [10, 20]; "
         "func n() -> int { calls += 1; return 1; } "
         "arr[n()] += 5; "
         "arr[1]"),
         "25");
     EXPECT_EQ(eval(
-        "calls = 0; "
-        "arr = [10, 20]; "
+        "let calls = 0; "
+        "let arr = [10, 20]; "
         "func n() -> int { calls += 1; return 0; } "
         "arr[n()]++; "
         "calls"),
@@ -68,11 +68,11 @@ TEST(CompoundAssignTest, IndexTargetEvaluatedExactlyOnce) {
 TEST(CompoundAssignTest, FieldTarget) {
     EXPECT_EQ(eval(
         "class Counter { public: count = 0; } "
-        "c = new Counter(); c.count += 7; c.count"),
+        "let c = new Counter(); c.count += 7; c.count"),
         "7");
     EXPECT_EQ(eval(
         "class Counter { public: count = 10; } "
-        "c = new Counter(); c.count -= 4; c.count"),
+        "let c = new Counter(); c.count -= 4; c.count"),
         "6");
 }
 
@@ -84,7 +84,7 @@ TEST(CompoundAssignTest, StaticFieldTarget) {
 }
 
 TEST(CompoundAssignTest, InLoop) {
-    EXPECT_EQ(eval("total = 0; i = 0; while (i < 5) [ total += i; i++; ]; total"), "10");
+    EXPECT_EQ(eval("let total = 0; let i = 0; while (i < 5) [ total += i; i++; ]; total"), "10");
 }
 
 TEST(CompoundAssignTest, InvalidTarget) {

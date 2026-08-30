@@ -44,6 +44,10 @@ namespace LOICollection::frontend {
             diagnostics.push_back({ DiagnosticLevel::Note, loc, msg });
         }
 
+        [[nodiscard]] const std::vector<Diagnostic>& all() const {
+            return this->diagnostics;
+        }
+
         [[nodiscard]] bool hasErrors() const {
             return std::ranges::any_of(diagnostics, [](const Diagnostic& d) -> bool {
                 return d.level == DiagnosticLevel::Error;

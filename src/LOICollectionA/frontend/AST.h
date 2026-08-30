@@ -158,6 +158,7 @@ namespace LOICollection::frontend {
         std::unique_ptr<ExprNode> value;
         TypeExpr declaredType;
         bool hasDeclaredType = false;
+        bool isDeclaration = false;
 
         AssignmentNode(SourceLocation location, auto&& t, auto&& val)
             : loc(location),

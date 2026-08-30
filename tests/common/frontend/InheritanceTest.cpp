@@ -12,7 +12,7 @@ TEST(InheritanceTest, BasicFieldAndMethodInheritance) {
         "func speak() -> string { return name; } "
         "} "
         "class Dog extends Animal {} "
-        "d = new Dog(); "
+        "let d = new Dog(); "
         "d.name + \":\" + d.speak()"),
         "animal:animal");
 }
@@ -21,7 +21,7 @@ TEST(InheritanceTest, ChildDeclaredBeforeBase) {
     EXPECT_EQ(eval(
         "class Dog extends Animal {} "
         "class Animal { public: x = 3; } "
-        "d = new Dog(); "
+        "let d = new Dog(); "
         "d.x"),
         "3");
 }
@@ -36,7 +36,7 @@ TEST(InheritanceTest, ConstructorChainWithSuper) {
         "class Child extends Base { "
         "Child(v: int) { super(v); } "
         "} "
-        "c = new Child(42); "
+        "let c = new Child(42); "
         "c.x"),
         "42");
 }
@@ -50,8 +50,8 @@ TEST(InheritanceTest, ImplicitSuperConstructor) {
         "} "
         "class Child extends Base { Child() {} } "
         "class Grand extends Base {} "
-        "c = new Child(); "
-        "g = new Grand(); "
+        "let c = new Child(); "
+        "let g = new Grand(); "
         "c.x + g.x"),
         "4");
 }
@@ -60,7 +60,7 @@ TEST(InheritanceTest, ChildConstructorWithoutBaseConstructor) {
     EXPECT_EQ(eval(
         "class A { public: x = 1; } "
         "class B extends A { B() {} } "
-        "b = new B(); "
+        "let b = new B(); "
         "b.x"),
         "1");
 }
@@ -69,7 +69,7 @@ TEST(InheritanceTest, MethodOverride) {
     EXPECT_EQ(eval(
         "class A { func f() -> int { return 1; } } "
         "class B extends A { func f() -> int { return 2; } } "
-        "b = new B(); "
+        "let b = new B(); "
         "b.f()"),
         "2");
 }
@@ -87,7 +87,7 @@ TEST(InheritanceTest, SuperMethodCall) {
     EXPECT_EQ(eval(
         "class A { func f() -> int { return 1; } } "
         "class B extends A { func f() -> int { return super.f() + 1; } } "
-        "b = new B(); "
+        "let b = new B(); "
         "b.f()"),
         "2");
 }
@@ -97,7 +97,7 @@ TEST(InheritanceTest, GrandparentSuperChain) {
         "class A { func f() -> int { return 1; } } "
         "class B extends A { func f() -> int { return super.f() + 1; } } "
         "class C extends B { func f() -> int { return super.f() + 1; } } "
-        "c = new C(); "
+        "let c = new C(); "
         "c.f()"),
         "3");
 }
@@ -106,7 +106,7 @@ TEST(InheritanceTest, InstanceOf) {
     EXPECT_EQ(eval(
         "class A {} "
         "class B extends A {} "
-        "b = new B(); "
+        "let b = new B(); "
         "(b instanceof A) && (b instanceof B) && !(5 instanceof A)"),
         "true");
 }
@@ -130,7 +130,7 @@ TEST(InheritanceTest, PrivateMemberNotInherited) {
         "public: "
         "func steal() -> int { return this.secret; } "
         "} "
-        "b = new B(); "
+        "let b = new B(); "
         "b.steal()"),
         std::runtime_error);
 }
@@ -145,7 +145,7 @@ TEST(InheritanceTest, PrivateBareNameNotInherited) {
         "public: "
         "func steal() -> int { return secret; } "
         "} "
-        "b = new B(); "
+        "let b = new B(); "
         "b.steal()"),
         std::runtime_error);
 }
@@ -158,7 +158,7 @@ TEST(InheritanceTest, MissingSuperCall) {
         "A(v: int) { this.x = v; } "
         "} "
         "class B extends A { B() {} } "
-        "b = new B()"),
+        "let b = new B()"),
         std::runtime_error);
 }
 
@@ -174,7 +174,7 @@ TEST(InheritanceTest, FieldDefaultOverride) {
     EXPECT_EQ(eval(
         "class A { public: x = 1; func get() -> int { return x; } } "
         "class B extends A { public: x = 2; } "
-        "b = new B(); "
+        "let b = new B(); "
         "b.get()"),
         "2");
 }

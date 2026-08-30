@@ -119,7 +119,7 @@ TEST(OptimizerTest, ErroneousConstantsAreNotFolded) {
 }
 
 TEST(OptimizerTest, RuntimeErrorCarriesSourceLocation) {
-    auto program = compileAndOptimize("a = 1; b = \"1\"; a == b");
+    auto program = compileAndOptimize("let a = 1; let b = \"1\"; a == b");
     EXPECT_FALSE(program.diagnostics.hasErrors());
 
     VM vm(program.diagnostics);
@@ -129,7 +129,7 @@ TEST(OptimizerTest, RuntimeErrorCarriesSourceLocation) {
 }
 
 TEST(OptimizerTest, OptionalUnwrapErrorCarriesSourceLocation) {
-    auto program = compileAndOptimize("b: optional<string> = None; b");
+    auto program = compileAndOptimize("let b: optional<string> = None; b");
     EXPECT_FALSE(program.diagnostics.hasErrors());
 
     VM vm(program.diagnostics);
@@ -187,8 +187,8 @@ TEST(OptimizerTest, FoldsConstantArrayIndex) {
 TEST(OptimizerTest, ConstantArrayIsClonedPerEvaluation) {
     auto program = compileAndOptimize(
         "func make() { return [1, 2]; } "
-        "a = make(); "
-        "b = make(); "
+        "let a = make(); "
+        "let b = make(); "
         "a[0] = 9; "
         "b[0]");
 
@@ -202,8 +202,8 @@ TEST(OptimizerTest, ConstantArrayIsClonedPerEvaluation) {
 TEST(OptimizerTest, NestedConstantArrayIsClonedDeeply) {
     auto program = compileAndOptimize(
         "func make() { return [[1]]; } "
-        "a = make(); "
-        "b = make(); "
+        "let a = make(); "
+        "let b = make(); "
         "a[0][0] = 9; "
         "b[0][0]");
 
@@ -270,7 +270,7 @@ TEST(OptimizerTest, DoesNotFoldUnwrapOfEmptyOptional) {
 }
 
 TEST(OptimizerTest, WhileFalseBodyEliminated) {
-    auto program = compileAndOptimize("x = 0; while (false) [ x = x + 1; ]; x");
+    auto program = compileAndOptimize("let x = 0; while (false) [ x = x + 1; ]; x");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
     EXPECT_GT(program.stats.removed, 0u);
@@ -281,7 +281,7 @@ TEST(OptimizerTest, WhileFalseBodyEliminated) {
 }
 
 TEST(OptimizerTest, ForFalseConditionBodyEliminated) {
-    auto program = compileAndOptimize("x = 0; for (i = 0; false; i = i + 1) [ x = x + 1; ]; x");
+    auto program = compileAndOptimize("let x = 0; for (let i = 0; false; i = i + 1) [ x = x + 1; ]; x");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
     EXPECT_GT(program.stats.removed, 0u);
@@ -292,7 +292,7 @@ TEST(OptimizerTest, ForFalseConditionBodyEliminated) {
 }
 
 TEST(OptimizerTest, WhileTrueWithBreakSurvivesOptimization) {
-    auto program = compileAndOptimize("i = 0; while (true) [ i = i + 1; if (i == 3) [ break; ] ]; i");
+    auto program = compileAndOptimize("let i = 0; while (true) [ i = i + 1; if (i == 3) [ break; ] ]; i");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
 
@@ -302,7 +302,7 @@ TEST(OptimizerTest, WhileTrueWithBreakSurvivesOptimization) {
 }
 
 TEST(OptimizerTest, ForLoopSurvivesOptimization) {
-    auto program = compileAndOptimize("s = 0; for (i = 0; i < 10; i = i + 1) [ s = s + i; ]; s");
+    auto program = compileAndOptimize("let s = 0; for (let i = 0; i < 10; i = i + 1) [ s = s + i; ]; s");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
 
@@ -313,8 +313,8 @@ TEST(OptimizerTest, ForLoopSurvivesOptimization) {
 
 TEST(OptimizerTest, LoopWithContinueSurvivesOptimization) {
     auto program = compileAndOptimize(
-        "s = 0; "
-        "for (i = 0; i < 10; i = i + 1) [ "
+        "let s = 0; "
+        "for (let i = 0; i < 10; i = i + 1) [ "
         "    if (i % 2 == 0) [ continue; ]; "
         "    s = s + i; "
         "]; "
@@ -330,7 +330,7 @@ TEST(OptimizerTest, LoopWithContinueSurvivesOptimization) {
 // ---- local constant propagation ------------------------------------------------
 
 TEST(OptimizerTest, PropagatesStoredScalarIntoArithmetic) {
-    auto program = compileAndOptimize("x = 4; x += 0; x");
+    auto program = compileAndOptimize("let x = 4; x += 0; x");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
     EXPECT_GE(program.stats.folded, 2u);
@@ -344,7 +344,7 @@ TEST(OptimizerTest, PropagatesStoredScalarIntoArithmetic) {
 }
 
 TEST(OptimizerTest, PropagatesStoredStringConstants) {
-    auto program = compileAndOptimize("s = \"ab\"; t = s + \"c\"; t");
+    auto program = compileAndOptimize("let s = \"ab\"; let t = s + \"c\"; t");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
     EXPECT_GE(program.stats.folded, 2u);
@@ -356,7 +356,7 @@ TEST(OptimizerTest, PropagatesStoredStringConstants) {
 }
 
 TEST(OptimizerTest, PropagationTracksLatestAssignment) {
-    auto program = compileAndOptimize("x = 1; x = 2; x");
+    auto program = compileAndOptimize("let x = 1; x = 2; x");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
     EXPECT_FALSE(containsOp(*program.chunk, OpCode::LOAD_VAR));
@@ -369,19 +369,19 @@ TEST(OptimizerTest, PropagationTracksLatestAssignment) {
 TEST(OptimizerTest, PropagationDropsSlotForNonScalarValues) {
     // Forwarding an array reference would alias the pool constant on every load,
     // so storing a non-scalar must retire the slot and keep the LOAD_VAR.
-    auto program = compileAndOptimize("x = 5; x = [1, 2]; x");
+    auto program = compileAndOptimize("let x = [1, 2]; x = [3, 4]; x");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
     EXPECT_TRUE(containsOp(*program.chunk, OpCode::LOAD_VAR));
 
     VM vm(program.diagnostics);
-    EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "[1, 2]");
+    EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "[3, 4]");
     EXPECT_FALSE(program.diagnostics.hasErrors());
 }
 
 TEST(OptimizerTest, PropagationInvalidatedAtBranchMerge) {
     const std::string source =
-        "func f(a: int) -> int { if (a == 1) [ r = 10 : r = 20 ]; return r; } ";
+        "func f(a: int) -> int { if (a == 1) [ let r = 10 : r = 20 ]; return r; } ";
 
     auto taken = compileAndOptimize(source + "f(1)");
     EXPECT_FALSE(taken.diagnostics.hasErrors());
@@ -435,7 +435,7 @@ TEST(OptimizerTest, PropagationInvalidatedByCalls) {
 TEST(OptimizerTest, FusesNotIntoBranchOpcode) {
     // The loop head is a merge point, so `i >= 2` stays dynamic: the leading
     // NOT must fuse into the branch instead of evaluating at runtime.
-    auto program = compileAndOptimize("i = 0; while (!(i >= 2)) [ i = i + 1; ]; i");
+    auto program = compileAndOptimize("let i = 0; while (!(i >= 2)) [ i = i + 1; ]; i");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
     EXPECT_GE(program.stats.folded, 1u);
@@ -455,7 +455,7 @@ TEST(OptimizerTest, FixedPointExposesPropagationAfterBranchRemoval) {
     // Pass one folds x == 1 and deletes the else branch; only once the jump
     // over it is gone does the final LOAD_VAR stop being a merge target and
     // become forwardable in the next pass.
-    auto program = compileAndOptimize("x = 1; if (x == 1) [ y = 10 : y = 20 ]; y");
+    auto program = compileAndOptimize("let x = 1; if (x == 1) [ let y = 10 : y = 20 ]; y");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
     EXPECT_GE(program.stats.folded, 3u);
@@ -590,7 +590,7 @@ TEST(OptimizerTest, FloatAddZeroIsNotIdentityFolded) {
 TEST(OptimizerTest, PropagatesSignedZeroCorrectly) {
     // Pool dedup must not conflate -0.0 with +0.0 even though they compare
     // equal: the forwarded load has to reproduce the stored negative zero.
-    auto program = compileAndOptimize("x = -0.0; x");
+    auto program = compileAndOptimize("let x = -0.0; x");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
     EXPECT_GE(program.stats.folded, 1u);
@@ -604,7 +604,7 @@ TEST(OptimizerTest, PropagatesSignedZeroCorrectly) {
 
 TEST(OptimizerTest, FoldsFloatAddZeroWithCorrectSignedZero) {
     // Full folding computes the IEEE754 result: -0.0 + 0.0 is +0.0.
-    auto program = compileAndOptimize("x = -0.0; y = x + 0.0; y");
+    auto program = compileAndOptimize("let x = -0.0; let y = x + 0.0; y");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
     EXPECT_FALSE(containsOp(*program.chunk, OpCode::ADD));
@@ -682,7 +682,7 @@ TEST(OptimizerTest, ReusesScalarConstantsWhenFolding) {
 TEST(OptimizerTest, CoalesceKeepsDuplicatedOperand) {
     // ?? duplicates the left operand before IS_NONE; the duplicate protects
     // the original push from being dropped while only the copy is consumed.
-    auto noneCase = compileAndOptimize("x = None; x ?? \"d\"");
+    auto noneCase = compileAndOptimize("let x = None; x ?? \"d\"");
 
     EXPECT_FALSE(noneCase.diagnostics.hasErrors());
 
@@ -690,7 +690,7 @@ TEST(OptimizerTest, CoalesceKeepsDuplicatedOperand) {
     EXPECT_EQ(VM::valueToString(vmNone.run(noneCase.chunk, {})), "d");
     EXPECT_FALSE(noneCase.diagnostics.hasErrors());
 
-    auto valueCase = compileAndOptimize("x = \"v\"; x ?? \"d\"");
+    auto valueCase = compileAndOptimize("let x = \"v\"; x ?? \"d\"");
 
     EXPECT_FALSE(valueCase.diagnostics.hasErrors());
 

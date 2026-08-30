@@ -11,7 +11,7 @@ TEST(ReceiverBindingTest, ThisRefersToCallReceiver) {
         "v = 41; "
         "func run(cb) { return cb(); } "
         "} "
-        "b = new Box(); "
+        "let b = new Box(); "
         "b.run(func () -> int { return this.v + 1; })"),
         "42");
 }
@@ -24,7 +24,7 @@ TEST(ReceiverBindingTest, CapturingReceiverIsRejected) {
             "v = 41; "
             "func run(cb) { return cb(); } "
             "} "
-            "b = new Box(); "
+            "let b = new Box(); "
             "b.run(func () -> int { return b.v + 1; })");
         FAIL() << "capturing the receiver inside a callback must be rejected";
     } catch (const std::runtime_error& error) {
@@ -40,7 +40,7 @@ TEST(ReceiverBindingTest, CapturingReceiverInNestedClosureIsRejected) {
             "v = 41; "
             "func run(cb) { return cb(); } "
             "} "
-            "b = new Box(); "
+            "let b = new Box(); "
             "b.run(func () -> int { return b.run(func () -> int { return b.v; }); })");
         FAIL() << "capturing the receiver from a nested closure must be rejected";
     } catch (const std::runtime_error& error) {
@@ -55,8 +55,8 @@ TEST(ReceiverBindingTest, UnrelatedObjectIsStillCapturable) {
         "v = 41; "
         "func run(cb) { return cb(); } "
         "} "
-        "b = new Box(); "
-        "other = new Box(); "
+        "let b = new Box(); "
+        "let other = new Box(); "
         "other.v = 1; "
         "b.run(func () -> int { return other.v + this.v; })"),
         "42");
@@ -74,8 +74,8 @@ TEST(ReceiverBindingTest, NestedClosureBindsInnermostReceiver) {
         "v = 2; "
         "func run(cb) { return cb(); } "
         "} "
-        "a = new Outer(); "
-        "b = new Inner(); "
+        "let a = new Outer(); "
+        "let b = new Inner(); "
         "a.run(func () -> int { return this.v + b.run(func () -> int { return this.v; }); })"),
         "3");
 }
@@ -105,7 +105,7 @@ TEST(ReceiverBindingTest, BoundCallbackDoesNotRetainReceiver) {
         "cb = 0; "
         "func keep(c) { this.cb = c; } "
         "} "
-        "b = new Box(); "
+        "let b = new Box(); "
         "b.keep(func () -> int { return this.v; }); "
         "b",
         diagnostics);
@@ -126,7 +126,7 @@ TEST(ReceiverBindingTest, BoundCallbackDoesNotRetainReceiver) {
 
 TEST(ReceiverBindingTest, CallbackDoesNotRetainGlobals) {
     DiagnosticEngine diagnostics;
-    auto chunk = compile("g = 1; f = func () -> int { return g; }; f", diagnostics);
+    auto chunk = compile("let g = 1; let f = func () -> int { return g; }; f", diagnostics);
     ASSERT_NE(chunk, nullptr);
 
     FunctionRefPtr func;

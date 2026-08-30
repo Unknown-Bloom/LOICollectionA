@@ -13,7 +13,7 @@ TEST(ClassTest, BasicClassWithConstructor) {
         "Point(x, y) { this.x = x; this.y = y; } "
         "func sum() -> int { return x + y; } "
         "} "
-        "p = new Point(3, 4); "
+        "let p = new Point(3, 4); "
         "p.sum()"),
         "7");
     EXPECT_EQ(eval(
@@ -23,18 +23,18 @@ TEST(ClassTest, BasicClassWithConstructor) {
         "y = 0; "
         "Point(x, y) { this.x = x; this.y = y; } "
         "} "
-        "p = new Point(3, 4); "
+        "let p = new Point(3, 4); "
         "p.x + p.y"),
         "7");
 }
 
 TEST(ClassTest, FieldDefaults) {
-    EXPECT_EQ(eval("class A { public: x = 5; } a = new A(); a.x"), "5");
-    EXPECT_EQ(eval("class A { public: x = \"hi\"; } a = new A(); a.x"), "hi");
+    EXPECT_EQ(eval("class A { public: x = 5; } let a = new A(); a.x"), "5");
+    EXPECT_EQ(eval("class A { public: x = \"hi\"; } let a = new A(); a.x"), "hi");
 }
 
 TEST(ClassTest, DefaultConstructor) {
-    EXPECT_EQ(eval("class A { public: x = 1; A() { } } a = new A(); a.x"), "1");
+    EXPECT_EQ(eval("class A { public: x = 1; A() { } } let a = new A(); a.x"), "1");
 }
 
 TEST(ClassTest, MethodWithParameters) {
@@ -44,7 +44,7 @@ TEST(ClassTest, MethodWithParameters) {
         "total = 0; "
         "func add(v: int) -> int { total = total + v; return total; } "
         "} "
-        "c = new Calc(); "
+        "let c = new Calc(); "
         "c.add(1); "
         "c.add(2); "
         "c.add(3)"),
@@ -58,7 +58,7 @@ TEST(ClassTest, ThisKeyword) {
         "x = 1; "
         "func setX(v: int) -> int { this.x = v; return this.x; } "
         "} "
-        "a = new A(); "
+        "let a = new A(); "
         "a.setX(9)"),
         "9");
 }
@@ -71,7 +71,7 @@ TEST(ClassTest, PrivateFieldAccess) {
         "public: "
         "func getSecret() -> int { return secret; } "
         "} "
-        "a = new A(); "
+        "let a = new A(); "
         "a.getSecret()"),
         "42");
     EXPECT_THROW(eval(
@@ -79,7 +79,7 @@ TEST(ClassTest, PrivateFieldAccess) {
         "private: "
         "secret = 42; "
         "} "
-        "a = new A(); "
+        "let a = new A(); "
         "a.secret"),
         std::runtime_error);
 }
@@ -92,7 +92,7 @@ TEST(ClassTest, PrivateMethodAccess) {
         "public: "
         "func call() -> int { return this.helper(); } "
         "} "
-        "a = new A(); "
+        "let a = new A(); "
         "a.call()"),
         "1");
     EXPECT_THROW(eval(
@@ -102,7 +102,7 @@ TEST(ClassTest, PrivateMethodAccess) {
         "public: "
         "func call() -> int { return this.helper(); } "
         "} "
-        "a = new A(); "
+        "let a = new A(); "
         "a.helper()"),
         std::runtime_error);
 }
@@ -114,7 +114,7 @@ TEST(ClassTest, MethodOverloads) {
         "func f(x: int) -> int { return x; } "
         "func f(x: string) -> string { return x; } "
         "} "
-        "a = new A(); "
+        "let a = new A(); "
         "a.f(1)"),
         "1");
     EXPECT_EQ(eval(
@@ -123,14 +123,14 @@ TEST(ClassTest, MethodOverloads) {
         "func f(x: int) -> int { return x; } "
         "func f(x: string) -> string { return x; } "
         "} "
-        "a = new A(); "
+        "let a = new A(); "
         "a.f(\"s\")"),
         "s");
 }
 
 TEST(ClassTest, ObjectEquality) {
-    EXPECT_EQ(eval("class A {} a = new A(); a == a"), "true");
-    EXPECT_EQ(eval("class A {} a = new A(); b = new A(); a == b"), "false");
+    EXPECT_EQ(eval("class A {} let a = new A(); a == a"), "true");
+    EXPECT_EQ(eval("class A {} let a = new A(); let b = new A(); a == b"), "false");
 }
 
 TEST(ClassTest, UnknownClass) {
@@ -138,22 +138,22 @@ TEST(ClassTest, UnknownClass) {
 }
 
 TEST(ClassTest, MissingField) {
-    EXPECT_THROW(eval("class A { public: x = 1; } a = new A(); a.y"), std::runtime_error);
+    EXPECT_THROW(eval("class A { public: x = 1; } let a = new A(); a.y"), std::runtime_error);
 }
 
 TEST(ClassTest, MemberAccessOnNonObject) {
-    EXPECT_THROW(eval("a = 5; a.x"), std::runtime_error);
+    EXPECT_THROW(eval("let a = 5; a.x"), std::runtime_error);
 }
 
 TEST(ClassTest, UnknownMethod) {
-    EXPECT_THROW(eval("class A { public: x = 1; } a = new A(); a.nope()"), std::runtime_error);
+    EXPECT_THROW(eval("class A { public: x = 1; } let a = new A(); a.nope()"), std::runtime_error);
 }
 
 TEST(ClassTest, DuplicateClass) {
-    EXPECT_THROW(eval("class A {} class A {} a = new A()"), std::runtime_error);
+    EXPECT_THROW(eval("class A {} class A {} let a = new A()"), std::runtime_error);
 }
 
 TEST(ClassTest, NativeGlobalValue) {
-    EXPECT_EQ(eval("a = new GlobalValue(); a.value = 1; a.value"), "1");
-    EXPECT_EQ(eval("a = new GlobalValue(); a.value = 'test'; a.value"), "test");
+    EXPECT_EQ(eval("let a = new GlobalValue(); a.value = 1; a.value"), "1");
+    EXPECT_EQ(eval("let a = new GlobalValue(); a.value = 'test'; a.value"), "test");
 }

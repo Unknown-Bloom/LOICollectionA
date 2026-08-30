@@ -945,6 +945,18 @@ namespace LOICollection::frontend {
                     }
                 }
 
+                if (node.isDeclaration) {
+                    bool alreadyDeclared = !this->blockScopes.empty()
+                        ? this->blockScopes.back().contains(var.name)
+                        : (this->declaredGlobals.contains(var.name) ||
+                           this->globalTypes.contains(var.name));
+                    if (alreadyDeclared) {
+                        this->diagnostics.addError(node.loc,
+                            "Variable '" + var.name + "' is already declared in this scope");
+                        return rhs;
+                    }
+                }
+
                 if (!this->blockScopes.empty()) {
                     for (auto it = this->blockScopes.rbegin(); it != this->blockScopes.rend(); ++it) {
                         auto found = it->find(var.name);
@@ -956,6 +968,7 @@ namespace LOICollection::frontend {
                     }
 
                     if (!this->isNameDefined(var.name, scope)) {
+                        this->requireLet(node, var);
                         this->blockScopes.back()[var.name] = rhs;
                         return rhs;
                     }
@@ -974,6 +987,7 @@ namespace LOICollection::frontend {
                         this->diagnostics.addError(node.loc,
                             "Variable '" + var.name + "' was already defined without an explicit type");
                     } else {
+                        this->requireLet(node, var);
                         this->declaredGlobals[var.name] = declared;
                     }
 
@@ -996,11 +1010,20 @@ namespace LOICollection::frontend {
                     return rhs;
                 }
 
-                if (auto declaredIt = this->declaredGlobals.find(var.name);
-                    declaredIt != this->declaredGlobals.end()) {
-                    this->unify(declaredIt->second, rhs, node.loc,
-                        "variable '" + var.name + "'");
-                    if (declaredIt->second.kind == TypeKind::Optional &&
+                if (this->globalTypes.contains(var.name)) {
+                    auto& existing = this->globalTypes[var.name];
+                    this->unify(existing, rhs, node.loc, "variable '" + var.name + "'");
+                    if (existing.kind == TypeKind::Optional &&
+                        rhs.kind == TypeKind::Optional && node.value) {
+                        node.value->preserveOptional = true;
+                    }
+                    return rhs;
+                }
+
+                if (this->declaredGlobals.contains(var.name)) {
+                    auto& existing = this->declaredGlobals[var.name];
+                    this->unify(existing, rhs, node.loc, "variable '" + var.name + "'");
+                    if (existing.kind == TypeKind::Optional &&
                         rhs.kind == TypeKind::Optional && node.value) {
                         node.value->preserveOptional = true;
                     }
@@ -1008,11 +1031,12 @@ namespace LOICollection::frontend {
                 }
 
                 if (rhs.kind == TypeKind::None) {
-                    
-                    
+                    this->requireLet(node, var);
                     globalTypes[var.name] = TypeInfo{};
                     return rhs;
                 }
+
+                this->requireLet(node, var);
 
                 if (rhs.kind != TypeKind::Unknown)
                     globalTypes[var.name] = rhs;
@@ -1337,6 +1361,14 @@ namespace LOICollection::frontend {
         }
 
         this->receiverCaptures = std::move(remaining);
+    }
+
+    void SemanticAnalyzer::requireLet(AssignmentNode& node, const VariableNode& var) {
+        if (node.isDeclaration)
+            return;
+
+        this->diagnostics.addError(node.loc,
+            "Variable '" + var.name + "' is not declared; write 'let " + var.name + " = ...' to introduce it");
     }
 
     TypeInfo SemanticAnalyzer::checkMethodCall(MethodCallNode& node, MethodScope& scope) {
