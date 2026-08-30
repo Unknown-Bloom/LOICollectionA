@@ -10,6 +10,7 @@
 #include <ll/api/Expected.h>
 
 #include "LOICollectionA/frontend/Callback.h"
+#include "LOICollectionA/frontend/Unicode.h"
 
 #include "LOICollectionA/utils/core/MathUtils.h"
 
@@ -53,31 +54,6 @@ namespace LOICollection::frontend::ir {
             return {};
         }
 
-        size_t codepointWidth(char lead) {
-            if ((static_cast<unsigned char>(lead) & 0xF8) == 0xF0) return 4;
-            if ((static_cast<unsigned char>(lead) & 0xF0) == 0xE0) return 3;
-            if ((static_cast<unsigned char>(lead) & 0xE0) == 0xC0) return 2;
-
-            return 1;
-        }
-
-        size_t codepointCount(const std::string& text) {
-            size_t count = 0;
-            for (size_t i = 0; i < text.size(); i += codepointWidth(text[i]))
-                ++count;
-
-            return count;
-        }
-
-        std::optional<std::string> codepointAt(const std::string& text, size_t index) {
-            size_t seen = 0;
-            for (size_t i = 0; i < text.size(); i += codepointWidth(text[i])) {
-                if (seen++ == index)
-                    return text.substr(i, codepointWidth(text[i]));
-            }
-
-            return std::nullopt;
-        }
     }
 
     std::string VM::valueToString(const ValueNode::ValueType& val) {

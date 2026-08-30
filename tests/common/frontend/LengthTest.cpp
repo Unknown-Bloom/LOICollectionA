@@ -16,6 +16,12 @@ TEST(LengthTest, StringLength) {
     EXPECT_EQ(eval("\"line1\\nline2\".length()"), "11");
 }
 
+TEST(LengthTest, StringLengthCountsCharacters) {
+    EXPECT_EQ(eval("\"中文\".length()"), "2");
+    EXPECT_EQ(eval("\"a中b\".length()"), "3");
+    EXPECT_EQ(eval("string::length(\"中文\")"), "2");
+}
+
 TEST(LengthTest, MapLength) {
     EXPECT_EQ(eval("let m = new Map(); m.length()"), "0");
     EXPECT_EQ(eval("let m = new Map(); m.set(\"a\", 1); m.set(\"b\", 2); m.set(\"a\", 9); m.length()"), "2");
