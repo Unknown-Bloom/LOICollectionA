@@ -52,6 +52,32 @@ namespace LOICollection::frontend::ir {
 
             return {};
         }
+
+        size_t codepointWidth(char lead) {
+            if ((static_cast<unsigned char>(lead) & 0xF8) == 0xF0) return 4;
+            if ((static_cast<unsigned char>(lead) & 0xF0) == 0xE0) return 3;
+            if ((static_cast<unsigned char>(lead) & 0xE0) == 0xC0) return 2;
+
+            return 1;
+        }
+
+        size_t codepointCount(const std::string& text) {
+            size_t count = 0;
+            for (size_t i = 0; i < text.size(); i += codepointWidth(text[i]))
+                ++count;
+
+            return count;
+        }
+
+        std::optional<std::string> codepointAt(const std::string& text, size_t index) {
+            size_t seen = 0;
+            for (size_t i = 0; i < text.size(); i += codepointWidth(text[i])) {
+                if (seen++ == index)
+                    return text.substr(i, codepointWidth(text[i]));
+            }
+
+            return std::nullopt;
+        }
     }
 
     std::string VM::valueToString(const ValueNode::ValueType& val) {
@@ -810,7 +836,7 @@ namespace LOICollection::frontend::ir {
                     }
 
                     if (std::holds_alternative<std::string>(iterable)) {
-                        this->push(static_cast<int>(std::get<std::string>(iterable).size()));
+                        this->push(static_cast<int>(codepointCount(std::get<std::string>(iterable))));
                         break;
                     }
 
@@ -922,17 +948,35 @@ namespace LOICollection::frontend::ir {
                     auto indexValue = this->pop();
                     auto targetValue = this->pop();
 
+                    if (!std::holds_alternative<int>(indexValue)) {
+                        this->diagnostics.addError(this->currentLoc, "Index must be an int");
+                        break;
+                    }
+
+                    int index = std::get<int>(indexValue);
+
+                    if (const auto* text = std::get_if<std::string>(&targetValue)) {
+                        if (index < 0) {
+                            this->diagnostics.addError(this->currentLoc, "String index out of range");
+                            break;
+                        }
+
+                        auto character = codepointAt(*text, static_cast<size_t>(index));
+                        if (!character) {
+                            this->diagnostics.addError(this->currentLoc, "String index out of range");
+                            break;
+                        }
+
+                        this->push(std::move(*character));
+                        break;
+                    }
+
                     if (!std::holds_alternative<ArrayRef>(targetValue)) {
                         this->diagnostics.addError(this->currentLoc, "Cannot index a non-array value");
                         break;
                     }
-                    if (!std::holds_alternative<int>(indexValue)) {
-                        this->diagnostics.addError(this->currentLoc, "Array index must be an int");
-                        break;
-                    }
 
                     auto arr = std::get<ArrayRef>(targetValue);
-                    int index = std::get<int>(indexValue);
                     if (index < 0 || index >= static_cast<int>(arr->elements.size())) {
                         this->diagnostics.addError(this->currentLoc, "Array index out of range");
                         break;

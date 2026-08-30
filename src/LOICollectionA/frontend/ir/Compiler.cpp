@@ -273,13 +273,54 @@ namespace LOICollection::frontend::ir {
     void Compiler::visit(ForInNode& node) {
         size_t uid = this->forInCounter++;
 
-        if (node.iterable->getType() == ASTNode::Type::Range)
-            this->compileForInRange(node, uid);
+        auto protocol = iterableProtocol(node.iterable->getType(), node.iterable->type);
+        if (!protocol) {
+            this->diagnostics.addError(node.loc,
+                "for-in iterable does not provide an iteration protocol");
+
+            return;
+        }
+
+        if (protocol->shape == IterableShape::Counter)
+            this->compileForInCounter(node, uid);
         else
-            this->compileForInArray(node, uid);
+            this->compileForInIterable(node, uid, *protocol);
     }
 
-    void Compiler::compileForInArray(ForInNode& node, size_t uid) {
+    void Compiler::emitIterableLength(
+        const IterableProtocol& protocol, int seqSlot, const SourceLocation& loc
+    ) {
+        this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
+
+        if (protocol.shape == IterableShape::Convention) {
+            int metaIdx = this->addNativeCall(protocol.className, std::string(lengthMethod), 0);
+            this->current.get().emit(OpCode::CALL_NATIVE_METHOD, metaIdx, loc);
+
+            return;
+        }
+
+        this->current.get().emit(OpCode::LOAD_LEN, 0, loc);
+    }
+
+    void Compiler::emitIterableElement(
+        const IterableProtocol& protocol, int seqSlot, int idxSlot, const SourceLocation& loc
+    ) {
+        if (protocol.shape == IterableShape::Convention) {
+            this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, loc);
+            this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
+
+            int metaIdx = this->addNativeCall(protocol.className, std::string(elementMethod), 1);
+            this->current.get().emit(OpCode::CALL_NATIVE_METHOD, metaIdx, loc);
+
+            return;
+        }
+
+        this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
+        this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, loc);
+        this->current.get().emit(OpCode::LOAD_INDEX, 0, loc);
+    }
+
+    void Compiler::compileForInIterable(ForInNode& node, size_t uid, const IterableProtocol& protocol) {
         const int seqSlot = this->declareSlot("__forin_seq_" + std::to_string(uid));
         const int idxSlot = this->declareSlot("__forin_idx_" + std::to_string(uid));
         const int elemSlot = this->declareSlot(node.elementVar);
@@ -295,8 +336,7 @@ namespace LOICollection::frontend::ir {
         size_t loopStart = this->current.get().currentIP();
 
         this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
-        this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, node.loc);
-        this->current.get().emit(OpCode::LOAD_LEN, 0, node.loc);
+        this->emitIterableLength(protocol, seqSlot, node.loc);
         this->current.get().emit(OpCode::CMP_LT, 0, node.loc);
 
         size_t jmpFalseIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
@@ -304,9 +344,7 @@ namespace LOICollection::frontend::ir {
         this->loopStack.push_back(LoopContext{});
         this->loopStack.back().continueTarget = loopStart;
 
-        this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, node.loc);
-        this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
-        this->current.get().emit(OpCode::LOAD_INDEX, 0, node.loc);
+        this->emitIterableElement(protocol, seqSlot, idxSlot, node.loc);
         this->current.get().emit(OpCode::STORE_SLOT, elemSlot, node.loc);
 
         if (indexSlot >= 0) {
@@ -340,7 +378,7 @@ namespace LOICollection::frontend::ir {
         this->current.get().emit(OpCode::PUSH_STR, emptyIdx, node.loc);
     }
 
-    void Compiler::compileForInRange(ForInNode& node, size_t uid) {
+    void Compiler::compileForInCounter(ForInNode& node, size_t uid) {
         auto& range = static_cast<RangeNode&>(*node.iterable);
 
         const int idxSlot = this->declareSlot("__forin_idx_" + std::to_string(uid));

@@ -10,6 +10,7 @@
 #include "LOICollectionA/base/ScopeGuard.h"
 
 #include "LOICollectionA/frontend/Callback.h"
+#include "LOICollectionA/frontend/Iteration.h"
 
 #include "LOICollectionA/frontend/SemanticAnalyzer.h"
 
@@ -735,10 +736,12 @@ namespace LOICollection::frontend {
 
                 TypeInfo iterableType = checkExpr(*forIn.iterable, scope);
 
-                bool isRange = forIn.iterable->getType() == ASTNode::Type::Range;
-                if (!isRange && iterableType.kind != TypeKind::Unknown &&
-                    iterableType.kind != TypeKind::Array) {
-                    this->diagnostics.addError(forIn.loc, "for-in iterable must be an array");
+                auto protocol = iterableProtocol(forIn.iterable->getType(), iterableType);
+                if (!protocol) {
+                    this->diagnostics.addError(forIn.loc,
+                        "for-in iterable must be an array, a string or a class providing '" +
+                        std::string(lengthMethod) + "()' and '" + std::string(elementMethod) +
+                        "(int)', got " + typeInfoToString(iterableType));
                 }
 
                 auto declareLoopVar = [this](const std::string& name, TypeInfo type) {
@@ -750,9 +753,8 @@ namespace LOICollection::frontend {
 
                 if (forIn.hasIndexVar)
                     declareLoopVar(forIn.indexVar, TypeInfo{ TypeKind::Int });
-                declareLoopVar(forIn.elementVar, isRange
-                    ? TypeInfo{ TypeKind::Int }
-                    : TypeInfo{});
+                declareLoopVar(forIn.elementVar,
+                    protocol ? protocol->elementType : TypeInfo{});
 
                 if (forIn.body)
                     checkStatement(*forIn.body, scope);

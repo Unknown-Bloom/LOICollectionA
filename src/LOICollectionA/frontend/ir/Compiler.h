@@ -12,6 +12,7 @@
 
 #include "LOICollectionA/frontend/AST.h"
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
+#include "LOICollectionA/frontend/Iteration.h"
 
 #include "LOICollectionA/frontend/ir/ByteCode.h"
 
@@ -106,8 +107,10 @@ namespace LOICollection::frontend::ir {
         void compileSequence(SequenceNode& node);
         void compileValue(ExprNode& node, const SourceLocation& loc);
 
-        void compileForInArray(ForInNode& node, size_t uid);
-        void compileForInRange(ForInNode& node, size_t uid);
+        void compileForInCounter(ForInNode& node, size_t uid);
+        void compileForInIterable(ForInNode& node, size_t uid, const IterableProtocol& protocol);
+        void emitIterableLength(const IterableProtocol& protocol, int seqSlot, const SourceLocation& loc);
+        void emitIterableElement(const IterableProtocol& protocol, int seqSlot, int idxSlot, const SourceLocation& loc);
         void emitArithmeticOp(const std::string& op, const SourceLocation& loc);
 
         void desugarDeclarativeStatements(std::unique_ptr<ASTNode>& node, const std::string& receiver);
