@@ -9,6 +9,7 @@
 
 #include "LOICollectionA/frontend/AST.h"
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
+#include "LOICollectionA/frontend/Iteration.h"
 
 #include "LOICollectionA/base/Macro.h"
 
@@ -94,6 +95,7 @@ namespace LOICollection::frontend {
         std::unordered_map<std::string, std::vector<std::string>> activeTypeParamBounds;
 
         [[nodiscard]] std::optional<std::reference_wrapper<ClassNode>> findClass(const std::string& name) const;
+        [[nodiscard]] ClassLookup classLookup() const;
 
         [[nodiscard]] TypeInfo typeOfValue(const ValueNode::ValueType& value) const;
         [[nodiscard]] TypeInfo typeFromName(const std::string& name, SourceLocation loc, bool reportError) const;

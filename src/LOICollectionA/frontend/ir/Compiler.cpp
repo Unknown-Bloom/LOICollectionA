@@ -273,7 +273,7 @@ namespace LOICollection::frontend::ir {
     void Compiler::visit(ForInNode& node) {
         size_t uid = this->forInCounter++;
 
-        auto protocol = iterableProtocol(node.iterable->getType(), node.iterable->type);
+        auto protocol = iterableProtocol(node.iterable->getType(), node.iterable->type, this->classLookup());
         if (!protocol) {
             this->diagnostics.addError(node.loc,
                 "for-in iterable does not provide an iteration protocol");
@@ -293,8 +293,15 @@ namespace LOICollection::frontend::ir {
         this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
 
         if (protocol.shape == IterableShape::Convention) {
-            int metaIdx = this->addNativeCall(protocol.className, std::string(lengthMethod), 0);
-            this->current.get().emit(OpCode::CALL_NATIVE_METHOD, metaIdx, loc);
+            if (ClassCall::getInstance().isRegistered(protocol.className)) {
+                int metaIdx = this->addNativeCall(protocol.className, std::string(lengthMethod), 0);
+                this->current.get().emit(OpCode::CALL_NATIVE_METHOD, metaIdx, loc);
+
+                return;
+            }
+
+            int metaIdx = this->addByNameCall(std::string(lengthMethod), 0);
+            this->current.get().emit(OpCode::CALL_METHOD_BY_NAME, metaIdx, loc);
 
             return;
         }
@@ -306,11 +313,21 @@ namespace LOICollection::frontend::ir {
         const IterableProtocol& protocol, int seqSlot, int idxSlot, const SourceLocation& loc
     ) {
         if (protocol.shape == IterableShape::Convention) {
-            this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, loc);
-            this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
+            if (ClassCall::getInstance().isRegistered(protocol.className)) {
+                this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, loc);
+                this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
 
-            int metaIdx = this->addNativeCall(protocol.className, std::string(elementMethod), 1);
-            this->current.get().emit(OpCode::CALL_NATIVE_METHOD, metaIdx, loc);
+                int metaIdx = this->addNativeCall(protocol.className, std::string(elementMethod), 1);
+                this->current.get().emit(OpCode::CALL_NATIVE_METHOD, metaIdx, loc);
+
+                return;
+            }
+
+            this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
+            this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, loc);
+
+            int metaIdx = this->addByNameCall(std::string(elementMethod), 1);
+            this->current.get().emit(OpCode::CALL_METHOD_BY_NAME, metaIdx, loc);
 
             return;
         }
@@ -1530,6 +1547,14 @@ namespace LOICollection::frontend::ir {
 
     void Compiler::emitStoreField(const MemberAccessNode& node) {
         this->emitFieldAccess(OpCode::STORE_FIELD_SLOT, OpCode::STORE_FIELD, node);
+    }
+
+    ClassLookup Compiler::classLookup() const {
+        return [this](const std::string& name) -> ClassNode* {
+            auto it = this->classNodes.find(name);
+
+            return it == this->classNodes.end() ? nullptr : &it->second.get();
+        };
     }
 
     std::string Compiler::methodSignature(const MethodDecl& method) const {

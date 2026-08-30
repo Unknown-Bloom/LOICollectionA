@@ -179,6 +179,82 @@ TEST(ForInTest, IteratesClassProvidingLengthAndElement) {
         "0a1b");
 }
 
+TEST(ForInTest, IteratesScriptClassProvidingLengthAndElement) {
+    EXPECT_EQ(eval(R"(
+        class Squares {
+            public:
+            limit = 0;
+            func length() -> int { return this.limit; }
+            func element(i: int) -> int { return i * i; }
+        }
+        let s = new Squares();
+        s.limit = 4;
+        let out = "";
+        for (v in s) [ out += v; ];
+        out
+    )"), "0149");
+    EXPECT_EQ(eval(R"(
+        class Words {
+            public:
+            func length() -> int { return 2; }
+            func element(i: int) -> string { return "w"; }
+        }
+        let out = "";
+        for (i, v in new Words()) [ out += i; out += v; ];
+        out
+    )"), "0w1w");
+}
+
+TEST(ForInTest, InheritsTheConventionFromABaseClass) {
+    EXPECT_EQ(eval(R"(
+        class Base {
+            public:
+            func length() -> int { return 3; }
+            func element(i: int) -> int { return i; }
+        }
+        class Child extends Base {
+            public:
+            tag = 0;
+        }
+        let out = "";
+        for (v in new Child()) [ out += v; ];
+        out
+    )"), "012");
+}
+
+TEST(ForInTest, ScriptElementTypeIsChecked) {
+    EXPECT_THROW(eval(R"(
+        class Words {
+            public:
+            func length() -> int { return 1; }
+            func element(i: int) -> string { return "w"; }
+        }
+        for (v in new Words()) [ let n: int = v; ];
+    )"), std::runtime_error);
+}
+
+TEST(ForInTest, RejectsScriptClassWithoutTheConvention) {
+    EXPECT_THROW(eval(R"(
+        class Plain { public: x = 0; }
+        for (v in new Plain()) [ v; ];
+    )"), std::runtime_error);
+    EXPECT_THROW(eval(R"(
+        class Half {
+            public:
+            func length() -> int { return 1; }
+        }
+        for (v in new Half()) [ v; ];
+    )"), std::runtime_error);
+    EXPECT_THROW(eval(R"(
+        class WrongArity {
+            public:
+            func length() -> int { return 1; }
+            func element(a: int, b: int) -> int { return a; }
+        }
+        for (v in new WrongArity()) [ v; ];
+    )"), std::runtime_error);
+}
+
 TEST(ForInTest, RejectsClassWithoutTheConvention) {
     EXPECT_THROW(eval("let v = new CtxValue(0); for (x in v) [ x; ];"), std::runtime_error);
 }

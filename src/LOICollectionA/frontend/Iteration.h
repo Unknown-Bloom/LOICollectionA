@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -22,5 +23,10 @@ namespace LOICollection::frontend {
         std::string   className{};
     };
 
-    [[nodiscard]] std::optional<IterableProtocol> iterableProtocol(ASTNode::Type nodeType, const TypeInfo& valueType);
+    using ClassLookup = std::function<ClassNode* (const std::string&)>;
+
+    [[nodiscard]] std::optional<IterableProtocol> iterableProtocol(
+        ASTNode::Type nodeType,
+        const TypeInfo& valueType,
+        const ClassLookup& lookup = {});
 }

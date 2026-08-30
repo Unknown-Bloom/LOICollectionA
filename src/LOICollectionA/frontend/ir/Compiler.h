@@ -107,6 +107,8 @@ namespace LOICollection::frontend::ir {
         void compileSequence(SequenceNode& node);
         void compileValue(ExprNode& node, const SourceLocation& loc);
 
+        [[nodiscard]] ClassLookup classLookup() const;
+
         void compileForInCounter(ForInNode& node, size_t uid);
         void compileForInIterable(ForInNode& node, size_t uid, const IterableProtocol& protocol);
         void emitIterableLength(const IterableProtocol& protocol, int seqSlot, const SourceLocation& loc);

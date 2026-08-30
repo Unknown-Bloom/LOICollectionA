@@ -252,6 +252,14 @@ namespace LOICollection::frontend {
         return it->second;
     }
 
+    ClassLookup SemanticAnalyzer::classLookup() const {
+        return [this](const std::string& name) -> ClassNode* {
+            auto cls = this->findClass(name);
+
+            return cls ? &cls->get() : nullptr;
+        };
+    }
+
     TypeInfo SemanticAnalyzer::typeOfValue(const ValueNode::ValueType& value) const {
         switch (value.index()) {
             case 0: return { TypeKind::Int };
@@ -736,7 +744,7 @@ namespace LOICollection::frontend {
 
                 TypeInfo iterableType = checkExpr(*forIn.iterable, scope);
 
-                auto protocol = iterableProtocol(forIn.iterable->getType(), iterableType);
+                auto protocol = iterableProtocol(forIn.iterable->getType(), iterableType, this->classLookup());
                 if (!protocol) {
                     this->diagnostics.addError(forIn.loc,
                         "for-in iterable must be an array, a string or a class providing '" +
