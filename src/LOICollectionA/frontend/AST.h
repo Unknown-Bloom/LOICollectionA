@@ -29,6 +29,7 @@ namespace LOICollection::frontend {
         Array,
         Variant,
         Optional,
+        Generic,
         None
     };
 
@@ -37,14 +38,21 @@ namespace LOICollection::frontend {
         std::string className;
         std::vector<TypeInfo> variantOptions;
         std::shared_ptr<TypeInfo> optionalInner;
+        std::string typeVar;
 
         bool operator==(const TypeInfo& other) const {
             return kind == other.kind &&
                    className == other.className &&
+                   typeVar == other.typeVar &&
                    variantOptions == other.variantOptions &&
                    ((!optionalInner && !other.optionalInner) ||
                     (optionalInner && other.optionalInner && *optionalInner == *other.optionalInner));
         }
+    };
+
+    struct TypeParam {
+        std::string name;
+        std::vector<std::string> bounds;
     };
 
     struct TypeExpr {
@@ -78,6 +86,8 @@ namespace LOICollection::frontend {
             case TypeKind::Optional:
                 return "optional<" +
                     (type.optionalInner ? typeInfoToString(*type.optionalInner) : std::string("unknown")) + ">";
+            case TypeKind::Generic:
+                return type.typeVar.empty() ? "generic" : type.typeVar;
         }
 
         return "unknown";
@@ -92,7 +102,8 @@ namespace LOICollection::frontend {
             Array, Index, Program, Block, Using,
             While, For, Break, Continue,
             CompoundAssign, ForIn, Range, Coalesce,
-            Import, Component
+            Import, Component,
+            Trait
         };
         [[nodiscard]] virtual Type getType() const = 0;
         
@@ -535,6 +546,20 @@ namespace LOICollection::frontend {
         TypeInfo returnType;
         bool hasReturnStatement = false;
         bool hasSuperCall = false;
+        std::vector<TypeParam> typeParams;
+    };
+
+    struct TraitNode : ASTNode {
+        SourceLocation loc;
+        std::string name;
+        std::vector<MethodDecl> methods;
+
+        TraitNode(SourceLocation location, std::string n)
+            : loc(location), name(std::move(n)) {}
+
+        [[nodiscard]] Type getType() const override { return Type::Trait; }
+
+        void accept(ASTVisitor&) override {}
     };
 
     struct ClassNode : ASTNode {
@@ -544,6 +569,7 @@ namespace LOICollection::frontend {
         std::vector<ClassMember> members;
         std::vector<MethodDecl> methods;
         int constructorIndex = -1;
+        std::vector<TypeParam> typeParams;
 
         ClassNode(SourceLocation location, std::string n)
             : loc(location), name(std::move(n)) {}
@@ -620,6 +646,7 @@ namespace LOICollection::frontend {
 
         std::string className;
         int methodOrdinal = -1;
+        bool dynamicDispatch = false;
         bool isStaticCall = false;
         std::string staticClassName;
 

@@ -451,6 +451,7 @@ namespace LOICollection::frontend {
                 case ASTNode::Type::Using:
                 case ASTNode::Type::Import:
                 case ASTNode::Type::Component:
+                case ASTNode::Type::Trait:
                     return;
                 default:
                     expandExpr(static_cast<ExprNode&>(*node), ctx);

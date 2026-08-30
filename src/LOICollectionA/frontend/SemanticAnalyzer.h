@@ -82,6 +82,17 @@ namespace LOICollection::frontend {
         std::unordered_set<std::string> resolvingAliases;
         std::unordered_map<std::string, std::unordered_set<std::string>> constructorAssignedMembers;
 
+        struct TraitMethod {
+            std::string name;
+            size_t paramCount = 0;
+            bool hasReturnType = false;
+            TypeExpr returnTypeExpr;
+        };
+
+        std::unordered_map<std::string, std::vector<TraitMethod>> traits;
+        std::unordered_map<std::string, TypeInfo> activeTypeParams;
+        std::unordered_map<std::string, std::vector<std::string>> activeTypeParamBounds;
+
         [[nodiscard]] std::optional<std::reference_wrapper<ClassNode>> findClass(const std::string& name) const;
 
         [[nodiscard]] TypeInfo typeOfValue(const ValueNode::ValueType& value) const;
@@ -102,6 +113,7 @@ namespace LOICollection::frontend {
         void validateConstructors();
         void validateMemberInitialization();
         void registerFunction(FunctionDefNode& node);
+        void registerTrait(TraitNode& node);
         void checkTopLevel(ProgramNode& root);
         void checkClassBodies();
         void checkFunctionBodies();
@@ -126,6 +138,15 @@ namespace LOICollection::frontend {
         TypeInfo lookupName(const std::string& name, MethodScope& scope);
         void unify(TypeInfo& target, const TypeInfo& from, SourceLocation loc, const std::string& what);
         TypeInfo resolveTypeExpr(const TypeExpr& expr, SourceLocation loc, bool reportError);
+
+        [[nodiscard]] TypeInfo substituteType(
+            const TypeInfo& type, const std::unordered_map<std::string, TypeInfo>& subst) const;
+        [[nodiscard]] std::unordered_map<std::string, TypeInfo> inferTypeParams(
+            const MethodDecl& decl, const std::vector<TypeInfo>& argTypes) const;
+        [[nodiscard]] bool satisfiesTrait(const TypeInfo& type, const std::string& traitName) const;
+        [[nodiscard]] bool boundsSatisfied(
+            const std::vector<TypeParam>& typeParams,
+            const std::unordered_map<std::string, TypeInfo>& subst) const;
 
         [[nodiscard]] size_t knownParamCount(const MethodDecl& method) const;
         [[nodiscard]] std::string methodSignature(const MethodDecl& method) const;

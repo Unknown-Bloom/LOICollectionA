@@ -1198,6 +1198,54 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
+                case OpCode::CALL_METHOD_BY_NAME: {
+                    const auto& meta = cur.byNameCalls[instr.operand];
+
+                    std::vector<ValueNode::ValueType> args(meta.argCount);
+                    for (int i = 0; i < meta.argCount; ++i)
+                        args[meta.argCount - 1 - i] = this->pop();
+
+                    auto receiver = this->pop();
+                    if (!std::holds_alternative<ObjectRef>(receiver)) {
+                        this->diagnostics.addError(this->currentLoc, "Method call target is not an object");
+                        break;
+                    }
+
+                    auto obj = std::get<ObjectRef>(receiver);
+                    if (obj->classIndex < 0 || obj->classIndex >= static_cast<int>(chunk.classes.size())) {
+                        this->diagnostics.addError(this->currentLoc, "Invalid object class index");
+                        break;
+                    }
+
+                    const auto& cls = chunk.classes[obj->classIndex];
+                    int ordinal = -1;
+                    for (size_t o = 0; o < cls.methods.size(); ++o) {
+                        const auto& m = chunk.methods[cls.methods[o]];
+                        if (m.name == meta.methodName && m.argCount == meta.argCount) {
+                            ordinal = static_cast<int>(o);
+                            break;
+                        }
+                    }
+
+                    if (ordinal < 0) {
+                        this->diagnostics.addError(this->currentLoc,
+                            "Method '" + meta.methodName + "' not found on object of type '" + cls.name + "'");
+                        break;
+                    }
+
+                    const auto& method = chunk.methods[cls.methods[ordinal]];
+                    Frame callee(*chunk.methodBodies[method.bodyIndex]);
+                    callee.hasThis = true;
+                    callee.thisObj = receiver;
+
+                    for (int i = 0; i < method.argCount; ++i)
+                        callee.locals[i] = args[i];
+
+                    if (!this->pushFrame(std::move(callee)))
+                        break;
+                    break;
+                }
+
                 case OpCode::CALL_SUPER_CTOR: {
                     const auto& meta = cur.superCalls[instr.operand];
 

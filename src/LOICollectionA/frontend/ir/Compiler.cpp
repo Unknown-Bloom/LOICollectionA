@@ -80,7 +80,8 @@ namespace LOICollection::frontend::ir {
                 auto type = program.parts[i]->getType();
                 if (type != ASTNode::Type::Class &&
                     type != ASTNode::Type::FunctionDef &&
-                    type != ASTNode::Type::Using) {
+                    type != ASTNode::Type::Using &&
+                    type != ASTNode::Type::Trait) {
                     lastValuePart = i;
                 }
             }
@@ -89,7 +90,8 @@ namespace LOICollection::frontend::ir {
                 auto type = program.parts[i]->getType();
                 if (type == ASTNode::Type::Class ||
                     type == ASTNode::Type::FunctionDef ||
-                    type == ASTNode::Type::Using) {
+                    type == ASTNode::Type::Using ||
+                    type == ASTNode::Type::Trait) {
                     continue;
                 }
 
@@ -1141,6 +1143,16 @@ namespace LOICollection::frontend::ir {
                 callbackArgs.push_back(static_cast<int>(i));
         }
 
+        if (node.dynamicDispatch) {
+            this->compileValue(*node.target, node.loc);
+            for (int arg : callbackArgs)
+                this->current.get().emit(
+                    OpCode::BIND_THIS, static_cast<int>(node.args.size()) - arg, node.loc);
+            int metaIdx = this->addByNameCall(node.methodName, static_cast<int>(node.args.size()));
+            this->current.get().emit(OpCode::CALL_METHOD_BY_NAME, metaIdx, node.loc);
+            return;
+        }
+
         if (node.isStaticCall) {
             if (ClassCall::getInstance().isRegistered(node.staticClassName)) {
                 int argCount = static_cast<int>(node.args.size());
@@ -1379,6 +1391,11 @@ namespace LOICollection::frontend::ir {
     int Compiler::addVirtualCall(int classIndex, int ordinal, int argCount) {
         this->current.get().virtualCalls.push_back({classIndex, ordinal, argCount});
         return static_cast<int>(this->current.get().virtualCalls.size() - 1);
+    }
+
+    int Compiler::addByNameCall(const std::string& methodName, int argCount) {
+        this->current.get().byNameCalls.push_back({methodName, argCount});
+        return static_cast<int>(this->current.get().byNameCalls.size() - 1);
     }
 
     int Compiler::addSuperCall(int constructorIndex, int argCount) {

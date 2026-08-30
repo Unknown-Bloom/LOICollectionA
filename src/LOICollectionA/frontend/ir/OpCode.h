@@ -22,6 +22,7 @@ namespace LOICollection::frontend::ir {
         CALL_MACRO,
         CALL_METHOD,
         CALL_METHOD_VIRTUAL,
+        CALL_METHOD_BY_NAME,
         CALL_FUNC,
         CALL_NATIVE_METHOD,
         CALL_LAMBDA,

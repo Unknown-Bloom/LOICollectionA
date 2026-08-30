@@ -121,6 +121,7 @@ namespace LOICollection::frontend::ir {
         int addMacro(const std::string& name, int argCount);
         int addLambda(int bodyIndex, int argCount, int captureCount);
         int addVirtualCall(int classIndex, int ordinal, int argCount);
+        int addByNameCall(const std::string& methodName, int argCount);
         int addSuperCall(int constructorIndex, int argCount);
 
         [[nodiscard]] std::string methodSignature(const MethodDecl& method) const;

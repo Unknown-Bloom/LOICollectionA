@@ -428,6 +428,15 @@ namespace LOICollection::frontend::ir {
             return reader.i32(meta.classIndex) && reader.i32(meta.ordinal) && reader.i32(meta.argCount);
         }
 
+        void writeByNameCallMeta(Writer& writer, const ByNameCallMeta& meta) {
+            writer.str(meta.methodName);
+            writer.i32(meta.argCount);
+        }
+
+        bool readByNameCallMeta(Reader& reader, ByNameCallMeta& meta) {
+            return reader.str(meta.methodName) && reader.i32(meta.argCount);
+        }
+
         void writeSuperCallMeta(Writer& writer, const SuperCallMeta& meta) {
             writer.i32(meta.constructorIndex);
             writer.i32(meta.argCount);
@@ -474,6 +483,9 @@ namespace LOICollection::frontend::ir {
             writeVector<VirtualCallMeta>(writer, chunk.virtualCalls, [](Writer& w, const VirtualCallMeta& meta) {
                 writeVirtualCallMeta(w, meta);
             });
+            writeVector<ByNameCallMeta>(writer, chunk.byNameCalls, [](Writer& w, const ByNameCallMeta& meta) {
+                writeByNameCallMeta(w, meta);
+            });
             writeVector<SuperCallMeta>(writer, chunk.superCalls, [](Writer& w, const SuperCallMeta& meta) {
                 writeSuperCallMeta(w, meta);
             });
@@ -513,6 +525,9 @@ namespace LOICollection::frontend::ir {
                 })
                 && readVector<VirtualCallMeta>(reader, chunk.virtualCalls, [](Reader& r, VirtualCallMeta& meta) -> bool {
                     return readVirtualCallMeta(r, meta);
+                })
+                && readVector<ByNameCallMeta>(reader, chunk.byNameCalls, [](Reader& r, ByNameCallMeta& meta) -> bool {
+                    return readByNameCallMeta(r, meta);
                 })
                 && readVector<SuperCallMeta>(reader, chunk.superCalls, [](Reader& r, SuperCallMeta& meta) -> bool {
                     return readSuperCallMeta(r, meta);

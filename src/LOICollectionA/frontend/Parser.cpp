@@ -53,7 +53,8 @@ namespace LOICollection::frontend {
 
             if (currentToken.type == TokenType::TOKEN_SEMICOLON) {
                 eat(TokenType::TOKEN_SEMICOLON);
-            } else if (stmtType == ASTNode::Type::Class || stmtType == ASTNode::Type::FunctionDef) {
+            } else if (stmtType == ASTNode::Type::Class || stmtType == ASTNode::Type::FunctionDef ||
+                       stmtType == ASTNode::Type::Trait) {
             } else if (currentToken.type != TokenType::TOKEN_EOF) {
                 if (currentToken.loc.line > stmtStartLine)
                     continue;
@@ -681,6 +682,97 @@ namespace LOICollection::frontend {
         return cls;
     }
 
+    std::vector<TypeParam> Parser::parseTypeParams() {
+        std::vector<TypeParam> params;
+
+        if (currentToken.type != TokenType::TOKEN_OP || currentToken.value != "<")
+            return params;
+        eat(TokenType::TOKEN_OP);
+
+        while ((currentToken.type != TokenType::TOKEN_OP || currentToken.value != ">") &&
+               currentToken.type != TokenType::TOKEN_EOF) {
+            if (currentToken.type != TokenType::TOKEN_IDENT) {
+                diagnostics.addError(currentToken.loc, "Expected type parameter name");
+                synchronize({ TokenType::TOKEN_COMMA, TokenType::TOKEN_RPAREN, TokenType::TOKEN_LBRACE });
+                if (currentToken.type != TokenType::TOKEN_IDENT)
+                    break;
+                continue;
+            }
+
+            TypeParam param;
+            param.name = currentToken.value;
+            eat(TokenType::TOKEN_IDENT);
+
+            for (const auto& existing : params) {
+                if (existing.name == param.name) {
+                    diagnostics.addError(currentToken.loc,
+                        "Duplicate type parameter '" + param.name + "'");
+                    break;
+                }
+            }
+
+            while (currentToken.type == TokenType::TOKEN_COLON) {
+                eat(TokenType::TOKEN_COLON);
+                if (currentToken.type != TokenType::TOKEN_IDENT) {
+                    diagnostics.addError(currentToken.loc, "Expected trait name after ':'");
+                    break;
+                }
+                param.bounds.push_back(currentToken.value);
+                eat(TokenType::TOKEN_IDENT);
+            }
+
+            params.push_back(std::move(param));
+
+            if (currentToken.type == TokenType::TOKEN_COMMA)
+                eat(TokenType::TOKEN_COMMA);
+            else
+                break;
+        }
+
+        if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == ">")
+            eat(TokenType::TOKEN_OP);
+
+        return params;
+    }
+
+    std::unique_ptr<TraitNode> Parser::parseTrait() {
+        SourceLocation loc = currentToken.loc;
+
+        if (!eat(TokenType::TOKEN_TRAIT)) return nullptr;
+        if (currentToken.type != TokenType::TOKEN_IDENT) {
+            diagnostics.addError(currentToken.loc, "Expected trait name");
+            synchronize({ TokenType::TOKEN_LBRACE, TokenType::TOKEN_RBRACE });
+            skipBalancedBraces();
+            return nullptr;
+        }
+
+        auto trait = std::make_unique<TraitNode>(loc, currentToken.value);
+        eat(TokenType::TOKEN_IDENT);
+
+        if (!eat(TokenType::TOKEN_LBRACE)) {
+            synchronize({ TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        while (currentToken.type != TokenType::TOKEN_RBRACE &&
+               currentToken.type != TokenType::TOKEN_EOF) {
+            if (currentToken.type == TokenType::TOKEN_FUNC) {
+                auto method = parseMethod(false, false);
+                if (method)
+                    trait->methods.push_back(std::move(*method));
+                continue;
+            }
+
+            diagnostics.addError(currentToken.loc, "Expected method declaration in trait");
+            synchronize({ TokenType::TOKEN_FUNC, TokenType::TOKEN_RBRACE });
+        }
+
+        if (currentToken.type == TokenType::TOKEN_RBRACE)
+            eat(TokenType::TOKEN_RBRACE);
+
+        return trait;
+    }
+
     std::unique_ptr<FunctionDefNode> Parser::parseFunctionDefinition() {
         SourceLocation loc = currentToken.loc;
 
@@ -696,7 +788,16 @@ namespace LOICollection::frontend {
         fn->decl.loc = loc;
         fn->decl.name = currentToken.value;
 
-        if (!eat(TokenType::TOKEN_IDENT) || !eat(TokenType::TOKEN_LPAREN)) {
+        if (!eat(TokenType::TOKEN_IDENT)) {
+            synchronize({ TokenType::TOKEN_LBRACE, TokenType::TOKEN_RBRACE });
+            skipBalancedBraces();
+            return nullptr;
+        }
+
+        if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "<")
+            fn->decl.typeParams = parseTypeParams();
+
+        if (!eat(TokenType::TOKEN_LPAREN)) {
             synchronize({ TokenType::TOKEN_LBRACE, TokenType::TOKEN_RBRACE });
             skipBalancedBraces();
             return nullptr;
@@ -802,7 +903,7 @@ namespace LOICollection::frontend {
         return lambda;
     }
 
-    std::unique_ptr<MethodDecl> Parser::parseMethod(bool isPrivate) {
+    std::unique_ptr<MethodDecl> Parser::parseMethod(bool isPrivate, bool requireBody) {
         SourceLocation loc = currentToken.loc;
 
         if (!eat(TokenType::TOKEN_FUNC)) return nullptr;
@@ -848,6 +949,15 @@ namespace LOICollection::frontend {
 
             method->returnTypeExpr = std::move(*returnType);
             method->hasReturnType = true;
+        }
+
+        if (!requireBody) {
+            if (currentToken.type == TokenType::TOKEN_SEMICOLON)
+                eat(TokenType::TOKEN_SEMICOLON);
+            else if (currentToken.type != TokenType::TOKEN_RBRACE)
+                diagnostics.addError(currentToken.loc,
+                    "Expected ';' after trait method declaration");
+            return method;
         }
 
         if (!eat(TokenType::TOKEN_LBRACE)) {
@@ -1304,6 +1414,9 @@ namespace LOICollection::frontend {
 
         if (currentToken.type == TokenType::TOKEN_CLASS)
             return parseClass();
+
+        if (currentToken.type == TokenType::TOKEN_TRAIT)
+            return parseTrait();
 
         if (currentToken.type == TokenType::TOKEN_IMPORT)
             return parseImport();

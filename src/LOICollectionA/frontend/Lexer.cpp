@@ -209,6 +209,7 @@ namespace LOICollection::frontend {
         if (id == "import") return { TokenType::TOKEN_IMPORT, std::move(id), startLoc };
         if (id == "component") return { TokenType::TOKEN_COMPONENT, std::move(id), startLoc };
         if (id == "let") return { TokenType::TOKEN_LET, std::move(id), startLoc };
+        if (id == "trait") return { TokenType::TOKEN_TRAIT, std::move(id), startLoc };
 
         return { TokenType::TOKEN_IDENT, std::move(id), startLoc };
     }
