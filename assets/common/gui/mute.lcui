@@ -1,18 +1,18 @@
 import "generic.lcui";
 
-addMuteOption = new ButtonOptions();
+let addMuteOption = new ButtonOptions();
 addMuteOption.tooltip = {tr("mute.gui.addMute.tooltip")};
 
-removeMuteOption = new ButtonOptions();
+let removeMuteOption = new ButtonOptions();
 removeMuteOption.tooltip = {tr("mute.gui.removeMute.tooltip")};
 
-navigateAdd = new GlobalValue();
+let navigateAdd = new GlobalValue();
 navigateAdd.value = false;
 
-navigateDelete = new GlobalValue();
+let navigateDelete = new GlobalValue();
 navigateDelete.value = false;
 
-open = new CustomForm("mute.open", {tr("mute.gui.title")}) {
+let open = new CustomForm("mute.open", {tr("mute.gui.title")}) {
     label({tr("mute.gui.label")}, new TextOptions());
     SectionHeader();
     button({tr("mute.gui.addMute")}, on: func () -> void {
@@ -43,26 +43,26 @@ open = new CustomForm("mute.open", {tr("mute.gui.title")}) {
     show();
 };
 
-add = new PaginatedForm("mute.add", {tr("mute.gui.add.title")}, GUIManager::value("mute.players"), 10) {
+let add = new PaginatedForm("mute.add", {tr("mute.gui.add.title")}, GUIManager::value("mute.players"), 10) {
     label({tr("mute.gui.add.label")}, new TextOptions());
     PageControls();
     closeButton();
     show(func (result) -> void {
         if (result.selection != "") [
             if (GUIManager::request("mute.online", [ result.selection ])[0]) [
-                contentValue = new GlobalValue();
+                let contentValue = new GlobalValue();
                 contentValue.value = false;
 
-                cause = new ObservableString("", true);
-                duration = new ObservableString("", true);
+                let cause = new ObservableString("", true);
+                let duration = new ObservableString("", true);
 
-                addInputOne = new TextFieldOptions();
+                let addInputOne = new TextFieldOptions();
                 addInputOne.description = {tr("mute.gui.add.input1.placeholder")};
 
-                addInputTwo = new TextFieldOptions();
+                let addInputTwo = new TextFieldOptions();
                 addInputTwo.description = {tr("mute.gui.add.input2.placeholder")};
 
-                content = new CustomForm("mute.content", {tr("mute.gui.add.title")}) {
+                let content = new CustomForm("mute.content", {tr("mute.gui.add.title")}) {
                     label({tr("mute.gui.label")}, new TextOptions());
                     SectionHeader();
                     textField({tr("mute.gui.add.input1")}, cause, addInputOne);
@@ -93,18 +93,18 @@ add = new PaginatedForm("mute.add", {tr("mute.gui.add.title")}, GUIManager::valu
     });
 };
 
-remove = new PaginatedForm("mute.remove", {tr("mute.gui.remove.title")}, GUIManager::value("mute.mutes"), 10) {
+let remove = new PaginatedForm("mute.remove", {tr("mute.gui.remove.title")}, GUIManager::value("mute.mutes"), 10) {
     label({tr("mute.gui.remove.label")}, new TextOptions());
     PageControls();
     closeButton();
     show(func (result) -> void {
         if (result.selection != "") [
-            infoData = GUIManager::request("mute.info", [ result.selection ]);
+            let infoData = GUIManager::request("mute.info", [ result.selection ]);
             if (infoData) [
-                infoRemoved = new GlobalValue();
+                let infoRemoved = new GlobalValue();
                 infoRemoved.value = false;
 
-                info = new CustomForm("mute.info", {tr("mute.gui.remove.title")}) {
+                let info = new CustomForm("mute.info", {tr("mute.gui.remove.title")}) {
                     label(
                         std::format({tr("mute.gui.info.label")}, infoData),
                         new TextOptions()

@@ -1,15 +1,15 @@
 import "generic.lcui";
 
-tradeRequester = new CtxValue(0);
-tradeSeller = new CtxValue(1);
-tradeSlot = new CtxValue(2);
-tradeScore = new CtxValue(3);
-tradeTypeValue = new CtxValue(4);
+let tradeRequester = new CtxValue(0);
+let tradeSeller = new CtxValue(1);
+let tradeSlot = new CtxValue(2);
+let tradeScore = new CtxValue(3);
+let tradeTypeValue = new CtxValue(4);
 
-selfUuidData = GUIManager::request("market.self.uuid", []);
+let selfUuidData = GUIManager::request("market.self.uuid", []);
 
-requestDestUuid = "";
-requestBuyerUuid = "";
+let requestDestUuid = "";
+let requestBuyerUuid = "";
 
 if (tradeTypeValue.value == "sell") [
     requestDestUuid = tradeRequester.value;
@@ -19,22 +19,22 @@ if (tradeTypeValue.value == "sell") [
     requestBuyerUuid = tradeRequester.value;
 ]
 
-requestInfoData = GUIManager::request("market.trade.request.info", [ tradeRequester.value, tradeTypeValue.value ]);
+let requestInfoData = GUIManager::request("market.trade.request.info", [ tradeRequester.value, tradeTypeValue.value ]);
 
-requestFinished = new GlobalValue();
+let requestFinished = new GlobalValue();
 requestFinished.value = false;
 
-requestAccepted = new GlobalValue();
+let requestAccepted = new GlobalValue();
 requestAccepted.value = false;
 
-requestRejected = new GlobalValue();
+let requestRejected = new GlobalValue();
 requestRejected.value = false;
 
-tradeRequest = new CustomForm("market.trade.request", {tr("market.gui.title")}) {
+let tradeRequest = new CustomForm("market.trade.request", {tr("market.gui.title")}) {
     label(requestInfoData[0], new TextOptions());
     SectionHeader();
     button({tr("market.yes")}, on: func () -> void {
-        acceptData = GUIManager::request("market.trade.request.accept", []);
+        let acceptData = GUIManager::request("market.trade.request.accept", []);
 
         requestAccepted.value = acceptData[0];
         requestFinished.value = true;
@@ -65,14 +65,14 @@ tradeRequest = new CustomForm("market.trade.request", {tr("market.gui.title")}) 
     show();
 };
 
-tradeContent = new PaginatedForm("market.trade.content", {tr("market.gui.title")}, GUIManager::value("market.trade.items"), 10) {
+let tradeContent = new PaginatedForm("market.trade.content", {tr("market.gui.title")}, GUIManager::value("market.trade.items"), 10) {
     label({tr("market.gui.sell.item.dropdown")}, new TextOptions());
     SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
         if (result.selection != "") [
-            slotData = GUIManager::request("market.trade.slot", [ result.selectionIndex ]);
+            let slotData = GUIManager::request("market.trade.slot", [ result.selectionIndex ]);
 
             GUIManager::callback("market.trade.item", [ tradeRequester.value, slotData[0] ]);
         :
@@ -82,17 +82,17 @@ tradeContent = new PaginatedForm("market.trade.content", {tr("market.gui.title")
     show();
 };
 
-tradeItemInfoData = GUIManager::request("market.trade.item.info", [ tradeSeller.value, tradeSlot.value ]);
+let tradeItemInfoData = GUIManager::request("market.trade.item.info", [ tradeSeller.value, tradeSlot.value ]);
 
-price = new ObservableString("", true);
+let price = new ObservableString("", true);
 
-priceOptions = new TextFieldOptions();
+let priceOptions = new TextFieldOptions();
 priceOptions.description = {tr("market.gui.trade.input.placeholder")};
 
-itemDone = new GlobalValue();
+let itemDone = new GlobalValue();
 itemDone.value = false;
 
-tradeItemForm = new CustomForm("market.trade.item", {tr("market.gui.title")}) {
+let tradeItemForm = new CustomForm("market.trade.item", {tr("market.gui.title")}) {
     label(tradeItemInfoData[0], new TextOptions());
     SectionHeader();
     textField({tr("market.gui.trade.input")}, price, priceOptions);
@@ -111,12 +111,12 @@ tradeItemForm = new CustomForm("market.trade.item", {tr("market.gui.title")}) {
     show();
 };
 
-tradeConfirmInfoData = GUIManager::request("market.trade.confirm.info", [ tradeRequester.value, tradeSlot.value, tradeScore.value ]);
+let tradeConfirmInfoData = GUIManager::request("market.trade.confirm.info", [ tradeRequester.value, tradeSlot.value, tradeScore.value ]);
 
-confirmDone = new GlobalValue();
+let confirmDone = new GlobalValue();
 confirmDone.value = false;
 
-tradeConfirmForm = new CustomForm("market.trade.confirm", {tr("market.gui.title")}) {
+let tradeConfirmForm = new CustomForm("market.trade.confirm", {tr("market.gui.title")}) {
     label(tradeConfirmInfoData[0], new TextOptions());
     SectionHeader();
     button({tr("market.yes")}, on: func () -> void {

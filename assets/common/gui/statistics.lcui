@@ -1,11 +1,11 @@
 import "generic.lcui";
 
-pendingStatistic = new CtxValue(0);
+let pendingStatistic = new CtxValue(0);
 
 if (pendingStatistic.value != "") [
-    rankingData = GUIManager::request("statistics.ranking", [ pendingStatistic.value ]);
+    let rankingData = GUIManager::request("statistics.ranking", [ pendingStatistic.value ]);
 
-    specific = new CustomForm("statistics.specific", {tr("statistics.gui.title")}) {
+    let specific = new CustomForm("statistics.specific", {tr("statistics.gui.title")}) {
         label(std::format({tr("statistics.gui.specific.label")}, [ rankingData[0], rankingData[1] ]), new TextOptions());
         label(rankingData[2], new TextOptions());
         SectionHeader();
@@ -16,7 +16,7 @@ if (pendingStatistic.value != "") [
     };
 ]
 
-open = new PaginatedForm("statistics.open", {tr("statistics.gui.title")}, GUIManager::value("statistics.names"), 10) {
+let open = new PaginatedForm("statistics.open", {tr("statistics.gui.title")}, GUIManager::value("statistics.names"), 10) {
     label({tr("statistics.gui.label")}, new TextOptions());
     SectionHeader();
     PageControls();

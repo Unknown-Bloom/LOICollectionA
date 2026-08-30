@@ -4,15 +4,15 @@ func getPvpLabel() -> string {
     return std::format({tr("pvp.gui.label")}, GUIManager::value("pvp.isEnable"));
 }
 
-pvpOnOption = new ButtonOptions();
+let pvpOnOption = new ButtonOptions();
 pvpOnOption.tooltip = {tr("pvp.gui.on.tooltip")};
 
-pvpOffOption = new ButtonOptions();
+let pvpOffOption = new ButtonOptions();
 pvpOffOption.tooltip = {tr("pvp.gui.off.tooltip")};
 
-pvpLabel = new ObservableString(getPvpLabel(), false);
+let pvpLabel = new ObservableString(getPvpLabel(), false);
 
-open = new CustomForm("pvp.open", {tr("pvp.gui.title")}) {
+let open = new CustomForm("pvp.open", {tr("pvp.gui.title")}) {
     label(pvpLabel, new TextOptions());
     SectionHeader();
     button({tr("pvp.gui.on")}, on: func () -> void {
