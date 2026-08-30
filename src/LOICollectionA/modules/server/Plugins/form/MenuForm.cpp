@@ -39,9 +39,9 @@ namespace LOICollection::server::Plugins {
         auto obj = std::make_shared<Object>();
         obj->className = "MenuFormResult";
         obj->classIndex = -1;
-        obj->fields["closeReason"] = handle->closeReason;
-        obj->fields["actionIndex"] = handle->actionIndex;
-        obj->fields["action"] = handle->action ? TypedValue(handle->action) : TypedValue{};
+        obj->assign("closeReason", handle->closeReason);
+        obj->assign("actionIndex", handle->actionIndex);
+        obj->assign("action", handle->action ? TypedValue(handle->action) : TypedValue{});
         return obj;
     }
 

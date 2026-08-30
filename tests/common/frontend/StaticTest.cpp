@@ -153,7 +153,7 @@ TEST(StaticTest, NativeStaticFieldAndMethod) {
         [](const CallbackTypeValues& args) -> TypedValue {
             auto obj = std::make_shared<Object>();
             obj->className = "NativeStaticDemo";
-            obj->fields["value"] = std::get<int>(args[0]);
+            obj->assign("value", std::get<int>(args[0]));
             return obj;
         }, { ParamType::INT });
     cc.registerStaticMethod(name, "versioned",

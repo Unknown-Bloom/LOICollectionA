@@ -125,17 +125,17 @@ namespace CustomFormOptionsClass {
         if (item->className != "DropdownItem")
             return ll::makeStringError("expected DropdownItem");
 
-        auto labelIt = item->fields.find("label");
-        if (labelIt == item->fields.end())
+        const auto* labelField = item->find("label");
+        if (!labelField)
             return ll::makeStringError("DropdownItem is missing 'label'");
-        auto label = toTextValue(labelIt->second);
+        auto label = toTextValue(*labelField);
         if (!label)
             return ll::Unexpected(label.error());
 
-        auto valueIt = item->fields.find("value");
-        if (valueIt == item->fields.end())
+        const auto* valueField = item->find("value");
+        if (!valueField)
             return ll::makeStringError("DropdownItem is missing 'value'");
-        auto value = toDouble(valueIt->second);
+        auto value = toDouble(*valueField);
         if (!value)
             return ll::Unexpected(value.error());
 

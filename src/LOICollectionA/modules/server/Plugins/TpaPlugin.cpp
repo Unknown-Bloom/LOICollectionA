@@ -440,9 +440,9 @@ namespace LOICollection::server::Plugins {
                         auto obj = std::make_shared<frontend::Object>();
                         obj->className = "DropdownItem";
                         obj->classIndex = -1;
-                        obj->fields["label"] = label;
-                        obj->fields["value"] = value;
-                        obj->fields["description"] = std::monostate{};
+                        obj->assign("label", label);
+                        obj->assign("value", value);
+                        obj->assign("description", std::monostate{});
 
                         values->elements.emplace_back(obj);
                     };

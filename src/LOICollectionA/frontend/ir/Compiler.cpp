@@ -156,9 +156,7 @@ namespace LOICollection::frontend::ir {
                 }
 
                 this->compileValue(*member.target, node.loc);
-
-                int idx = this->addConstant(member.memberName);
-                this->current.get().emit(OpCode::STORE_FIELD, idx, node.loc);
+                this->emitStoreField(member);
                 break;
             }
             case ASTNode::Type::Index: {
@@ -211,8 +209,7 @@ namespace LOICollection::frontend::ir {
                 this->compileValue(*member.target, node.loc);
                 this->current.get().emit(OpCode::DUP, 0, node.loc);
 
-                int idx = this->addConstant(member.memberName);
-                this->current.get().emit(OpCode::LOAD_FIELD, idx, node.loc);
+                this->emitFieldAccess(OpCode::LOAD_FIELD_SLOT, OpCode::LOAD_FIELD, member);
                 if (member.type.kind == TypeKind::Optional && !member.preserveOptional)
                     this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
 
@@ -221,7 +218,7 @@ namespace LOICollection::frontend::ir {
 
                 this->current.get().emit(OpCode::DUP, 0, node.loc);
                 this->current.get().emit(OpCode::ROT3, 0, node.loc);
-                this->current.get().emit(OpCode::STORE_FIELD, idx, node.loc);
+                this->emitFieldAccess(OpCode::STORE_FIELD_SLOT, OpCode::STORE_FIELD, member);
                 break;
             }
             case ASTNode::Type::Index: {
@@ -1062,8 +1059,7 @@ namespace LOICollection::frontend::ir {
                     this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
                     break;
                 default: {
-                    int idx = this->addConstant(node.memberName);
-                    this->current.get().emit(OpCode::LOAD_FIELD, idx, node.loc);
+                    this->emitFieldAccess(OpCode::LOAD_FIELD_SLOT, OpCode::LOAD_FIELD, node);
                     break;
                 }
             }
@@ -1091,10 +1087,7 @@ namespace LOICollection::frontend::ir {
                 break;
         }
 
-        this->compileValue(*node.target, node.loc);
-
-        int idx = this->addConstant(node.memberName);
-        this->current.get().emit(OpCode::LOAD_FIELD, idx, node.loc);
+        this->emitLoadField(node);
 
         if (node.type.kind == TypeKind::Optional && !node.preserveOptional)
             this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
@@ -1445,6 +1438,43 @@ namespace LOICollection::frontend::ir {
         }
 
         this->current.get().emit(OpCode::STORE_VAR, this->addConstant(name), loc);
+    }
+
+    int Compiler::fieldSlotOf(const TypeInfo& owner, const std::string& memberName) const {
+        if (owner.kind != TypeKind::Object)
+            return -1;
+
+        auto classIt = this->classIndices.find(owner.className);
+        if (classIt != this->classIndices.end()) {
+            const auto& names = this->chunk.classes[static_cast<size_t>(classIt->second)].fieldNames;
+
+            auto it = std::ranges::find(names, memberName);
+            return it == names.end() ? -1 : static_cast<int>(std::distance(names.begin(), it));
+        }
+
+        const auto fields = ClassCall::getInstance().getFields(owner.className);
+
+        auto it = std::ranges::find(fields, memberName);
+        return it == fields.end() ? -1 : static_cast<int>(std::distance(fields.begin(), it));
+    }
+
+    void Compiler::emitFieldAccess(OpCode slotOp, OpCode namedOp, const MemberAccessNode& node) {
+        int slot = this->fieldSlotOf(node.target->type, node.memberName);
+        if (slot >= 0) {
+            this->current.get().emit(slotOp, slot, node.loc);
+            return;
+        }
+
+        this->current.get().emit(namedOp, this->addConstant(node.memberName), node.loc);
+    }
+
+    void Compiler::emitLoadField(const MemberAccessNode& node) {
+        this->compileValue(*node.target, node.loc);
+        this->emitFieldAccess(OpCode::LOAD_FIELD_SLOT, OpCode::LOAD_FIELD, node);
+    }
+
+    void Compiler::emitStoreField(const MemberAccessNode& node) {
+        this->emitFieldAccess(OpCode::STORE_FIELD_SLOT, OpCode::STORE_FIELD, node);
     }
 
     std::string Compiler::methodSignature(const MethodDecl& method) const {

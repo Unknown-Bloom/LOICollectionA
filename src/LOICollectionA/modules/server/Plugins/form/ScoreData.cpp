@@ -13,20 +13,20 @@ using namespace LOICollection::frontend;
 namespace LOICollection::server::Plugins {
     namespace {
         std::string scoreReadString(const ObjectRef& obj, const std::string& field, const std::string& def = "") {
-            auto it = obj->fields.find(field);
-            if (it == obj->fields.end())
+            auto it = obj->find(field);
+            if (it == nullptr)
                 return def;
-            return std::holds_alternative<std::string>(it->second) ? std::get<std::string>(it->second) : def;
+            return std::holds_alternative<std::string>(*it) ? std::get<std::string>(*it) : def;
         }
 
         int scoreReadInt(const ObjectRef& obj, const std::string& field, int def = 0) {
-            auto it = obj->fields.find(field);
-            if (it == obj->fields.end())
+            auto it = obj->find(field);
+            if (it == nullptr)
                 return def;
-            if (std::holds_alternative<int>(it->second))
-                return std::get<int>(it->second);
-            if (std::holds_alternative<float>(it->second))
-                return static_cast<int>(std::get<float>(it->second));
+            if (std::holds_alternative<int>(*it))
+                return std::get<int>(*it);
+            if (std::holds_alternative<float>(*it))
+                return static_cast<int>(std::get<float>(*it));
             return def;
         }
 
@@ -34,8 +34,8 @@ namespace LOICollection::server::Plugins {
             auto obj = std::make_shared<Object>();
             obj->className = "ScoreRequirement";
             obj->classIndex = -1;
-            obj->fields["objective"] = score.objective;
-            obj->fields["value"] = score.value;
+            obj->assign("objective", score.objective);
+            obj->assign("value", score.value);
             return obj;
         }
     }
@@ -43,11 +43,11 @@ namespace LOICollection::server::Plugins {
     std::vector<ScoreRequirement> readScores(const frontend::ObjectRef& obj, const std::string& field) {
         std::vector<ScoreRequirement> result;
 
-        auto it = obj->fields.find(field);
-        if (it == obj->fields.end() || !std::holds_alternative<ArrayRef>(it->second))
+        auto it = obj->find(field);
+        if (it == nullptr || !std::holds_alternative<ArrayRef>(*it))
             return result;
 
-        for (const auto& element : std::get<ArrayRef>(it->second)->elements) {
+        for (const auto& element : std::get<ArrayRef>(*it)->elements) {
             if (!std::holds_alternative<ObjectRef>(element))
                 continue;
 

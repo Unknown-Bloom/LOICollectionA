@@ -409,14 +409,13 @@ namespace LOICollection::frontend::ir {
                 bool isField = std::ranges::find(cls.fieldNames, name) != cls.fieldNames.end();
 
                 if (isField) {
-                    obj->fields[name] = val;
+                    obj->assign(name, val);
                     return;
                 }
             }
 
-            auto existingIt = obj->fields.find(name);
-            if (existingIt != obj->fields.end()) {
-                existingIt->second = val;
+            if (auto* existing = obj->find(name)) {
+                *existing = val;
                 return;
             }
         }
@@ -455,6 +454,17 @@ namespace LOICollection::frontend::ir {
         return std::ranges::any_of(cls.ancestorIndices, [baseClassIndex](int idx) -> bool {
             return idx == baseClassIndex;
         });
+    }
+
+    const FieldLayoutPtr& VM::classLayout(const BytecodeChunk& chunk, int classIndex) {
+        auto it = this->mClassLayouts.find(classIndex);
+        if (it != this->mClassLayouts.end())
+            return it->second;
+
+        const auto& cls = chunk.classes[static_cast<size_t>(classIndex)];
+        return this->mClassLayouts
+            .emplace(classIndex, std::make_shared<const FieldLayout>(cls.fieldNames))
+            .first->second;
     }
 
     ValueNode::ValueType VM::run(
@@ -670,20 +680,19 @@ namespace LOICollection::frontend::ir {
                             bool isField = std::ranges::find(cls.fieldNames, name) != cls.fieldNames.end();
 
                             if (isField) {
-                                auto fieldIt = obj->fields.find(name);
-                                if (fieldIt == obj->fields.end()) {
+                                const auto* field = obj->find(name);
+                                if (!field) {
                                     this->diagnostics.addError(this->currentLoc, "Object has no field: " + name);
                                     break;
                                 }
 
-                                this->push(fieldIt->second);
+                                this->push(*field);
                                 break;
                             }
                         }
 
-                        auto existingIt = obj->fields.find(name);
-                        if (existingIt != obj->fields.end()) {
-                            this->push(existingIt->second);
+                        if (const auto* existing = obj->find(name)) {
+                            this->push(*existing);
                             break;
                         }
                     }
@@ -783,13 +792,13 @@ namespace LOICollection::frontend::ir {
                     }
 
                     auto obj = std::get<ObjectRef>(objValue);
-                    auto it = obj->fields.find(name);
-                    if (it == obj->fields.end()) {
+                    const auto* field = obj->find(name);
+                    if (!field) {
                         this->diagnostics.addError(this->currentLoc, "Object has no field: " + name);
                         break;
                     }
 
-                    this->push(it->second);
+                    this->push(*field);
                     break;
                 }
                 case OpCode::LOAD_LEN: {
@@ -844,7 +853,48 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
 
-                    std::get<ObjectRef>(objValue)->fields[name] = val;
+                    std::get<ObjectRef>(objValue)->assign(name, val);
+                    break;
+                }
+                case OpCode::LOAD_FIELD_SLOT: {
+                    auto objValue = this->pop();
+
+                    if (!std::holds_alternative<ObjectRef>(objValue)) {
+                        this->diagnostics.addError(this->currentLoc, "Cannot load a field from a non-object value");
+                        break;
+                    }
+
+                    auto obj = std::get<ObjectRef>(objValue);
+                    if (instr.operand >= 0 && static_cast<size_t>(instr.operand) >= obj->slots.size())
+                        obj->adoptLayout();
+
+                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= obj->slots.size()) {
+                        this->diagnostics.addError(this->currentLoc, "Field slot index out of range");
+                        break;
+                    }
+
+                    this->push(obj->slots[static_cast<size_t>(instr.operand)]);
+                    break;
+                }
+                case OpCode::STORE_FIELD_SLOT: {
+                    auto objValue = this->pop();
+                    auto val = this->pop();
+
+                    if (!std::holds_alternative<ObjectRef>(objValue)) {
+                        this->diagnostics.addError(this->currentLoc, "Cannot store a field on a non-object value");
+                        break;
+                    }
+
+                    auto obj = std::get<ObjectRef>(objValue);
+                    if (instr.operand >= 0 && static_cast<size_t>(instr.operand) >= obj->slots.size())
+                        obj->adoptLayout();
+
+                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= obj->slots.size()) {
+                        this->diagnostics.addError(this->currentLoc, "Field slot index out of range");
+                        break;
+                    }
+
+                    obj->slots[static_cast<size_t>(instr.operand)] = std::move(val);
                     break;
                 }
                 case OpCode::MAKE_ARRAY: {
@@ -1010,10 +1060,12 @@ namespace LOICollection::frontend::ir {
                     auto obj = std::make_shared<Object>();
                     obj->className = cls.name;
                     obj->classIndex = instr.operand;
+                    obj->layout = this->classLayout(chunk, instr.operand);
+                    obj->resize(cls.fieldNames.size());
 
                     for (size_t i = 0; i < cls.fieldNames.size(); ++i) {
                         if (cls.hasDefault[i])
-                            obj->fields[cls.fieldNames[i]] = VM::cloneValue(cls.defaults[i]);
+                            obj->slots[i] = VM::cloneValue(cls.defaults[i]);
                     }
 
                     if (cls.constructorIndex != -1) {
@@ -1568,6 +1620,10 @@ namespace LOICollection::frontend::ir {
 
                     return this->stack.back();
                 }
+
+                default:
+                    this->diagnostics.addError(this->currentLoc, "Unknown opcode");
+                    break;
             }
         }
     }

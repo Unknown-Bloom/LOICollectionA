@@ -224,7 +224,7 @@ namespace LOICollection::frontend::ir {
             if (!reader.u8(op) || !reader.i32(operand))
                 return false;
 
-            if (op > static_cast<uint8_t>(OpCode::BIND_THIS))
+            if (op >= static_cast<uint8_t>(OpCode::COUNT))
                 return false;
 
             instr.op = static_cast<OpCode>(op);

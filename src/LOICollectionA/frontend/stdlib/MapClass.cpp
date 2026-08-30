@@ -53,7 +53,7 @@ namespace MapClass {
             for (const auto& [key, value] : handle.entries)
                 keys->elements.push_back(key);
 
-            self->fields["keys"] = keys;
+            self->assign("keys", keys);
         }
     }
 

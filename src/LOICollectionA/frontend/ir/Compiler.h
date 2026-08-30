@@ -125,6 +125,8 @@ namespace LOICollection::frontend::ir {
 
         [[nodiscard]] std::string methodSignature(const MethodDecl& method) const;
 
+        [[nodiscard]] int fieldSlotOf(const TypeInfo& owner, const std::string& memberName) const;
+
         [[nodiscard]] auto suspendLoops();
 
         void pushScope(bool hasThis, int base, bool inherits = false);
@@ -134,5 +136,9 @@ namespace LOICollection::frontend::ir {
 
         void emitLoad(const std::string& name, const SourceLocation& loc);
         void emitStore(const std::string& name, const SourceLocation& loc);
+
+        void emitLoadField(const MemberAccessNode& node);
+        void emitStoreField(const MemberAccessNode& node);
+        void emitFieldAccess(OpCode slotOp, OpCode namedOp, const MemberAccessNode& node);
     };
 }

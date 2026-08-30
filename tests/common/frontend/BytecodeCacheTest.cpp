@@ -9,6 +9,7 @@
 #include "LOICollectionA/frontend/Lexer.h"
 #include "LOICollectionA/frontend/Parser.h"
 #include "LOICollectionA/frontend/SemanticAnalyzer.h"
+#include "LOICollectionA/frontend/ir/Abi.h"
 #include "LOICollectionA/frontend/ir/BytecodeSerializer.h"
 #include "LOICollectionA/frontend/ir/Compiler.h"
 #include "LOICollectionA/frontend/ir/Optimizer.h"
@@ -69,6 +70,7 @@ namespace {
         const std::vector<std::string>& imports = {}
     ) {
         BytecodeSerializer::Header header;
+        header.abiFingerprint = abiFingerprint();
         header.sourceHash = Sha256::compute(source);
 
         for (const auto& import : imports)

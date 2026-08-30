@@ -80,6 +80,9 @@ namespace LOICollection::frontend::ir {
         std::unordered_map<int, NativeStaticMethodCacheSlot> mNativeStaticMethodSlots;
         std::unordered_map<int, NativeValueMethodCacheSlot> mNativeValueMethodSlots;
         std::unordered_map<int, NativeConstructorCacheSlot> mNativeConstructorSlots;
+        std::unordered_map<int, FieldLayoutPtr> mClassLayouts;
+
+        [[nodiscard]] const FieldLayoutPtr& classLayout(const BytecodeChunk& chunk, int classIndex);
 
         ValueNode::ValueType execute(
             const std::shared_ptr<const BytecodeChunk>& owner,

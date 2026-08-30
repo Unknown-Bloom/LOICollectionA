@@ -386,10 +386,10 @@ namespace LOICollection::form {
                 auto resultObj = std::make_shared<frontend::Object>();
                 resultObj->className = "MessageBoxResult";
                 resultObj->classIndex = -1;
-                resultObj->fields["closeReason"] = static_cast<int>(closeResult->closeReason);
-                resultObj->fields["selection"] = closeResult->selection
+                resultObj->assign("closeReason", static_cast<int>(closeResult->closeReason));
+                resultObj->assign("selection", closeResult->selection
                     ? frontend::TypedValue(static_cast<int>(*closeResult->selection))
-                    : frontend::TypedValue(std::monostate{});
+                    : frontend::TypedValue(std::monostate{}));
                 
                 values.emplace_back(resultObj);
             } else {
@@ -432,13 +432,13 @@ namespace LOICollection::form {
             resultObj->classIndex = -1;
 
             if (closeResult.has_value())
-                resultObj->fields["closeReason"] = static_cast<int>(*closeResult);
+                resultObj->assign("closeReason", static_cast<int>(*closeResult));
             else
-                resultObj->fields["closeReason"] = std::monostate{};
+                resultObj->assign("closeReason", std::monostate{});
 
-            resultObj->fields["selection"] = handle->selection;
-            resultObj->fields["selectionIndex"] = handle->selectionIndex;
-            resultObj->fields["page"] = handle->selectionPage;
+            resultObj->assign("selection", handle->selection);
+            resultObj->assign("selectionIndex", handle->selectionIndex);
+            resultObj->assign("page", handle->selectionPage);
 
             if (handle->show) {
                 frontend::DiagnosticEngine diagnostics;

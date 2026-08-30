@@ -332,7 +332,7 @@ namespace LOICollection::server::Plugins {
 
                     auto result = std::get<frontend::ObjectRef>(args->elements[0]);
 
-                    Player* target = ll::service::getLevel()->getPlayer(std::get<std::string>(result->fields["selection"]));
+                    Player* target = ll::service::getLevel()->getPlayer(std::get<std::string>(result->at("selection")));
                     if (!target) {
                         return LanguagePlugin::getShared()->getLanguage(player)
                             .and_then([&player](const std::string& language) -> ll::Expected<void> {
@@ -384,11 +384,11 @@ namespace LOICollection::server::Plugins {
 
                     auto result = std::get<frontend::ObjectRef>(args->elements[0]);
 
-                    if (auto closeReason = std::get_if<int>(&result->fields["closeReason"]);
+                    if (auto closeReason = std::get_if<int>(&result->at("closeReason"));
                         closeReason && *closeReason == static_cast<int>(ll::ui::ScreenSession::Result::value_type::UserBusy))
                         return {};
 
-                    std::string selection = std::get<std::string>(result->fields["selection"]);
+                    std::string selection = std::get<std::string>(result->at("selection"));
                     if (selection.empty())
                         return {};
 

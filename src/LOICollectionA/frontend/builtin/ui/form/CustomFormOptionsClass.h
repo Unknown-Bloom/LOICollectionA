@@ -34,11 +34,11 @@ namespace CustomFormOptionsClass {
     ll::Expected<std::optional<T>> readOptional(
         const LOICollection::frontend::ObjectRef& options, const std::string& name, Converter&& convert
     ) {
-        auto it = options->fields.find(name);
-        if (it == options->fields.end() || std::holds_alternative<std::monostate>(it->second))
+        const auto* field = options->find(name);
+        if (!field || std::holds_alternative<std::monostate>(*field))
             return std::optional<T>{};
 
-        auto converted = convert(it->second);
+        auto converted = convert(*field);
         if (!converted.has_value())
             return ll::Unexpected(converted.error());
 
