@@ -60,6 +60,22 @@ namespace LOICollection::frontend {
         return true;
     }
 
+    TypeInfo arithmeticResult(const std::string& op, const TypeInfo& left, const TypeInfo& right) {
+        auto numeric = [](const TypeInfo& t) { return t.kind == TypeKind::Int || t.kind == TypeKind::Float; };
+
+        if (op == "+" && (left.kind == TypeKind::String || right.kind == TypeKind::String))
+            return { TypeKind::String };
+
+        if (!(numeric(left) && numeric(right)))
+            return {};
+
+        bool bothInt = left.kind == TypeKind::Int && right.kind == TypeKind::Int;
+        if (bothInt && (op == "+" || op == "-" || op == "*" || op == "%"))
+            return { TypeKind::Int };
+
+        return { TypeKind::Float };
+    }
+
     bool isNativeClass(const std::string& name) {
         return ClassCall::getInstance().isRegistered(name);
     }
@@ -249,15 +265,25 @@ namespace LOICollection::frontend {
         }
     }
 
+    namespace {
+        const std::unordered_map<std::string, TypeKind>& basicTypes() {
+            static const std::unordered_map<std::string, TypeKind> table = {
+                {"int", TypeKind::Int},
+                {"float", TypeKind::Float},
+                {"string", TypeKind::String},
+                {"bool", TypeKind::Bool},
+                {"void", TypeKind::Void},
+            };
+            return table;
+        }
+    }
+
     TypeInfo SemanticAnalyzer::typeFromName(const std::string& name, SourceLocation loc, bool reportError) const {
         if (auto it = this->activeTypeParams.find(name); it != this->activeTypeParams.end())
             return it->second;
 
-        if (name == "int") return { TypeKind::Int };
-        if (name == "float") return { TypeKind::Float };
-        if (name == "string") return { TypeKind::String };
-        if (name == "bool") return { TypeKind::Bool };
-        if (name == "void") return { TypeKind::Void };
+        if (auto it = basicTypes().find(name); it != basicTypes().end())
+            return { it->second };
 
         if (auto cls = findClass(name))
             return { TypeKind::Object, cls->get().name };
@@ -321,9 +347,7 @@ namespace LOICollection::frontend {
 
     namespace {
         bool isReservedTypeName(const std::string& name) {
-            return name == "int" || name == "float" || name == "string" ||
-                   name == "bool" || name == "void" || name == "variant" ||
-                   name == "optional";
+            return basicTypes().contains(name) || name == "variant" || name == "optional";
         }
     }
 
@@ -776,18 +800,7 @@ namespace LOICollection::frontend {
                 auto& assign = static_cast<CompoundAssignNode&>(node);
                 TypeInfo target = checkExpr(*assign.target, scope);
                 TypeInfo value = checkExpr(*assign.value, scope);
-
-                if (assign.op == "+" && (target.kind == TypeKind::String || value.kind == TypeKind::String))
-                    return { TypeKind::String };
-
-                if (isNumeric(target) && isNumeric(value)) {
-                    if (target.kind == TypeKind::Int && value.kind == TypeKind::Int)
-                        return { TypeKind::Int };
-
-                    return { TypeKind::Float };
-                }
-
-                return {};
+                return arithmeticResult(assign.op, target, value);
             }
 
             case ASTNode::Type::Coalesce: {
@@ -986,22 +999,7 @@ namespace LOICollection::frontend {
                 auto& arith = static_cast<ArithmeticNode&>(node);
                 TypeInfo left = checkExpr(*arith.left, scope);
                 TypeInfo right = checkExpr(*arith.right, scope);
-
-                if (arith.op == "+" && (left.kind == TypeKind::String || right.kind == TypeKind::String))
-                    return { TypeKind::String };
-
-                if (isNumeric(left) && isNumeric(right)) {
-                    if ((arith.op == "+" || arith.op == "-" || arith.op == "*") &&
-                        left.kind == TypeKind::Int && right.kind == TypeKind::Int)
-                        return { TypeKind::Int };
-
-                    if (arith.op == "%" && left.kind == TypeKind::Int && right.kind == TypeKind::Int)
-                        return { TypeKind::Int };
-
-                    return { TypeKind::Float };
-                }
-
-                return {};
+                return arithmeticResult(arith.op, left, right);
             }
 
             case ASTNode::Type::Compare: {
@@ -1407,39 +1405,47 @@ namespace LOICollection::frontend {
             return {};
 
         if (targetType.kind == TypeKind::Variant || targetType.kind == TypeKind::Optional) {
-            if (node.memberName == "type") {
-                node.memberKind = MemberAccessNode::MemberKind::TypeOf;
+            static const std::unordered_map<std::string, MemberAccessNode::MemberKind> conventionMembers = {
+                { "type", MemberAccessNode::MemberKind::TypeOf },
+                { "value", MemberAccessNode::MemberKind::Value },
+                { "has_value", MemberAccessNode::MemberKind::HasValue },
+            };
+
+            auto it = conventionMembers.find(node.memberName);
+            if (it != conventionMembers.end()) {
                 node.target->preserveOptional = true;
-                return { TypeKind::String };
-            }
 
-            if (node.memberName == "value") {
-                node.memberKind = MemberAccessNode::MemberKind::Value;
-                node.target->preserveOptional = true;
+                switch (it->second) {
+                    case MemberAccessNode::MemberKind::TypeOf:
+                        node.memberKind = it->second;
+                        return { TypeKind::String };
 
-                if (targetType.kind == TypeKind::Optional)
-                    return *targetType.optionalInner;
+                    case MemberAccessNode::MemberKind::Value: {
+                        node.memberKind = it->second;
+                        if (targetType.kind == TypeKind::Optional)
+                            return *targetType.optionalInner;
 
-                TypeInfo result;
-                for (const auto& option : targetType.variantOptions) {
-                    if (result.kind == TypeKind::Unknown)
-                        result = option;
-                    else if (!(result == option))
-                        return {};
+                        TypeInfo result;
+                        for (const auto& option : targetType.variantOptions) {
+                            if (result.kind == TypeKind::Unknown)
+                                result = option;
+                            else if (!(result == option))
+                                return {};
+                        }
+                        return result;
+                    }
+
+                    case MemberAccessNode::MemberKind::HasValue:
+                        if (targetType.kind != TypeKind::Optional) {
+                            this->diagnostics.addError(node.loc,
+                                "'.has_value' is only available on optional values");
+                            return {};
+                        }
+                        node.memberKind = it->second;
+                        return { TypeKind::Bool };
+
+                    default: break;
                 }
-                return result;
-            }
-
-            if (node.memberName == "has_value") {
-                if (targetType.kind != TypeKind::Optional) {
-                    this->diagnostics.addError(node.loc,
-                        "'.has_value' is only available on optional values");
-                    return {};
-                }
-
-                node.memberKind = MemberAccessNode::MemberKind::HasValue;
-                node.target->preserveOptional = true;
-                return { TypeKind::Bool };
             }
 
             if (targetType.kind == TypeKind::Variant) {
@@ -1665,9 +1671,10 @@ namespace LOICollection::frontend {
         }
 
         if (targetType.kind == TypeKind::Unknown) {
-            for (const char* className : { "Array", "String" }) {
+            ClassCall& classes = ClassCall::getInstance();
+            for (const auto& className : classes.getClassNames()) {
                 std::vector<CallbackTypeArgs> signatures =
-                    ClassCall::getInstance().getValueMethodSignatures(className, node.methodName);
+                    classes.getValueMethodSignatures(className, node.methodName);
 
                 for (const auto& signature : signatures) {
                     if (matchesNativeSignature(signature, argTypes)) {

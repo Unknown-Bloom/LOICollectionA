@@ -201,6 +201,8 @@ namespace LOICollection::frontend {
         LOICOLLECTION_A_NDAPI std::vector<CallbackTypeArgs> getStaticMethodSignatures(const std::string& className, const std::string& method) const;
         LOICOLLECTION_A_NDAPI std::vector<CallbackTypeArgs> getValueMethodSignatures(const std::string& className, const std::string& method) const;
 
+        LOICOLLECTION_A_NDAPI std::vector<std::string> getClassNames() const;
+
         LOICOLLECTION_A_NDAPI std::string exportShape() const;
 
         LOICOLLECTION_A_NDAPI ll::Expected<TypedValue> getStaticField(const std::string& className, const std::string& field) const;

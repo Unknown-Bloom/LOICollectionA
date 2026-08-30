@@ -602,6 +602,14 @@ namespace LOICollection::frontend {
         return result;
     }
 
+    std::vector<std::string> ClassCall::getClassNames() const {
+        std::vector<std::string> names;
+        names.reserve(this->mImpl->classes.size());
+        for (const auto& [name, info] : this->mImpl->classes)
+            names.push_back(name);
+        return names;
+    }
+
     std::string ClassCall::exportShape() const {
         std::vector<std::string> parts;
 

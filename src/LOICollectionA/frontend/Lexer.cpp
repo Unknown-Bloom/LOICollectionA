@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstring>
 #include <utility>
+#include <unordered_map>
 
 #include "LOICollectionA/frontend/Lexer.h"
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
@@ -187,30 +188,36 @@ namespace LOICollection::frontend {
 
         std::string id = input.substr(start, position - start);
 
-        if (id == "if") return { TokenType::TOKEN_IF, std::move(id), startLoc };
-        if (id == "true" || id == "false") return { TokenType::TOKEN_BOOL_LIT, std::move(id), startLoc };
-        if (id == "class") return { TokenType::TOKEN_CLASS, std::move(id), startLoc };
-        if (id == "func") return { TokenType::TOKEN_FUNC, std::move(id), startLoc };
-        if (id == "new") return { TokenType::TOKEN_NEW, std::move(id), startLoc };
-        if (id == "this") return { TokenType::TOKEN_THIS, std::move(id), startLoc };
-        if (id == "super") return { TokenType::TOKEN_SUPER, std::move(id), startLoc };
-        if (id == "return") return { TokenType::TOKEN_RETURN, std::move(id), startLoc };
-        if (id == "public") return { TokenType::TOKEN_PUBLIC, std::move(id), startLoc };
-        if (id == "private") return { TokenType::TOKEN_PRIVATE, std::move(id), startLoc };
-        if (id == "extends") return { TokenType::TOKEN_EXTENDS, std::move(id), startLoc };
-        if (id == "instanceof") return { TokenType::TOKEN_INSTANCEOF, std::move(id), startLoc };
-        if (id == "static") return { TokenType::TOKEN_STATIC, std::move(id), startLoc };
-        if (id == "using") return { TokenType::TOKEN_USING, std::move(id), startLoc };
-        if (id == "None") return { TokenType::TOKEN_NONE, std::move(id), startLoc };
-        if (id == "while") return { TokenType::TOKEN_WHILE, std::move(id), startLoc };
-        if (id == "for") return { TokenType::TOKEN_FOR, std::move(id), startLoc };
-        if (id == "break") return { TokenType::TOKEN_BREAK, std::move(id), startLoc };
-        if (id == "continue") return { TokenType::TOKEN_CONTINUE, std::move(id), startLoc };
-        if (id == "import") return { TokenType::TOKEN_IMPORT, std::move(id), startLoc };
-        if (id == "component") return { TokenType::TOKEN_COMPONENT, std::move(id), startLoc };
-        if (id == "let") return { TokenType::TOKEN_LET, std::move(id), startLoc };
-        if (id == "trait") return { TokenType::TOKEN_TRAIT, std::move(id), startLoc };
+        static const std::unordered_map<std::string, TokenType> keywordTokens = {
+            {"if", TokenType::TOKEN_IF},
+            {"true", TokenType::TOKEN_BOOL_LIT},
+            {"false", TokenType::TOKEN_BOOL_LIT},
+            {"class", TokenType::TOKEN_CLASS},
+            {"func", TokenType::TOKEN_FUNC},
+            {"new", TokenType::TOKEN_NEW},
+            {"this", TokenType::TOKEN_THIS},
+            {"super", TokenType::TOKEN_SUPER},
+            {"return", TokenType::TOKEN_RETURN},
+            {"public", TokenType::TOKEN_PUBLIC},
+            {"private", TokenType::TOKEN_PRIVATE},
+            {"extends", TokenType::TOKEN_EXTENDS},
+            {"instanceof", TokenType::TOKEN_INSTANCEOF},
+            {"static", TokenType::TOKEN_STATIC},
+            {"using", TokenType::TOKEN_USING},
+            {"None", TokenType::TOKEN_NONE},
+            {"while", TokenType::TOKEN_WHILE},
+            {"for", TokenType::TOKEN_FOR},
+            {"break", TokenType::TOKEN_BREAK},
+            {"continue", TokenType::TOKEN_CONTINUE},
+            {"import", TokenType::TOKEN_IMPORT},
+            {"component", TokenType::TOKEN_COMPONENT},
+            {"let", TokenType::TOKEN_LET},
+            {"trait", TokenType::TOKEN_TRAIT},
+        };
 
+        auto it = keywordTokens.find(id);
+        if (it != keywordTokens.end())
+            return { it->second, std::move(id), startLoc };
         return { TokenType::TOKEN_IDENT, std::move(id), startLoc };
     }
 
