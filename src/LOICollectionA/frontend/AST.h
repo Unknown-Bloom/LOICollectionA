@@ -35,10 +35,10 @@ namespace LOICollection::frontend {
 
     struct TypeInfo {
         TypeKind kind = TypeKind::Unknown;
-        std::string className;
-        std::vector<TypeInfo> variantOptions;
-        std::shared_ptr<TypeInfo> optionalInner;
-        std::string typeVar;
+        std::string className{};
+        std::vector<TypeInfo> variantOptions{};
+        std::shared_ptr<TypeInfo> optionalInner{};
+        std::string typeVar{};
 
         bool operator==(const TypeInfo& other) const {
             return kind == other.kind &&
