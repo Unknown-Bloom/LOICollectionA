@@ -106,3 +106,28 @@ TEST(FunctionTest, ReturnTypeMismatch) {
 TEST(FunctionTest, InfiniteRecursionHitsDepthLimit) {
     EXPECT_THROW(eval("func f() { return f(); } f()"), std::runtime_error);
 }
+
+TEST(FunctionTest, LocalsDoNotCollideAcrossFunctions) {
+    EXPECT_EQ(eval(
+        "func a() -> int { let x = 1; return x; } "
+        "func b() -> string { let x = \"s\"; return x; } "
+        "a()"),
+        "1");
+    EXPECT_EQ(eval(
+        "func a() -> int { let x = 1; return x; } "
+        "func b() -> string { let x = \"s\"; return x; } "
+        "b()"),
+        "s");
+}
+
+TEST(FunctionTest, LocalsDoNotLeakIntoTheGlobalScope) {
+    EXPECT_EQ(eval(
+        "func a() -> void { let hidden = 1; } "
+        "a(); "
+        "let hidden = \"s\"; hidden"),
+        "s");
+}
+
+TEST(FunctionTest, RedeclaringALocalIsRejected) {
+    EXPECT_THROW(eval("func a() -> void { let x = 1; let x = 2; } a();"), std::runtime_error);
+}

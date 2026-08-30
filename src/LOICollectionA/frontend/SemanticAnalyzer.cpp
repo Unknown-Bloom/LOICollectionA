@@ -685,8 +685,12 @@ namespace LOICollection::frontend {
             }
         }
 
-        if (method.body)
+        if (method.body) {
+            this->blockScopes.emplace_back();
+            auto popScope = make_scope_guard([this] { this->blockScopes.pop_back(); });
+
             checkStatement(*method.body, scope);
+        }
 
         if (pushedTypeParams) {
             this->activeTypeParams.clear();
@@ -1115,16 +1119,41 @@ namespace LOICollection::frontend {
                     }
                 }
 
-                if (node.isDeclaration) {
-                    bool alreadyDeclared = !this->blockScopes.empty()
-                        ? this->blockScopes.back().contains(var.name)
-                        : (this->declaredGlobals.contains(var.name) ||
-                           this->globalTypes.contains(var.name));
-                    if (alreadyDeclared) {
+                if (node.isDeclaration && !this->blockScopes.empty()) {
+                    auto& locals = this->blockScopes.back();
+                    if (locals.contains(var.name)) {
                         this->diagnostics.addError(node.loc,
                             "Variable '" + var.name + "' is already declared in this scope");
                         return rhs;
                     }
+
+                    if (node.hasDeclaredType) {
+                        if (!node.value) {
+                            this->diagnostics.addError(node.loc,
+                                "Typed declaration of '" + var.name + "' requires an initializer");
+                            return rhs;
+                        }
+
+                        TypeInfo declared = this->resolveTypeExpr(node.declaredType, node.loc, true);
+                        this->unify(declared, rhs, node.loc, "variable '" + var.name + "'");
+                        if (declared.kind == TypeKind::Optional &&
+                            rhs.kind == TypeKind::Optional && node.value) {
+                            node.value->preserveOptional = true;
+                        }
+                        locals[var.name] = declared;
+                        return rhs;
+                    }
+
+                    locals[var.name] = rhs;
+                    return rhs;
+                }
+
+                if (node.isDeclaration &&
+                    (this->declaredGlobals.contains(var.name) ||
+                     this->globalTypes.contains(var.name))) {
+                    this->diagnostics.addError(node.loc,
+                        "Variable '" + var.name + "' is already declared in this scope");
+                    return rhs;
                 }
 
                 if (!this->blockScopes.empty()) {

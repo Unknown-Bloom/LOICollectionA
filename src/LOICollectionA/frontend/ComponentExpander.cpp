@@ -649,11 +649,14 @@ namespace LOICollection::frontend {
 
             auto expanded = std::make_unique<BlockNode>();
             for (size_t i = 0; i < component.params.size(); ++i) {
-                expanded->addPart(std::make_unique<AssignmentNode>(
+                auto binding = std::make_unique<AssignmentNode>(
                     call.loc,
                     std::make_unique<VariableNode>(call.loc, prefix + component.params[i]),
                     std::move(call.args[i])
-                ));
+                );
+                binding->isDeclaration = true;
+
+                expanded->addPart(std::move(binding));
             }
 
             ctx.stack.push_back(component.name);
