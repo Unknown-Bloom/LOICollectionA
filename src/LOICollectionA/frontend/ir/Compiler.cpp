@@ -80,7 +80,8 @@ namespace LOICollection::frontend::ir {
                 auto type = program.parts[i]->getType();
                 if (type != ASTNode::Type::Class &&
                     type != ASTNode::Type::FunctionDef &&
-                    type != ASTNode::Type::Using) {
+                    type != ASTNode::Type::Using &&
+                    type != ASTNode::Type::Trait) {
                     lastValuePart = i;
                 }
             }
@@ -89,7 +90,8 @@ namespace LOICollection::frontend::ir {
                 auto type = program.parts[i]->getType();
                 if (type == ASTNode::Type::Class ||
                     type == ASTNode::Type::FunctionDef ||
-                    type == ASTNode::Type::Using) {
+                    type == ASTNode::Type::Using ||
+                    type == ASTNode::Type::Trait) {
                     continue;
                 }
 
@@ -156,9 +158,7 @@ namespace LOICollection::frontend::ir {
                 }
 
                 this->compileValue(*member.target, node.loc);
-
-                int idx = this->addConstant(member.memberName);
-                this->current.get().emit(OpCode::STORE_FIELD, idx, node.loc);
+                this->emitStoreField(member);
                 break;
             }
             case ASTNode::Type::Index: {
@@ -211,8 +211,7 @@ namespace LOICollection::frontend::ir {
                 this->compileValue(*member.target, node.loc);
                 this->current.get().emit(OpCode::DUP, 0, node.loc);
 
-                int idx = this->addConstant(member.memberName);
-                this->current.get().emit(OpCode::LOAD_FIELD, idx, node.loc);
+                this->emitFieldAccess(OpCode::LOAD_FIELD_SLOT, OpCode::LOAD_FIELD, member);
                 if (member.type.kind == TypeKind::Optional && !member.preserveOptional)
                     this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
 
@@ -221,7 +220,7 @@ namespace LOICollection::frontend::ir {
 
                 this->current.get().emit(OpCode::DUP, 0, node.loc);
                 this->current.get().emit(OpCode::ROT3, 0, node.loc);
-                this->current.get().emit(OpCode::STORE_FIELD, idx, node.loc);
+                this->emitFieldAccess(OpCode::STORE_FIELD_SLOT, OpCode::STORE_FIELD, member);
                 break;
             }
             case ASTNode::Type::Index: {
@@ -274,13 +273,71 @@ namespace LOICollection::frontend::ir {
     void Compiler::visit(ForInNode& node) {
         size_t uid = this->forInCounter++;
 
-        if (node.iterable->getType() == ASTNode::Type::Range)
-            this->compileForInRange(node, uid);
+        auto protocol = iterableProtocol(node.iterable->getType(), node.iterable->type, this->classLookup());
+        if (!protocol) {
+            this->diagnostics.addError(node.loc,
+                "for-in iterable does not provide an iteration protocol");
+
+            return;
+        }
+
+        if (protocol->shape == IterableShape::Counter)
+            this->compileForInCounter(node, uid);
         else
-            this->compileForInArray(node, uid);
+            this->compileForInIterable(node, uid, *protocol);
     }
 
-    void Compiler::compileForInArray(ForInNode& node, size_t uid) {
+    void Compiler::emitIterableLength(
+        const IterableProtocol& protocol, int seqSlot, const SourceLocation& loc
+    ) {
+        this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
+
+        if (protocol.shape == IterableShape::Convention) {
+            if (ClassCall::getInstance().isRegistered(protocol.className)) {
+                int metaIdx = this->addNativeCall(protocol.className, std::string(lengthMethod), 0);
+                this->current.get().emit(OpCode::CALL_NATIVE_METHOD, metaIdx, loc);
+
+                return;
+            }
+
+            int metaIdx = this->addByNameCall(std::string(lengthMethod), 0);
+            this->current.get().emit(OpCode::CALL_METHOD_BY_NAME, metaIdx, loc);
+
+            return;
+        }
+
+        this->current.get().emit(OpCode::LOAD_LEN, 0, loc);
+    }
+
+    void Compiler::emitIterableElement(
+        const IterableProtocol& protocol, int seqSlot, int idxSlot, const SourceLocation& loc
+    ) {
+        if (protocol.shape == IterableShape::Convention) {
+            if (ClassCall::getInstance().isRegistered(protocol.className)) {
+                this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, loc);
+                this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
+
+                int metaIdx = this->addNativeCall(protocol.className, std::string(elementMethod), 1);
+                this->current.get().emit(OpCode::CALL_NATIVE_METHOD, metaIdx, loc);
+
+                return;
+            }
+
+            this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
+            this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, loc);
+
+            int metaIdx = this->addByNameCall(std::string(elementMethod), 1);
+            this->current.get().emit(OpCode::CALL_METHOD_BY_NAME, metaIdx, loc);
+
+            return;
+        }
+
+        this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
+        this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, loc);
+        this->current.get().emit(OpCode::LOAD_INDEX, 0, loc);
+    }
+
+    void Compiler::compileForInIterable(ForInNode& node, size_t uid, const IterableProtocol& protocol) {
         const int seqSlot = this->declareSlot("__forin_seq_" + std::to_string(uid));
         const int idxSlot = this->declareSlot("__forin_idx_" + std::to_string(uid));
         const int elemSlot = this->declareSlot(node.elementVar);
@@ -296,8 +353,7 @@ namespace LOICollection::frontend::ir {
         size_t loopStart = this->current.get().currentIP();
 
         this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
-        this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, node.loc);
-        this->current.get().emit(OpCode::LOAD_LEN, 0, node.loc);
+        this->emitIterableLength(protocol, seqSlot, node.loc);
         this->current.get().emit(OpCode::CMP_LT, 0, node.loc);
 
         size_t jmpFalseIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
@@ -305,9 +361,7 @@ namespace LOICollection::frontend::ir {
         this->loopStack.push_back(LoopContext{});
         this->loopStack.back().continueTarget = loopStart;
 
-        this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, node.loc);
-        this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
-        this->current.get().emit(OpCode::LOAD_INDEX, 0, node.loc);
+        this->emitIterableElement(protocol, seqSlot, idxSlot, node.loc);
         this->current.get().emit(OpCode::STORE_SLOT, elemSlot, node.loc);
 
         if (indexSlot >= 0) {
@@ -341,7 +395,7 @@ namespace LOICollection::frontend::ir {
         this->current.get().emit(OpCode::PUSH_STR, emptyIdx, node.loc);
     }
 
-    void Compiler::compileForInRange(ForInNode& node, size_t uid) {
+    void Compiler::compileForInCounter(ForInNode& node, size_t uid) {
         auto& range = static_cast<RangeNode&>(*node.iterable);
 
         const int idxSlot = this->declareSlot("__forin_idx_" + std::to_string(uid));
@@ -1062,8 +1116,7 @@ namespace LOICollection::frontend::ir {
                     this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
                     break;
                 default: {
-                    int idx = this->addConstant(node.memberName);
-                    this->current.get().emit(OpCode::LOAD_FIELD, idx, node.loc);
+                    this->emitFieldAccess(OpCode::LOAD_FIELD_SLOT, OpCode::LOAD_FIELD, node);
                     break;
                 }
             }
@@ -1091,10 +1144,7 @@ namespace LOICollection::frontend::ir {
                 break;
         }
 
-        this->compileValue(*node.target, node.loc);
-
-        int idx = this->addConstant(node.memberName);
-        this->current.get().emit(OpCode::LOAD_FIELD, idx, node.loc);
+        this->emitLoadField(node);
 
         if (node.type.kind == TypeKind::Optional && !node.preserveOptional)
             this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
@@ -1146,6 +1196,16 @@ namespace LOICollection::frontend::ir {
 
             if (bindsReceiver && node.args[i]->getType() == ASTNode::Type::Lambda)
                 callbackArgs.push_back(static_cast<int>(i));
+        }
+
+        if (node.dynamicDispatch) {
+            this->compileValue(*node.target, node.loc);
+            for (int arg : callbackArgs)
+                this->current.get().emit(
+                    OpCode::BIND_THIS, static_cast<int>(node.args.size()) - arg, node.loc);
+            int metaIdx = this->addByNameCall(node.methodName, static_cast<int>(node.args.size()));
+            this->current.get().emit(OpCode::CALL_METHOD_BY_NAME, metaIdx, node.loc);
+            return;
         }
 
         if (node.isStaticCall) {
@@ -1388,6 +1448,11 @@ namespace LOICollection::frontend::ir {
         return static_cast<int>(this->current.get().virtualCalls.size() - 1);
     }
 
+    int Compiler::addByNameCall(const std::string& methodName, int argCount) {
+        this->current.get().byNameCalls.push_back({methodName, argCount});
+        return static_cast<int>(this->current.get().byNameCalls.size() - 1);
+    }
+
     int Compiler::addSuperCall(int constructorIndex, int argCount) {
         this->current.get().superCalls.push_back({constructorIndex, argCount});
         return static_cast<int>(this->current.get().superCalls.size() - 1);
@@ -1445,6 +1510,51 @@ namespace LOICollection::frontend::ir {
         }
 
         this->current.get().emit(OpCode::STORE_VAR, this->addConstant(name), loc);
+    }
+
+    int Compiler::fieldSlotOf(const TypeInfo& owner, const std::string& memberName) const {
+        if (owner.kind != TypeKind::Object)
+            return -1;
+
+        auto classIt = this->classIndices.find(owner.className);
+        if (classIt != this->classIndices.end()) {
+            const auto& names = this->chunk.classes[static_cast<size_t>(classIt->second)].fieldNames;
+
+            auto it = std::ranges::find(names, memberName);
+            return it == names.end() ? -1 : static_cast<int>(std::distance(names.begin(), it));
+        }
+
+        const auto fields = ClassCall::getInstance().getFields(owner.className);
+
+        auto it = std::ranges::find(fields, memberName);
+        return it == fields.end() ? -1 : static_cast<int>(std::distance(fields.begin(), it));
+    }
+
+    void Compiler::emitFieldAccess(OpCode slotOp, OpCode namedOp, const MemberAccessNode& node) {
+        int slot = this->fieldSlotOf(node.target->type, node.memberName);
+        if (slot >= 0) {
+            this->current.get().emit(slotOp, slot, node.loc);
+            return;
+        }
+
+        this->current.get().emit(namedOp, this->addConstant(node.memberName), node.loc);
+    }
+
+    void Compiler::emitLoadField(const MemberAccessNode& node) {
+        this->compileValue(*node.target, node.loc);
+        this->emitFieldAccess(OpCode::LOAD_FIELD_SLOT, OpCode::LOAD_FIELD, node);
+    }
+
+    void Compiler::emitStoreField(const MemberAccessNode& node) {
+        this->emitFieldAccess(OpCode::STORE_FIELD_SLOT, OpCode::STORE_FIELD, node);
+    }
+
+    ClassLookup Compiler::classLookup() const {
+        return [this](const std::string& name) -> ClassNode* {
+            auto it = this->classNodes.find(name);
+
+            return it == this->classNodes.end() ? nullptr : &it->second.get();
+        };
     }
 
     std::string Compiler::methodSignature(const MethodDecl& method) const {

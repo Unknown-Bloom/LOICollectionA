@@ -178,8 +178,8 @@ TEST(VMComparisonTest, UnknownOperator) {
 
 TEST(VMInlineCacheTest, RepeatedNativeFunctionCalls) {
     EXPECT_EQ(eval(
-        "i = 0; "
-        "s = 0; "
+        "let i = 0; "
+        "let s = 0; "
         "while (i < 4) [ "
         "    s = s + math::abs(0 - i - 1); "
         "    i = i + 1; "
@@ -189,8 +189,8 @@ TEST(VMInlineCacheTest, RepeatedNativeFunctionCalls) {
 
 TEST(VMInlineCacheTest, RepeatedNativeValueMethodCalls) {
     EXPECT_EQ(eval(
-        "arr = []; "
-        "i = 0; "
+        "let arr = []; "
+        "let i = 0; "
         "while (i < 3) [ "
         "    arr.push(i); "
         "    i = i + 1; "
@@ -200,8 +200,8 @@ TEST(VMInlineCacheTest, RepeatedNativeValueMethodCalls) {
 
 TEST(VMInlineCacheTest, MixedShapeNativeCallsStayCorrect) {
     EXPECT_EQ(eval(
-        "i = 0; "
-        "s = \"\"; "
+        "let i = 0; "
+        "let s = \"\"; "
         "while (i < 2) [ "
         "    s = s + math::abs(0 - i); "
         "    s = s + math::abs(i - 0.5); "

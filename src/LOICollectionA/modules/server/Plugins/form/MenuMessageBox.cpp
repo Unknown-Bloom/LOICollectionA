@@ -32,9 +32,9 @@ namespace LOICollection::server::Plugins {
         auto obj = std::make_shared<Object>();
         obj->className = "MenuMessageBoxResult";
         obj->classIndex = -1;
-        obj->fields["closeReason"] = handle->closeReason;
-        obj->fields["selection"] = handle->selection;
-        obj->fields["action"] = handle->resultAction ? TypedValue(handle->resultAction) : TypedValue{};
+        obj->assign("closeReason", handle->closeReason);
+        obj->assign("selection", handle->selection);
+        obj->assign("action", handle->resultAction ? TypedValue(handle->resultAction) : TypedValue{});
         return obj;
     }
 

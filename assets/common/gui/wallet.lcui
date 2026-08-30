@@ -1,50 +1,50 @@
 import "generic.lcui";
 
-infoData = GUIManager::request("wallet.info", []);
+let infoData = GUIManager::request("wallet.info", []);
 
-navigateOnline = new GlobalValue();
+let navigateOnline = new GlobalValue();
 navigateOnline.value = false;
 
-navigateOffline = new GlobalValue();
+let navigateOffline = new GlobalValue();
 navigateOffline.value = false;
 
-navigateRedenvelope = new GlobalValue();
+let navigateRedenvelope = new GlobalValue();
 navigateRedenvelope.value = false;
 
-navigateWealth = new GlobalValue();
+let navigateWealth = new GlobalValue();
 navigateWealth.value = false;
 
-navigateHistory = new GlobalValue();
+let navigateHistory = new GlobalValue();
 navigateHistory.value = false;
 
-navigateBank = new GlobalValue();
+let navigateBank = new GlobalValue();
 navigateBank.value = false;
 
-navigateRank = new GlobalValue();
+let navigateRank = new GlobalValue();
 navigateRank.value = false;
 
-onlineOption = new ButtonOptions();
+let onlineOption = new ButtonOptions();
 onlineOption.tooltip = {tr("wallet.gui.transfer.tooltip")};
 
-offlineOption = new ButtonOptions();
+let offlineOption = new ButtonOptions();
 offlineOption.tooltip = {tr("wallet.gui.offlineTransfer.tooltip")};
 
-redenvelopeOption = new ButtonOptions();
+let redenvelopeOption = new ButtonOptions();
 redenvelopeOption.tooltip = {tr("wallet.gui.redenvelope.tooltip")};
 
-wealthOption = new ButtonOptions();
+let wealthOption = new ButtonOptions();
 wealthOption.tooltip = {tr("wallet.gui.wealth.tooltip")};
 
-historyOption = new ButtonOptions();
+let historyOption = new ButtonOptions();
 historyOption.tooltip = {tr("wallet.gui.history.tooltip")};
 
-bankOption = new ButtonOptions();
+let bankOption = new ButtonOptions();
 bankOption.tooltip = {tr("wallet.gui.bank.tooltip")};
 
-rankOption = new ButtonOptions();
+let rankOption = new ButtonOptions();
 rankOption.tooltip = {tr("wallet.gui.rank.tooltip")};
 
-open = new CustomForm("wallet.open", {tr("wallet.gui.title")}) {
+let open = new CustomForm("wallet.open", {tr("wallet.gui.title")}) {
     label(std::format({tr("wallet.gui.label")}, [ infoData[0], infoData[1] ]), new TextOptions());
     SectionHeader();
     button({tr("wallet.gui.transfer")}, on: func () -> void {
@@ -132,14 +132,14 @@ open = new CustomForm("wallet.open", {tr("wallet.gui.title")}) {
 };
 
 func buildTransferContent(transferType: string, index: int) -> void {
-    targetData = GUIManager::request("wallet.transfer.info", [ transferType, index ]);
+    let targetData = GUIManager::request("wallet.transfer.info", [ transferType, index ]);
     infoData = GUIManager::request("wallet.info", []);
 
-    amountField = new ObservableString("", true);
-    submitDone = new GlobalValue();
+    let amountField = new ObservableString("", true);
+    let submitDone = new GlobalValue();
     submitDone.value = false;
 
-    content = new CustomForm("wallet.content", {tr("wallet.gui.title")}) {
+    let content = new CustomForm("wallet.content", {tr("wallet.gui.title")}) {
         label(
             std::format({tr("wallet.gui.label")}, [ infoData[0], infoData[1] ]) + "\n" +
             std::format({tr("wallet.gui.transfer.label2")}, [ targetData[1] ]),
@@ -148,15 +148,15 @@ func buildTransferContent(transferType: string, index: int) -> void {
         SectionHeader();
         textField({tr("wallet.gui.transfer.input")}, amountField, transferInputOption);
         ConfirmBar(saveLabel(), func () -> void {
-            submitResult = GUIManager::request("wallet.transfer.submit", [ targetData[0], targetData[1], transferType, amountField.getData() ]);
+            let submitResult = GUIManager::request("wallet.transfer.submit", [ targetData[0], targetData[1], transferType, amountField.getData() ]);
 
             if (submitResult[1] == true) [
-                confirmUuid = targetData[0];
-                confirmName = targetData[1];
-                confirmMoney = amountField.getData();
-                confirmTransferType = transferType;
+                let confirmUuid = targetData[0];
+                let confirmName = targetData[1];
+                let confirmMoney = amountField.getData();
+                let confirmTransferType = transferType;
 
-                confirmTransfer = new MessageBox("wallet.confirm", {tr("wallet.gui.title")}) {
+                let confirmTransfer = new MessageBox("wallet.confirm", {tr("wallet.gui.title")}) {
                     body(std::format({tr("wallet.gui.transfer.confirm")}, [ submitResult[2], submitResult[3] ]));
                     button1(saveLabel());
                     button2(cancelLabel());
@@ -187,10 +187,10 @@ func buildTransferContent(transferType: string, index: int) -> void {
     GUIManager::switchTo("wallet.content", 1);
 }
 
-transferInputOption = new TextFieldOptions();
+let transferInputOption = new TextFieldOptions();
 transferInputOption.description = {tr("wallet.gui.transfer.input.placeholder")};
 
-transferOnline = new PaginatedForm("wallet.transfer.online", {tr("wallet.gui.title")}, GUIManager::value("wallet.players.online"), 10) {
+let transferOnline = new PaginatedForm("wallet.transfer.online", {tr("wallet.gui.title")}, GUIManager::value("wallet.players.online"), 10) {
     label({tr("wallet.gui.transfer.label1")}, new TextOptions());
     SectionHeader();
     PageControls();
@@ -205,7 +205,7 @@ transferOnline = new PaginatedForm("wallet.transfer.online", {tr("wallet.gui.tit
     show();
 };
 
-transferOffline = new PaginatedForm("wallet.transfer.offline", {tr("wallet.gui.title")}, GUIManager::value("wallet.players.offline"), 10) {
+let transferOffline = new PaginatedForm("wallet.transfer.offline", {tr("wallet.gui.title")}, GUIManager::value("wallet.players.offline"), 10) {
     label({tr("wallet.gui.transfer.label1")}, new TextOptions());
     SectionHeader();
     PageControls();
@@ -220,26 +220,26 @@ transferOffline = new PaginatedForm("wallet.transfer.offline", {tr("wallet.gui.t
     show();
 };
 
-redeemScore = new ObservableString("", true);
-redeemCount = new ObservableString("", true);
-redeemKey = new ObservableString("", true);
-redeemTargets = new ObservableString("", true);
-redeemDone = new GlobalValue();
+let redeemScore = new ObservableString("", true);
+let redeemCount = new ObservableString("", true);
+let redeemKey = new ObservableString("", true);
+let redeemTargets = new ObservableString("", true);
+let redeemDone = new GlobalValue();
 redeemDone.value = false;
 
-redeemInputOne = new TextFieldOptions();
+let redeemInputOne = new TextFieldOptions();
 redeemInputOne.description = {tr("wallet.gui.redenvelope.input1.placeholder")};
 
-redeemInputTwo = new TextFieldOptions();
+let redeemInputTwo = new TextFieldOptions();
 redeemInputTwo.description = {tr("wallet.gui.redenvelope.input2.placeholder")};
 
-redeemInputThree = new TextFieldOptions();
+let redeemInputThree = new TextFieldOptions();
 redeemInputThree.description = {tr("wallet.gui.redenvelope.input3.placeholder")};
 
-redeemInputFour = new TextFieldOptions();
+let redeemInputFour = new TextFieldOptions();
 redeemInputFour.description = {tr("wallet.gui.redenvelope.input4.placeholder")};
 
-redenvelope = new CustomForm("wallet.redenvelope", {tr("wallet.gui.title")}) {
+let redenvelope = new CustomForm("wallet.redenvelope", {tr("wallet.gui.title")}) {
     label(std::format({tr("wallet.gui.label")}, [ infoData[0], infoData[1] ]), new TextOptions());
     SectionHeader();
     textField({tr("wallet.gui.redenvelope.input1")}, redeemScore, redeemInputOne);
@@ -247,7 +247,7 @@ redenvelope = new CustomForm("wallet.redenvelope", {tr("wallet.gui.title")}) {
     textField({tr("wallet.gui.redenvelope.input3")}, redeemKey, redeemInputThree);
     textField({tr("wallet.gui.redenvelope.input4")}, redeemTargets, redeemInputFour);
     ConfirmBar(saveLabel(), func () -> void {
-        submitResult = GUIManager::request("wallet.redenvelope.submit", [ redeemScore.getData(), redeemCount.getData(), redeemKey.getData(), redeemTargets.getData() ]);
+        let submitResult = GUIManager::request("wallet.redenvelope.submit", [ redeemScore.getData(), redeemCount.getData(), redeemKey.getData(), redeemTargets.getData() ]);
 
         redeemDone.value = submitResult[0];
         this.close();
@@ -260,7 +260,7 @@ redenvelope = new CustomForm("wallet.redenvelope", {tr("wallet.gui.title")}) {
     show();
 };
 
-history = new PaginatedForm("wallet.history", {tr("wallet.gui.title")}, GUIManager::value("wallet.history"), 10) {
+let history = new PaginatedForm("wallet.history", {tr("wallet.gui.title")}, GUIManager::value("wallet.history"), 10) {
     label({tr("wallet.gui.history.label")}, new TextOptions());
     SectionHeader();
     previousButton(pagePrevious());
@@ -274,16 +274,16 @@ history = new PaginatedForm("wallet.history", {tr("wallet.gui.title")}, GUIManag
     show();
 };
 
-bankInfoData = GUIManager::request("wallet.bank.info", []);
+let bankInfoData = GUIManager::request("wallet.bank.info", []);
 
-bankDepositInput = new ObservableString("", true);
-bankDone = new GlobalValue();
+let bankDepositInput = new ObservableString("", true);
+let bankDone = new GlobalValue();
 bankDone.value = false;
 
-bankDepositInputOption = new TextFieldOptions();
+let bankDepositInputOption = new TextFieldOptions();
 bankDepositInputOption.description = {tr("wallet.gui.bank.deposit.input.placeholder")};
 
-bank = new CustomForm("wallet.bank", {tr("wallet.gui.title")}) {
+let bank = new CustomForm("wallet.bank", {tr("wallet.gui.title")}) {
     label(
         std::format({tr("wallet.gui.label")}, [ infoData[0], infoData[1] ]) + "\n" +
         std::format({tr("wallet.gui.bank.label")}, [ bankInfoData[0], bankInfoData[1] ]),
@@ -292,7 +292,7 @@ bank = new CustomForm("wallet.bank", {tr("wallet.gui.title")}) {
     SectionHeader();
     textField({tr("wallet.gui.bank.deposit.input")}, bankDepositInput, bankDepositInputOption);
     button({tr("wallet.gui.bank.deposit.button")}, on: func () -> void {
-        bankResult = GUIManager::request("wallet.bank.deposit", [ bankDepositInput.getData() ]);
+        let bankResult = GUIManager::request("wallet.bank.deposit", [ bankDepositInput.getData() ]);
 
         bankDone.value = bankResult[0];
         this.close();
@@ -311,9 +311,9 @@ bank = new CustomForm("wallet.bank", {tr("wallet.gui.title")}) {
     show();
 };
 
-rankSelfData = GUIManager::request("wallet.rank.self", []);
+let rankSelfData = GUIManager::request("wallet.rank.self", []);
 
-rank = new PaginatedForm("wallet.rank", {tr("wallet.gui.title")}, GUIManager::value("wallet.rank"), 10) {
+let rank = new PaginatedForm("wallet.rank", {tr("wallet.gui.title")}, GUIManager::value("wallet.rank"), 10) {
     label(
         std::format({tr("wallet.gui.rank.label")}, [ rankSelfData[0], rankSelfData[1] ]),
         new TextOptions()

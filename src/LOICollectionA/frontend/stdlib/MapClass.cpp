@@ -53,7 +53,7 @@ namespace MapClass {
             for (const auto& [key, value] : handle.entries)
                 keys->elements.push_back(key);
 
-            self->fields["keys"] = keys;
+            self->assign("keys", keys);
         }
     }
 
@@ -111,6 +111,16 @@ namespace MapClass {
         return static_cast<int>(handleOf(self).entries.size());
     }
 
+    ll::Expected<TypedValue> element(const ObjectRef& self, const CallbackTypeValues& args) {
+        auto& entries = handleOf(self).entries;
+
+        int index = std::get<int>(args[0]);
+        if (index < 0 || static_cast<size_t>(index) >= entries.size())
+            return ll::makeStringError("Map element index out of range");
+
+        return entries[static_cast<size_t>(index)].first;
+    }
+
     ll::Expected<TypedValue> remove(const ObjectRef& self, const CallbackTypeValues& args) {
         auto& handle = handleOf(self);
 
@@ -134,6 +144,7 @@ namespace MapClass {
         classes.registerClass("Map", { "keys" });
         classes.registerConstructor("Map", makeMap, {});
         classes.registerMethod("Map", "length", length, {});
+        classes.registerMethod("Map", "element", element, { ParamType::INT });
 
         for (ParamType key : { ParamType::INT, ParamType::FLOAT, ParamType::STRING, ParamType::BOOL }) {
             classes.registerMethod("Map", "get", get, { key });

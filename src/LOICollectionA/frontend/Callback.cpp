@@ -346,6 +346,7 @@ namespace LOICollection::frontend {
     struct ClassCall::Impl {
         struct NativeClassInfo {
             std::vector<std::string> fields;
+            FieldLayoutPtr layout;
             std::unordered_map<std::string, ValueNode::ValueType> fieldDefaults;
             std::vector<std::string> staticFields;
             std::unordered_map<std::string, ValueNode::ValueType> staticFieldValues;
@@ -362,6 +363,25 @@ namespace LOICollection::frontend {
         std::unordered_map<std::string, NativeClassInfo> classes;
 
         uint64_t epoch = 1;
+
+        static void syncLayout(NativeClassInfo& info) {
+            info.layout = std::make_shared<const FieldLayout>(info.fields);
+        }
+
+        static ObjectRef instantiate(const std::string& name, const NativeClassInfo& info) {
+            auto obj = std::make_shared<Object>();
+            obj->className = name;
+            obj->classIndex = -1;
+            obj->layout = info.layout;
+            obj->resize(info.fields.size());
+
+            for (size_t i = 0; i < info.fields.size(); ++i) {
+                auto defaultIt = info.fieldDefaults.find(info.fields[i]);
+                obj->slots[i] = defaultIt == info.fieldDefaults.end() ? ValueNode::ValueType{} : defaultIt->second;
+            }
+
+            return obj;
+        }
     };
 
     ClassCall::ClassCall() : mImpl(std::make_unique<Impl>()) {}
@@ -372,6 +392,23 @@ namespace LOICollection::frontend {
         return instance;
     }
 
+    FieldLayoutPtr ClassCall::layoutOf(const std::string& name) const {
+        auto it = this->mImpl->classes.find(name);
+        return it == this->mImpl->classes.end() ? nullptr : it->second.layout;
+    }
+
+    void Object::adoptLayout() {
+        if (this->layout)
+            return;
+
+        FieldLayoutPtr adopted = ClassCall::getInstance().layoutOf(this->className);
+        this->layout = adopted
+            ? std::move(adopted)
+            : std::make_shared<const FieldLayout>(std::vector<std::string>{});
+
+        this->slots.resize(this->layout->names.size());
+    }
+
     void ClassCall::registerClass(const std::string& name, const std::vector<std::string>& fields) {
         auto& info = this->mImpl->classes[name];
         info.fields = fields;
@@ -380,6 +417,7 @@ namespace LOICollection::frontend {
         for (const auto& field : fields)
             info.fieldDefaults[field] = 0;
 
+        Impl::syncLayout(info);
         ++this->mImpl->epoch;
     }
 
@@ -425,8 +463,10 @@ namespace LOICollection::frontend {
 
     void ClassCall::registerField(const std::string& className, const std::string& field, const TypedValue& defaultValue) {
         auto& info = this->mImpl->classes[className];
-        if (std::ranges::find(info.fields, field) == info.fields.end())
+        if (std::ranges::find(info.fields, field) == info.fields.end()) {
             info.fields.push_back(field);
+            Impl::syncLayout(info);
+        }
 
         info.fieldDefaults[field] = defaultValue;
         ++this->mImpl->epoch;
@@ -562,6 +602,14 @@ namespace LOICollection::frontend {
         return result;
     }
 
+    std::vector<std::string> ClassCall::getClassNames() const {
+        std::vector<std::string> names;
+        names.reserve(this->mImpl->classes.size());
+        for (const auto& [name, info] : this->mImpl->classes)
+            names.push_back(name);
+        return names;
+    }
+
     std::string ClassCall::exportShape() const {
         std::vector<std::string> parts;
 
@@ -654,13 +702,7 @@ namespace LOICollection::frontend {
         }
 
         if (info.constructors.empty() && info.constructorCombinations.empty() && args.empty()) {
-            auto obj = std::make_shared<Object>();
-            obj->className = name;
-            obj->classIndex = -1;
-            for (const auto& field : info.fields) {
-                auto defaultIt = info.fieldDefaults.find(field);
-                obj->fields[field] = defaultIt == info.fieldDefaults.end() ? ValueNode::ValueType{} : defaultIt->second;
-            }
+            auto obj = Impl::instantiate(name, info);
 
             return obj;
         }
@@ -845,13 +887,7 @@ namespace LOICollection::frontend {
         }
 
         if (info.constructors.empty() && info.constructorCombinations.empty() && args.empty()) {
-            auto obj = std::make_shared<Object>();
-            obj->className = name;
-            obj->classIndex = -1;
-            for (const auto& field : info.fields) {
-                auto defaultIt = info.fieldDefaults.find(field);
-                obj->fields[field] = defaultIt == info.fieldDefaults.end() ? ValueNode::ValueType{} : defaultIt->second;
-            }
+            auto obj = Impl::instantiate(name, info);
 
             return obj;
         }

@@ -107,8 +107,8 @@ namespace LOICollection::server::Plugins {
                         auto obj = std::make_shared<frontend::Object>();
                         obj->className = "DropdownItem";
                         obj->classIndex = -1;
-                        obj->fields["label"] = k;
-                        obj->fields["value"] = static_cast<int>(idx);
+                        obj->assign("label", k);
+                        obj->assign("value", static_cast<int>(idx));
 
                         return obj;
                     });
@@ -128,7 +128,11 @@ namespace LOICollection::server::Plugins {
                         arrPtr->elements.at(static_cast<int>(std::get<float>(args->elements[0])))
                     );
 
-                    return this->set(player, std::get<std::string>(data->fields.at("label")))
+                    auto* label = data->find("label");
+                    if (!label)
+                        return ll::makeStringError("language.callback: DropdownItem is missing 'label'");
+
+                    return this->set(player, std::get<std::string>(*label))
                         .transform([this, &player]() -> void {
                             this->getLogger()->info(LOICollectionAPI::CallbackUtils::getInstance().translate(tr({}, "language.log"), player));
                         });

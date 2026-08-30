@@ -1,8 +1,8 @@
 import "generic.lcui";
 
-lang = new ObservableNumber(0.0, true);
+let lang = new ObservableNumber(0.0, true);
 
-form = new CustomForm("language.gui", {tr("language.gui.title")}) {
+let form = new CustomForm("language.gui", {tr("language.gui.title")}) {
     label({tr("language.gui.label")}, new TextOptions());
     label(std::format({tr("language.gui.lang")}, [ {tr("name")} ]), new TextOptions());
     SectionHeader();

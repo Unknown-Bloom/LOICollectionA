@@ -1,18 +1,18 @@
 import "generic.lcui";
 
-navigateAdd = new GlobalValue();
+let navigateAdd = new GlobalValue();
 navigateAdd.value = false;
 
-navigateRemove = new GlobalValue();
+let navigateRemove = new GlobalValue();
 navigateRemove.value = false;
 
-addOption = new ButtonOptions();
+let addOption = new ButtonOptions();
 addOption.tooltip = {tr("chat.gui.manager.add.tooltip")};
 
-removeOption = new ButtonOptions();
+let removeOption = new ButtonOptions();
 removeOption.tooltip = {tr("chat.gui.manager.remove.tooltip")};
 
-manage = new CustomForm("chat.manage", {tr("chat.gui.title")}) {
+let manage = new CustomForm("chat.manage", {tr("chat.gui.title")}) {
     label({tr("chat.gui.label")}, new TextOptions());
     SectionHeader();
     button({tr("chat.gui.manager.add")}, on: func () -> void {
@@ -43,19 +43,19 @@ manage = new CustomForm("chat.manage", {tr("chat.gui.title")}) {
     show();
 };
 
-navigateTitle = new GlobalValue();
+let navigateTitle = new GlobalValue();
 navigateTitle.value = false;
 
-navigateBlacklist = new GlobalValue();
+let navigateBlacklist = new GlobalValue();
 navigateBlacklist.value = false;
 
-setTitleOption = new ButtonOptions();
+let setTitleOption = new ButtonOptions();
 setTitleOption.tooltip = {tr("chat.gui.setTitle.tooltip")};
 
-setBlacklistOption = new ButtonOptions();
+let setBlacklistOption = new ButtonOptions();
 setBlacklistOption.tooltip = {tr("chat.gui.setBlacklist.tooltip")};
 
-setting = new CustomForm("chat.setting", {tr("chat.gui.title")}) {
+let setting = new CustomForm("chat.setting", {tr("chat.gui.title")}) {
     label({tr("chat.gui.label")}, new TextOptions());
     SectionHeader();
     button({tr("chat.gui.setTitle")}, on: func () -> void {
@@ -86,20 +86,20 @@ setting = new CustomForm("chat.setting", {tr("chat.gui.title")}) {
     show();
 };
 
-addInputOne = new TextFieldOptions();
+let addInputOne = new TextFieldOptions();
 addInputOne.description = {tr("chat.gui.manager.add.input1.placeholder")};
 
-addInputTwo = new TextFieldOptions();
+let addInputTwo = new TextFieldOptions();
 addInputTwo.description = {tr("chat.gui.manager.add.input2.placeholder")};
 
-add = new PaginatedForm("chat.add", {tr("chat.gui.title")}, GUIManager::value("chat.players"), 10) {
+let add = new PaginatedForm("chat.add", {tr("chat.gui.title")}, GUIManager::value("chat.players"), 10) {
     label({tr("chat.gui.manager.add.label")}, new TextOptions());
     SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
         if (result.selection != "") [
-            playerData = GUIManager::request("chat.player.info", [ result.selectionIndex ]);
+            let playerData = GUIManager::request("chat.player.info", [ result.selectionIndex ]);
 
             buildContentAdd(playerData[0]);
         ]
@@ -108,18 +108,18 @@ add = new PaginatedForm("chat.add", {tr("chat.gui.title")}, GUIManager::value("c
 };
 
 func buildContentAdd(targetUuid: string) -> void {
-    titleField = new ObservableString("", true);
-    timeField = new ObservableString("", true);
-    submitDone = new GlobalValue();
+    let titleField = new ObservableString("", true);
+    let timeField = new ObservableString("", true);
+    let submitDone = new GlobalValue();
     submitDone.value = false;
 
-    content = new CustomForm("chat.content.add", {tr("chat.gui.title")}) {
+    let content = new CustomForm("chat.content.add", {tr("chat.gui.title")}) {
         label({tr("chat.gui.label")}, new TextOptions());
         SectionHeader();
         textField({tr("chat.gui.manager.add.input1")}, titleField, addInputOne);
         textField({tr("chat.gui.manager.add.input2")}, timeField, addInputTwo);
         ConfirmBar(saveLabel(), func () -> void {
-            submitResult = GUIManager::request("chat.title.add", [ targetUuid, titleField.getData(), timeField.getData() ]);
+            let submitResult = GUIManager::request("chat.title.add", [ targetUuid, titleField.getData(), timeField.getData() ]);
 
             submitDone.value = submitResult[0];
             this.close();
@@ -134,14 +134,14 @@ func buildContentAdd(targetUuid: string) -> void {
     GUIManager::switchTo("chat.content.add", 1);
 }
 
-remove = new PaginatedForm("chat.remove", {tr("chat.gui.title")}, GUIManager::value("chat.players"), 10) {
+let remove = new PaginatedForm("chat.remove", {tr("chat.gui.title")}, GUIManager::value("chat.players"), 10) {
     label({tr("chat.gui.manager.remove.label")}, new TextOptions());
     SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
         if (result.selection != "") [
-            playerData = GUIManager::request("chat.player.info", [ result.selectionIndex ]);
+            let playerData = GUIManager::request("chat.player.info", [ result.selectionIndex ]);
 
             buildContentRemove(playerData[0]);
         ]
@@ -150,9 +150,9 @@ remove = new PaginatedForm("chat.remove", {tr("chat.gui.title")}, GUIManager::va
 };
 
 func buildContentRemove(targetUuid: string) -> void {
-    titlesData = GUIManager::request("chat.titles", [ targetUuid ]);
+    let titlesData = GUIManager::request("chat.titles", [ targetUuid ]);
 
-    content = new PaginatedForm("chat.content.remove", {tr("chat.gui.title")}, titlesData, 10) {
+    let content = new PaginatedForm("chat.content.remove", {tr("chat.gui.title")}, titlesData, 10) {
         label({tr("chat.gui.manager.remove.select.label")}, new TextOptions());
         SectionHeader();
         PageControls();
@@ -171,9 +171,9 @@ func buildContentRemove(targetUuid: string) -> void {
     GUIManager::switchTo("chat.content.remove", 3);
 }
 
-titleInfo = GUIManager::request("chat.title.info", []);
+let titleInfo = GUIManager::request("chat.title.info", []);
 
-title = new PaginatedForm("chat.title", {tr("chat.gui.title")}, GUIManager::value("chat.titles.self"), 10) {
+let title = new PaginatedForm("chat.title", {tr("chat.gui.title")}, GUIManager::value("chat.titles.self"), 10) {
     label(titleInfo[0], new TextOptions());
     SectionHeader();
     PageControls();
@@ -190,13 +190,13 @@ title = new PaginatedForm("chat.title", {tr("chat.gui.title")}, GUIManager::valu
     show();
 };
 
-navigateAddBlacklist = new GlobalValue();
+let navigateAddBlacklist = new GlobalValue();
 navigateAddBlacklist.value = false;
 
-blacklistAddOption = new ButtonOptions();
+let blacklistAddOption = new ButtonOptions();
 blacklistAddOption.tooltip = {tr("chat.gui.setBlacklist.add.tooltip")};
 
-blacklist = new PaginatedForm("chat.blacklist", {tr("chat.gui.title")}, GUIManager::value("chat.blacklists"), 10) {
+let blacklist = new PaginatedForm("chat.blacklist", {tr("chat.gui.title")}, GUIManager::value("chat.blacklists"), 10) {
     label({tr("chat.gui.label")}, new TextOptions());
     SectionHeader();
     PageControls();
@@ -211,7 +211,7 @@ blacklist = new PaginatedForm("chat.blacklist", {tr("chat.gui.title")}, GUIManag
     }, blacklistAddOption);
     show(func (result) -> void {
         if (navigateAddBlacklist.value) [
-            checkData = GUIManager::request("chat.blacklist.check", []);
+            let checkData = GUIManager::request("chat.blacklist.check", []);
             if (checkData[0]) [
                 GUIManager::switchTo("chat.blacklist.add", 3);
             :
@@ -219,9 +219,9 @@ blacklist = new PaginatedForm("chat.blacklist", {tr("chat.gui.title")}, GUIManag
             ]
         :
             if (result.selection != "") [
-                infoData = GUIManager::request("chat.blacklist.info", [ result.selection ]);
+                let infoData = GUIManager::request("chat.blacklist.info", [ result.selection ]);
 
-                info = new CustomForm("chat.blacklist.set", {tr("chat.gui.title")}) {
+                let info = new CustomForm("chat.blacklist.set", {tr("chat.gui.title")}) {
                     label(infoData[0], new TextOptions());
                     SectionHeader();
                     ConfirmBar({tr("chat.gui.setBlacklist.set.remove")}, func () -> void {
@@ -243,7 +243,7 @@ blacklist = new PaginatedForm("chat.blacklist", {tr("chat.gui.title")}, GUIManag
     show();
 };
 
-blacklistAdd = new PaginatedForm("chat.blacklist.add", {tr("chat.gui.title")}, GUIManager::value("chat.players.add"), 10) {
+let blacklistAdd = new PaginatedForm("chat.blacklist.add", {tr("chat.gui.title")}, GUIManager::value("chat.players.add"), 10) {
     label({tr("chat.gui.setBlacklist.add.label")}, new TextOptions());
     SectionHeader();
     PageControls();

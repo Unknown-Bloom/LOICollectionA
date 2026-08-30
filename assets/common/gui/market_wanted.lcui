@@ -1,18 +1,18 @@
 import "generic.lcui";
 
-navigateWantedCreate = new GlobalValue();
+let navigateWantedCreate = new GlobalValue();
 navigateWantedCreate.value = false;
 
-navigateWantedMine = new GlobalValue();
+let navigateWantedMine = new GlobalValue();
 navigateWantedMine.value = false;
 
-createOption = new ButtonOptions();
+let createOption = new ButtonOptions();
 createOption.tooltip = {tr("market.gui.wanted.create.tooltip")};
 
-mineOption = new ButtonOptions();
+let mineOption = new ButtonOptions();
 mineOption.tooltip = {tr("market.gui.wanted.mine.tooltip")};
 
-wanted = new PaginatedForm("market.wanted", {tr("market.gui.title")}, GUIManager::value("market.wanted.items"), 10) {
+let wanted = new PaginatedForm("market.wanted", {tr("market.gui.title")}, GUIManager::value("market.wanted.items"), 10) {
     label({tr("market.gui.wanted.list.label")}, new TextOptions());
     SectionHeader();
     PageControls();
@@ -44,7 +44,7 @@ wanted = new PaginatedForm("market.wanted", {tr("market.gui.title")}, GUIManager
         ]
 
         if (result.selection != "") [
-            idData = GUIManager::request("market.wanted.id", [ result.selectionIndex ]);
+            let idData = GUIManager::request("market.wanted.id", [ result.selectionIndex ]);
 
             buildWantedInfo(idData[0]);
         :
@@ -55,25 +55,25 @@ wanted = new PaginatedForm("market.wanted", {tr("market.gui.title")}, GUIManager
 };
 
 func buildWantedInfo(id: string) -> void {
-    infoData = GUIManager::request("market.wanted.info", [ id ]);
+    let infoData = GUIManager::request("market.wanted.info", [ id ]);
 
-    fillAmount = new ObservableString("", true);
+    let fillAmount = new ObservableString("", true);
 
-    fillOptions = new TextFieldOptions();
+    let fillOptions = new TextFieldOptions();
     fillOptions.description = {tr("market.gui.wanted.fill.amount.placeholder")};
 
-    fillDone = new GlobalValue();
+    let fillDone = new GlobalValue();
     fillDone.value = false;
 
-    fillResult = new GlobalValue();
+    let fillResult = new GlobalValue();
     fillResult.value = true;
 
-    wantedInfo = new CustomForm("market.wanted.info", {tr("market.gui.title")}) {
+    let wantedInfo = new CustomForm("market.wanted.info", {tr("market.gui.title")}) {
         label(infoData[0], new TextOptions());
         SectionHeader();
         textField({tr("market.gui.wanted.fill.amount")}, fillAmount, fillOptions);
         ConfirmBar({tr("market.gui.wanted.fill")}, func () -> void {
-            fillResultData = GUIManager::request("market.wanted.fill.submit", [ id, fillAmount.getData() ]);
+            let fillResultData = GUIManager::request("market.wanted.fill.submit", [ id, fillAmount.getData() ]);
 
             fillResult.value = fillResultData[0];
             fillDone.value = true;
@@ -97,14 +97,14 @@ func buildWantedInfo(id: string) -> void {
 }
 
 func buildWantedInventory() -> void {
-    wantedInventory = new PaginatedForm("market.wanted.inventory", {tr("market.gui.title")}, GUIManager::value("market.sell.inventory"), 10) {
+    let wantedInventory = new PaginatedForm("market.wanted.inventory", {tr("market.gui.title")}, GUIManager::value("market.sell.inventory"), 10) {
         label({tr("market.gui.sell.item.dropdown")}, new TextOptions());
         SectionHeader();
         PageControls();
         closeButton();
         show(func (result) -> void {
             if (result.selection != "") [
-                slotData = GUIManager::request("market.wanted.slot", [ result.selectionIndex ]);
+                let slotData = GUIManager::request("market.wanted.slot", [ result.selectionIndex ]);
 
                 buildWantedCreate(slotData[0]);
             :
@@ -117,33 +117,33 @@ func buildWantedInventory() -> void {
 }
 
 func buildWantedCreate(slot: int) -> void {
-    wantedName = new ObservableString("", true);
-    wantedPrice = new ObservableString("", true);
-    wantedAmount = new ObservableString("", true);
+    let wantedName = new ObservableString("", true);
+    let wantedPrice = new ObservableString("", true);
+    let wantedAmount = new ObservableString("", true);
 
-    nameOptions = new TextFieldOptions();
+    let nameOptions = new TextFieldOptions();
     nameOptions.description = {tr("market.gui.wanted.create.name.placeholder")};
 
-    priceOptions = new TextFieldOptions();
+    let priceOptions = new TextFieldOptions();
     priceOptions.description = {tr("market.gui.wanted.create.price.placeholder")};
 
-    amountOptions = new TextFieldOptions();
+    let amountOptions = new TextFieldOptions();
     amountOptions.description = {tr("market.gui.wanted.create.amount.placeholder")};
 
-    createDone = new GlobalValue();
+    let createDone = new GlobalValue();
     createDone.value = false;
 
-    createResult = new GlobalValue();
+    let createResult = new GlobalValue();
     createResult.value = true;
 
-    wantedCreate = new CustomForm("market.wanted.create", {tr("market.gui.title")}) {
+    let wantedCreate = new CustomForm("market.wanted.create", {tr("market.gui.title")}) {
         label({tr("market.gui.label")}, new TextOptions());
         SectionHeader();
         textField({tr("market.gui.wanted.create.name")}, wantedName, nameOptions);
         textField({tr("market.gui.wanted.create.price")}, wantedPrice, priceOptions);
         textField({tr("market.gui.wanted.create.amount")}, wantedAmount, amountOptions);
         ConfirmBar(saveLabel(), func () -> void {
-            createResultData = GUIManager::request("market.wanted.create.submit", [ slot, wantedName.getData(), wantedPrice.getData(), wantedAmount.getData() ]);
+            let createResultData = GUIManager::request("market.wanted.create.submit", [ slot, wantedName.getData(), wantedPrice.getData(), wantedAmount.getData() ]);
 
             createResult.value = createResultData[0];
             createDone.value = true;
@@ -167,14 +167,14 @@ func buildWantedCreate(slot: int) -> void {
 }
 
 func buildWantedMine() -> void {
-    wantedMine = new PaginatedForm("market.wanted.mine", {tr("market.gui.title")}, GUIManager::value("market.my.wanted"), 10) {
+    let wantedMine = new PaginatedForm("market.wanted.mine", {tr("market.gui.title")}, GUIManager::value("market.my.wanted"), 10) {
         label({tr("market.gui.wanted.mine.label")}, new TextOptions());
         SectionHeader();
         PageControls();
         closeButton();
         show(func (result) -> void {
             if (result.selection != "") [
-                idData = GUIManager::request("market.my.wanted.id", [ result.selectionIndex ]);
+                let idData = GUIManager::request("market.my.wanted.id", [ result.selectionIndex ]);
 
                 buildWantedCancel(idData[0]);
             :
@@ -187,19 +187,19 @@ func buildWantedMine() -> void {
 }
 
 func buildWantedCancel(id: string) -> void {
-    infoData = GUIManager::request("market.wanted.info", [ id ]);
+    let infoData = GUIManager::request("market.wanted.info", [ id ]);
 
-    cancelDone = new GlobalValue();
+    let cancelDone = new GlobalValue();
     cancelDone.value = false;
 
-    cancelResult = new GlobalValue();
+    let cancelResult = new GlobalValue();
     cancelResult.value = true;
 
-    wantedCancel = new CustomForm("market.wanted.cancel", {tr("market.gui.title")}) {
+    let wantedCancel = new CustomForm("market.wanted.cancel", {tr("market.gui.title")}) {
         label(infoData[0], new TextOptions());
         SectionHeader();
         ConfirmBar({tr("market.gui.wanted.cancel")}, func () -> void {
-            cancelResultData = GUIManager::request("market.wanted.cancel.submit", [ id ]);
+            let cancelResultData = GUIManager::request("market.wanted.cancel.submit", [ id ]);
 
             cancelResult.value = cancelResultData[0];
             cancelDone.value = true;

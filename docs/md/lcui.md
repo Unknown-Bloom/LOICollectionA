@@ -322,7 +322,7 @@ words.sort(func (a, b) -> int {
 | `split` | `s.split(sep)` | 按分隔符拆分为数组；`sep` 为空串时按字符拆分 |
 | `contains` | `s.contains(sub)` | 是否包含子串 |
 | `startsWith` / `endsWith` | `s.startsWith(sub)` | 前缀 / 后缀判断 |
-| `indexOf` | `s.indexOf(sub)` | 首次出现位置；找不到返回 `-1` |
+| `indexOf` | `s.indexOf(sub)` | 首次出现的字符下标；找不到返回 `-1` |
 | `toInt` / `toFloat` | `s.toInt()` | 解析为 `optional<int>` / `optional<float>`，失败时为空 |
 
 ```lcui
@@ -512,7 +512,7 @@ for (i = 0; i < 10; i++) [
 
 ### for-in 遍历
 
-`for-in` 用于遍历数组，可同时获得索引与元素：
+`for-in` 用于遍历可迭代对象，可同时获得下标与元素：
 
 ```lcui
 items = ["a", "b", "c"];
@@ -524,15 +524,53 @@ for (i, item in items) [
     println(i + ": " + item);
 ]
 
-for (k in new Map().keys) [
-    println(k);
+for (c in "abc") [
+    println(c);
+]
+
+let m = new Map();
+m.set("a", 1);
+for (k in m) [
+    println(k + " = " + m.get(k));
 ]
 ```
 
-- `for (item in arr)` 遍历元素；`for (i, item in arr)` 中 `i` 为索引、`item` 为元素。
-- 只支持数组（`Map` 可通过 `m.keys` 遍历键）。
-- 循环体中 `continue` 不会跳过步进；每轮会重新读取 `length`，遍历期间追加的元素也会被遍历到。
+能否遍历由**迭代协议**决定，而不是编译器逐个类型特判：
+
+| 可迭代对象 | 元素 | 下标 |
+| --- | --- | --- |
+| 数组 | 元素值 | 位置（`int`） |
+| 字符串 | 单个字符，类型为 `string` | 位置（`int`） |
+| 提供了 `length()` 与 `element(int)` 的类 | `element(i)` 的返回值 | 位置（`int`） |
+| `a..b` 区间 | 区间内的 `int` 值 | 位置（`int`） |
+
+`Map` 内置了这一协议，`for (k in m)` 遍历其键（`m.keys` 仍然可用）。任何类——宿主注册的或脚本里
+定义的——只要提供 `length()` 与 `element(int)`，无需改动编译器即可被遍历：
+
+```lcui
+class Squares {
+    public:
+    limit = 0;
+    func length() -> int { return this.limit; }
+    func element(i: int) -> int { return i * i; }
+}
+
+let s = new Squares();
+s.limit = 4;
+for (v in s) [
+    println(v);            // 0 1 4 9
+]
+```
+
+协议方法沿继承链查找，`extends` 出来的子类自动获得父类的可迭代性。元素变量的类型取自
+`element(int)` 的返回类型，因此写错类型会在编译期报错。
+
+- `for (item in arr)` 遍历元素；`for (i, item in arr)` 中 `i` 为下标、`item` 为元素。
+- 字符串按 Unicode 字符遍历，不是按字节：`"你好".length()` 返回 `2`，`for (c in "你好")` 也迭代 2 次。
+  `indexOf` 返回字符下标，`string::substr(s, start, count)` 按字符截取，与 `length()` 一致。
+- 循环体中 `continue` 不会跳过步进；每轮会重新读取长度，遍历期间追加的元素也会被遍历到。
 - 元素变量在每轮迭代中是独立副本：迭代内创建的 lambda 捕获的是当轮的值。
+- 区间是语法级构造，遍历时不产生中间序列。
 - `in` 仅在 `for (` 之后识别为关键字，其他位置仍可用作普通标识符。
 
 ### 区间

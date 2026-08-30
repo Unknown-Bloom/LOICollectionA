@@ -46,7 +46,7 @@ TEST(StaticTest, StaticFieldSharedAcrossInstances) {
         "static count = 10; "
         "func get() -> int { return A.count; } "
         "} "
-        "a = new A(); "
+        "let a = new A(); "
         "A.count = 20; "
         "a.get()"),
         "20");
@@ -113,7 +113,7 @@ TEST(StaticTest, InstanceCannotCallStaticMethod) {
         "public: "
         "static func f() -> int { return 1; } "
         "} "
-        "a = new A(); "
+        "let a = new A(); "
         "a.f()"),
         std::runtime_error);
 }
@@ -125,7 +125,7 @@ TEST(StaticTest, StaticMethodInInstanceMethodViaClassName) {
         "static func f() -> int { return 9; } "
         "func g() -> int { return A.f(); } "
         "} "
-        "a = new A(); "
+        "let a = new A(); "
         "a.g()"),
         "9");
 }
@@ -137,7 +137,7 @@ TEST(StaticTest, StaticFieldInInstanceMethodBareName) {
         "static count = 5; "
         "func get() -> int { return count; } "
         "} "
-        "a = new A(); "
+        "let a = new A(); "
         "a.get()"),
         "5");
 }
@@ -153,7 +153,7 @@ TEST(StaticTest, NativeStaticFieldAndMethod) {
         [](const CallbackTypeValues& args) -> TypedValue {
             auto obj = std::make_shared<Object>();
             obj->className = "NativeStaticDemo";
-            obj->fields["value"] = std::get<int>(args[0]);
+            obj->assign("value", std::get<int>(args[0]));
             return obj;
         }, { ParamType::INT });
     cc.registerStaticMethod(name, "versioned",
@@ -164,6 +164,6 @@ TEST(StaticTest, NativeStaticFieldAndMethod) {
     EXPECT_EQ(eval("NativeStaticDemo.version"), "1");
     EXPECT_EQ(eval("NativeStaticDemo.version = 9; NativeStaticDemo.version"), "9");
     EXPECT_EQ(eval("NativeStaticDemo.versioned()"), "42");
-    EXPECT_EQ(eval("o = NativeStaticDemo.create(5); o.value"), "5");
+    EXPECT_EQ(eval("let o = NativeStaticDemo.create(5); o.value"), "5");
     EXPECT_EQ(eval("new NativeStaticDemo().value"), "7");
 }

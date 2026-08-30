@@ -209,12 +209,12 @@ TEST(ClassCallTest, CreateAndCallMethod) {
         [](const CallbackTypeValues& args) -> ll::Expected<ObjectRef> {
             auto obj = std::make_shared<Object>();
             obj->className = "Box";
-            obj->fields["value"] = std::get<int>(args[0]);
+            obj->assign("value", std::get<int>(args[0]));
             return obj;
         }, { ParamType::INT });
     cc.registerMethod(name, "get",
         [](const ObjectRef& self, const CallbackTypeValues&) -> TypedValue {
-            return self->fields["value"];
+            return *self->find("value");
         }, {});
 
     CallbackTypeValues args = { 7 };
@@ -249,7 +249,7 @@ TEST(ClassCallTest, RegisterFieldAndStaticMembers) {
     DiagnosticEngine diagnostics;
     auto objResult = cc.create(name, {}, {}, diagnostics);
     ASSERT_TRUE(objResult.has_value());
-    EXPECT_EQ(std::get<int>((*objResult)->fields["count"]), 10);
+    EXPECT_EQ(std::get<int>(*(*objResult)->find("count")), 10);
 
     auto staticValue = cc.getStaticField(name, "version");
     ASSERT_TRUE(staticValue.has_value());
@@ -412,7 +412,7 @@ TEST(ClassCallCacheTest, ConstructorCacheCreatesFreshObjects) {
         [](const CallbackTypeValues& args) -> ll::Expected<ObjectRef> {
             auto obj = std::make_shared<Object>();
             obj->className = "CacheBox";
-            obj->fields["value"] = std::get<int>(args[0]);
+            obj->assign("value", std::get<int>(args[0]));
             return obj;
         }, { ParamType::INT });
 
@@ -424,8 +424,8 @@ TEST(ClassCallCacheTest, ConstructorCacheCreatesFreshObjects) {
     ASSERT_TRUE(first.has_value());
     ASSERT_TRUE(second.has_value());
     EXPECT_NE(*first, *second);
-    EXPECT_EQ(std::get<int>((*first)->fields["value"]), 1);
-    EXPECT_EQ(std::get<int>((*second)->fields["value"]), 2);
+    EXPECT_EQ(std::get<int>(*(*first)->find("value")), 1);
+    EXPECT_EQ(std::get<int>(*(*second)->find("value")), 2);
     EXPECT_FALSE(diagnostics.hasErrors());
 }
 

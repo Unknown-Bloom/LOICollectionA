@@ -31,7 +31,7 @@ namespace CtxValueClass {
         obj->className = "CtxValue";
         obj->classIndex = -1;
         obj->native = handle;
-        obj->fields["value"] = handle->value;
+        obj->assign("value", handle->value);
 
         return obj;
     }

@@ -3,6 +3,7 @@
 #include <charconv>
 #include <algorithm>
 #include <unordered_set>
+#include <unordered_map>
 
 #include "LOICollectionA/frontend/AST.h"
 #include "LOICollectionA/frontend/Lexer.h"
@@ -12,14 +13,15 @@
 namespace LOICollection::frontend {
     namespace {
         std::string getCompoundAssignOp(TokenType type) {
-            switch (type) {
-                case TokenType::TOKEN_PLUS_ASSIGN: return "+";
-                case TokenType::TOKEN_MINUS_ASSIGN: return "-";
-                case TokenType::TOKEN_MULTIPLY_ASSIGN: return "*";
-                case TokenType::TOKEN_DIVIDE_ASSIGN: return "/";
-                case TokenType::TOKEN_MOD_ASSIGN: return "%";
-                default: return {};
-            }
+            static const std::unordered_map<TokenType, std::string> ops = {
+                { TokenType::TOKEN_PLUS_ASSIGN, "+" },
+                { TokenType::TOKEN_MINUS_ASSIGN, "-" },
+                { TokenType::TOKEN_MULTIPLY_ASSIGN, "*" },
+                { TokenType::TOKEN_DIVIDE_ASSIGN, "/" },
+                { TokenType::TOKEN_MOD_ASSIGN, "%" },
+            };
+            auto it = ops.find(type);
+            return it == ops.end() ? std::string{} : it->second;
         }
 
         bool isAssignableExpr(const ExprNode* expr) {
@@ -53,7 +55,8 @@ namespace LOICollection::frontend {
 
             if (currentToken.type == TokenType::TOKEN_SEMICOLON) {
                 eat(TokenType::TOKEN_SEMICOLON);
-            } else if (stmtType == ASTNode::Type::Class || stmtType == ASTNode::Type::FunctionDef) {
+            } else if (stmtType == ASTNode::Type::Class || stmtType == ASTNode::Type::FunctionDef ||
+                       stmtType == ASTNode::Type::Trait) {
             } else if (currentToken.type != TokenType::TOKEN_EOF) {
                 if (currentToken.loc.line > stmtStartLine)
                     continue;
@@ -333,6 +336,11 @@ namespace LOICollection::frontend {
 
     std::unique_ptr<ExprNode> Parser::parseForClause() {
         SourceLocation loc = currentToken.loc;
+
+        if (currentToken.type == TokenType::TOKEN_LET) {
+            auto decl = parseVariableDeclaration();
+            return decl ? std::unique_ptr<ExprNode>(std::move(decl)) : nullptr;
+        }
 
         auto expr = parseBaseExpression();
         if (!expr)
@@ -676,6 +684,97 @@ namespace LOICollection::frontend {
         return cls;
     }
 
+    std::vector<TypeParam> Parser::parseTypeParams() {
+        std::vector<TypeParam> params;
+
+        if (currentToken.type != TokenType::TOKEN_OP || currentToken.value != "<")
+            return params;
+        eat(TokenType::TOKEN_OP);
+
+        while ((currentToken.type != TokenType::TOKEN_OP || currentToken.value != ">") &&
+               currentToken.type != TokenType::TOKEN_EOF) {
+            if (currentToken.type != TokenType::TOKEN_IDENT) {
+                diagnostics.addError(currentToken.loc, "Expected type parameter name");
+                synchronize({ TokenType::TOKEN_COMMA, TokenType::TOKEN_RPAREN, TokenType::TOKEN_LBRACE });
+                if (currentToken.type != TokenType::TOKEN_IDENT)
+                    break;
+                continue;
+            }
+
+            TypeParam param;
+            param.name = currentToken.value;
+            eat(TokenType::TOKEN_IDENT);
+
+            for (const auto& existing : params) {
+                if (existing.name == param.name) {
+                    diagnostics.addError(currentToken.loc,
+                        "Duplicate type parameter '" + param.name + "'");
+                    break;
+                }
+            }
+
+            while (currentToken.type == TokenType::TOKEN_COLON) {
+                eat(TokenType::TOKEN_COLON);
+                if (currentToken.type != TokenType::TOKEN_IDENT) {
+                    diagnostics.addError(currentToken.loc, "Expected trait name after ':'");
+                    break;
+                }
+                param.bounds.push_back(currentToken.value);
+                eat(TokenType::TOKEN_IDENT);
+            }
+
+            params.push_back(std::move(param));
+
+            if (currentToken.type == TokenType::TOKEN_COMMA)
+                eat(TokenType::TOKEN_COMMA);
+            else
+                break;
+        }
+
+        if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == ">")
+            eat(TokenType::TOKEN_OP);
+
+        return params;
+    }
+
+    std::unique_ptr<TraitNode> Parser::parseTrait() {
+        SourceLocation loc = currentToken.loc;
+
+        if (!eat(TokenType::TOKEN_TRAIT)) return nullptr;
+        if (currentToken.type != TokenType::TOKEN_IDENT) {
+            diagnostics.addError(currentToken.loc, "Expected trait name");
+            synchronize({ TokenType::TOKEN_LBRACE, TokenType::TOKEN_RBRACE });
+            skipBalancedBraces();
+            return nullptr;
+        }
+
+        auto trait = std::make_unique<TraitNode>(loc, currentToken.value);
+        eat(TokenType::TOKEN_IDENT);
+
+        if (!eat(TokenType::TOKEN_LBRACE)) {
+            synchronize({ TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        while (currentToken.type != TokenType::TOKEN_RBRACE &&
+               currentToken.type != TokenType::TOKEN_EOF) {
+            if (currentToken.type == TokenType::TOKEN_FUNC) {
+                auto method = parseMethod(false, false);
+                if (method)
+                    trait->methods.push_back(std::move(*method));
+                continue;
+            }
+
+            diagnostics.addError(currentToken.loc, "Expected method declaration in trait");
+            synchronize({ TokenType::TOKEN_FUNC, TokenType::TOKEN_RBRACE });
+        }
+
+        if (currentToken.type == TokenType::TOKEN_RBRACE)
+            eat(TokenType::TOKEN_RBRACE);
+
+        return trait;
+    }
+
     std::unique_ptr<FunctionDefNode> Parser::parseFunctionDefinition() {
         SourceLocation loc = currentToken.loc;
 
@@ -691,7 +790,16 @@ namespace LOICollection::frontend {
         fn->decl.loc = loc;
         fn->decl.name = currentToken.value;
 
-        if (!eat(TokenType::TOKEN_IDENT) || !eat(TokenType::TOKEN_LPAREN)) {
+        if (!eat(TokenType::TOKEN_IDENT)) {
+            synchronize({ TokenType::TOKEN_LBRACE, TokenType::TOKEN_RBRACE });
+            skipBalancedBraces();
+            return nullptr;
+        }
+
+        if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "<")
+            fn->decl.typeParams = parseTypeParams();
+
+        if (!eat(TokenType::TOKEN_LPAREN)) {
             synchronize({ TokenType::TOKEN_LBRACE, TokenType::TOKEN_RBRACE });
             skipBalancedBraces();
             return nullptr;
@@ -797,7 +905,7 @@ namespace LOICollection::frontend {
         return lambda;
     }
 
-    std::unique_ptr<MethodDecl> Parser::parseMethod(bool isPrivate) {
+    std::unique_ptr<MethodDecl> Parser::parseMethod(bool isPrivate, bool requireBody) {
         SourceLocation loc = currentToken.loc;
 
         if (!eat(TokenType::TOKEN_FUNC)) return nullptr;
@@ -843,6 +951,15 @@ namespace LOICollection::frontend {
 
             method->returnTypeExpr = std::move(*returnType);
             method->hasReturnType = true;
+        }
+
+        if (!requireBody) {
+            if (currentToken.type == TokenType::TOKEN_SEMICOLON)
+                eat(TokenType::TOKEN_SEMICOLON);
+            else if (currentToken.type != TokenType::TOKEN_RBRACE)
+                diagnostics.addError(currentToken.loc,
+                    "Expected ';' after trait method declaration");
+            return method;
         }
 
         if (!eat(TokenType::TOKEN_LBRACE)) {
@@ -1238,12 +1355,70 @@ namespace LOICollection::frontend {
         return args;
     }
 
+    std::unique_ptr<AssignmentNode> Parser::parseVariableDeclaration() {
+        const bool hasLet = currentToken.type == TokenType::TOKEN_LET;
+        SourceLocation declLoc = currentToken.loc;
+
+        if (hasLet && !eat(TokenType::TOKEN_LET))
+            return nullptr;
+
+        if (currentToken.type != TokenType::TOKEN_IDENT) {
+            this->diagnostics.addError(currentToken.loc,
+                hasLet ? "Expected a variable name after 'let'" : "Expected a variable name");
+            return nullptr;
+        }
+
+        std::string name = currentToken.value;
+        if (!eat(TokenType::TOKEN_IDENT))
+            return nullptr;
+
+        std::optional<TypeExpr> type;
+        if (currentToken.type == TokenType::TOKEN_COLON) {
+            if (!eat(TokenType::TOKEN_COLON))
+                return nullptr;
+
+            auto parsed = parseTypeExpr();
+            if (!parsed)
+                return nullptr;
+
+            type = std::move(*parsed);
+        }
+
+        std::unique_ptr<ExprNode> value;
+        if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "=") {
+            if (!eat(TokenType::TOKEN_OP))
+                return nullptr;
+
+            value = parseBaseExpression();
+            if (!value)
+                return nullptr;
+        }
+
+        auto decl = std::make_unique<AssignmentNode>(
+            declLoc,
+            std::make_unique<VariableNode>(declLoc, std::move(name)),
+            std::move(value)
+        );
+        this->bindDeclarativeReceiver(*decl);
+        decl->isDeclaration = hasLet;
+
+        if (type) {
+            decl->hasDeclaredType = true;
+            decl->declaredType = std::move(*type);
+        }
+
+        return decl;
+    }
+
     std::unique_ptr<ASTNode> Parser::parseStatement() {
         if (currentToken.type == TokenType::TOKEN_FUNC && peek() != TokenType::TOKEN_LPAREN)
             return parseFunctionDefinition();
 
         if (currentToken.type == TokenType::TOKEN_CLASS)
             return parseClass();
+
+        if (currentToken.type == TokenType::TOKEN_TRAIT)
+            return parseTrait();
 
         if (currentToken.type == TokenType::TOKEN_IMPORT)
             return parseImport();
@@ -1269,36 +1444,9 @@ namespace LOICollection::frontend {
         if (currentToken.type == TokenType::TOKEN_USING)
             return parseUsing();
 
-        if (currentToken.type == TokenType::TOKEN_IDENT && peek() == TokenType::TOKEN_COLON) {
-            SourceLocation declLoc = currentToken.loc;
-            std::string name = currentToken.value;
-
-            if (!eat(TokenType::TOKEN_IDENT)) return nullptr;
-            if (!eat(TokenType::TOKEN_COLON)) return nullptr;
-
-            auto type = parseTypeExpr();
-            if (!type)
-                return nullptr;
-
-            std::unique_ptr<ExprNode> value;
-            if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "=") {
-                if (!eat(TokenType::TOKEN_OP)) return nullptr;
-
-                value = parseBaseExpression();
-                if (!value)
-                    return nullptr;
-            }
-
-            auto decl = std::make_unique<AssignmentNode>(
-                declLoc,
-                std::make_unique<VariableNode>(declLoc, std::move(name)),
-                std::move(value)
-            );
-            this->bindDeclarativeReceiver(*decl);
-            decl->hasDeclaredType = true;
-            decl->declaredType = std::move(*type);
-            return decl;
-        }
+        if (currentToken.type == TokenType::TOKEN_LET ||
+            (currentToken.type == TokenType::TOKEN_IDENT && peek() == TokenType::TOKEN_COLON))
+            return parseVariableDeclaration();
 
         SourceLocation exprLoc = currentToken.loc;
 
@@ -1926,65 +2074,67 @@ namespace LOICollection::frontend {
     }
     
     std::string Parser::getTokenName(TokenType type) {
-        switch (type) {
-            case TokenType::TOKEN_IF: return "IF";
-            case TokenType::TOKEN_WHILE: return "WHILE";
-            case TokenType::TOKEN_FOR: return "FOR";
-            case TokenType::TOKEN_BREAK: return "BREAK";
-            case TokenType::TOKEN_CONTINUE: return "CONTINUE";
-            case TokenType::TOKEN_LPAREN: return "(";
-            case TokenType::TOKEN_RPAREN: return ")";
-            case TokenType::TOKEN_LBRCKET: return "[";
-            case TokenType::TOKEN_RBRCKET: return "]";
-            case TokenType::TOKEN_LBRACE: return "{";
-            case TokenType::TOKEN_RBRACE: return "}";
-            case TokenType::TOKEN_IDENT: return "IDENT";
-            case TokenType::TOKEN_INT: return "NUMBER";
-            case TokenType::TOKEN_FLOAT: return "FLOAT";
-            case TokenType::TOKEN_STRING: return "STRING";
-            case TokenType::TOKEN_OP: return "OP";
-            case TokenType::TOKEN_BOOL_OP: return "BOOL_OP";
-            case TokenType::TOKEN_COLON: return ":";
-            case TokenType::TOKEN_BOOL_LIT: return "BOOL_LIT";
-            case TokenType::TOKEN_PLUS: return "+";
-            case TokenType::TOKEN_MINUS: return "-";
-            case TokenType::TOKEN_MULTIPLY: return "*";
-            case TokenType::TOKEN_DIVIDE: return "/";
-            case TokenType::TOKEN_MOD: return "%";
-            case TokenType::TOKEN_POWER: return "^";
-            case TokenType::TOKEN_NAMESPACE: return "NAMESPACE";
-            case TokenType::TOKEN_COMMA: return ",";
-            case TokenType::TOKEN_TRANSPILE: return "TRANSPILE";
-            case TokenType::TOKEN_SEMICOLON: return ";";
-            case TokenType::TOKEN_DOT: return ".";
-            case TokenType::TOKEN_ARROW: return "->";
-            case TokenType::TOKEN_CLASS: return "CLASS";
-            case TokenType::TOKEN_FUNC: return "FUNC";
-            case TokenType::TOKEN_NEW: return "NEW";
-            case TokenType::TOKEN_THIS: return "THIS";
-            case TokenType::TOKEN_SUPER: return "SUPER";
-            case TokenType::TOKEN_RETURN: return "RETURN";
-            case TokenType::TOKEN_PUBLIC: return "PUBLIC";
-            case TokenType::TOKEN_PRIVATE: return "PRIVATE";
-            case TokenType::TOKEN_EXTENDS: return "EXTENDS";
-            case TokenType::TOKEN_INSTANCEOF: return "INSTANCEOF";
-            case TokenType::TOKEN_STATIC: return "STATIC";
-            case TokenType::TOKEN_USING: return "USING";
-            case TokenType::TOKEN_NONE: return "NONE";
-            case TokenType::TOKEN_EOF: return "EOF";
-            case TokenType::TOKEN_PLUS_ASSIGN: return "+=";
-            case TokenType::TOKEN_MINUS_ASSIGN: return "-=";
-            case TokenType::TOKEN_MULTIPLY_ASSIGN: return "*=";
-            case TokenType::TOKEN_DIVIDE_ASSIGN: return "/=";
-            case TokenType::TOKEN_MOD_ASSIGN: return "%=";
-            case TokenType::TOKEN_INCREMENT: return "++";
-            case TokenType::TOKEN_DECREMENT: return "--";
-            case TokenType::TOKEN_RANGE: return "..";
-            case TokenType::TOKEN_COALESCE: return "??";
-            case TokenType::TOKEN_QUESTION_DOT: return "?.";
-            case TokenType::TOKEN_IMPORT: return "IMPORT";
-            case TokenType::TOKEN_COMPONENT: return "COMPONENT";
-            default: return "UNKNOWN";
-        }
+        static const std::unordered_map<TokenType, std::string> names = {
+            { TokenType::TOKEN_IF, "IF" },
+            { TokenType::TOKEN_WHILE, "WHILE" },
+            { TokenType::TOKEN_FOR, "FOR" },
+            { TokenType::TOKEN_BREAK, "BREAK" },
+            { TokenType::TOKEN_CONTINUE, "CONTINUE" },
+            { TokenType::TOKEN_LPAREN, "(" },
+            { TokenType::TOKEN_RPAREN, ")" },
+            { TokenType::TOKEN_LBRCKET, "[" },
+            { TokenType::TOKEN_RBRCKET, "]" },
+            { TokenType::TOKEN_LBRACE, "{" },
+            { TokenType::TOKEN_RBRACE, "}" },
+            { TokenType::TOKEN_IDENT, "IDENT" },
+            { TokenType::TOKEN_INT, "NUMBER" },
+            { TokenType::TOKEN_FLOAT, "FLOAT" },
+            { TokenType::TOKEN_STRING, "STRING" },
+            { TokenType::TOKEN_OP, "OP" },
+            { TokenType::TOKEN_BOOL_OP, "BOOL_OP" },
+            { TokenType::TOKEN_COLON, ":" },
+            { TokenType::TOKEN_BOOL_LIT, "BOOL_LIT" },
+            { TokenType::TOKEN_PLUS, "+" },
+            { TokenType::TOKEN_MINUS, "-" },
+            { TokenType::TOKEN_MULTIPLY, "*" },
+            { TokenType::TOKEN_DIVIDE, "/" },
+            { TokenType::TOKEN_MOD, "%" },
+            { TokenType::TOKEN_POWER, "^" },
+            { TokenType::TOKEN_NAMESPACE, "NAMESPACE" },
+            { TokenType::TOKEN_COMMA, "," },
+            { TokenType::TOKEN_TRANSPILE, "TRANSPILE" },
+            { TokenType::TOKEN_SEMICOLON, ";" },
+            { TokenType::TOKEN_DOT, "." },
+            { TokenType::TOKEN_ARROW, "->" },
+            { TokenType::TOKEN_CLASS, "CLASS" },
+            { TokenType::TOKEN_FUNC, "FUNC" },
+            { TokenType::TOKEN_NEW, "NEW" },
+            { TokenType::TOKEN_THIS, "THIS" },
+            { TokenType::TOKEN_SUPER, "SUPER" },
+            { TokenType::TOKEN_RETURN, "RETURN" },
+            { TokenType::TOKEN_PUBLIC, "PUBLIC" },
+            { TokenType::TOKEN_PRIVATE, "PRIVATE" },
+            { TokenType::TOKEN_EXTENDS, "EXTENDS" },
+            { TokenType::TOKEN_INSTANCEOF, "INSTANCEOF" },
+            { TokenType::TOKEN_STATIC, "STATIC" },
+            { TokenType::TOKEN_USING, "USING" },
+            { TokenType::TOKEN_NONE, "NONE" },
+            { TokenType::TOKEN_EOF, "EOF" },
+            { TokenType::TOKEN_PLUS_ASSIGN, "+=" },
+            { TokenType::TOKEN_MINUS_ASSIGN, "-=" },
+            { TokenType::TOKEN_MULTIPLY_ASSIGN, "*=" },
+            { TokenType::TOKEN_DIVIDE_ASSIGN, "/=" },
+            { TokenType::TOKEN_MOD_ASSIGN, "%=" },
+            { TokenType::TOKEN_INCREMENT, "++" },
+            { TokenType::TOKEN_DECREMENT, "--" },
+            { TokenType::TOKEN_RANGE, ".." },
+            { TokenType::TOKEN_COALESCE, "??" },
+            { TokenType::TOKEN_QUESTION_DOT, "?." },
+            { TokenType::TOKEN_IMPORT, "IMPORT" },
+            { TokenType::TOKEN_COMPONENT, "COMPONENT" },
+            { TokenType::TOKEN_LET, "LET" },
+        };
+        auto it = names.find(type);
+        return it == names.end() ? "UNKNOWN" : it->second;
     }
 }

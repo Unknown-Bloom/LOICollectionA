@@ -10,6 +10,7 @@
 #include <ll/api/Expected.h>
 
 #include "LOICollectionA/frontend/Callback.h"
+#include "LOICollectionA/frontend/Unicode.h"
 
 #include "LOICollectionA/utils/core/MathUtils.h"
 
@@ -52,6 +53,7 @@ namespace LOICollection::frontend::ir {
 
             return {};
         }
+
     }
 
     std::string VM::valueToString(const ValueNode::ValueType& val) {
@@ -409,14 +411,13 @@ namespace LOICollection::frontend::ir {
                 bool isField = std::ranges::find(cls.fieldNames, name) != cls.fieldNames.end();
 
                 if (isField) {
-                    obj->fields[name] = val;
+                    obj->assign(name, val);
                     return;
                 }
             }
 
-            auto existingIt = obj->fields.find(name);
-            if (existingIt != obj->fields.end()) {
-                existingIt->second = val;
+            if (auto* existing = obj->find(name)) {
+                *existing = val;
                 return;
             }
         }
@@ -455,6 +456,17 @@ namespace LOICollection::frontend::ir {
         return std::ranges::any_of(cls.ancestorIndices, [baseClassIndex](int idx) -> bool {
             return idx == baseClassIndex;
         });
+    }
+
+    const FieldLayoutPtr& VM::classLayout(const BytecodeChunk& chunk, int classIndex) {
+        auto it = this->mClassLayouts.find(classIndex);
+        if (it != this->mClassLayouts.end())
+            return it->second;
+
+        const auto& cls = chunk.classes[static_cast<size_t>(classIndex)];
+        return this->mClassLayouts
+            .emplace(classIndex, std::make_shared<const FieldLayout>(cls.fieldNames))
+            .first->second;
     }
 
     ValueNode::ValueType VM::run(
@@ -670,20 +682,19 @@ namespace LOICollection::frontend::ir {
                             bool isField = std::ranges::find(cls.fieldNames, name) != cls.fieldNames.end();
 
                             if (isField) {
-                                auto fieldIt = obj->fields.find(name);
-                                if (fieldIt == obj->fields.end()) {
+                                const auto* field = obj->find(name);
+                                if (!field) {
                                     this->diagnostics.addError(this->currentLoc, "Object has no field: " + name);
                                     break;
                                 }
 
-                                this->push(fieldIt->second);
+                                this->push(*field);
                                 break;
                             }
                         }
 
-                        auto existingIt = obj->fields.find(name);
-                        if (existingIt != obj->fields.end()) {
-                            this->push(existingIt->second);
+                        if (const auto* existing = obj->find(name)) {
+                            this->push(*existing);
                             break;
                         }
                     }
@@ -783,13 +794,13 @@ namespace LOICollection::frontend::ir {
                     }
 
                     auto obj = std::get<ObjectRef>(objValue);
-                    auto it = obj->fields.find(name);
-                    if (it == obj->fields.end()) {
+                    const auto* field = obj->find(name);
+                    if (!field) {
                         this->diagnostics.addError(this->currentLoc, "Object has no field: " + name);
                         break;
                     }
 
-                    this->push(it->second);
+                    this->push(*field);
                     break;
                 }
                 case OpCode::LOAD_LEN: {
@@ -801,7 +812,7 @@ namespace LOICollection::frontend::ir {
                     }
 
                     if (std::holds_alternative<std::string>(iterable)) {
-                        this->push(static_cast<int>(std::get<std::string>(iterable).size()));
+                        this->push(static_cast<int>(codepointCount(std::get<std::string>(iterable))));
                         break;
                     }
 
@@ -844,7 +855,48 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
 
-                    std::get<ObjectRef>(objValue)->fields[name] = val;
+                    std::get<ObjectRef>(objValue)->assign(name, val);
+                    break;
+                }
+                case OpCode::LOAD_FIELD_SLOT: {
+                    auto objValue = this->pop();
+
+                    if (!std::holds_alternative<ObjectRef>(objValue)) {
+                        this->diagnostics.addError(this->currentLoc, "Cannot load a field from a non-object value");
+                        break;
+                    }
+
+                    auto obj = std::get<ObjectRef>(objValue);
+                    if (instr.operand >= 0 && static_cast<size_t>(instr.operand) >= obj->slots.size())
+                        obj->adoptLayout();
+
+                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= obj->slots.size()) {
+                        this->diagnostics.addError(this->currentLoc, "Field slot index out of range");
+                        break;
+                    }
+
+                    this->push(obj->slots[static_cast<size_t>(instr.operand)]);
+                    break;
+                }
+                case OpCode::STORE_FIELD_SLOT: {
+                    auto objValue = this->pop();
+                    auto val = this->pop();
+
+                    if (!std::holds_alternative<ObjectRef>(objValue)) {
+                        this->diagnostics.addError(this->currentLoc, "Cannot store a field on a non-object value");
+                        break;
+                    }
+
+                    auto obj = std::get<ObjectRef>(objValue);
+                    if (instr.operand >= 0 && static_cast<size_t>(instr.operand) >= obj->slots.size())
+                        obj->adoptLayout();
+
+                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= obj->slots.size()) {
+                        this->diagnostics.addError(this->currentLoc, "Field slot index out of range");
+                        break;
+                    }
+
+                    obj->slots[static_cast<size_t>(instr.operand)] = std::move(val);
                     break;
                 }
                 case OpCode::MAKE_ARRAY: {
@@ -872,17 +924,35 @@ namespace LOICollection::frontend::ir {
                     auto indexValue = this->pop();
                     auto targetValue = this->pop();
 
+                    if (!std::holds_alternative<int>(indexValue)) {
+                        this->diagnostics.addError(this->currentLoc, "Index must be an int");
+                        break;
+                    }
+
+                    int index = std::get<int>(indexValue);
+
+                    if (const auto* text = std::get_if<std::string>(&targetValue)) {
+                        if (index < 0) {
+                            this->diagnostics.addError(this->currentLoc, "String index out of range");
+                            break;
+                        }
+
+                        auto character = codepointAt(*text, static_cast<size_t>(index));
+                        if (!character) {
+                            this->diagnostics.addError(this->currentLoc, "String index out of range");
+                            break;
+                        }
+
+                        this->push(std::move(*character));
+                        break;
+                    }
+
                     if (!std::holds_alternative<ArrayRef>(targetValue)) {
                         this->diagnostics.addError(this->currentLoc, "Cannot index a non-array value");
                         break;
                     }
-                    if (!std::holds_alternative<int>(indexValue)) {
-                        this->diagnostics.addError(this->currentLoc, "Array index must be an int");
-                        break;
-                    }
 
                     auto arr = std::get<ArrayRef>(targetValue);
-                    int index = std::get<int>(indexValue);
                     if (index < 0 || index >= static_cast<int>(arr->elements.size())) {
                         this->diagnostics.addError(this->currentLoc, "Array index out of range");
                         break;
@@ -1010,10 +1080,12 @@ namespace LOICollection::frontend::ir {
                     auto obj = std::make_shared<Object>();
                     obj->className = cls.name;
                     obj->classIndex = instr.operand;
+                    obj->layout = this->classLayout(chunk, instr.operand);
+                    obj->resize(cls.fieldNames.size());
 
                     for (size_t i = 0; i < cls.fieldNames.size(); ++i) {
                         if (cls.hasDefault[i])
-                            obj->fields[cls.fieldNames[i]] = VM::cloneValue(cls.defaults[i]);
+                            obj->slots[i] = VM::cloneValue(cls.defaults[i]);
                     }
 
                     if (cls.constructorIndex != -1) {
@@ -1134,6 +1206,54 @@ namespace LOICollection::frontend::ir {
                     for (int i = 0; i < method.argCount; ++i)
                         args[method.argCount - 1 - i] = this->pop();
 
+                    Frame callee(*chunk.methodBodies[method.bodyIndex]);
+                    callee.hasThis = true;
+                    callee.thisObj = receiver;
+
+                    for (int i = 0; i < method.argCount; ++i)
+                        callee.locals[i] = args[i];
+
+                    if (!this->pushFrame(std::move(callee)))
+                        break;
+                    break;
+                }
+
+                case OpCode::CALL_METHOD_BY_NAME: {
+                    const auto& meta = cur.byNameCalls[instr.operand];
+
+                    std::vector<ValueNode::ValueType> args(meta.argCount);
+                    for (int i = 0; i < meta.argCount; ++i)
+                        args[meta.argCount - 1 - i] = this->pop();
+
+                    auto receiver = this->pop();
+                    if (!std::holds_alternative<ObjectRef>(receiver)) {
+                        this->diagnostics.addError(this->currentLoc, "Method call target is not an object");
+                        break;
+                    }
+
+                    auto obj = std::get<ObjectRef>(receiver);
+                    if (obj->classIndex < 0 || obj->classIndex >= static_cast<int>(chunk.classes.size())) {
+                        this->diagnostics.addError(this->currentLoc, "Invalid object class index");
+                        break;
+                    }
+
+                    const auto& cls = chunk.classes[obj->classIndex];
+                    int ordinal = -1;
+                    for (size_t o = 0; o < cls.methods.size(); ++o) {
+                        const auto& m = chunk.methods[cls.methods[o]];
+                        if (m.name == meta.methodName && m.argCount == meta.argCount) {
+                            ordinal = static_cast<int>(o);
+                            break;
+                        }
+                    }
+
+                    if (ordinal < 0) {
+                        this->diagnostics.addError(this->currentLoc,
+                            "Method '" + meta.methodName + "' not found on object of type '" + cls.name + "'");
+                        break;
+                    }
+
+                    const auto& method = chunk.methods[cls.methods[ordinal]];
                     Frame callee(*chunk.methodBodies[method.bodyIndex]);
                     callee.hasThis = true;
                     callee.thisObj = receiver;
@@ -1568,6 +1688,10 @@ namespace LOICollection::frontend::ir {
 
                     return this->stack.back();
                 }
+
+                default:
+                    this->diagnostics.addError(this->currentLoc, "Unknown opcode");
+                    break;
             }
         }
     }

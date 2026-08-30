@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "LOICollectionA/frontend/Callback.h"
+#include "LOICollectionA/frontend/Unicode.h"
 
 #include "LOICollectionA/frontend/stdlib/StringBuiltin.h"
 
@@ -14,7 +15,7 @@ namespace StringBuiltin {
             using T = std::decay_t<decltype(arg)>;
 
             if constexpr (std::is_same_v<T, std::string>)
-                return std::to_string(arg.length());
+                return std::to_string(codepointCount(arg));
 
             return {};
         }, args[0]);
@@ -57,11 +58,16 @@ namespace StringBuiltin {
             using T3 = std::decay_t<decltype(arg3)>;
 
             if constexpr (std::is_same_v<T1, std::string> && std::is_same_v<T2, int> && std::is_same_v<T3, int>) {
-                if (arg2 < 0 || static_cast<size_t>(arg2) >= arg1.size())
+                if (arg2 < 0 || arg3 < 0)
                     return std::string{};
 
-                size_t count = (arg3 < 0) ? 0 : static_cast<size_t>(arg3);
-                return arg1.substr(arg2, count);
+                size_t start = codepointOffset(arg1, static_cast<size_t>(arg2));
+                if (start == std::string::npos)
+                    return std::string{};
+
+                size_t end = codepointOffset(arg1, static_cast<size_t>(arg2) + static_cast<size_t>(arg3));
+
+                return end == std::string::npos ? arg1.substr(start) : arg1.substr(start, end - start);
             }
 
             return {};

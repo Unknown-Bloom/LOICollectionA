@@ -37,7 +37,7 @@ TEST(SandboxBudgetTest, InstructionLimit) {
     SandboxBudget budget;
     budget.maxInstructions = 500;
 
-    const RunResult result = runWithBudget("i = 0; while (true) [ i = i + 1; ]; i", budget);
+    const RunResult result = runWithBudget("let i = 0; while (true) [ i = i + 1; ]; i", budget);
 
     EXPECT_TRUE(result.hasErrors);
     EXPECT_EQ(result.violation, SandboxBudget::Violation::InstructionLimit);
@@ -48,7 +48,7 @@ TEST(SandboxBudgetTest, WallTimeLimit) {
     budget.maxInstructions = 10'000'000;
     budget.maxWallTime = std::chrono::milliseconds(1);
 
-    const RunResult result = runWithBudget("i = 0; while (true) [ i = i + 1; ]; i", budget);
+    const RunResult result = runWithBudget("let i = 0; while (true) [ i = i + 1; ]; i", budget);
 
     EXPECT_TRUE(result.hasErrors);
     EXPECT_EQ(result.violation, SandboxBudget::Violation::WallTimeLimit);
@@ -59,7 +59,7 @@ TEST(SandboxBudgetTest, NativeCallLimit) {
     budget.maxNativeCalls = 3;
 
     const RunResult result = runWithBudget(
-        "i = 0; s = 0; while (i < 10) [ s = s + math::abs(0 - i); i = i + 1; ]; s",
+        "let i = 0; let s = 0; while (i < 10) [ s = s + math::abs(0 - i); i = i + 1; ]; s",
         budget
     );
 
@@ -72,7 +72,7 @@ TEST(SandboxBudgetTest, ObjectCountLimit) {
     budget.maxObjectCount = 2;
 
     const RunResult result = runWithBudget(
-        "class A {} a = new A(); b = new A(); c = new A();",
+        "class A {} let a = new A(); let b = new A(); let c = new A();",
         budget
     );
 
@@ -84,7 +84,7 @@ TEST(SandboxBudgetTest, ArrayElementLimit) {
     SandboxBudget budget;
     budget.maxArrayElements = 3;
 
-    const RunResult result = runWithBudget("n = string::length(\"abc\"); [n, n, n, n]", budget);
+    const RunResult result = runWithBudget("let n = string::length(\"abc\"); [n, n, n, n]", budget);
 
     EXPECT_TRUE(result.hasErrors);
     EXPECT_EQ(result.violation, SandboxBudget::Violation::ArrayElementLimit);
@@ -95,7 +95,7 @@ TEST(SandboxBudgetTest, StringConcatLimit) {
     budget.maxStringBytes = 1024;
 
     const RunResult result = runWithBudget(
-        "s = string::lower(\"A\"); i = 0; while (i < 30) [ s = s + s; i = i + 1; ]; s",
+        "let s = string::lower(\"A\"); let i = 0; while (i < 30) [ s = s + s; i = i + 1; ]; s",
         budget
     );
 

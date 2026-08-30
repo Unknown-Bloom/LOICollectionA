@@ -12,6 +12,7 @@
 
 #include "LOICollectionA/frontend/AST.h"
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
+#include "LOICollectionA/frontend/Iteration.h"
 
 #include "LOICollectionA/frontend/ir/ByteCode.h"
 
@@ -106,8 +107,12 @@ namespace LOICollection::frontend::ir {
         void compileSequence(SequenceNode& node);
         void compileValue(ExprNode& node, const SourceLocation& loc);
 
-        void compileForInArray(ForInNode& node, size_t uid);
-        void compileForInRange(ForInNode& node, size_t uid);
+        [[nodiscard]] ClassLookup classLookup() const;
+
+        void compileForInCounter(ForInNode& node, size_t uid);
+        void compileForInIterable(ForInNode& node, size_t uid, const IterableProtocol& protocol);
+        void emitIterableLength(const IterableProtocol& protocol, int seqSlot, const SourceLocation& loc);
+        void emitIterableElement(const IterableProtocol& protocol, int seqSlot, int idxSlot, const SourceLocation& loc);
         void emitArithmeticOp(const std::string& op, const SourceLocation& loc);
 
         void desugarDeclarativeStatements(std::unique_ptr<ASTNode>& node, const std::string& receiver);
@@ -121,9 +126,12 @@ namespace LOICollection::frontend::ir {
         int addMacro(const std::string& name, int argCount);
         int addLambda(int bodyIndex, int argCount, int captureCount);
         int addVirtualCall(int classIndex, int ordinal, int argCount);
+        int addByNameCall(const std::string& methodName, int argCount);
         int addSuperCall(int constructorIndex, int argCount);
 
         [[nodiscard]] std::string methodSignature(const MethodDecl& method) const;
+
+        [[nodiscard]] int fieldSlotOf(const TypeInfo& owner, const std::string& memberName) const;
 
         [[nodiscard]] auto suspendLoops();
 
@@ -134,5 +142,9 @@ namespace LOICollection::frontend::ir {
 
         void emitLoad(const std::string& name, const SourceLocation& loc);
         void emitStore(const std::string& name, const SourceLocation& loc);
+
+        void emitLoadField(const MemberAccessNode& node);
+        void emitStoreField(const MemberAccessNode& node);
+        void emitFieldAccess(OpCode slotOp, OpCode namedOp, const MemberAccessNode& node);
     };
 }

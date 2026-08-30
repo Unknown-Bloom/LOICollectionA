@@ -10,6 +10,7 @@
 #include "LOICollectionA/base/ScopeGuard.h"
 
 #include "LOICollectionA/frontend/Callback.h"
+#include "LOICollectionA/frontend/Iteration.h"
 
 #include "LOICollectionA/frontend/SemanticAnalyzer.h"
 
@@ -60,6 +61,22 @@ namespace LOICollection::frontend {
         return true;
     }
 
+    TypeInfo arithmeticResult(const std::string& op, const TypeInfo& left, const TypeInfo& right) {
+        auto numeric = [](const TypeInfo& t) { return t.kind == TypeKind::Int || t.kind == TypeKind::Float; };
+
+        if (op == "+" && (left.kind == TypeKind::String || right.kind == TypeKind::String))
+            return { TypeKind::String };
+
+        if (!(numeric(left) && numeric(right)))
+            return {};
+
+        bool bothInt = left.kind == TypeKind::Int && right.kind == TypeKind::Int;
+        if (bothInt && (op == "+" || op == "-" || op == "*" || op == "%"))
+            return { TypeKind::Int };
+
+        return { TypeKind::Float };
+    }
+
     bool isNativeClass(const std::string& name) {
         return ClassCall::getInstance().isRegistered(name);
     }
@@ -83,6 +100,9 @@ namespace LOICollection::frontend {
         this->typeAliases.clear();
         this->resolvingAliases.clear();
         this->constructorAssignedMembers.clear();
+        this->traits.clear();
+        this->activeTypeParams.clear();
+        this->activeTypeParamBounds.clear();
         this->blockScopes.clear();
         this->formReceivers.clear();
         this->receiverBindings.clear();
@@ -98,6 +118,9 @@ namespace LOICollection::frontend {
                     break;
                 case ASTNode::Type::FunctionDef:
                     registerFunction(static_cast<FunctionDefNode&>(*part));
+                    break;
+                case ASTNode::Type::Trait:
+                    registerTrait(static_cast<TraitNode&>(*part));
                     break;
                 default:
                     break;
@@ -229,6 +252,14 @@ namespace LOICollection::frontend {
         return it->second;
     }
 
+    ClassLookup SemanticAnalyzer::classLookup() const {
+        return [this](const std::string& name) -> ClassNode* {
+            auto cls = this->findClass(name);
+
+            return cls ? &cls->get() : nullptr;
+        };
+    }
+
     TypeInfo SemanticAnalyzer::typeOfValue(const ValueNode::ValueType& value) const {
         switch (value.index()) {
             case 0: return { TypeKind::Int };
@@ -243,12 +274,25 @@ namespace LOICollection::frontend {
         }
     }
 
+    namespace {
+        const std::unordered_map<std::string, TypeKind>& basicTypes() {
+            static const std::unordered_map<std::string, TypeKind> table = {
+                {"int", TypeKind::Int},
+                {"float", TypeKind::Float},
+                {"string", TypeKind::String},
+                {"bool", TypeKind::Bool},
+                {"void", TypeKind::Void},
+            };
+            return table;
+        }
+    }
+
     TypeInfo SemanticAnalyzer::typeFromName(const std::string& name, SourceLocation loc, bool reportError) const {
-        if (name == "int") return { TypeKind::Int };
-        if (name == "float") return { TypeKind::Float };
-        if (name == "string") return { TypeKind::String };
-        if (name == "bool") return { TypeKind::Bool };
-        if (name == "void") return { TypeKind::Void };
+        if (auto it = this->activeTypeParams.find(name); it != this->activeTypeParams.end())
+            return it->second;
+
+        if (auto it = basicTypes().find(name); it != basicTypes().end())
+            return { it->second };
 
         if (auto cls = findClass(name))
             return { TypeKind::Object, cls->get().name };
@@ -291,11 +335,28 @@ namespace LOICollection::frontend {
         functionsByName[node.name].push_back(std::ref(node));
     }
 
+    void SemanticAnalyzer::registerTrait(TraitNode& node) {
+        if (this->traits.contains(node.name)) {
+            this->diagnostics.addError(node.loc, "Duplicate trait: " + node.name);
+            return;
+        }
+
+        std::vector<TraitMethod> methods;
+        for (const auto& m : node.methods) {
+            TraitMethod tm;
+            tm.name = m.name;
+            tm.paramCount = m.params.size();
+            tm.hasReturnType = m.hasReturnType;
+            tm.returnTypeExpr = m.returnTypeExpr;
+            methods.push_back(std::move(tm));
+        }
+
+        this->traits[node.name] = std::move(methods);
+    }
+
     namespace {
         bool isReservedTypeName(const std::string& name) {
-            return name == "int" || name == "float" || name == "string" ||
-                   name == "bool" || name == "void" || name == "variant" ||
-                   name == "optional";
+            return basicTypes().contains(name) || name == "variant" || name == "optional";
         }
     }
 
@@ -387,6 +448,97 @@ namespace LOICollection::frontend {
         return this->typeFromName(expr.name, loc, reportError);
     }
 
+    TypeInfo SemanticAnalyzer::substituteType(
+        const TypeInfo& type, const std::unordered_map<std::string, TypeInfo>& subst) const {
+        if (type.kind == TypeKind::Generic) {
+            auto it = subst.find(type.typeVar);
+            if (it != subst.end() && it->second.kind != TypeKind::Unknown &&
+                it->second.kind != TypeKind::None)
+                return it->second;
+            return type;
+        }
+
+        TypeInfo result = type;
+        if (type.optionalInner)
+            result.optionalInner = std::make_shared<TypeInfo>(
+                substituteType(*type.optionalInner, subst));
+        for (size_t i = 0; i < result.variantOptions.size(); ++i)
+            result.variantOptions[i] = substituteType(result.variantOptions[i], subst);
+        return result;
+    }
+
+    std::unordered_map<std::string, TypeInfo> SemanticAnalyzer::inferTypeParams(
+        const MethodDecl& decl, const std::vector<TypeInfo>& argTypes) const {
+        std::unordered_map<std::string, TypeInfo> subst;
+        for (const auto& tp : decl.typeParams)
+            subst[tp.name] = {};
+
+        for (size_t j = 0; j < argTypes.size() && j < decl.paramTypes.size(); ++j) {
+            const TypeInfo& param = decl.paramTypes[j];
+            if (param.kind != TypeKind::Generic)
+                continue;
+
+            auto it = subst.find(param.typeVar);
+            if (it == subst.end())
+                continue;
+
+            if (it->second.kind == TypeKind::Unknown)
+                it->second = argTypes[j];
+            else if (it->second != argTypes[j])
+                it->second = {};
+        }
+
+        return subst;
+    }
+
+    bool SemanticAnalyzer::satisfiesTrait(const TypeInfo& type, const std::string& traitName) const {
+        auto traitIt = this->traits.find(traitName);
+        if (traitIt == this->traits.end())
+            return false;
+
+        if (type.kind != TypeKind::Object)
+            return false;
+
+        auto clsOpt = this->findClass(type.className);
+        if (!clsOpt)
+            return false;
+
+        ClassNode& cls = clsOpt->get();
+        for (const auto& reqMethod : traitIt->second) {
+            bool found = false;
+            for (const auto& m : cls.methods) {
+                if (m.name != reqMethod.name || m.params.size() != reqMethod.paramCount)
+                    continue;
+                found = true;
+                break;
+            }
+            if (!found)
+                return false;
+        }
+
+        return true;
+    }
+
+    bool SemanticAnalyzer::boundsSatisfied(
+        const std::vector<TypeParam>& typeParams,
+        const std::unordered_map<std::string, TypeInfo>& subst) const {
+        for (const auto& tp : typeParams) {
+            if (tp.bounds.empty())
+                continue;
+
+            auto it = subst.find(tp.name);
+            if (it == subst.end() || it->second.kind == TypeKind::Unknown)
+                continue;
+
+            for (const auto& bound : tp.bounds) {
+                if (!this->satisfiesTrait(it->second, bound))
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
     void SemanticAnalyzer::resolveDeclaredTypes() {
         for (auto clsRef : this->classes) {
             ClassNode& cls = clsRef.get();
@@ -411,6 +563,12 @@ namespace LOICollection::frontend {
             }
 
             for (auto& method : cls.methods) {
+                for (const auto& tp : method.typeParams)
+                    for (const auto& bound : tp.bounds)
+                        if (!this->traits.contains(bound))
+                            this->diagnostics.addError(method.loc,
+                                "Unknown trait bound '" + bound + "' for type parameter '" + tp.name + "'");
+
                 method.paramTypes.resize(method.params.size());
                 for (size_t i = 0; i < method.params.size(); ++i) {
                     if (method.params[i].hasType)
@@ -426,6 +584,21 @@ namespace LOICollection::frontend {
 
         for (auto fnRef : this->functions) {
             MethodDecl& decl = fnRef.get().decl;
+
+            for (const auto& tp : decl.typeParams)
+                for (const auto& bound : tp.bounds)
+                    if (!this->traits.contains(bound))
+                        this->diagnostics.addError(decl.loc,
+                            "Unknown trait bound '" + bound + "' for type parameter '" + tp.name + "'");
+
+            this->activeTypeParams.clear();
+            for (const auto& tp : decl.typeParams) {
+                TypeInfo g;
+                g.kind = TypeKind::Generic;
+                g.typeVar = tp.name;
+                this->activeTypeParams[tp.name] = g;
+            }
+
             decl.paramTypes.resize(decl.params.size());
             for (size_t i = 0; i < decl.params.size(); ++i) {
                 if (decl.params[i].hasType)
@@ -435,6 +608,8 @@ namespace LOICollection::frontend {
 
             if (decl.hasReturnType)
                 decl.returnType = this->resolveTypeExpr(decl.returnTypeExpr, decl.loc, true);
+
+            this->activeTypeParams.clear();
         }
     }
 
@@ -467,6 +642,7 @@ namespace LOICollection::frontend {
             switch (part->getType()) {
                 case ASTNode::Type::Class:
                 case ASTNode::Type::FunctionDef:
+                case ASTNode::Type::Trait:
                 case ASTNode::Type::Using:
                 case ASTNode::Type::Import:
                 case ASTNode::Type::Component:
@@ -495,8 +671,31 @@ namespace LOICollection::frontend {
     void SemanticAnalyzer::checkBody(std::optional<std::reference_wrapper<ClassNode>> cls, MethodDecl& method) {
         MethodScope scope{ cls, std::ref(method) };
 
-        if (method.body)
+        bool pushedTypeParams = false;
+        if (!method.typeParams.empty()) {
+            pushedTypeParams = true;
+            this->activeTypeParams.clear();
+            this->activeTypeParamBounds.clear();
+            for (const auto& tp : method.typeParams) {
+                TypeInfo g;
+                g.kind = TypeKind::Generic;
+                g.typeVar = tp.name;
+                this->activeTypeParams[tp.name] = g;
+                this->activeTypeParamBounds[tp.name] = tp.bounds;
+            }
+        }
+
+        if (method.body) {
+            this->blockScopes.emplace_back();
+            auto popScope = make_scope_guard([this] { this->blockScopes.pop_back(); });
+
             checkStatement(*method.body, scope);
+        }
+
+        if (pushedTypeParams) {
+            this->activeTypeParams.clear();
+            this->activeTypeParamBounds.clear();
+        }
 
         if (method.hasReturnType && !method.isConstructor &&
             method.returnType.kind != TypeKind::Void && !method.hasReturnStatement) {
@@ -549,10 +748,12 @@ namespace LOICollection::frontend {
 
                 TypeInfo iterableType = checkExpr(*forIn.iterable, scope);
 
-                bool isRange = forIn.iterable->getType() == ASTNode::Type::Range;
-                if (!isRange && iterableType.kind != TypeKind::Unknown &&
-                    iterableType.kind != TypeKind::Array) {
-                    this->diagnostics.addError(forIn.loc, "for-in iterable must be an array");
+                auto protocol = iterableProtocol(forIn.iterable->getType(), iterableType, this->classLookup());
+                if (!protocol) {
+                    this->diagnostics.addError(forIn.loc,
+                        "for-in iterable must be an array, a string or a class providing '" +
+                        std::string(lengthMethod) + "()' and '" + std::string(elementMethod) +
+                        "(int)', got " + typeInfoToString(iterableType));
                 }
 
                 auto declareLoopVar = [this](const std::string& name, TypeInfo type) {
@@ -564,9 +765,8 @@ namespace LOICollection::frontend {
 
                 if (forIn.hasIndexVar)
                     declareLoopVar(forIn.indexVar, TypeInfo{ TypeKind::Int });
-                declareLoopVar(forIn.elementVar, isRange
-                    ? TypeInfo{ TypeKind::Int }
-                    : TypeInfo{});
+                declareLoopVar(forIn.elementVar,
+                    protocol ? protocol->elementType : TypeInfo{});
 
                 if (forIn.body)
                     checkStatement(*forIn.body, scope);
@@ -614,18 +814,7 @@ namespace LOICollection::frontend {
                 auto& assign = static_cast<CompoundAssignNode&>(node);
                 TypeInfo target = checkExpr(*assign.target, scope);
                 TypeInfo value = checkExpr(*assign.value, scope);
-
-                if (assign.op == "+" && (target.kind == TypeKind::String || value.kind == TypeKind::String))
-                    return { TypeKind::String };
-
-                if (isNumeric(target) && isNumeric(value)) {
-                    if (target.kind == TypeKind::Int && value.kind == TypeKind::Int)
-                        return { TypeKind::Int };
-
-                    return { TypeKind::Float };
-                }
-
-                return {};
+                return arithmeticResult(assign.op, target, value);
             }
 
             case ASTNode::Type::Coalesce: {
@@ -824,22 +1013,7 @@ namespace LOICollection::frontend {
                 auto& arith = static_cast<ArithmeticNode&>(node);
                 TypeInfo left = checkExpr(*arith.left, scope);
                 TypeInfo right = checkExpr(*arith.right, scope);
-
-                if (arith.op == "+" && (left.kind == TypeKind::String || right.kind == TypeKind::String))
-                    return { TypeKind::String };
-
-                if (isNumeric(left) && isNumeric(right)) {
-                    if ((arith.op == "+" || arith.op == "-" || arith.op == "*") &&
-                        left.kind == TypeKind::Int && right.kind == TypeKind::Int)
-                        return { TypeKind::Int };
-
-                    if (arith.op == "%" && left.kind == TypeKind::Int && right.kind == TypeKind::Int)
-                        return { TypeKind::Int };
-
-                    return { TypeKind::Float };
-                }
-
-                return {};
+                return arithmeticResult(arith.op, left, right);
             }
 
             case ASTNode::Type::Compare: {
@@ -945,6 +1119,43 @@ namespace LOICollection::frontend {
                     }
                 }
 
+                if (node.isDeclaration && !this->blockScopes.empty()) {
+                    auto& locals = this->blockScopes.back();
+                    if (locals.contains(var.name)) {
+                        this->diagnostics.addError(node.loc,
+                            "Variable '" + var.name + "' is already declared in this scope");
+                        return rhs;
+                    }
+
+                    if (node.hasDeclaredType) {
+                        if (!node.value) {
+                            this->diagnostics.addError(node.loc,
+                                "Typed declaration of '" + var.name + "' requires an initializer");
+                            return rhs;
+                        }
+
+                        TypeInfo declared = this->resolveTypeExpr(node.declaredType, node.loc, true);
+                        this->unify(declared, rhs, node.loc, "variable '" + var.name + "'");
+                        if (declared.kind == TypeKind::Optional &&
+                            rhs.kind == TypeKind::Optional && node.value) {
+                            node.value->preserveOptional = true;
+                        }
+                        locals[var.name] = declared;
+                        return rhs;
+                    }
+
+                    locals[var.name] = rhs;
+                    return rhs;
+                }
+
+                if (node.isDeclaration &&
+                    (this->declaredGlobals.contains(var.name) ||
+                     this->globalTypes.contains(var.name))) {
+                    this->diagnostics.addError(node.loc,
+                        "Variable '" + var.name + "' is already declared in this scope");
+                    return rhs;
+                }
+
                 if (!this->blockScopes.empty()) {
                     for (auto it = this->blockScopes.rbegin(); it != this->blockScopes.rend(); ++it) {
                         auto found = it->find(var.name);
@@ -956,6 +1167,7 @@ namespace LOICollection::frontend {
                     }
 
                     if (!this->isNameDefined(var.name, scope)) {
+                        this->requireLet(node, var);
                         this->blockScopes.back()[var.name] = rhs;
                         return rhs;
                     }
@@ -974,6 +1186,7 @@ namespace LOICollection::frontend {
                         this->diagnostics.addError(node.loc,
                             "Variable '" + var.name + "' was already defined without an explicit type");
                     } else {
+                        this->requireLet(node, var);
                         this->declaredGlobals[var.name] = declared;
                     }
 
@@ -996,11 +1209,20 @@ namespace LOICollection::frontend {
                     return rhs;
                 }
 
-                if (auto declaredIt = this->declaredGlobals.find(var.name);
-                    declaredIt != this->declaredGlobals.end()) {
-                    this->unify(declaredIt->second, rhs, node.loc,
-                        "variable '" + var.name + "'");
-                    if (declaredIt->second.kind == TypeKind::Optional &&
+                if (this->globalTypes.contains(var.name)) {
+                    auto& existing = this->globalTypes[var.name];
+                    this->unify(existing, rhs, node.loc, "variable '" + var.name + "'");
+                    if (existing.kind == TypeKind::Optional &&
+                        rhs.kind == TypeKind::Optional && node.value) {
+                        node.value->preserveOptional = true;
+                    }
+                    return rhs;
+                }
+
+                if (this->declaredGlobals.contains(var.name)) {
+                    auto& existing = this->declaredGlobals[var.name];
+                    this->unify(existing, rhs, node.loc, "variable '" + var.name + "'");
+                    if (existing.kind == TypeKind::Optional &&
                         rhs.kind == TypeKind::Optional && node.value) {
                         node.value->preserveOptional = true;
                     }
@@ -1008,11 +1230,12 @@ namespace LOICollection::frontend {
                 }
 
                 if (rhs.kind == TypeKind::None) {
-                    
-                    
+                    this->requireLet(node, var);
                     globalTypes[var.name] = TypeInfo{};
                     return rhs;
                 }
+
+                this->requireLet(node, var);
 
                 if (rhs.kind != TypeKind::Unknown)
                     globalTypes[var.name] = rhs;
@@ -1221,39 +1444,47 @@ namespace LOICollection::frontend {
             return {};
 
         if (targetType.kind == TypeKind::Variant || targetType.kind == TypeKind::Optional) {
-            if (node.memberName == "type") {
-                node.memberKind = MemberAccessNode::MemberKind::TypeOf;
+            static const std::unordered_map<std::string, MemberAccessNode::MemberKind> conventionMembers = {
+                { "type", MemberAccessNode::MemberKind::TypeOf },
+                { "value", MemberAccessNode::MemberKind::Value },
+                { "has_value", MemberAccessNode::MemberKind::HasValue },
+            };
+
+            auto it = conventionMembers.find(node.memberName);
+            if (it != conventionMembers.end()) {
                 node.target->preserveOptional = true;
-                return { TypeKind::String };
-            }
 
-            if (node.memberName == "value") {
-                node.memberKind = MemberAccessNode::MemberKind::Value;
-                node.target->preserveOptional = true;
+                switch (it->second) {
+                    case MemberAccessNode::MemberKind::TypeOf:
+                        node.memberKind = it->second;
+                        return { TypeKind::String };
 
-                if (targetType.kind == TypeKind::Optional)
-                    return *targetType.optionalInner;
+                    case MemberAccessNode::MemberKind::Value: {
+                        node.memberKind = it->second;
+                        if (targetType.kind == TypeKind::Optional)
+                            return *targetType.optionalInner;
 
-                TypeInfo result;
-                for (const auto& option : targetType.variantOptions) {
-                    if (result.kind == TypeKind::Unknown)
-                        result = option;
-                    else if (!(result == option))
-                        return {};
+                        TypeInfo result;
+                        for (const auto& option : targetType.variantOptions) {
+                            if (result.kind == TypeKind::Unknown)
+                                result = option;
+                            else if (!(result == option))
+                                return {};
+                        }
+                        return result;
+                    }
+
+                    case MemberAccessNode::MemberKind::HasValue:
+                        if (targetType.kind != TypeKind::Optional) {
+                            this->diagnostics.addError(node.loc,
+                                "'.has_value' is only available on optional values");
+                            return {};
+                        }
+                        node.memberKind = it->second;
+                        return { TypeKind::Bool };
+
+                    default: break;
                 }
-                return result;
-            }
-
-            if (node.memberName == "has_value") {
-                if (targetType.kind != TypeKind::Optional) {
-                    this->diagnostics.addError(node.loc,
-                        "'.has_value' is only available on optional values");
-                    return {};
-                }
-
-                node.memberKind = MemberAccessNode::MemberKind::HasValue;
-                node.target->preserveOptional = true;
-                return { TypeKind::Bool };
             }
 
             if (targetType.kind == TypeKind::Variant) {
@@ -1337,6 +1568,14 @@ namespace LOICollection::frontend {
         }
 
         this->receiverCaptures = std::move(remaining);
+    }
+
+    void SemanticAnalyzer::requireLet(AssignmentNode& node, const VariableNode& var) {
+        if (node.isDeclaration)
+            return;
+
+        this->diagnostics.addError(node.loc,
+            "Variable '" + var.name + "' is not declared; write 'let " + var.name + " = ...' to introduce it");
     }
 
     TypeInfo SemanticAnalyzer::checkMethodCall(MethodCallNode& node, MethodScope& scope) {
@@ -1444,13 +1683,37 @@ namespace LOICollection::frontend {
             return {};
         }
 
+        if (targetType.kind == TypeKind::Generic) {
+            auto boundIt = this->activeTypeParamBounds.find(targetType.typeVar);
+            if (boundIt != this->activeTypeParamBounds.end()) {
+                for (const auto& traitName : boundIt->second) {
+                    auto traitIt = this->traits.find(traitName);
+                    if (traitIt == this->traits.end())
+                        continue;
+
+                    for (const auto& m : traitIt->second) {
+                        if (m.name != node.methodName || m.paramCount != argCount)
+                            continue;
+
+                        TypeInfo ret;
+                        if (m.hasReturnType)
+                            ret = this->resolveTypeExpr(m.returnTypeExpr, node.loc, false);
+                        node.dynamicDispatch = true;
+                        return ret;
+                    }
+                }
+            }
+
+            diagnostics.addError(node.loc,
+                "Type '" + targetType.typeVar + "' has no method '" + node.methodName + "'");
+            return {};
+        }
+
         if (targetType.kind == TypeKind::Unknown) {
-            
-
-
-            for (const char* className : { "Array", "String" }) {
+            ClassCall& classes = ClassCall::getInstance();
+            for (const auto& className : classes.getClassNames()) {
                 std::vector<CallbackTypeArgs> signatures =
-                    ClassCall::getInstance().getValueMethodSignatures(className, node.methodName);
+                    classes.getValueMethodSignatures(className, node.methodName);
 
                 for (const auto& signature : signatures) {
                     if (matchesNativeSignature(signature, argTypes)) {
@@ -1660,46 +1923,79 @@ namespace LOICollection::frontend {
             return {};
         }
 
-        std::vector<size_t> candidates;
+        struct Cand {
+            size_t index;
+            std::unordered_map<std::string, TypeInfo> subst;
+        };
+        std::vector<Cand> candidates;
+        std::vector<std::string> boundFailures;
+
         for (size_t i = 0; i < it->second.size(); ++i) {
             const auto& decl = it->second[i].get().decl;
             if (decl.params.size() != argCount)
                 continue;
 
             bool match = true;
-            for (size_t j = 0; j < argCount; ++j) {
-                const TypeInfo& param = decl.paramTypes[j];
-                if (!this->isAssignableTo(param, argTypes[j])) {
+            std::unordered_map<std::string, TypeInfo> subst;
+            if (!decl.typeParams.empty()) {
+                subst = this->inferTypeParams(decl, argTypes);
+                for (size_t j = 0; j < argCount; ++j) {
+                    if (!this->isAssignableTo(
+                            this->substituteType(decl.paramTypes[j], subst), argTypes[j])) {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match && !this->boundsSatisfied(decl.typeParams, subst))
                     match = false;
-                    break;
+            } else {
+                for (size_t j = 0; j < argCount; ++j) {
+                    if (!this->isAssignableTo(decl.paramTypes[j], argTypes[j])) {
+                        match = false;
+                        break;
+                    }
                 }
             }
 
-            if (match)
-                candidates.push_back(i);
+            if (!match)
+                continue;
+
+            if (decl.typeParams.empty()) {
+                candidates.push_back({ i, {} });
+            } else if (this->boundsSatisfied(decl.typeParams, subst)) {
+                candidates.push_back({ i, subst });
+            } else {
+                boundFailures.push_back(decl.name);
+            }
         }
 
         if (candidates.empty()) {
-            diagnostics.addError(node.loc,
-                "No matching function '" + node.name + "' with " +
-                std::to_string(argCount) + " argument(s)");
+            if (!boundFailures.empty()) {
+                diagnostics.addError(node.loc,
+                    "Type bound not satisfied for generic function '" + node.name + "'");
+            } else {
+                diagnostics.addError(node.loc,
+                    "No matching function '" + node.name + "' with " +
+                    std::to_string(argCount) + " argument(s)");
+            }
             return {};
         }
 
-        size_t best = candidates[0];
-        size_t bestScore = knownParamCount(it->second[best].get().decl);
+        size_t best = 0;
+        size_t bestScore = knownParamCount(it->second[candidates[0].index].get().decl);
         for (size_t i = 1; i < candidates.size(); ++i) {
-            size_t score = knownParamCount(it->second[candidates[i]].get().decl);
+            size_t score = knownParamCount(it->second[candidates[i].index].get().decl);
             if (score > bestScore) {
-                best = candidates[i];
+                best = i;
                 bestScore = score;
             }
         }
 
-        MethodDecl& decl = it->second[best].get().decl;
+        size_t bestIndex = candidates[best].index;
+        MethodDecl& decl = it->second[bestIndex].get().decl;
 
         node.resolvedName = node.name;
-        node.functionOrdinal = static_cast<int>(best);
+        node.functionOrdinal = static_cast<int>(bestIndex);
 
         for (size_t j = 0; j < argCount; ++j) {
             if (decl.paramTypes[j].kind == TypeKind::Optional &&
@@ -1708,7 +2004,7 @@ namespace LOICollection::frontend {
             }
         }
 
-        return decl.returnType;
+        return this->substituteType(decl.returnType, candidates[best].subst);
     }
 
     namespace {

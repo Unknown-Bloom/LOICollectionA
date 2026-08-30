@@ -1,13 +1,13 @@
 import "generic.lcui";
 
-quote = new PaginatedForm("market.quote", {tr("market.gui.title")}, GUIManager::value("market.quote.items"), 10) {
+let quote = new PaginatedForm("market.quote", {tr("market.gui.title")}, GUIManager::value("market.quote.items"), 10) {
     label({tr("market.gui.quote.list.label")}, new TextOptions());
     SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
         if (result.selection != "") [
-            nameData = GUIManager::request("market.quote.id", [ result.selectionIndex ]);
+            let nameData = GUIManager::request("market.quote.id", [ result.selectionIndex ]);
 
             buildQuoteInfo(nameData[0]);
         :
@@ -18,9 +18,9 @@ quote = new PaginatedForm("market.quote", {tr("market.gui.title")}, GUIManager::
 };
 
 func buildQuoteInfo(name: string) -> void {
-    infoData = GUIManager::request("market.quote.info", [ name ]);
+    let infoData = GUIManager::request("market.quote.info", [ name ]);
 
-    quoteInfo = new CustomForm("market.quote.info", {tr("market.gui.title")}) {
+    let quoteInfo = new CustomForm("market.quote.info", {tr("market.gui.title")}) {
         label(infoData[0], new TextOptions());
         SectionHeader();
         closeButton();

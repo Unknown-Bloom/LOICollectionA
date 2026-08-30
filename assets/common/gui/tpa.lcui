@@ -1,17 +1,17 @@
 import "generic.lcui";
 
-mode = new CtxValue(0);
-inviteId = new CtxValue(1);
+let mode = new CtxValue(0);
+let inviteId = new CtxValue(1);
 
 if (mode.value == "invite") [
-    inviteData = GUIManager::request("tpa.invite.info", [ inviteId.value ]);
+    let inviteData = GUIManager::request("tpa.invite.info", [ inviteId.value ]);
 
-    invite = new MessageBox("tpa.invite", {tr("tpa.gui.title")}) {
+    let invite = new MessageBox("tpa.invite", {tr("tpa.gui.title")}) {
         body(inviteData[0]);
         button1({tr("tpa.yes")});
         button2({tr("tpa.no")});
         show(func (result) -> void {
-            response = 1;
+            let response = 1;
             if (result instanceof MessageBoxResult) [
                 response = result.selection;
             ]
@@ -21,25 +21,25 @@ if (mode.value == "invite") [
     };
 ]
 
-navigateGeneric = new GlobalValue();
+let navigateGeneric = new GlobalValue();
 navigateGeneric.value = false;
 
-navigateBlacklist = new GlobalValue();
+let navigateBlacklist = new GlobalValue();
 navigateBlacklist.value = false;
 
-navigateAddBlacklist = new GlobalValue();
+let navigateAddBlacklist = new GlobalValue();
 navigateAddBlacklist.value = false;
 
-genericOption = new ButtonOptions();
+let genericOption = new ButtonOptions();
 genericOption.tooltip = {tr("tpa.gui.setting.generic.tooltip")};
 
-blacklistOption = new ButtonOptions();
+let blacklistOption = new ButtonOptions();
 blacklistOption.tooltip = {tr("tpa.gui.setting.blacklist.tooltip")};
 
-addBlacklistOption = new ButtonOptions();
+let addBlacklistOption = new ButtonOptions();
 addBlacklistOption.tooltip = {tr("tpa.gui.setting.blacklist.add.tooltip")};
 
-setting = new CustomForm("tpa.setting", {tr("tpa.gui.setting.title")}) {
+let setting = new CustomForm("tpa.setting", {tr("tpa.gui.setting.title")}) {
     label({tr("tpa.gui.setting.label")}, new TextOptions());
     SectionHeader();
     button({tr("tpa.gui.setting.generic")}, on: func () -> void {
@@ -70,11 +70,11 @@ setting = new CustomForm("tpa.setting", {tr("tpa.gui.setting.title")}) {
     show();
 };
 
-inviteState = new ObservableBoolean(GUIManager::value("tpa.invite")[0], true);
-inviteSaved = new GlobalValue();
+let inviteState = new ObservableBoolean(GUIManager::value("tpa.invite")[0], true);
+let inviteSaved = new GlobalValue();
 inviteSaved.value = false;
 
-generic = new CustomForm("tpa.generic", {tr("tpa.gui.setting.title")}) {
+let generic = new CustomForm("tpa.generic", {tr("tpa.gui.setting.title")}) {
     label({tr("tpa.gui.setting.label")}, new TextOptions());
     SectionHeader();
     toggle({tr("tpa.gui.setting.generic.switch1")}, inviteState, new ToggleOptions());
@@ -94,7 +94,7 @@ generic = new CustomForm("tpa.generic", {tr("tpa.gui.setting.title")}) {
     show();
 };
 
-blacklist = new PaginatedForm("tpa.blacklist", {tr("tpa.gui.setting.title")}, GUIManager::value("tpa.blacklists"), 10) {
+let blacklist = new PaginatedForm("tpa.blacklist", {tr("tpa.gui.setting.title")}, GUIManager::value("tpa.blacklists"), 10) {
     label({tr("tpa.gui.setting.label")}, new TextOptions());
     SectionHeader();
     PageControls();
@@ -109,7 +109,7 @@ blacklist = new PaginatedForm("tpa.blacklist", {tr("tpa.gui.setting.title")}, GU
     }, addBlacklistOption);
     show(func (result) -> void {
         if (navigateAddBlacklist.value) [
-            checkData = GUIManager::request("tpa.blacklist.check", []);
+            let checkData = GUIManager::request("tpa.blacklist.check", []);
             if (checkData[0]) [
                 GUIManager::switchTo("tpa.blacklist.add", 3);
             :
@@ -117,9 +117,9 @@ blacklist = new PaginatedForm("tpa.blacklist", {tr("tpa.gui.setting.title")}, GU
             ]
         :
             if (result.selection != "") [
-                infoData = GUIManager::request("tpa.blacklist.info", [ result.selection ]);
+                let infoData = GUIManager::request("tpa.blacklist.info", [ result.selection ]);
 
-                info = new CustomForm("tpa.blacklist.set", {tr("tpa.gui.setting.title")}) {
+                let info = new CustomForm("tpa.blacklist.set", {tr("tpa.gui.setting.title")}) {
                     label(infoData[0], new TextOptions());
                     SectionHeader();
                     ConfirmBar({tr("tpa.gui.setting.blacklist.set.remove")}, func () -> void {
@@ -141,7 +141,7 @@ blacklist = new PaginatedForm("tpa.blacklist", {tr("tpa.gui.setting.title")}, GU
     show();
 };
 
-blacklistAdd = new PaginatedForm("tpa.blacklist.add", {tr("tpa.gui.setting.title")}, GUIManager::value("tpa.players.add"), 10) {
+let blacklistAdd = new PaginatedForm("tpa.blacklist.add", {tr("tpa.gui.setting.title")}, GUIManager::value("tpa.players.add"), 10) {
     label({tr("tpa.gui.setting.blacklist.add.label")}, new TextOptions());
     SectionHeader();
     PageControls();
@@ -158,14 +158,14 @@ blacklistAdd = new PaginatedForm("tpa.blacklist.add", {tr("tpa.gui.setting.title
     show();
 };
 
-open = new PaginatedForm("tpa.open", {tr("tpa.gui.title")}, GUIManager::value("tpa.players"), 10) {
+let open = new PaginatedForm("tpa.open", {tr("tpa.gui.title")}, GUIManager::value("tpa.players"), 10) {
     label({tr("tpa.gui.label2")}, new TextOptions());
     SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
         if (result.selection != "") [
-            playerData = GUIManager::request("tpa.player.info", [ result.selectionIndex ]);
+            let playerData = GUIManager::request("tpa.player.info", [ result.selectionIndex ]);
 
             buildContent(playerData[0]);
         ]
@@ -174,16 +174,16 @@ open = new PaginatedForm("tpa.open", {tr("tpa.gui.title")}, GUIManager::value("t
 };
 
 func buildContent(targetUuid: string) -> void {
-    typeValue = new ObservableNumber(0.0, true);
-    submitDone = new GlobalValue();
+    let typeValue = new ObservableNumber(0.0, true);
+    let submitDone = new GlobalValue();
     submitDone.value = false;
 
-    content = new CustomForm("tpa.content", {tr("tpa.gui.title")}) {
+    let content = new CustomForm("tpa.content", {tr("tpa.gui.title")}) {
         label({tr("tpa.gui.label")}, new TextOptions());
         SectionHeader();
         dropdown({tr("tpa.gui.dropdown")}, typeValue, GUIManager::value("tpa.types"), new DropdownOptions());
         ConfirmBar(saveLabel(), func () -> void {
-            submitResult = GUIManager::request("tpa.content.submit", [ targetUuid, typeValue.getData() ]);
+            let submitResult = GUIManager::request("tpa.content.submit", [ targetUuid, typeValue.getData() ]);
 
             submitDone.value = submitResult[0];
             this.close();

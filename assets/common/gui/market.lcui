@@ -1,70 +1,70 @@
 import "generic.lcui";
 
-navigateBuy = new GlobalValue();
+let navigateBuy = new GlobalValue();
 navigateBuy.value = false;
 
-navigateStore = new GlobalValue();
+let navigateStore = new GlobalValue();
 navigateStore.value = false;
 
-navigateTrade = new GlobalValue();
+let navigateTrade = new GlobalValue();
 navigateTrade.value = false;
 
-navigatePersonal = new GlobalValue();
+let navigatePersonal = new GlobalValue();
 navigatePersonal.value = false;
 
-navigateQuote = new GlobalValue();
+let navigateQuote = new GlobalValue();
 navigateQuote.value = false;
 
-navigateWanted = new GlobalValue();
+let navigateWanted = new GlobalValue();
 navigateWanted.value = false;
 
-navigateAuction = new GlobalValue();
+let navigateAuction = new GlobalValue();
 navigateAuction.value = false;
 
-worldbuyOption = new ButtonOptions();
+let worldbuyOption = new ButtonOptions();
 worldbuyOption.tooltip = {tr("market.gui.worldbuy.tooltip")};
 
-storeEnabled = GUIManager::request("market.store.enabled", [])[0];
-storeVisible = new ObservableBoolean(storeEnabled, false);
+let storeEnabled = GUIManager::request("market.store.enabled", [])[0];
+let storeVisible = new ObservableBoolean(storeEnabled, false);
 
-storeOption = new ButtonOptions();
+let storeOption = new ButtonOptions();
 storeOption.tooltip = {tr("market.gui.store.tooltip")};
 storeOption.visible = storeVisible;
 
-tradeOption = new ButtonOptions();
+let tradeOption = new ButtonOptions();
 tradeOption.tooltip = {tr("market.gui.trade.tooltip")};
 
-personalOption = new ButtonOptions();
+let personalOption = new ButtonOptions();
 personalOption.tooltip = {tr("market.gui.personal.tooltip")};
 
-quoteEnabled = GUIManager::request("market.quote.enabled", [])[0];
-quoteVisible = new ObservableBoolean(quoteEnabled, false);
+let quoteEnabled = GUIManager::request("market.quote.enabled", [])[0];
+let quoteVisible = new ObservableBoolean(quoteEnabled, false);
 
-quoteOption = new ButtonOptions();
+let quoteOption = new ButtonOptions();
 quoteOption.tooltip = {tr("market.gui.quote.tooltip")};
 quoteOption.visible = quoteVisible;
 
-wantedEnabled = GUIManager::request("market.wanted.enabled", [])[0];
-wantedVisible = new ObservableBoolean(wantedEnabled, false);
+let wantedEnabled = GUIManager::request("market.wanted.enabled", [])[0];
+let wantedVisible = new ObservableBoolean(wantedEnabled, false);
 
-wantedOption = new ButtonOptions();
+let wantedOption = new ButtonOptions();
 wantedOption.tooltip = {tr("market.gui.wanted.tooltip")};
 wantedOption.visible = wantedVisible;
 
-auctionEnabled = GUIManager::request("market.auction.enabled", [])[0];
-auctionVisible = new ObservableBoolean(auctionEnabled, false);
+let auctionEnabled = GUIManager::request("market.auction.enabled", [])[0];
+let auctionVisible = new ObservableBoolean(auctionEnabled, false);
 
-auctionOption = new ButtonOptions();
+let auctionOption = new ButtonOptions();
 auctionOption.tooltip = {tr("market.gui.auction.tooltip")};
 auctionOption.visible = auctionVisible;
 
-buyItemOption = new ButtonOptions();
+let buyItemOption = new ButtonOptions();
 buyItemOption.tooltip = {tr("market.gui.sell.item.button1.tooltip")};
 
-delistItemOption = new ButtonOptions();
+let delistItemOption = new ButtonOptions();
 delistItemOption.tooltip = {tr("market.gui.sell.item.button2.tooltip")};
 
-marketOpen = new CustomForm("market.open", {tr("market.gui.title")}) {
+let marketOpen = new CustomForm("market.open", {tr("market.gui.title")}) {
     label({tr("market.gui.label")}, new TextOptions());
     SectionHeader();
     button({tr("market.gui.worldbuy")}, on: func () -> void {
@@ -155,14 +155,14 @@ marketOpen = new CustomForm("market.open", {tr("market.gui.title")}) {
     show();
 };
 
-buy = new PaginatedForm("market.buy", {tr("market.gui.title")}, GUIManager::value("market.buy.items"), 10) {
+let buy = new PaginatedForm("market.buy", {tr("market.gui.title")}, GUIManager::value("market.buy.items"), 10) {
     label({tr("market.gui.label")}, new TextOptions());
     SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
         if (result.selection != "") [
-            idData = GUIManager::request("market.buy.id", [ result.selectionIndex ]);
+            let idData = GUIManager::request("market.buy.id", [ result.selectionIndex ]);
 
             buildItemInfo(idData[0]);
         :
@@ -172,14 +172,14 @@ buy = new PaginatedForm("market.buy", {tr("market.gui.title")}, GUIManager::valu
     show();
 };
 
-trade = new PaginatedForm("market.trade", {tr("market.gui.title")}, GUIManager::value("market.players"), 10) {
+let trade = new PaginatedForm("market.trade", {tr("market.gui.title")}, GUIManager::value("market.players"), 10) {
     label({tr("market.gui.trade.label")}, new TextOptions());
     SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
         if (result.selection != "") [
-            uuidData = GUIManager::request("market.players.uuid", [ result.selectionIndex ]);
+            let uuidData = GUIManager::request("market.players.uuid", [ result.selectionIndex ]);
 
             buildTradeType(uuidData[0]);
         :
@@ -189,31 +189,31 @@ trade = new PaginatedForm("market.trade", {tr("market.gui.title")}, GUIManager::
     show();
 };
 
-navigateSellItem = new GlobalValue();
+let navigateSellItem = new GlobalValue();
 navigateSellItem.value = false;
 
-navigateSellContent = new GlobalValue();
+let navigateSellContent = new GlobalValue();
 navigateSellContent.value = false;
 
-navigateBlacklist = new GlobalValue();
+let navigateBlacklist = new GlobalValue();
 navigateBlacklist.value = false;
 
-navigateStoreMine = new GlobalValue();
+let navigateStoreMine = new GlobalValue();
 navigateStoreMine.value = false;
 
-sellItemOption = new ButtonOptions();
+let sellItemOption = new ButtonOptions();
 sellItemOption.tooltip = {tr("market.gui.personal.sellItem.tooltip")};
 
-sellItemContentOption = new ButtonOptions();
+let sellItemContentOption = new ButtonOptions();
 sellItemContentOption.tooltip = {tr("market.gui.personal.sellItemContent.tooltip")};
 
-blacklistOption = new ButtonOptions();
+let blacklistOption = new ButtonOptions();
 blacklistOption.tooltip = {tr("market.gui.personal.blacklist.tooltip")};
 
-storeMineOption = new ButtonOptions();
+let storeMineOption = new ButtonOptions();
 storeMineOption.tooltip = {tr("market.gui.store.mine.tooltip")};
 
-marketPersonal = new CustomForm("market.personal", {tr("market.gui.title")}) {
+let marketPersonal = new CustomForm("market.personal", {tr("market.gui.title")}) {
     label({tr("market.gui.label")}, new TextOptions());
     SectionHeader();
     button({tr("market.gui.personal.sellItem")}, on: func () -> void {
@@ -247,8 +247,8 @@ marketPersonal = new CustomForm("market.personal", {tr("market.gui.title")}) {
     closeButton();
     show(func (result) -> void {
         if (navigateStoreMine.value) [
-            mineData = GUIManager::request("market.store.mine.has", []);
-            mineForm = if (mineData[0]) [ "market.store.mine" : "market.store.create" ];
+            let mineData = GUIManager::request("market.store.mine.has", []);
+            let mineForm = if (mineData[0]) [ "market.store.mine" : "market.store.create" ];
 
             GUIManager::open("market.store", mineForm, 1);
             return;
@@ -260,7 +260,7 @@ marketPersonal = new CustomForm("market.personal", {tr("market.gui.title")}) {
         ]
 
         if (navigateSellContent.value) [
-            checkData = GUIManager::request("market.sell.content.check", []);
+            let checkData = GUIManager::request("market.sell.content.check", []);
 
             if (checkData[0]) [
                 GUIManager::switchTo("market.sell.content", 3);
@@ -275,14 +275,14 @@ marketPersonal = new CustomForm("market.personal", {tr("market.gui.title")}) {
     show();
 };
 
-sellInventory = new PaginatedForm("market.sell.inventory", {tr("market.gui.title")}, GUIManager::value("market.sell.inventory"), 10) {
+let sellInventory = new PaginatedForm("market.sell.inventory", {tr("market.gui.title")}, GUIManager::value("market.sell.inventory"), 10) {
     label({tr("market.gui.sell.item.dropdown")}, new TextOptions());
     SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
         if (result.selection != "") [
-            slotData = GUIManager::request("market.sell.slot", [ result.selectionIndex ]);
+            let slotData = GUIManager::request("market.sell.slot", [ result.selectionIndex ]);
 
             buildSellItem(slotData[0]);
         :
@@ -292,14 +292,14 @@ sellInventory = new PaginatedForm("market.sell.inventory", {tr("market.gui.title
     show();
 };
 
-sellContent = new PaginatedForm("market.sell.content", {tr("market.gui.title")}, GUIManager::value("market.my.items"), 10) {
+let sellContent = new PaginatedForm("market.sell.content", {tr("market.gui.title")}, GUIManager::value("market.my.items"), 10) {
     label({tr("market.gui.label")}, new TextOptions());
     SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
         if (result.selection != "") [
-            idData = GUIManager::request("market.my.item.id", [ result.selectionIndex ]);
+            let idData = GUIManager::request("market.my.item.id", [ result.selectionIndex ]);
 
             buildItemContent(idData[0]);
         :
@@ -309,13 +309,13 @@ sellContent = new PaginatedForm("market.sell.content", {tr("market.gui.title")},
     show();
 };
 
-navigateBlacklistAdd = new GlobalValue();
+let navigateBlacklistAdd = new GlobalValue();
 navigateBlacklistAdd.value = false;
 
-blacklistAddOption = new ButtonOptions();
+let blacklistAddOption = new ButtonOptions();
 blacklistAddOption.tooltip = {tr("market.gui.sell.blacklist.add.tooltip")};
 
-blacklist = new PaginatedForm("market.blacklist", {tr("market.gui.title")}, GUIManager::value("market.blacklists"), 10) {
+let blacklist = new PaginatedForm("market.blacklist", {tr("market.gui.title")}, GUIManager::value("market.blacklists"), 10) {
     label({tr("market.gui.label")}, new TextOptions());
     SectionHeader();
     PageControls();
@@ -330,7 +330,7 @@ blacklist = new PaginatedForm("market.blacklist", {tr("market.gui.title")}, GUIM
     }, blacklistAddOption);
     show(func (result) -> void {
         if (navigateBlacklistAdd.value) [
-            checkData = GUIManager::request("market.blacklist.check", []);
+            let checkData = GUIManager::request("market.blacklist.check", []);
 
             if (checkData[0]) [
                 GUIManager::switchTo("market.blacklist.add", 3);
@@ -346,15 +346,15 @@ blacklist = new PaginatedForm("market.blacklist", {tr("market.gui.title")}, GUIM
     show();
 };
 
-blacklistAdd = new PaginatedForm("market.blacklist.add", {tr("market.gui.title")}, GUIManager::value("market.players"), 10) {
+let blacklistAdd = new PaginatedForm("market.blacklist.add", {tr("market.gui.title")}, GUIManager::value("market.players"), 10) {
     label({tr("market.gui.sell.blacklist.add.label")}, new TextOptions());
     SectionHeader();
     PageControls();
     closeButton();
     show(func (result) -> void {
         if (result.selection != "") [
-            uuidData = GUIManager::request("market.players.uuid", [ result.selectionIndex ]);
-            addResult = GUIManager::request("market.blacklist.add", [ uuidData[0] ]);
+            let uuidData = GUIManager::request("market.players.uuid", [ result.selectionIndex ]);
+            let addResult = GUIManager::request("market.blacklist.add", [ uuidData[0] ]);
 
             if (!addResult[0]) [
                 GUIManager::open("market", "market.blacklist", 3);
@@ -367,22 +367,22 @@ blacklistAdd = new PaginatedForm("market.blacklist.add", {tr("market.gui.title")
 };
 
 func buildItemInfo(id: string) -> void {
-    itemInfoData = GUIManager::request("market.item.info", [ id ]);
+    let itemInfoData = GUIManager::request("market.item.info", [ id ]);
 
-    buyDone = new GlobalValue();
+    let buyDone = new GlobalValue();
     buyDone.value = false;
 
-    buyResult = new GlobalValue();
+    let buyResult = new GlobalValue();
     buyResult.value = true;
 
-    offshelfDone = new GlobalValue();
+    let offshelfDone = new GlobalValue();
     offshelfDone.value = false;
 
-    itemInfo = new CustomForm("market.item", {tr("market.gui.title")}) {
+    let itemInfo = new CustomForm("market.item", {tr("market.gui.title")}) {
         label(itemInfoData[0], new TextOptions());
         SectionHeader();
         button({tr("market.gui.sell.item.button1")}, on: func () -> void {
-            buyResultData = GUIManager::request("market.buy.submit", [ id ]);
+            let buyResultData = GUIManager::request("market.buy.submit", [ id ]);
 
             buyResult.value = buyResultData[0];
             buyDone.value = true;
@@ -418,12 +418,12 @@ func buildItemInfo(id: string) -> void {
 }
 
 func buildItemContent(id: string) -> void {
-    itemInfoData = GUIManager::request("market.item.info", [ id ]);
+    let itemInfoData = GUIManager::request("market.item.info", [ id ]);
 
-    offshelfReturnDone = new GlobalValue();
+    let offshelfReturnDone = new GlobalValue();
     offshelfReturnDone.value = false;
 
-    itemMine = new CustomForm("market.item.mine", {tr("market.gui.title")}) {
+    let itemMine = new CustomForm("market.item.mine", {tr("market.gui.title")}) {
         label(itemInfoData[0], new TextOptions());
         SectionHeader();
         button({tr("market.gui.sell.item.button2")}, on: func () -> void {
@@ -445,30 +445,30 @@ func buildItemContent(id: string) -> void {
 }
 
 func buildSellItem(slot: int) -> void {
-    itemName = new ObservableString("", true);
-    itemIcon = new ObservableString("", true);
-    itemIntroduce = new ObservableString("", true);
-    itemScore = new ObservableString("", true);
+    let itemName = new ObservableString("", true);
+    let itemIcon = new ObservableString("", true);
+    let itemIntroduce = new ObservableString("", true);
+    let itemScore = new ObservableString("", true);
 
-    itemNameOptions = new TextFieldOptions();
+    let itemNameOptions = new TextFieldOptions();
     itemNameOptions.description = {tr("market.gui.sell.sellItem.input1.placeholder")};
 
-    itemIconOptions = new TextFieldOptions();
+    let itemIconOptions = new TextFieldOptions();
     itemIconOptions.description = {tr("market.gui.sell.sellItem.input2.placeholder")};
 
-    itemIntroduceOptions = new TextFieldOptions();
+    let itemIntroduceOptions = new TextFieldOptions();
     itemIntroduceOptions.description = {tr("market.gui.sell.sellItem.input3.placeholder")};
 
-    itemScoreOptions = new TextFieldOptions();
+    let itemScoreOptions = new TextFieldOptions();
     itemScoreOptions.description = {tr("market.gui.sell.sellItem.input4.placeholder")};
 
-    sellDone = new GlobalValue();
+    let sellDone = new GlobalValue();
     sellDone.value = false;
 
-    sellResult = new GlobalValue();
+    let sellResult = new GlobalValue();
     sellResult.value = true;
 
-    sellItemForm = new CustomForm("market.sell.item", {tr("market.gui.title")}) {
+    let sellItemForm = new CustomForm("market.sell.item", {tr("market.gui.title")}) {
         label({tr("market.gui.label")}, new TextOptions());
         SectionHeader();
         textField({tr("market.gui.sell.sellItem.input1")}, itemName, itemNameOptions);
@@ -476,7 +476,7 @@ func buildSellItem(slot: int) -> void {
         textField({tr("market.gui.sell.sellItem.input3")}, itemIntroduce, itemIntroduceOptions);
         textField({tr("market.gui.sell.sellItem.input4")}, itemScore, itemScoreOptions);
         ConfirmBar(saveLabel(), func () -> void {
-            sellResultData = GUIManager::request("market.sell.submit", [ slot, itemName.getData(), itemIcon.getData(), itemIntroduce.getData(), itemScore.getData() ]);
+            let sellResultData = GUIManager::request("market.sell.submit", [ slot, itemName.getData(), itemIcon.getData(), itemIntroduce.getData(), itemScore.getData() ]);
 
             sellResult.value = sellResultData[0];
             sellDone.value = true;
@@ -498,22 +498,22 @@ func buildSellItem(slot: int) -> void {
 }
 
 func buildTradeType(uuid: string) -> void {
-    typeIndex = new ObservableNumber(0.0, true);
+    let typeIndex = new ObservableNumber(0.0, true);
 
-    typeSell = new DropdownItem();
+    let typeSell = new DropdownItem();
     typeSell.label = "sell";
     typeSell.value = 0;
 
-    typeBuy = new DropdownItem();
+    let typeBuy = new DropdownItem();
     typeBuy.label = "buy";
     typeBuy.value = 1;
 
-    typeItems = [ typeSell, typeBuy ];
+    let typeItems = [ typeSell, typeBuy ];
 
-    typeDone = new GlobalValue();
+    let typeDone = new GlobalValue();
     typeDone.value = false;
 
-    tradeType = new CustomForm("market.trade.type", {tr("market.gui.title")}) {
+    let tradeType = new CustomForm("market.trade.type", {tr("market.gui.title")}) {
         label({tr("market.gui.label")}, new TextOptions());
         SectionHeader();
         dropdown({tr("market.gui.trade.dropdown")}, typeIndex, typeItems, new DropdownOptions());
@@ -539,12 +539,12 @@ func buildTradeType(uuid: string) -> void {
 }
 
 func buildBlacklistSet(id: string) -> void {
-    infoData = GUIManager::request("market.blacklist.info", [ id ]);
+    let infoData = GUIManager::request("market.blacklist.info", [ id ]);
 
-    removeDone = new GlobalValue();
+    let removeDone = new GlobalValue();
     removeDone.value = false;
 
-    blacklistInfo = new CustomForm("market.blacklist.info", {tr("market.gui.title")}) {
+    let blacklistInfo = new CustomForm("market.blacklist.info", {tr("market.gui.title")}) {
         label(infoData[0], new TextOptions());
         SectionHeader();
         ConfirmBar({tr("market.gui.sell.blacklist.set.remove")}, func () -> void {

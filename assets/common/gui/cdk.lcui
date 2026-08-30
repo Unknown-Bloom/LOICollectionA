@@ -1,24 +1,24 @@
 import "generic.lcui";
 
-navigateNew = new GlobalValue();
+let navigateNew = new GlobalValue();
 navigateNew.value = false;
 
-navigateRemove = new GlobalValue();
+let navigateRemove = new GlobalValue();
 navigateRemove.value = false;
 
-navigateAward = new GlobalValue();
+let navigateAward = new GlobalValue();
 navigateAward.value = false;
 
-addCdkOption = new ButtonOptions();
+let addCdkOption = new ButtonOptions();
 addCdkOption.tooltip = {tr("cdk.gui.addCdk.tooltip")};
 
-removeCdkOption = new ButtonOptions();
+let removeCdkOption = new ButtonOptions();
 removeCdkOption.tooltip = {tr("cdk.gui.removeCdk.tooltip")};
 
-addAwardOption = new ButtonOptions();
+let addAwardOption = new ButtonOptions();
 addAwardOption.tooltip = {tr("cdk.gui.addAward.tooltip")};
 
-cdkOpen = new CustomForm("cdk.open", {tr("cdk.gui.title")}) {
+let cdkOpen = new CustomForm("cdk.open", {tr("cdk.gui.title")}) {
     label({tr("cdk.gui.label")}, new TextOptions());
     SectionHeader();
     button({tr("cdk.gui.addCdk")}, on: func () -> void {
@@ -61,12 +61,12 @@ cdkOpen = new CustomForm("cdk.open", {tr("cdk.gui.title")}) {
     show();
 };
 
-cdkInput = new ObservableString("", true);
+let cdkInput = new ObservableString("", true);
 
-cdkInputOptions = new TextFieldOptions();
+let cdkInputOptions = new TextFieldOptions();
 cdkInputOptions.description = {tr("cdk.gui.convert.input.placeholder")};
 
-convert = new CustomForm("cdk.convert", {tr("cdk.gui.title")}) {
+let convert = new CustomForm("cdk.convert", {tr("cdk.gui.title")}) {
     label({tr("cdk.gui.label")}, new TextOptions());
     SectionHeader();
     textField({tr("cdk.gui.convert.input")}, cdkInput, cdkInputOptions);
@@ -78,20 +78,20 @@ convert = new CustomForm("cdk.convert", {tr("cdk.gui.title")}) {
     show();
 };
 
-newCdkId = new ObservableString("", true);
-newCdkTime = new ObservableString("", true);
-newPersonal = new ObservableBoolean(false, true);
+let newCdkId = new ObservableString("", true);
+let newCdkTime = new ObservableString("", true);
+let newPersonal = new ObservableBoolean(false, true);
 
-newCdkIdOptions = new TextFieldOptions();
+let newCdkIdOptions = new TextFieldOptions();
 newCdkIdOptions.description = {tr("cdk.gui.new.input1.placeholder")};
 
-newCdkTimeOptions = new TextFieldOptions();
+let newCdkTimeOptions = new TextFieldOptions();
 newCdkTimeOptions.description = {tr("cdk.gui.new.input2.placeholder")};
 
-newDone = new GlobalValue();
+let newDone = new GlobalValue();
 newDone.value = false;
 
-cdkNew = new CustomForm("cdk.new", {tr("cdk.gui.title")}) {
+let cdkNew = new CustomForm("cdk.new", {tr("cdk.gui.title")}) {
     label({tr("cdk.gui.label")}, new TextOptions());
     SectionHeader();
     textField({tr("cdk.gui.new.input1")}, newCdkId, newCdkIdOptions);
@@ -112,7 +112,7 @@ cdkNew = new CustomForm("cdk.new", {tr("cdk.gui.title")}) {
     show();
 };
 
-remove = new PaginatedForm("cdk.remove", {tr("cdk.gui.title")}, GUIManager::value("cdk.cdks"), 10) {
+let remove = new PaginatedForm("cdk.remove", {tr("cdk.gui.title")}, GUIManager::value("cdk.cdks"), 10) {
     label({tr("cdk.gui.remove.label")}, new TextOptions());
     PageControls();
     closeButton();
@@ -126,7 +126,7 @@ remove = new PaginatedForm("cdk.remove", {tr("cdk.gui.title")}, GUIManager::valu
     show();
 };
 
-award = new PaginatedForm("cdk.award", {tr("cdk.gui.title")}, GUIManager::value("cdk.cdks"), 10) {
+let award = new PaginatedForm("cdk.award", {tr("cdk.gui.title")}, GUIManager::value("cdk.cdks"), 10) {
     label({tr("cdk.gui.award.label")}, new TextOptions());
     PageControls();
     closeButton();
@@ -141,10 +141,10 @@ award = new PaginatedForm("cdk.award", {tr("cdk.gui.title")}, GUIManager::value(
 };
 
 func buildRemoveInfo(id: string) -> void {
-    removeDone = new GlobalValue();
+    let removeDone = new GlobalValue();
     removeDone.value = false;
 
-    removeInfo = new CustomForm("cdk.remove.info", {tr("cdk.gui.title")}) {
+    let removeInfo = new CustomForm("cdk.remove.info", {tr("cdk.gui.title")}) {
         label(std::format({tr("cdk.gui.remove.content")}, [ id ]), new TextOptions());
         SectionHeader();
         ConfirmBar({tr("cdk.gui.remove.yes")}, func () -> void {
@@ -165,18 +165,18 @@ func buildRemoveInfo(id: string) -> void {
 }
 
 func buildAwardInfo(id: string) -> void {
-    awardInfoData = GUIManager::request("cdk.info", [ id ]);
+    let awardInfoData = GUIManager::request("cdk.info", [ id ]);
 
-    navigateScore = new GlobalValue();
+    let navigateScore = new GlobalValue();
     navigateScore.value = false;
 
-    navigateItem = new GlobalValue();
+    let navigateItem = new GlobalValue();
     navigateItem.value = false;
 
-    navigateTitle = new GlobalValue();
+    let navigateTitle = new GlobalValue();
     navigateTitle.value = false;
 
-    awardInfo = new CustomForm("cdk.award.info", {tr("cdk.gui.title")}) {
+    let awardInfo = new CustomForm("cdk.award.info", {tr("cdk.gui.title")}) {
         label(awardInfoData[0], new TextOptions());
         SectionHeader();
         button({tr("cdk.gui.award.score")}, on: func () -> void {
@@ -223,19 +223,19 @@ func buildAwardInfo(id: string) -> void {
 }
 
 func buildAwardScore(id: string) -> void {
-    scoreObjective = new ObservableString("", true);
-    scoreAmount = new ObservableString("", true);
+    let scoreObjective = new ObservableString("", true);
+    let scoreAmount = new ObservableString("", true);
 
-    scoreObjectiveOptions = new TextFieldOptions();
+    let scoreObjectiveOptions = new TextFieldOptions();
     scoreObjectiveOptions.description = {tr("cdk.gui.award.score.input1.placeholder")};
 
-    scoreAmountOptions = new TextFieldOptions();
+    let scoreAmountOptions = new TextFieldOptions();
     scoreAmountOptions.description = {tr("cdk.gui.award.score.input2.placeholder")};
 
-    scoreDone = new GlobalValue();
+    let scoreDone = new GlobalValue();
     scoreDone.value = false;
 
-    awardScore = new CustomForm("cdk.award.score", {tr("cdk.gui.title")}) {
+    let awardScore = new CustomForm("cdk.award.score", {tr("cdk.gui.title")}) {
         label({tr("cdk.gui.label")}, new TextOptions());
         SectionHeader();
         textField({tr("cdk.gui.award.score.input1")}, scoreObjective, scoreObjectiveOptions);
@@ -258,13 +258,13 @@ func buildAwardScore(id: string) -> void {
 }
 
 func buildAwardItem(id: string) -> void {
-    navigateInventory = new GlobalValue();
+    let navigateInventory = new GlobalValue();
     navigateInventory.value = false;
 
-    navigateCustom = new GlobalValue();
+    let navigateCustom = new GlobalValue();
     navigateCustom.value = false;
 
-    awardItem = new CustomForm("cdk.award.item", {tr("cdk.gui.title")}) {
+    let awardItem = new CustomForm("cdk.award.item", {tr("cdk.gui.title")}) {
         label({tr("cdk.gui.label")}, new TextOptions());
         SectionHeader();
         button({tr("cdk.gui.award.item.inventory")}, on: func () -> void {
@@ -299,22 +299,22 @@ func buildAwardItem(id: string) -> void {
 }
 
 func buildItemType(id: string) -> void {
-    typeIndex = new ObservableNumber(0.0, true);
+    let typeIndex = new ObservableNumber(0.0, true);
 
-    typeUniversal = new DropdownItem();
+    let typeUniversal = new DropdownItem();
     typeUniversal.label = "universal";
     typeUniversal.value = 0;
 
-    typeNbt = new DropdownItem();
+    let typeNbt = new DropdownItem();
     typeNbt.label = "nbt";
     typeNbt.value = 1;
 
-    typeItems = [ typeUniversal, typeNbt ];
+    let typeItems = [ typeUniversal, typeNbt ];
 
-    typeDone = new GlobalValue();
+    let typeDone = new GlobalValue();
     typeDone.value = false;
 
-    itemType = new CustomForm("cdk.award.item.type", {tr("cdk.gui.title")}) {
+    let itemType = new CustomForm("cdk.award.item.type", {tr("cdk.gui.title")}) {
         label({tr("cdk.gui.label")}, new TextOptions());
         SectionHeader();
         dropdown({tr("cdk.gui.award.item.custom.dropdown")}, typeIndex, typeItems, new DropdownOptions());
@@ -340,27 +340,27 @@ func buildItemType(id: string) -> void {
 }
 
 func buildItemCommon(id: string, itemType: string) -> void {
-    itemId = new ObservableString("", true);
-    itemName = new ObservableString("", true);
-    itemQuantity = new ObservableString("", true);
-    itemSpecialValue = new ObservableString("", true);
+    let itemId = new ObservableString("", true);
+    let itemName = new ObservableString("", true);
+    let itemQuantity = new ObservableString("", true);
+    let itemSpecialValue = new ObservableString("", true);
 
-    itemIdOptions = new TextFieldOptions();
+    let itemIdOptions = new TextFieldOptions();
     itemIdOptions.description = {tr("cdk.gui.award.item.custom.input1.placeholder")};
 
-    itemNameOptions = new TextFieldOptions();
+    let itemNameOptions = new TextFieldOptions();
     itemNameOptions.description = {tr("cdk.gui.award.item.custom.input2.placeholder")};
 
-    itemQuantityOptions = new TextFieldOptions();
+    let itemQuantityOptions = new TextFieldOptions();
     itemQuantityOptions.description = {tr("cdk.gui.award.item.custom.input3.placeholder")};
 
-    itemSpecialValueOptions = new TextFieldOptions();
+    let itemSpecialValueOptions = new TextFieldOptions();
     itemSpecialValueOptions.description = {tr("cdk.gui.award.item.custom.input4.placeholder")};
 
-    itemCommonDone = new GlobalValue();
+    let itemCommonDone = new GlobalValue();
     itemCommonDone.value = false;
 
-    itemCommon = new CustomForm("cdk.award.item.common", {tr("cdk.gui.title")}) {
+    let itemCommon = new CustomForm("cdk.award.item.common", {tr("cdk.gui.title")}) {
         label({tr("cdk.gui.label")}, new TextOptions());
         SectionHeader();
         textField({tr("cdk.gui.award.item.custom.input1")}, itemId, itemIdOptions);
@@ -389,13 +389,13 @@ func buildItemCommon(id: string, itemType: string) -> void {
 }
 
 func buildInventory(id: string) -> void {
-    inventory = new PaginatedForm("cdk.award.inventory", {tr("cdk.gui.title")}, GUIManager::value("cdk.inventory"), 10) {
+    let inventory = new PaginatedForm("cdk.award.inventory", {tr("cdk.gui.title")}, GUIManager::value("cdk.inventory"), 10) {
         label({tr("cdk.gui.award.item.inventory.label")}, new TextOptions());
         PageControls();
         closeButton();
         show(func (result) -> void {
             if (result.selection != "") [
-                slotData = GUIManager::request("cdk.inventory.slot", [ result.selectionIndex ]);
+                let slotData = GUIManager::request("cdk.inventory.slot", [ result.selectionIndex ]);
 
                 buildInventoryConfirm(id, slotData[0]);
             :
@@ -408,12 +408,12 @@ func buildInventory(id: string) -> void {
 }
 
 func buildInventoryConfirm(id: string, slot: int) -> void {
-    inventoryItemData = GUIManager::request("cdk.inventory.item", [ id, slot ]);
+    let inventoryItemData = GUIManager::request("cdk.inventory.item", [ id, slot ]);
 
-    inventoryConfirmDone = new GlobalValue();
+    let inventoryConfirmDone = new GlobalValue();
     inventoryConfirmDone.value = false;
 
-    inventoryConfirm = new CustomForm("cdk.award.inventory.confirm", {tr("cdk.gui.title")}) {
+    let inventoryConfirm = new CustomForm("cdk.award.inventory.confirm", {tr("cdk.gui.title")}) {
         label(inventoryItemData[0], new TextOptions());
         SectionHeader();
         ConfirmBar({tr("cdk.gui.award.item.inventory.yes")}, func () -> void {
@@ -434,19 +434,19 @@ func buildInventoryConfirm(id: string, slot: int) -> void {
 }
 
 func buildAwardTitle(id: string) -> void {
-    titleText = new ObservableString("", true);
-    titleTime = new ObservableString("", true);
+    let titleText = new ObservableString("", true);
+    let titleTime = new ObservableString("", true);
 
-    titleTextOptions = new TextFieldOptions();
+    let titleTextOptions = new TextFieldOptions();
     titleTextOptions.description = {tr("cdk.gui.award.title.input1.placeholder")};
 
-    titleTimeOptions = new TextFieldOptions();
+    let titleTimeOptions = new TextFieldOptions();
     titleTimeOptions.description = {tr("cdk.gui.award.title.input2.placeholder")};
 
-    titleDone = new GlobalValue();
+    let titleDone = new GlobalValue();
     titleDone.value = false;
 
-    awardTitle = new CustomForm("cdk.award.title", {tr("cdk.gui.title")}) {
+    let awardTitle = new CustomForm("cdk.award.title", {tr("cdk.gui.title")}) {
         label({tr("cdk.gui.label")}, new TextOptions());
         SectionHeader();
         textField({tr("cdk.gui.award.title.input1")}, titleText, titleTextOptions);

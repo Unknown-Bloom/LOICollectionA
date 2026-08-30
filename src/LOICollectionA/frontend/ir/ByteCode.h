@@ -59,6 +59,11 @@ namespace LOICollection::frontend::ir {
         int argCount = 0;
     };
 
+    struct ByNameCallMeta {
+        std::string methodName;
+        int argCount = 0;
+    };
+
     struct MethodMeta {
         std::string name;
         int argCount = 0;
@@ -88,6 +93,7 @@ namespace LOICollection::frontend::ir {
         std::vector<MethodMeta> methods;
         std::vector<NativeCallMeta> nativeCalls;
         std::vector<VirtualCallMeta> virtualCalls;
+        std::vector<ByNameCallMeta> byNameCalls;
         std::vector<SuperCallMeta> superCalls;
         std::vector<LambdaMeta> lambdas;
         /* Deque of owners on purpose: the compiler keeps `current` references

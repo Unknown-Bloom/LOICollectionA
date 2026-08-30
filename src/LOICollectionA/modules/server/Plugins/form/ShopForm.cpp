@@ -183,12 +183,12 @@ namespace LOICollection::server::Plugins {
         auto obj = std::make_shared<Object>();
         obj->className = "ShopFormResult";
         obj->classIndex = -1;
-            obj->fields["closeReason"] = !handle->fromId.empty() ? 2 : (handle->completed ? 1 : 0);
-            obj->fields["resultCode"] = handle->resultCode;
-            obj->fields["shop"] = handle->dataObject ? TypedValue(handle->dataObject) : TypedValue{};
-            obj->fields["itemIndex"] = handle->itemIndex;
-        obj->fields["item"] = handle->item ? TypedValue(handle->item) : TypedValue{};
-        obj->fields["fromId"] = handle->fromId;
+            obj->assign("closeReason", !handle->fromId.empty() ? 2 : (handle->completed ? 1 : 0));
+            obj->assign("resultCode", handle->resultCode);
+            obj->assign("shop", handle->dataObject ? TypedValue(handle->dataObject) : TypedValue{});
+            obj->assign("itemIndex", handle->itemIndex);
+        obj->assign("item", handle->item ? TypedValue(handle->item) : TypedValue{});
+        obj->assign("fromId", handle->fromId);
         return obj;
     }
 

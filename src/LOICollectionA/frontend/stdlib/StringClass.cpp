@@ -5,6 +5,7 @@
 #include <ll/api/Expected.h>
 
 #include "LOICollectionA/frontend/Callback.h"
+#include "LOICollectionA/frontend/Unicode.h"
 
 #include "LOICollectionA/frontend/stdlib/StringClass.h"
 
@@ -12,7 +13,7 @@ using namespace LOICollection::frontend;
 
 namespace StringClass {
     ll::Expected<TypedValue> length(const TypedValue& self, const CallbackTypeValues&) {
-        return static_cast<int>(std::get<std::string>(self).size());
+        return static_cast<int>(codepointCount(std::get<std::string>(self)));
     }
 
     ll::Expected<TypedValue> split(const TypedValue& self, const CallbackTypeValues& args) {
@@ -21,8 +22,8 @@ namespace StringClass {
 
         auto result = std::make_shared<ArrayValue>();
         if (separator.empty()) {
-            for (char c : text)
-                result->elements.emplace_back(std::string(1, c));
+            for (size_t i = 0; i < text.size(); i += codepointWidth(text[i]))
+                result->elements.emplace_back(text.substr(i, codepointWidth(text[i])));
 
             return result;
         }
@@ -68,7 +69,7 @@ namespace StringClass {
 
         size_t pos = text.find(std::get<std::string>(args[0]));
 
-        return pos == std::string::npos ? -1 : static_cast<int>(pos);
+        return pos == std::string::npos ? -1 : static_cast<int>(codepointDistance(text, pos));
     }
 
     ll::Expected<TypedValue> toInt(const TypedValue& self, const CallbackTypeValues&) {

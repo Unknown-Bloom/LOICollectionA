@@ -194,11 +194,14 @@ namespace LOICollection::frontend {
         LOICOLLECTION_A_NDAPI bool hasOperator(const std::string& className, const std::string& op) const;
 
         LOICOLLECTION_A_NDAPI std::vector<std::string> getFields(const std::string& name) const;
+        LOICOLLECTION_A_NDAPI FieldLayoutPtr layoutOf(const std::string& name) const;
         LOICOLLECTION_A_NDAPI std::vector<std::string> getStaticFields(const std::string& name) const;
         LOICOLLECTION_A_NDAPI std::vector<CallbackTypeArgs> getConstructorSignatures(const std::string& name) const;
         LOICOLLECTION_A_NDAPI std::vector<CallbackTypeArgs> getMethodSignatures(const std::string& className, const std::string& method) const;
         LOICOLLECTION_A_NDAPI std::vector<CallbackTypeArgs> getStaticMethodSignatures(const std::string& className, const std::string& method) const;
         LOICOLLECTION_A_NDAPI std::vector<CallbackTypeArgs> getValueMethodSignatures(const std::string& className, const std::string& method) const;
+
+        LOICOLLECTION_A_NDAPI std::vector<std::string> getClassNames() const;
 
         LOICOLLECTION_A_NDAPI std::string exportShape() const;
 

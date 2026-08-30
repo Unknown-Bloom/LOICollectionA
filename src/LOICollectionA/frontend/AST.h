@@ -29,22 +29,30 @@ namespace LOICollection::frontend {
         Array,
         Variant,
         Optional,
+        Generic,
         None
     };
 
     struct TypeInfo {
         TypeKind kind = TypeKind::Unknown;
-        std::string className;
-        std::vector<TypeInfo> variantOptions;
-        std::shared_ptr<TypeInfo> optionalInner;
+        std::string className{};
+        std::vector<TypeInfo> variantOptions{};
+        std::shared_ptr<TypeInfo> optionalInner{};
+        std::string typeVar{};
 
         bool operator==(const TypeInfo& other) const {
             return kind == other.kind &&
                    className == other.className &&
+                   typeVar == other.typeVar &&
                    variantOptions == other.variantOptions &&
                    ((!optionalInner && !other.optionalInner) ||
                     (optionalInner && other.optionalInner && *optionalInner == *other.optionalInner));
         }
+    };
+
+    struct TypeParam {
+        std::string name;
+        std::vector<std::string> bounds;
     };
 
     struct TypeExpr {
@@ -78,6 +86,8 @@ namespace LOICollection::frontend {
             case TypeKind::Optional:
                 return "optional<" +
                     (type.optionalInner ? typeInfoToString(*type.optionalInner) : std::string("unknown")) + ">";
+            case TypeKind::Generic:
+                return type.typeVar.empty() ? "generic" : type.typeVar;
         }
 
         return "unknown";
@@ -92,7 +102,8 @@ namespace LOICollection::frontend {
             Array, Index, Program, Block, Using,
             While, For, Break, Continue,
             CompoundAssign, ForIn, Range, Coalesce,
-            Import, Component
+            Import, Component,
+            Trait
         };
         [[nodiscard]] virtual Type getType() const = 0;
         
@@ -158,6 +169,7 @@ namespace LOICollection::frontend {
         std::unique_ptr<ExprNode> value;
         TypeExpr declaredType;
         bool hasDeclaredType = false;
+        bool isDeclaration = false;
 
         AssignmentNode(SourceLocation location, auto&& t, auto&& val)
             : loc(location),
@@ -534,6 +546,20 @@ namespace LOICollection::frontend {
         TypeInfo returnType;
         bool hasReturnStatement = false;
         bool hasSuperCall = false;
+        std::vector<TypeParam> typeParams;
+    };
+
+    struct TraitNode : ASTNode {
+        SourceLocation loc;
+        std::string name;
+        std::vector<MethodDecl> methods;
+
+        TraitNode(SourceLocation location, std::string n)
+            : loc(location), name(std::move(n)) {}
+
+        [[nodiscard]] Type getType() const override { return Type::Trait; }
+
+        void accept(ASTVisitor&) override {}
     };
 
     struct ClassNode : ASTNode {
@@ -543,6 +569,7 @@ namespace LOICollection::frontend {
         std::vector<ClassMember> members;
         std::vector<MethodDecl> methods;
         int constructorIndex = -1;
+        std::vector<TypeParam> typeParams;
 
         ClassNode(SourceLocation location, std::string n)
             : loc(location), name(std::move(n)) {}
@@ -619,6 +646,7 @@ namespace LOICollection::frontend {
 
         std::string className;
         int methodOrdinal = -1;
+        bool dynamicDispatch = false;
         bool isStaticCall = false;
         std::string staticClassName;
 
@@ -831,12 +859,105 @@ namespace LOICollection::frontend {
         virtual void release() {}
     };
 
+    struct FieldLayout {
+        std::vector<std::string> names;
+        std::unordered_map<std::string, int> slots;
+
+        explicit FieldLayout(std::vector<std::string> fieldNames)
+            : names(std::move(fieldNames)) {
+            for (size_t i = 0; i < this->names.size(); ++i)
+                this->slots.emplace(this->names[i], static_cast<int>(i));
+        }
+
+        [[nodiscard]] int slotOf(const std::string& name) const {
+            auto it = this->slots.find(name);
+            return it == this->slots.end() ? -1 : it->second;
+        }
+    };
+
+    using FieldLayoutPtr = std::shared_ptr<const FieldLayout>;
+    using SpillMap = std::unordered_map<std::string, ValueNode::ValueType>;
+
     struct Object {
         std::string className;
         int classIndex = -1;
-        std::unordered_map<std::string, ValueNode::ValueType> fields;
+        FieldLayoutPtr layout;
+        std::vector<ValueNode::ValueType> slots;
+        std::unique_ptr<SpillMap> spill;
 
         std::shared_ptr<NativeHandle> native;
+
+        void resize(size_t count) {
+            this->slots.resize(count);
+        }
+
+        void adoptLayout();
+
+        void assign(const std::string& name, ValueNode::ValueType value) {
+            if (!this->layout)
+                this->adoptLayout();
+
+            if (ValueNode::ValueType* slot = this->findDeclared(name)) {
+                *slot = std::move(value);
+                return;
+            }
+
+            this->spillSlot(name) = std::move(value);
+        }
+
+        [[nodiscard]] ValueNode::ValueType* find(const std::string& name) {
+            if (!this->layout)
+                this->adoptLayout();
+
+            if (ValueNode::ValueType* slot = this->findDeclared(name))
+                return slot;
+
+            if (!this->spill)
+                return nullptr;
+
+            auto it = this->spill->find(name);
+            return it == this->spill->end() ? nullptr : &it->second;
+        }
+
+        [[nodiscard]] const ValueNode::ValueType* find(const std::string& name) const {
+            if (const ValueNode::ValueType* slot = this->findDeclared(name))
+                return slot;
+
+            if (!this->spill)
+                return nullptr;
+
+            auto it = this->spill->find(name);
+            return it == this->spill->end() ? nullptr : &it->second;
+        }
+
+        [[nodiscard]] ValueNode::ValueType& at(const std::string& name) {
+            if (ValueNode::ValueType* slot = this->find(name))
+                return *slot;
+
+            return this->spillSlot(name);
+        }
+
+    private:
+        [[nodiscard]] ValueNode::ValueType* findDeclared(const std::string& name) {
+            int index = this->layout ? this->layout->slotOf(name) : -1;
+            return index < 0 || static_cast<size_t>(index) >= this->slots.size()
+                ? nullptr
+                : &this->slots[static_cast<size_t>(index)];
+        }
+
+        [[nodiscard]] const ValueNode::ValueType* findDeclared(const std::string& name) const {
+            int index = this->layout ? this->layout->slotOf(name) : -1;
+            return index < 0 || static_cast<size_t>(index) >= this->slots.size()
+                ? nullptr
+                : &this->slots[static_cast<size_t>(index)];
+        }
+
+        ValueNode::ValueType& spillSlot(const std::string& name) {
+            if (!this->spill)
+                this->spill = std::make_unique<SpillMap>();
+
+            return (*this->spill)[name];
+        }
     };
 
     struct ArrayValue {

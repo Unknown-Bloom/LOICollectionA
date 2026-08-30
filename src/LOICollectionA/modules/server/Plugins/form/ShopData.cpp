@@ -14,20 +14,20 @@ using namespace LOICollection::frontend;
 namespace LOICollection::server::Plugins {
     namespace {
         std::string shopReadString(const ObjectRef& obj, const std::string& field, const std::string& def = "") {
-            auto it = obj->fields.find(field);
-            if (it == obj->fields.end())
+            auto it = obj->find(field);
+            if (it == nullptr)
                 return def;
-            return std::holds_alternative<std::string>(it->second) ? std::get<std::string>(it->second) : def;
+            return std::holds_alternative<std::string>(*it) ? std::get<std::string>(*it) : def;
         }
 
         int shopReadInt(const ObjectRef& obj, const std::string& field, int def = 0) {
-            auto it = obj->fields.find(field);
-            if (it == obj->fields.end())
+            auto it = obj->find(field);
+            if (it == nullptr)
                 return def;
-            if (std::holds_alternative<int>(it->second))
-                return std::get<int>(it->second);
-            if (std::holds_alternative<float>(it->second))
-                return static_cast<int>(std::get<float>(it->second));
+            if (std::holds_alternative<int>(*it))
+                return std::get<int>(*it);
+            if (std::holds_alternative<float>(*it))
+                return static_cast<int>(std::get<float>(*it));
             return def;
         }
     }
@@ -43,9 +43,9 @@ namespace LOICollection::server::Plugins {
         data.titleCommand = shopReadString(obj, "titleCommand");
         data.itemCommand = shopReadString(obj, "itemCommand");
 
-        auto it = obj->fields.find("items");
-        if (it != obj->fields.end() && std::holds_alternative<ArrayRef>(it->second)) {
-            for (const auto& element : std::get<ArrayRef>(it->second)->elements) {
+        auto it = obj->find("items");
+        if (it != nullptr && std::holds_alternative<ArrayRef>(*it)) {
+            for (const auto& element : std::get<ArrayRef>(*it)->elements) {
                 if (std::holds_alternative<ObjectRef>(element) && std::get<ObjectRef>(element)->className == "ShopItemData")
                     data.items.push_back(hydrateShopItem(std::get<ObjectRef>(element)));
             }
@@ -73,16 +73,16 @@ namespace LOICollection::server::Plugins {
         auto obj = std::make_shared<Object>();
         obj->className = "ShopItemData";
         obj->classIndex = -1;
-        obj->fields["type"] = item.type;
-        obj->fields["title"] = item.title;
-        obj->fields["introduce"] = item.introduce;
-        obj->fields["number"] = item.number;
-        obj->fields["id"] = item.id;
-        obj->fields["nbt"] = item.nbt;
-        obj->fields["confirmButton"] = item.confirmButton;
-        obj->fields["cancelButton"] = item.cancelButton;
-        obj->fields["time"] = item.time;
-        obj->fields["scores"] = makeScoreArray(item.scores);
+        obj->assign("type", item.type);
+        obj->assign("title", item.title);
+        obj->assign("introduce", item.introduce);
+        obj->assign("number", item.number);
+        obj->assign("id", item.id);
+        obj->assign("nbt", item.nbt);
+        obj->assign("confirmButton", item.confirmButton);
+        obj->assign("cancelButton", item.cancelButton);
+        obj->assign("time", item.time);
+        obj->assign("scores", makeScoreArray(item.scores));
         return obj;
     }
 
