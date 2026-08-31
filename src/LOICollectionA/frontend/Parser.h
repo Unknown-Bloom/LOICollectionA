@@ -40,6 +40,7 @@ namespace LOICollection::frontend {
         std::unique_ptr<ClassNode> parseClass();
         std::unique_ptr<FunctionDefNode> parseFunctionDefinition();
         std::unique_ptr<TraitNode> parseTrait();
+        std::unique_ptr<ImplNode> parseImpl();
         std::vector<TypeParam> parseTypeParams();
         std::unique_ptr<LambdaNode> parseLambda();
         std::unique_ptr<MethodDecl> parseMethod(bool isPrivate, bool requireBody = true);

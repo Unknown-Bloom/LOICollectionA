@@ -103,7 +103,7 @@ namespace LOICollection::frontend {
             While, For, Break, Continue,
             CompoundAssign, ForIn, Range, Coalesce,
             Import, Component,
-            Trait
+            Trait, Impl
         };
         [[nodiscard]] virtual Type getType() const = 0;
         
@@ -558,6 +558,20 @@ namespace LOICollection::frontend {
             : loc(location), name(std::move(n)) {}
 
         [[nodiscard]] Type getType() const override { return Type::Trait; }
+
+        void accept(ASTVisitor&) override {}
+    };
+
+    struct ImplNode : ASTNode {
+        SourceLocation loc;
+        std::optional<TypeExpr> trait;
+        TypeExpr target;
+        std::vector<MethodDecl> methods;
+        std::vector<ClassMember> consts;
+
+        explicit ImplNode(SourceLocation location) : loc(location) {}
+
+        [[nodiscard]] Type getType() const override { return Type::Impl; }
 
         void accept(ASTVisitor&) override {}
     };

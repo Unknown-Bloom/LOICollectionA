@@ -213,6 +213,8 @@ namespace LOICollection::frontend {
             {"component", TokenType::TOKEN_COMPONENT},
             {"let", TokenType::TOKEN_LET},
             {"trait", TokenType::TOKEN_TRAIT},
+            {"impl", TokenType::TOKEN_IMPL},
+            {"const", TokenType::TOKEN_CONST},
         };
 
         auto it = keywordTokens.find(id);
