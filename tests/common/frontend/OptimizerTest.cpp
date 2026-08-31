@@ -21,7 +21,7 @@ namespace {
         Optimizer::Stats stats;
     };
 
-    CompiledProgram compileAndOptimize(const std::string& source) {
+    CompiledProgram compileAndOptimize(const std::string& source, unsigned mask = Optimizer::allPasses) {
         CompiledProgram out;
 
         Lexer lexer(source, out.diagnostics);
@@ -37,6 +37,7 @@ namespace {
         out.chunk = std::make_shared<BytecodeChunk>(compiler.compile(*ast));
 
         Optimizer optimizer;
+        optimizer.setEnabledPasses(mask);
         out.stats = optimizer.optimize(*out.chunk);
 
         return out;
@@ -697,4 +698,56 @@ TEST(OptimizerTest, CoalesceKeepsDuplicatedOperand) {
     VM vmValue(valueCase.diagnostics);
     EXPECT_EQ(VM::valueToString(vmValue.run(valueCase.chunk, {})), "v");
     EXPECT_FALSE(valueCase.diagnostics.hasErrors());
+}
+
+// ---- pass mask (A/B comparison inside a single build) --------------------------
+
+namespace {
+    std::string runChunk(const std::shared_ptr<BytecodeChunk>& chunk, DiagnosticEngine& diag) {
+        VM vm(diag);
+        return VM::valueToString(vm.run(chunk, {}));
+    }
+}
+
+TEST(OptimizerTest, PassMaskTurnsOffConstantFolding) {
+    const std::string source = "let a = 1 + 2; let b = 3 * 4; a + b";
+
+    auto full = compileAndOptimize(source);
+    auto noFold = compileAndOptimize(source, static_cast<unsigned>(Optimizer::Pass::DeadCode));
+
+    EXPECT_GT(full.stats.folded, 0u);
+    EXPECT_EQ(noFold.stats.folded, 0u);
+    EXPECT_FALSE(containsOp(*full.chunk, OpCode::ADD));
+    EXPECT_TRUE(containsOp(*noFold.chunk, OpCode::ADD));
+    EXPECT_GT(noFold.chunk->code.size(), full.chunk->code.size());
+
+    EXPECT_FALSE(full.diagnostics.hasErrors());
+    EXPECT_FALSE(noFold.diagnostics.hasErrors());
+    EXPECT_EQ(runChunk(noFold.chunk, noFold.diagnostics), runChunk(full.chunk, full.diagnostics));
+}
+
+TEST(OptimizerTest, PassMaskTurnsOffDeadCodeElimination) {
+    const std::string source = "let x = 0; while (false) [ x = x + 1; ]; x";
+
+    auto full = compileAndOptimize(source);
+    auto noDeadCode = compileAndOptimize(source, static_cast<unsigned>(Optimizer::Pass::ConstantFold));
+
+    EXPECT_GT(full.stats.removed, 0u);
+    EXPECT_LT(full.chunk->code.size(), noDeadCode.chunk->code.size());
+
+    EXPECT_FALSE(full.diagnostics.hasErrors());
+    EXPECT_FALSE(noDeadCode.diagnostics.hasErrors());
+    EXPECT_EQ(runChunk(noDeadCode.chunk, noDeadCode.diagnostics), runChunk(full.chunk, full.diagnostics));
+}
+
+TEST(OptimizerTest, PassMaskDefaultsToEveryPassEnabled) {
+    Optimizer optimizer;
+
+    EXPECT_EQ(optimizer.enabledPasses(), Optimizer::allPasses);
+
+    optimizer.setEnabledPasses(static_cast<unsigned>(Optimizer::Pass::ConstantFold));
+    EXPECT_EQ(optimizer.enabledPasses(), static_cast<unsigned>(Optimizer::Pass::ConstantFold));
+
+    optimizer.setEnabledPasses(Optimizer::allPasses);
+    EXPECT_EQ(optimizer.enabledPasses(), Optimizer::allPasses);
 }
