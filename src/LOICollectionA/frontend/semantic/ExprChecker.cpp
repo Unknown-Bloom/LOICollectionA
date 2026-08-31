@@ -13,7 +13,6 @@
 
 #include "LOICollectionA/frontend/semantic/Helpers.h"
 
-
 namespace LOICollection::frontend {
 
     TypeInfo SemanticAnalyzer::checkExpr(ExprNode& node, MethodScope& scope) {

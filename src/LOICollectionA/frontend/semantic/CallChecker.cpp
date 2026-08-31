@@ -13,7 +13,6 @@
 
 #include "LOICollectionA/frontend/semantic/Helpers.h"
 
-
 namespace LOICollection::frontend {
 
     std::string SemanticAnalyzer::receiverVariable(MethodCallNode& node) const {

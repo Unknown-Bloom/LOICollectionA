@@ -10,7 +10,6 @@
 
 #include "LOICollectionA/frontend/parser/ParserTokens.h"
 
-
 namespace LOICollection::frontend {
 
     std::unique_ptr<UsingNode> Parser::parseUsing() {
