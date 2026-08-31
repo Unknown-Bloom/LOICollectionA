@@ -93,6 +93,20 @@ TEST(ImplTest, TraitImplGenericBound) {
     )"), "impl-point");
 }
 
+TEST(ImplTest, TraitImplParameterizedMethod) {
+    EXPECT_EQ(eval(R"(
+        trait Addable { func combine(o: int) -> int; }
+        class Wallet { public: balance = 0; }
+        impl Addable for Wallet {
+            func combine(o: int) -> int { return this.balance + o; }
+        }
+        func total<T: Addable>(x: T, v: int) -> int { return x.combine(v); }
+        let w = new Wallet();
+        w.balance = 100;
+        total(w, 25)
+    )"), "125");
+}
+
 TEST(ImplTest, TraitImplMissingRequiredMethod) {
     EXPECT_THROW(eval(R"(
         trait Show { func show() -> string; }
