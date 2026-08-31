@@ -73,6 +73,7 @@ namespace LOICollection::frontend {
         std::unordered_map<std::string, std::unordered_map<std::string, int>> classMethodOrdinals;
         std::unordered_map<std::string, std::vector<std::string>> classStaticMethodOrder;
         std::unordered_map<std::string, std::unordered_map<std::string, int>> classStaticMethodOrdinals;
+        std::vector<std::reference_wrapper<ImplNode>> impls;
         std::vector<std::reference_wrapper<FunctionDefNode>> functions;
         std::unordered_map<std::string, std::vector<std::reference_wrapper<FunctionDefNode>>> functionsByName;
         std::unordered_map<std::string, TypeInfo> globalTypes;
@@ -116,6 +117,8 @@ namespace LOICollection::frontend {
         void validateMemberInitialization();
         void registerFunction(FunctionDefNode& node);
         void registerTrait(TraitNode& node);
+        void registerImpl(ImplNode& node);
+        void processImpls();
         void checkTopLevel(ProgramNode& root);
         void checkClassBodies();
         void checkFunctionBodies();

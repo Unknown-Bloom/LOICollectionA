@@ -56,7 +56,7 @@ namespace LOICollection::frontend {
             if (currentToken.type == TokenType::TOKEN_SEMICOLON) {
                 eat(TokenType::TOKEN_SEMICOLON);
             } else if (stmtType == ASTNode::Type::Class || stmtType == ASTNode::Type::FunctionDef ||
-                       stmtType == ASTNode::Type::Trait) {
+                       stmtType == ASTNode::Type::Trait || stmtType == ASTNode::Type::Impl) {
             } else if (currentToken.type != TokenType::TOKEN_EOF) {
                 if (currentToken.loc.line > stmtStartLine)
                     continue;
@@ -775,6 +775,143 @@ namespace LOICollection::frontend {
         return trait;
     }
 
+    std::unique_ptr<ImplNode> Parser::parseImpl() {
+        SourceLocation loc = currentToken.loc;
+
+        if (!eat(TokenType::TOKEN_IMPL)) return nullptr;
+
+        if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "<") {
+            diagnostics.addError(currentToken.loc,
+                "Generic impl blocks require generic classes, which are not part of the language yet");
+            skipBalancedBraces();
+            return nullptr;
+        }
+
+        auto first = parseTypeExpr();
+        if (!first) {
+            synchronize({ TokenType::TOKEN_LBRACE, TokenType::TOKEN_RBRACE });
+            skipBalancedBraces();
+            return nullptr;
+        }
+
+        auto impl = std::make_unique<ImplNode>(loc);
+
+        if (currentToken.type == TokenType::TOKEN_FOR) {
+            if (!eat(TokenType::TOKEN_FOR)) return nullptr;
+            impl->trait = std::move(*first);
+            auto target = parseTypeExpr();
+            if (!target) {
+                synchronize({ TokenType::TOKEN_LBRACE, TokenType::TOKEN_RBRACE });
+                skipBalancedBraces();
+                return nullptr;
+            }
+            impl->target = std::move(*target);
+        } else {
+            impl->target = std::move(*first);
+        }
+
+        if (!eat(TokenType::TOKEN_LBRACE)) {
+            synchronize({ TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        while (currentToken.type != TokenType::TOKEN_RBRACE &&
+               currentToken.type != TokenType::TOKEN_EOF) {
+            bool isStatic = false;
+            if (currentToken.type == TokenType::TOKEN_STATIC) {
+                if (!eat(TokenType::TOKEN_STATIC)) {
+                    synchronize({ TokenType::TOKEN_RBRACE });
+                    continue;
+                }
+                isStatic = true;
+            }
+
+            if (currentToken.type == TokenType::TOKEN_FUNC) {
+                auto method = parseMethod(false);
+                if (!method) {
+                    synchronize({ TokenType::TOKEN_RBRACE });
+                    continue;
+                }
+                method->isStatic = isStatic;
+                impl->methods.push_back(std::move(*method));
+                continue;
+            }
+
+            if (currentToken.type == TokenType::TOKEN_CONST) {
+                if (!eat(TokenType::TOKEN_CONST)) {
+                    synchronize({ TokenType::TOKEN_RBRACE });
+                    continue;
+                }
+
+                if (currentToken.type != TokenType::TOKEN_IDENT) {
+                    diagnostics.addError(currentToken.loc, "Expected associated constant name");
+                    synchronize({ TokenType::TOKEN_RBRACE });
+                    continue;
+                }
+
+                ClassMember member;
+                member.loc = currentToken.loc;
+                member.name = currentToken.value;
+                member.isStatic = true;
+
+                if (!eat(TokenType::TOKEN_IDENT)) {
+                    synchronize({ TokenType::TOKEN_RBRACE });
+                    continue;
+                }
+
+                if (currentToken.type == TokenType::TOKEN_COLON) {
+                    if (!eat(TokenType::TOKEN_COLON)) {
+                        synchronize({ TokenType::TOKEN_RBRACE });
+                        continue;
+                    }
+                    auto type = parseTypeExpr();
+                    if (!type) {
+                        synchronize({ TokenType::TOKEN_RBRACE });
+                        continue;
+                    }
+                    member.typeExpr = std::move(*type);
+                    member.hasTypeExpr = true;
+                }
+
+                if (currentToken.type != TokenType::TOKEN_OP || currentToken.value != "=") {
+                    diagnostics.addError(currentToken.loc,
+                        "Expected '=' after associated constant '" + member.name + "'");
+                    synchronize({ TokenType::TOKEN_RBRACE });
+                    continue;
+                }
+
+                if (!eat(TokenType::TOKEN_OP)) {
+                    synchronize({ TokenType::TOKEN_RBRACE });
+                    continue;
+                }
+
+                member.defaultExpr = parseBaseExpression();
+                if (!member.defaultExpr) {
+                    synchronize({ TokenType::TOKEN_RBRACE });
+                    continue;
+                }
+                member.hasDefault = true;
+
+                if (!eat(TokenType::TOKEN_SEMICOLON)) {
+                    synchronize({ TokenType::TOKEN_RBRACE });
+                    continue;
+                }
+
+                impl->consts.push_back(std::move(member));
+                continue;
+            }
+
+            diagnostics.addError(currentToken.loc,
+                "Unexpected token in impl block: " + getTokenName(currentToken.type) + " (" + currentToken.value + ")");
+            synchronize({ TokenType::TOKEN_RBRACE });
+        }
+
+        if (currentToken.type == TokenType::TOKEN_RBRACE)
+            eat(TokenType::TOKEN_RBRACE);
+
+        return impl;
+    }
+
     std::unique_ptr<FunctionDefNode> Parser::parseFunctionDefinition() {
         SourceLocation loc = currentToken.loc;
 
@@ -1419,6 +1556,9 @@ namespace LOICollection::frontend {
 
         if (currentToken.type == TokenType::TOKEN_TRAIT)
             return parseTrait();
+
+        if (currentToken.type == TokenType::TOKEN_IMPL)
+            return parseImpl();
 
         if (currentToken.type == TokenType::TOKEN_IMPORT)
             return parseImport();

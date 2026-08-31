@@ -101,6 +101,7 @@ namespace LOICollection::frontend {
         this->resolvingAliases.clear();
         this->constructorAssignedMembers.clear();
         this->traits.clear();
+        this->impls.clear();
         this->activeTypeParams.clear();
         this->activeTypeParamBounds.clear();
         this->blockScopes.clear();
@@ -122,10 +123,15 @@ namespace LOICollection::frontend {
                 case ASTNode::Type::Trait:
                     registerTrait(static_cast<TraitNode&>(*part));
                     break;
+                case ASTNode::Type::Impl:
+                    registerImpl(static_cast<ImplNode&>(*part));
+                    break;
                 default:
                     break;
             }
         }
+
+        processImpls();
 
         resolveHierarchy();
         for (const auto& [name, loc] : this->aliasLocs) {
@@ -352,6 +358,93 @@ namespace LOICollection::frontend {
         }
 
         this->traits[node.name] = std::move(methods);
+    }
+
+    void SemanticAnalyzer::registerImpl(ImplNode& node) {
+        this->impls.push_back(std::ref(node));
+    }
+
+    void SemanticAnalyzer::processImpls() {
+        for (auto implRef : this->impls) {
+            ImplNode& impl = implRef.get();
+
+            const std::string targetName = impl.target.name;
+            auto clsOpt = this->findClass(targetName);
+            if (!clsOpt) {
+                this->diagnostics.addError(impl.loc,
+                    "impl target '" + targetName + "' is not a class");
+                continue;
+            }
+            ClassNode& cls = clsOpt->get();
+
+            std::string traitName;
+            if (impl.trait) {
+                traitName = impl.trait->name;
+                if (!this->traits.contains(traitName)) {
+                    this->diagnostics.addError(impl.loc,
+                        "Cannot implement unknown trait '" + traitName + "'");
+                    continue;
+                }
+            }
+
+            std::unordered_set<std::string> classMethodNames;
+            for (const auto& m : cls.methods)
+                classMethodNames.insert(m.name);
+            std::unordered_set<std::string> constNames;
+            for (const auto& c : cls.members)
+                constNames.insert(c.name);
+
+            for (auto& method : impl.methods) {
+                bool duplicate = false;
+                for (const auto& existing : cls.methods) {
+                    if (existing.name == method.name &&
+                        existing.params.size() == method.params.size()) {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (duplicate) {
+                    this->diagnostics.addError(method.loc,
+                        "Method '" + method.name + "' is already defined in class '" +
+                        targetName + "'");
+                    continue;
+                }
+                cls.methods.push_back(std::move(method));
+            }
+
+            for (auto& member : impl.consts) {
+                if (constNames.contains(member.name)) {
+                    this->diagnostics.addError(member.loc,
+                        "Duplicate associated constant '" + member.name +
+                        "' in impl for '" + targetName + "'");
+                    continue;
+                }
+                if (!member.hasTypeExpr && member.hasDefault && member.defaultExpr &&
+                    member.defaultExpr->getType() == ASTNode::Type::Value) {
+                    auto& literal = static_cast<ValueNode&>(*member.defaultExpr);
+                    member.type = this->typeOfValue(literal.value);
+                }
+                cls.members.push_back(std::move(member));
+                constNames.insert(member.name);
+            }
+
+            if (impl.trait) {
+                const auto& required = this->traits[traitName];
+                for (const auto& req : required) {
+                    bool satisfied = false;
+                    for (const auto& m : cls.methods) {
+                        if (m.name == req.name && m.params.size() == req.paramCount) {
+                            satisfied = true;
+                            break;
+                        }
+                    }
+                    if (!satisfied)
+                        this->diagnostics.addError(impl.loc,
+                            "impl of trait '" + traitName + "' for '" + targetName +
+                            "' is missing required method '" + req.name + "'");
+                }
+            }
+        }
     }
 
     namespace {
@@ -643,6 +736,7 @@ namespace LOICollection::frontend {
                 case ASTNode::Type::Class:
                 case ASTNode::Type::FunctionDef:
                 case ASTNode::Type::Trait:
+                case ASTNode::Type::Impl:
                 case ASTNode::Type::Using:
                 case ASTNode::Type::Import:
                 case ASTNode::Type::Component:

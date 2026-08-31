@@ -81,7 +81,8 @@ namespace LOICollection::frontend::ir {
                 if (type != ASTNode::Type::Class &&
                     type != ASTNode::Type::FunctionDef &&
                     type != ASTNode::Type::Using &&
-                    type != ASTNode::Type::Trait) {
+                    type != ASTNode::Type::Trait &&
+                    type != ASTNode::Type::Impl) {
                     lastValuePart = i;
                 }
             }
@@ -91,7 +92,8 @@ namespace LOICollection::frontend::ir {
                 if (type == ASTNode::Type::Class ||
                     type == ASTNode::Type::FunctionDef ||
                     type == ASTNode::Type::Using ||
-                    type == ASTNode::Type::Trait) {
+                    type == ASTNode::Type::Trait ||
+                    type == ASTNode::Type::Impl) {
                     continue;
                 }
 
