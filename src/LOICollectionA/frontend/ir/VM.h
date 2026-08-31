@@ -20,9 +20,9 @@ namespace LOICollection::frontend::ir {
     public:
         LOICOLLECTION_A_NDAPI VM(DiagnosticEngine& diag) : VM(diag, std::make_shared<GlobalsTable>()) {}
 
-        LOICOLLECTION_A_NDAPI VM(DiagnosticEngine& diag, std::shared_ptr<GlobalsTable> globals)
+        LOICOLLECTION_A_NDAPI VM(DiagnosticEngine& diag, std::shared_ptr<GlobalsTable> globalsTable)
             : diagnostics(diag),
-              globals(std::move(globals)) {}
+              globals(std::move(globalsTable)) {}
 
         LOICOLLECTION_A_NDAPI ValueNode::ValueType run(
             const std::shared_ptr<const BytecodeChunk>& chunk,
