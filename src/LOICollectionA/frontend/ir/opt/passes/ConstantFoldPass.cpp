@@ -85,7 +85,7 @@ namespace {
             case OpCode::STORE_VAR:
             case OpCode::DUP_STORE_SLOT:
             case OpCode::DUP_STORE:
-                return foldVariable(instr, oldIdx);
+                return foldVariable(instr);
 
             case OpCode::DUP:
             case OpCode::POP:
@@ -216,7 +216,7 @@ namespace {
         return { at, false };
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::foldVariable(const Instruction& instr, int oldIdx) {
+    ConstantFoldPass::Step ConstantFoldPass::foldVariable(const Instruction& instr) {
         switch (instr.op) {
             case OpCode::LOAD_SLOT: {
                 if (auto slot = mCtx.slotValues.find(instr.operand); slot != mCtx.slotValues.end()) {

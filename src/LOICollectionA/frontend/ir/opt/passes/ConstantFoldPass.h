@@ -29,7 +29,7 @@ namespace LOICollection::frontend::ir::opt {
         Step foldPush(const Instruction& instr, int oldIdx);
         Step foldNullish(const Instruction& instr, int oldIdx);
         Step foldDupIsNone(const Instruction& instr);
-        Step foldVariable(const Instruction& instr, int oldIdx);
+        Step foldVariable(const Instruction& instr);
         Step foldStack(const Instruction& instr, int oldIdx);
         Step foldArithmetic(const Instruction& instr, int oldIdx);
         Step foldUnary(const Instruction& instr, int oldIdx);

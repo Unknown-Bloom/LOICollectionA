@@ -594,6 +594,9 @@ namespace LOICollection::frontend::ir {
 
                     return this->stack.back();
             }
+                default:
+                    this->diagnostics.addError(this->currentLoc, "Unknown opcode");
+                    break;
             }
         }
     }
@@ -1485,9 +1488,7 @@ namespace LOICollection::frontend::ir {
 
     void VM::execFunctionCall(ExecArgs& s) {
         const auto& instr = s.instr;
-        Frame& frame = s.frame;
         const BytecodeChunk& chunk = s.chunk;
-        const auto& owner = s.owner;
         switch (instr.op) {
             case OpCode::CALL_FUNC: {
                     const auto& meta = chunk.methods[instr.operand];
