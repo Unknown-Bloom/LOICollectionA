@@ -528,10 +528,6 @@ namespace LOICollection::frontend::ir {
 
         BudgetScope budgetScope(this->mBudget);
 
-        const auto fail = [this](sandbox::SandboxBudget::Violation violation, const std::string& message) {
-            this->mReport.violation = violation;
-            this->diagnostics.addError(this->currentLoc, message);
-        };
 
         while (true) {
             if (this->diagnostics.hasErrors())
@@ -539,7 +535,7 @@ namespace LOICollection::frontend::ir {
 
             if (const auto violation = this->mBudget->tickInstruction();
                 violation != sandbox::SandboxBudget::Violation::None) {
-                fail(violation, violation == sandbox::SandboxBudget::Violation::WallTimeLimit
+                this->failBudget(violation, violation == sandbox::SandboxBudget::Violation::WallTimeLimit
                     ? "Execution timeout"
                     : "Execution budget exhausted");
                 return ValueNode::ValueType{};
@@ -555,39 +551,103 @@ namespace LOICollection::frontend::ir {
 
             const auto& instr = cur.code[frame.ip++];
             this->currentLoc = instr.loc;
+            ExecArgs s{ owner, chunk, cur, frame, instr, placeholders };
             switch (instr.op) {
-                case OpCode::PUSH_INT:
-                case OpCode::PUSH_FLOAT:
-                case OpCode::PUSH_BOOL:
-                case OpCode::PUSH_NONE:
-                    this->push(VM::cloneValue(cur.constants[instr.operand]));
+                case OpCode::PUSH_INT: case OpCode::PUSH_FLOAT: case OpCode::PUSH_BOOL: case OpCode::PUSH_NONE: case OpCode::PUSH_STR: this->execPushConst(s); break;
+                case OpCode::POP: case OpCode::DUP: case OpCode::DUP2: case OpCode::ROT3: case OpCode::SWAP2: this->execStackManip(s); break;
+                case OpCode::IS_NONE: case OpCode::UNWRAP: case OpCode::TYPE_OF: case OpCode::HAS_VALUE: case OpCode::DUP_IS_NONE: this->execOptional(s); break;
+                case OpCode::LOAD_SLOT: case OpCode::STORE_SLOT: case OpCode::DUP_STORE_SLOT: this->execLocalSlot(s); break;
+                case OpCode::LOAD_VAR: case OpCode::STORE_VAR: case OpCode::DUP_STORE: this->execVariable(s); break;
+                case OpCode::LOAD_FIELD: case OpCode::STORE_FIELD: case OpCode::LOAD_FIELD_SLOT: case OpCode::STORE_FIELD_SLOT: case OpCode::BIND_THIS: case OpCode::LOAD_LEN: this->execFieldAccess(s); break;
+                case OpCode::MAKE_ARRAY: case OpCode::LOAD_INDEX: case OpCode::STORE_INDEX: this->execArray(s); break;
+                case OpCode::MAKE_LAMBDA: case OpCode::LOAD_THIS: this->execClosure(s); break;
+                case OpCode::INSTANCEOF: this->execInstanceof(s); break;
+                case OpCode::NEW: case OpCode::NEW_NATIVE: this->execObjectCreate(s); break;
+                case OpCode::CALL_METHOD: case OpCode::CALL_METHOD_VIRTUAL: case OpCode::CALL_METHOD_BY_NAME: case OpCode::CALL_SUPER_CTOR: this->execMethodDispatch(s); break;
+                case OpCode::CALL_NATIVE_METHOD: this->execNativeCall(s); break;
+                case OpCode::CALL_FUNC: case OpCode::CALL_LAMBDA: this->execFunctionCall(s); break;
+                case OpCode::ADD: case OpCode::SUB: case OpCode::MUL: case OpCode::DIV: case OpCode::MOD: case OpCode::POW: this->execArithmetic(s); break;
+                case OpCode::CMP_EQ: case OpCode::CMP_NE: case OpCode::CMP_GT: case OpCode::CMP_LT: case OpCode::CMP_GE: case OpCode::CMP_LE: this->execComparison(s); break;
+                case OpCode::LOGIC_AND: case OpCode::LOGIC_OR: case OpCode::NEG: case OpCode::NOT: this->execLogic(s); break;
+                case OpCode::CALL: case OpCode::CALL_MACRO: this->execHostCall(s); break;
+                case OpCode::JMP_IF_FALSE: case OpCode::JMP_IF_TRUE: case OpCode::JMP: this->execBranch(s); break;
+                case OpCode::RETURN: {
+                    auto result = this->pop();
+
+                    Frame finished = std::move(this->frames.back());
+                    this->frames.pop_back();
+
+                    if (this->frames.empty())
+                        return result;
+
+                    if (finished.hasPending)
+                        this->push(finished.pendingPush);
+                    else
+                        this->push(result);
+
                     break;
-                case OpCode::PUSH_STR: {
+            }
+                case OpCode::HALT: {
+                    if (this->stack.empty()) {
+                        return std::string("");
+                    }
+
+                    return this->stack.back();
+            }
+            }
+        }
+    }
+
+    void VM::failBudget(sandbox::SandboxBudget::Violation violation, const std::string& message) {
+        this->mReport.violation = violation;
+        this->diagnostics.addError(this->currentLoc, message);
+    }
+
+    void VM::execPushConst(ExecArgs& s) {
+        const auto& instr = s.instr;
+        const BytecodeChunk& cur = s.cur;
+        switch (instr.op) {
+            case OpCode::PUSH_INT: {
+                    this->push(VM::cloneValue(cur.constants[instr.operand]));
+            } break;
+            case OpCode::PUSH_FLOAT: {
+                    this->push(VM::cloneValue(cur.constants[instr.operand]));
+            } break;
+            case OpCode::PUSH_BOOL: {
+                    this->push(VM::cloneValue(cur.constants[instr.operand]));
+            } break;
+            case OpCode::PUSH_NONE: {
+                    this->push(VM::cloneValue(cur.constants[instr.operand]));
+            } break;
+            case OpCode::PUSH_STR: {
                     const auto& value = std::get<std::string>(cur.constants[instr.operand]);
                     if (const auto violation = this->mBudget->accountString(value.size());
                         violation != sandbox::SandboxBudget::Violation::None) {
-                        fail(violation, "String size budget exhausted");
+                        this->failBudget(violation, "String size budget exhausted");
                         break;
                     }
 
                     this->push(value);
-                    break;
-                }
-                case OpCode::POP:
-                    this->pop();
-                    break;
+            } break;
+            default: break;
+        }
+    }
 
-                case OpCode::DUP: {
+    void VM::execStackManip(ExecArgs& s) {
+        const auto& instr = s.instr;
+        switch (instr.op) {
+            case OpCode::POP: {
+                    this->pop();
+            } break;
+            case OpCode::DUP: {
                     if (this->stack.empty()) {
                         this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP");
                         break;
                     }
 
                     this->stack.push_back(this->stack.back());
-                    break;
-                }
-
-                case OpCode::DUP2: {
+            } break;
+            case OpCode::DUP2: {
                     if (this->stack.size() < 2) {
                         this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP2");
                         break;
@@ -596,10 +656,8 @@ namespace LOICollection::frontend::ir {
                     auto second = this->stack[this->stack.size() - 2];
                     this->stack.push_back(second);
                     this->stack.push_back(this->stack[this->stack.size() - 2]);
-                    break;
-                }
-
-                case OpCode::ROT3: {
+            } break;
+            case OpCode::ROT3: {
                     if (this->stack.size() < 3) {
                         this->diagnostics.addError(this->currentLoc, "Stack underflow during ROT3");
                         break;
@@ -608,10 +666,8 @@ namespace LOICollection::frontend::ir {
                     auto bottom = std::move(this->stack[this->stack.size() - 3]);
                     this->stack.erase(this->stack.end() - 3);
                     this->stack.push_back(std::move(bottom));
-                    break;
-                }
-
-                case OpCode::SWAP2: {
+            } break;
+            case OpCode::SWAP2: {
                     if (this->stack.size() < 4) {
                         this->diagnostics.addError(this->currentLoc, "Stack underflow during SWAP2");
                         break;
@@ -619,16 +675,19 @@ namespace LOICollection::frontend::ir {
 
                     std::swap(this->stack[this->stack.size() - 4], this->stack[this->stack.size() - 2]);
                     std::swap(this->stack[this->stack.size() - 3], this->stack[this->stack.size() - 1]);
-                    break;
-                }
+            } break;
+            default: break;
+        }
+    }
 
-                case OpCode::IS_NONE: {
+    void VM::execOptional(ExecArgs& s) {
+        const auto& instr = s.instr;
+        switch (instr.op) {
+            case OpCode::IS_NONE: {
                     auto value = this->pop();
                     this->push(std::holds_alternative<std::monostate>(value));
-                    break;
-                }
-
-                case OpCode::UNWRAP: {
+            } break;
+            case OpCode::UNWRAP: {
                     auto value = this->pop();
                     if (std::holds_alternative<std::monostate>(value)) {
                         this->diagnostics.addError(this->currentLoc, "Optional value is empty");
@@ -636,42 +695,73 @@ namespace LOICollection::frontend::ir {
                     }
 
                     this->push(value);
-                    break;
-                }
-
-                case OpCode::TYPE_OF: {
+            } break;
+            case OpCode::TYPE_OF: {
                     auto value = this->pop();
                     this->push(VM::typeNameOf(value));
-                    break;
-                }
-
-                case OpCode::HAS_VALUE: {
+            } break;
+            case OpCode::HAS_VALUE: {
                     auto value = this->pop();
                     this->push(!std::holds_alternative<std::monostate>(value));
-                    break;
-                }
+            } break;
+            case OpCode::DUP_IS_NONE: {
+                    if (this->stack.empty()) {
+                        this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP_IS_NONE");
+                        break;
+                    }
 
-                case OpCode::LOAD_SLOT: {
+                    this->push(ValueNode::ValueType{
+                        std::holds_alternative<std::monostate>(this->stack.back())
+                    });
+            } break;
+            default: break;
+        }
+    }
+
+    void VM::execLocalSlot(ExecArgs& s) {
+        const auto& instr = s.instr;
+        Frame& frame = s.frame;
+        switch (instr.op) {
+            case OpCode::LOAD_SLOT: {
                     if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.locals.size()) {
                         this->diagnostics.addError(this->currentLoc, "Slot index out of range");
                         break;
                     }
 
                     this->push(frame.locals[instr.operand]);
-                    break;
-                }
-
-                case OpCode::STORE_SLOT: {
+            } break;
+            case OpCode::STORE_SLOT: {
                     if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.locals.size()) {
                         this->diagnostics.addError(this->currentLoc, "Slot index out of range");
                         break;
                     }
 
                     frame.locals[instr.operand] = this->pop();
-                    break;
-                }
+            } break;
+            case OpCode::DUP_STORE_SLOT: {
+                    if (this->stack.empty()) {
+                        this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP_STORE_SLOT");
+                        break;
+                    }
 
-                case OpCode::LOAD_VAR: {
+                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.locals.size()) {
+                        this->diagnostics.addError(this->currentLoc, "Slot index out of range");
+                        break;
+                    }
+
+                    frame.locals[instr.operand] = this->stack.back();
+            } break;
+            default: break;
+        }
+    }
+
+    void VM::execVariable(ExecArgs& s) {
+        const auto& instr = s.instr;
+        Frame& frame = s.frame;
+        const BytecodeChunk& cur = s.cur;
+        const BytecodeChunk& chunk = s.chunk;
+        switch (instr.op) {
+            case OpCode::LOAD_VAR: {
                     const auto& name = std::get<std::string>(cur.constants[instr.operand]);
 
                     if (frame.hasThis) {
@@ -725,33 +815,15 @@ namespace LOICollection::frontend::ir {
                     }
 
                     this->push(globalIt->second);
-                    break;
-                }
-                case OpCode::STORE_VAR: {
+            } break;
+            case OpCode::STORE_VAR: {
                     const auto& name = std::get<std::string>(cur.constants[instr.operand]);
 
                     auto val = this->pop();
 
                     this->storeVariable(chunk, frame, name, val);
-                    break;
-                }
-
-                case OpCode::DUP_STORE_SLOT: {
-                    if (this->stack.empty()) {
-                        this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP_STORE_SLOT");
-                        break;
-                    }
-
-                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.locals.size()) {
-                        this->diagnostics.addError(this->currentLoc, "Slot index out of range");
-                        break;
-                    }
-
-                    frame.locals[instr.operand] = this->stack.back();
-                    break;
-                }
-
-                case OpCode::DUP_STORE: {
+            } break;
+            case OpCode::DUP_STORE: {
                     if (this->stack.empty()) {
                         this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP_STORE");
                         break;
@@ -759,22 +831,16 @@ namespace LOICollection::frontend::ir {
 
                     const auto& name = std::get<std::string>(cur.constants[instr.operand]);
                     this->storeVariable(chunk, frame, name, this->stack.back());
-                    break;
-                }
+            } break;
+            default: break;
+        }
+    }
 
-                case OpCode::DUP_IS_NONE: {
-                    if (this->stack.empty()) {
-                        this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP_IS_NONE");
-                        break;
-                    }
-
-                    this->push(ValueNode::ValueType{
-                        std::holds_alternative<std::monostate>(this->stack.back())
-                    });
-                    break;
-                }
-
-                case OpCode::LOAD_FIELD: {
+    void VM::execFieldAccess(ExecArgs& s) {
+        const auto& instr = s.instr;
+        const BytecodeChunk& cur = s.cur;
+        switch (instr.op) {
+            case OpCode::LOAD_FIELD: {
                     const auto& name = std::get<std::string>(cur.constants[instr.operand]);
                     auto objValue = this->pop();
 
@@ -801,25 +867,59 @@ namespace LOICollection::frontend::ir {
                     }
 
                     this->push(*field);
-                    break;
-                }
-                case OpCode::LOAD_LEN: {
-                    auto iterable = this->pop();
+            } break;
+            case OpCode::STORE_FIELD: {
+                    const auto& name = std::get<std::string>(cur.constants[instr.operand]);
+                    auto objValue = this->pop();
+                    auto val = this->pop();
 
-                    if (std::holds_alternative<ArrayRef>(iterable)) {
-                        this->push(static_cast<int>(std::get<ArrayRef>(iterable)->elements.size()));
+                    if (!std::holds_alternative<ObjectRef>(objValue)) {
+                        this->diagnostics.addError(this->currentLoc, "Cannot store field '" + name + "' on a non-object value");
                         break;
                     }
 
-                    if (std::holds_alternative<std::string>(iterable)) {
-                        this->push(static_cast<int>(codepointCount(std::get<std::string>(iterable))));
+                    std::get<ObjectRef>(objValue)->assign(name, val);
+            } break;
+            case OpCode::LOAD_FIELD_SLOT: {
+                    auto objValue = this->pop();
+
+                    if (!std::holds_alternative<ObjectRef>(objValue)) {
+                        this->diagnostics.addError(this->currentLoc, "Cannot load a field from a non-object value");
                         break;
                     }
 
-                    this->diagnostics.addError(this->currentLoc, "Cannot take length of a non-iterable value");
-                    break;
-                }
-                case OpCode::BIND_THIS: {
+                    auto obj = std::get<ObjectRef>(objValue);
+                    if (instr.operand >= 0 && static_cast<size_t>(instr.operand) >= obj->slots.size())
+                        obj->adoptLayout();
+
+                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= obj->slots.size()) {
+                        this->diagnostics.addError(this->currentLoc, "Field slot index out of range");
+                        break;
+                    }
+
+                    this->push(obj->slots[static_cast<size_t>(instr.operand)]);
+            } break;
+            case OpCode::STORE_FIELD_SLOT: {
+                    auto objValue = this->pop();
+                    auto val = this->pop();
+
+                    if (!std::holds_alternative<ObjectRef>(objValue)) {
+                        this->diagnostics.addError(this->currentLoc, "Cannot store a field on a non-object value");
+                        break;
+                    }
+
+                    auto obj = std::get<ObjectRef>(objValue);
+                    if (instr.operand >= 0 && static_cast<size_t>(instr.operand) >= obj->slots.size())
+                        obj->adoptLayout();
+
+                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= obj->slots.size()) {
+                        this->diagnostics.addError(this->currentLoc, "Field slot index out of range");
+                        break;
+                    }
+
+                    obj->slots[static_cast<size_t>(instr.operand)] = std::move(val);
+            } break;
+            case OpCode::BIND_THIS: {
                     if (instr.operand <= 0 || this->stack.empty())
                         break;
 
@@ -843,63 +943,30 @@ namespace LOICollection::frontend::ir {
                         if (const auto* held = std::get_if<ObjectRef>(&captured); held && *held == *self)
                             captured = std::monostate{};
                     }
-                    break;
-                }
-                case OpCode::STORE_FIELD: {
-                    const auto& name = std::get<std::string>(cur.constants[instr.operand]);
-                    auto objValue = this->pop();
-                    auto val = this->pop();
+            } break;
+            case OpCode::LOAD_LEN: {
+                    auto iterable = this->pop();
 
-                    if (!std::holds_alternative<ObjectRef>(objValue)) {
-                        this->diagnostics.addError(this->currentLoc, "Cannot store field '" + name + "' on a non-object value");
+                    if (std::holds_alternative<ArrayRef>(iterable)) {
+                        this->push(static_cast<int>(std::get<ArrayRef>(iterable)->elements.size()));
                         break;
                     }
 
-                    std::get<ObjectRef>(objValue)->assign(name, val);
-                    break;
-                }
-                case OpCode::LOAD_FIELD_SLOT: {
-                    auto objValue = this->pop();
-
-                    if (!std::holds_alternative<ObjectRef>(objValue)) {
-                        this->diagnostics.addError(this->currentLoc, "Cannot load a field from a non-object value");
+                    if (std::holds_alternative<std::string>(iterable)) {
+                        this->push(static_cast<int>(codepointCount(std::get<std::string>(iterable))));
                         break;
                     }
 
-                    auto obj = std::get<ObjectRef>(objValue);
-                    if (instr.operand >= 0 && static_cast<size_t>(instr.operand) >= obj->slots.size())
-                        obj->adoptLayout();
+                    this->diagnostics.addError(this->currentLoc, "Cannot take length of a non-iterable value");
+            } break;
+            default: break;
+        }
+    }
 
-                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= obj->slots.size()) {
-                        this->diagnostics.addError(this->currentLoc, "Field slot index out of range");
-                        break;
-                    }
-
-                    this->push(obj->slots[static_cast<size_t>(instr.operand)]);
-                    break;
-                }
-                case OpCode::STORE_FIELD_SLOT: {
-                    auto objValue = this->pop();
-                    auto val = this->pop();
-
-                    if (!std::holds_alternative<ObjectRef>(objValue)) {
-                        this->diagnostics.addError(this->currentLoc, "Cannot store a field on a non-object value");
-                        break;
-                    }
-
-                    auto obj = std::get<ObjectRef>(objValue);
-                    if (instr.operand >= 0 && static_cast<size_t>(instr.operand) >= obj->slots.size())
-                        obj->adoptLayout();
-
-                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= obj->slots.size()) {
-                        this->diagnostics.addError(this->currentLoc, "Field slot index out of range");
-                        break;
-                    }
-
-                    obj->slots[static_cast<size_t>(instr.operand)] = std::move(val);
-                    break;
-                }
-                case OpCode::MAKE_ARRAY: {
+    void VM::execArray(ExecArgs& s) {
+        const auto& instr = s.instr;
+        switch (instr.op) {
+            case OpCode::MAKE_ARRAY: {
                     int count = instr.operand;
                     if (count < 0 || count > static_cast<int>(this->stack.size())) {
                         this->diagnostics.addError(this->currentLoc, "Invalid array literal size");
@@ -908,7 +975,7 @@ namespace LOICollection::frontend::ir {
 
                     if (const auto violation = this->mBudget->accountArray(static_cast<std::size_t>(count));
                         violation != sandbox::SandboxBudget::Violation::None) {
-                        fail(violation, "Array size budget exhausted");
+                        this->failBudget(violation, "Array size budget exhausted");
                         break;
                     }
 
@@ -918,9 +985,8 @@ namespace LOICollection::frontend::ir {
                         arr->elements[i] = this->pop();
 
                     this->push(arr);
-                    break;
-                }
-                case OpCode::LOAD_INDEX: {
+            } break;
+            case OpCode::LOAD_INDEX: {
                     auto indexValue = this->pop();
                     auto targetValue = this->pop();
 
@@ -959,9 +1025,8 @@ namespace LOICollection::frontend::ir {
                     }
 
                     this->push(arr->elements[index]);
-                    break;
-                }
-                case OpCode::STORE_INDEX: {
+            } break;
+            case OpCode::STORE_INDEX: {
                     auto indexValue = this->pop();
                     auto targetValue = this->pop();
                     auto value = this->pop();
@@ -990,7 +1055,7 @@ namespace LOICollection::frontend::ir {
 
                     if (index == static_cast<int>(arr->elements.size())) {
                         if (static_cast<std::size_t>(index + 1) > this->mBudget->maxArrayElements) {
-                            fail(sandbox::SandboxBudget::Violation::ArrayElementLimit, "Array size budget exhausted");
+                            this->failBudget(sandbox::SandboxBudget::Violation::ArrayElementLimit, "Array size budget exhausted");
                             break;
                         }
 
@@ -998,19 +1063,18 @@ namespace LOICollection::frontend::ir {
                     } else {
                         arr->elements[index] = value;
                     }
+            } break;
+            default: break;
+        }
+    }
 
-                    break;
-                }
-                case OpCode::LOAD_THIS: {
-                    if (!frame.hasThis) {
-                        this->diagnostics.addError(this->currentLoc, "'this' is not available in the current context");
-                        break;
-                    }
-
-                    this->push(frame.thisObj);
-                    break;
-                }
-                case OpCode::MAKE_LAMBDA: {
+    void VM::execClosure(ExecArgs& s) {
+        const auto& instr = s.instr;
+        Frame& frame = s.frame;
+        const BytecodeChunk& cur = s.cur;
+        const auto& owner = s.owner;
+        switch (instr.op) {
+            case OpCode::MAKE_LAMBDA: {
                     const auto& meta = cur.lambdas[instr.operand];
 
                     auto func = std::make_shared<FunctionRef>();
@@ -1027,9 +1091,25 @@ namespace LOICollection::frontend::ir {
                     func->globals = this->globals;
 
                     this->push(func);
-                    break;
-                }
-                case OpCode::INSTANCEOF: {
+            } break;
+            case OpCode::LOAD_THIS: {
+                    if (!frame.hasThis) {
+                        this->diagnostics.addError(this->currentLoc, "'this' is not available in the current context");
+                        break;
+                    }
+
+                    this->push(frame.thisObj);
+            } break;
+            default: break;
+        }
+    }
+
+    void VM::execInstanceof(ExecArgs& s) {
+        const auto& instr = s.instr;
+        const BytecodeChunk& cur = s.cur;
+        const BytecodeChunk& chunk = s.chunk;
+        switch (instr.op) {
+            case OpCode::INSTANCEOF: {
                     const auto& name = std::get<std::string>(cur.constants[instr.operand]);
                     auto value = this->pop();
 
@@ -1055,13 +1135,20 @@ namespace LOICollection::frontend::ir {
                     }
 
                     this->push(result);
-                    break;
-                }
+            } break;
+            default: break;
+        }
+    }
 
-                case OpCode::NEW: {
+    void VM::execObjectCreate(ExecArgs& s) {
+        const auto& instr = s.instr;
+        const BytecodeChunk& chunk = s.chunk;
+        const auto& placeholders = s.placeholders;
+        switch (instr.op) {
+            case OpCode::NEW: {
                     if (const auto violation = this->mBudget->accountObject();
                         violation != sandbox::SandboxBudget::Violation::None) {
-                        fail(violation, "Object count budget exhausted");
+                        this->failBudget(violation, "Object count budget exhausted");
                         break;
                     }
 
@@ -1105,13 +1192,11 @@ namespace LOICollection::frontend::ir {
                     } else {
                         this->push(obj);
                     }
-                    break;
-                }
-
-                case OpCode::NEW_NATIVE: {
+            } break;
+            case OpCode::NEW_NATIVE: {
                     if (const auto violation = this->mBudget->accountObject();
                         violation != sandbox::SandboxBudget::Violation::None) {
-                        fail(violation, "Object count budget exhausted");
+                        this->failBudget(violation, "Object count budget exhausted");
                         break;
                     }
 
@@ -1133,10 +1218,17 @@ namespace LOICollection::frontend::ir {
                     }
 
                     this->push(result.value());
-                    break;
-                }
+            } break;
+            default: break;
+        }
+    }
 
-                case OpCode::CALL_METHOD: {
+    void VM::execMethodDispatch(ExecArgs& s) {
+        const auto& instr = s.instr;
+        const BytecodeChunk& cur = s.cur;
+        const BytecodeChunk& chunk = s.chunk;
+        switch (instr.op) {
+            case OpCode::CALL_METHOD: {
                     const auto& meta = chunk.methods[instr.operand];
 
                     auto receiver = this->pop();
@@ -1165,10 +1257,8 @@ namespace LOICollection::frontend::ir {
 
                     if (!this->pushFrame(std::move(callee)))
                         break;
-                    break;
-                }
-
-                case OpCode::CALL_METHOD_VIRTUAL: {
+            } break;
+            case OpCode::CALL_METHOD_VIRTUAL: {
                     const auto& meta = cur.virtualCalls[instr.operand];
 
                     auto receiver = this->pop();
@@ -1215,10 +1305,8 @@ namespace LOICollection::frontend::ir {
 
                     if (!this->pushFrame(std::move(callee)))
                         break;
-                    break;
-                }
-
-                case OpCode::CALL_METHOD_BY_NAME: {
+            } break;
+            case OpCode::CALL_METHOD_BY_NAME: {
                     const auto& meta = cur.byNameCalls[instr.operand];
 
                     auto receiver = this->pop();
@@ -1263,10 +1351,8 @@ namespace LOICollection::frontend::ir {
 
                     if (!this->pushFrame(std::move(callee)))
                         break;
-                    break;
-                }
-
-                case OpCode::CALL_SUPER_CTOR: {
+            } break;
+            case OpCode::CALL_SUPER_CTOR: {
                     const auto& meta = cur.superCalls[instr.operand];
 
                     auto receiver = this->pop();
@@ -1305,13 +1391,20 @@ namespace LOICollection::frontend::ir {
 
                     if (!this->pushFrame(std::move(callee)))
                         break;
-                    break;
-                }
+            } break;
+            default: break;
+        }
+    }
 
-                case OpCode::CALL_NATIVE_METHOD: {
+    void VM::execNativeCall(ExecArgs& s) {
+        const auto& instr = s.instr;
+        const BytecodeChunk& chunk = s.chunk;
+        const auto& placeholders = s.placeholders;
+        switch (instr.op) {
+            case OpCode::CALL_NATIVE_METHOD: {
                     if (const auto violation = this->mBudget->accountNativeCall();
                         violation != sandbox::SandboxBudget::Violation::None) {
-                        fail(violation, "Native call budget exhausted");
+                        this->failBudget(violation, "Native call budget exhausted");
                         break;
                     }
 
@@ -1385,10 +1478,18 @@ namespace LOICollection::frontend::ir {
                     }
 
                     this->push(result.value());
-                    break;
-                }
+            } break;
+            default: break;
+        }
+    }
 
-                case OpCode::CALL_FUNC: {
+    void VM::execFunctionCall(ExecArgs& s) {
+        const auto& instr = s.instr;
+        Frame& frame = s.frame;
+        const BytecodeChunk& chunk = s.chunk;
+        const auto& owner = s.owner;
+        switch (instr.op) {
+            case OpCode::CALL_FUNC: {
                     const auto& meta = chunk.methods[instr.operand];
 
                     std::vector<ValueNode::ValueType> args(meta.argCount);
@@ -1403,10 +1504,8 @@ namespace LOICollection::frontend::ir {
 
                     if (!this->pushFrame(std::move(callee)))
                         break;
-                    break;
-                }
-
-                case OpCode::CALL_LAMBDA: {
+            } break;
+            case OpCode::CALL_LAMBDA: {
                     auto funcValue = this->pop();
                     if (!std::holds_alternative<FunctionRefPtr>(funcValue)) {
                         this->diagnostics.addError(this->currentLoc, "Attempted to call a non-function value");
@@ -1457,27 +1556,15 @@ namespace LOICollection::frontend::ir {
 
                     if (!this->pushFrame(std::move(callee)))
                         break;
-                    break;
-                }
+            } break;
+            default: break;
+        }
+    }
 
-                case OpCode::RETURN: {
-                    auto result = this->pop();
-
-                    Frame finished = std::move(this->frames.back());
-                    this->frames.pop_back();
-
-                    if (this->frames.empty())
-                        return result;
-
-                    if (finished.hasPending)
-                        this->push(finished.pendingPush);
-                    else
-                        this->push(result);
-
-                    break;
-                }
-
-                case OpCode::ADD: {
+    void VM::execArithmetic(ExecArgs& s) {
+        const auto& instr = s.instr;
+        switch (instr.op) {
+            case OpCode::ADD: {
                     auto r = this->pop();
                     auto l = this->pop();
 
@@ -1486,125 +1573,128 @@ namespace LOICollection::frontend::ir {
                     if (std::holds_alternative<std::string>(result)) {
                         if (const auto violation = this->mBudget->accountString(std::get<std::string>(result).size());
                             violation != sandbox::SandboxBudget::Violation::None) {
-                            fail(violation, "String size budget exhausted");
+                            this->failBudget(violation, "String size budget exhausted");
                             break;
                         }
                     }
 
                     this->push(std::move(result));
-                    break;
-                }
-                case OpCode::SUB: {
+            } break;
+            case OpCode::SUB: {
                     auto r = this->pop();
                     auto l = this->pop();
 
                     this->push(VM::applyArithmetic(l, r, "-", this->diagnostics, this->currentLoc));
-                    break;
-                }
-                case OpCode::MUL: {
+            } break;
+            case OpCode::MUL: {
                     auto r = this->pop();
                     auto l = this->pop();
 
                     this->push(VM::applyArithmetic(l, r, "*", this->diagnostics, this->currentLoc));
-                    break;
-                }
-                case OpCode::DIV: {
+            } break;
+            case OpCode::DIV: {
                     auto r = this->pop();
                     auto l = this->pop();
 
                     this->push(VM::applyArithmetic(l, r, "/", this->diagnostics, this->currentLoc));
-                    break;
-                }
-                case OpCode::MOD: {
+            } break;
+            case OpCode::MOD: {
                     auto r = this->pop();
                     auto l = this->pop();
 
                     this->push(VM::applyArithmetic(l, r, "%", this->diagnostics, this->currentLoc));
-                    break;
-                }
-                case OpCode::POW: {
+            } break;
+            case OpCode::POW: {
                     auto r = this->pop();
                     auto l = this->pop();
 
                     this->push(VM::applyArithmetic(l, r, "^", this->diagnostics, this->currentLoc));
-                    break;
-                }
+            } break;
+            default: break;
+        }
+    }
 
-                case OpCode::CMP_EQ: {
+    void VM::execComparison(ExecArgs& s) {
+        const auto& instr = s.instr;
+        switch (instr.op) {
+            case OpCode::CMP_EQ: {
                     auto r = this->pop();
                     auto l = this->pop();
 
                     this->push(VM::applyComparison(l, r, "==", this->diagnostics, this->currentLoc));
-                    break;
-                }
-                case OpCode::CMP_NE: {
+            } break;
+            case OpCode::CMP_NE: {
                     auto r = this->pop();
                     auto l = this->pop();
 
                     this->push(VM::applyComparison(l, r, "!=", this->diagnostics, this->currentLoc));
-                    break;
-                }
-                case OpCode::CMP_GT: {
+            } break;
+            case OpCode::CMP_GT: {
                     auto r = this->pop();
                     auto l = this->pop();
 
                     this->push(VM::applyComparison(l, r, ">", this->diagnostics, this->currentLoc));
-                    break;
-                }
-                case OpCode::CMP_LT: {
+            } break;
+            case OpCode::CMP_LT: {
                     auto r = this->pop();
                     auto l = this->pop();
 
                     this->push(VM::applyComparison(l, r, "<", this->diagnostics, this->currentLoc));
-                    break;
-                }
-                case OpCode::CMP_GE: {
+            } break;
+            case OpCode::CMP_GE: {
                     auto r = this->pop();
                     auto l = this->pop();
 
                     this->push(VM::applyComparison(l, r, ">=", this->diagnostics, this->currentLoc));
-                    break;
-                }
-                case OpCode::CMP_LE: {
+            } break;
+            case OpCode::CMP_LE: {
                     auto r = this->pop();
                     auto l = this->pop();
 
                     this->push(VM::applyComparison(l, r, "<=", this->diagnostics, this->currentLoc));
-                    break;
-                }
+            } break;
+            default: break;
+        }
+    }
 
-                case OpCode::LOGIC_AND: {
+    void VM::execLogic(ExecArgs& s) {
+        const auto& instr = s.instr;
+        switch (instr.op) {
+            case OpCode::LOGIC_AND: {
                     auto r = this->pop();
                     auto l = this->pop();
 
                     this->push(VM::valueToBool(l) && VM::valueToBool(r));
-                    break;
-                }
-                case OpCode::LOGIC_OR: {
+            } break;
+            case OpCode::LOGIC_OR: {
                     auto r = this->pop();
                     auto l = this->pop();
 
                     this->push(VM::valueToBool(l) || VM::valueToBool(r));
-                    break;
-                }
-
-                case OpCode::NEG: {
+            } break;
+            case OpCode::NEG: {
                     auto v = this->pop();
 
                     this->push(VM::applyUnary(v, "-", this->diagnostics, this->currentLoc));
-                    break;
-                }
-                case OpCode::NOT: {
+            } break;
+            case OpCode::NOT: {
                     auto v = this->pop();
 
                     this->push(!VM::valueToBool(v));
-                    break;
-                }
+            } break;
+            default: break;
+        }
+    }
 
-                case OpCode::CALL: {
+    void VM::execHostCall(ExecArgs& s) {
+        const auto& instr = s.instr;
+        const BytecodeChunk& cur = s.cur;
+        const auto& placeholders = s.placeholders;
+        switch (instr.op) {
+            case OpCode::CALL: {
                     if (const auto violation = this->mBudget->accountNativeCall();
                         violation != sandbox::SandboxBudget::Violation::None) {
-                        fail(violation, "Native call budget exhausted");
+                        this->failBudget(violation, "Native call budget exhausted");
                         break;
                     }
 
@@ -1631,12 +1721,11 @@ namespace LOICollection::frontend::ir {
                     }
 
                     this->push(result.value());
-                    break;
-                }
-                case OpCode::CALL_MACRO: {
+            } break;
+            case OpCode::CALL_MACRO: {
                     if (const auto violation = this->mBudget->accountNativeCall();
                         violation != sandbox::SandboxBudget::Violation::None) {
-                        fail(violation, "Native call budget exhausted");
+                        this->failBudget(violation, "Native call budget exhausted");
                         break;
                     }
 
@@ -1660,41 +1749,32 @@ namespace LOICollection::frontend::ir {
                     }
 
                     this->push(result.value());
-                    break;
-                }
+            } break;
+            default: break;
+        }
+    }
 
-                case OpCode::JMP_IF_FALSE: {
+    void VM::execBranch(ExecArgs& s) {
+        const auto& instr = s.instr;
+        Frame& frame = s.frame;
+        switch (instr.op) {
+            case OpCode::JMP_IF_FALSE: {
                     auto cond = this->pop();
                     if (!VM::valueToBool(cond))
                         frame.ip += instr.operand;
-
-                    break;
-                }
-                case OpCode::JMP_IF_TRUE: {
+            } break;
+            case OpCode::JMP_IF_TRUE: {
                     auto cond = this->pop();
                     if (VM::valueToBool(cond))
                         frame.ip += instr.operand;
-                    
-                    break;
-                }
-                case OpCode::JMP:
+            } break;
+            case OpCode::JMP: {
                     frame.ip += instr.operand;
-                    break;
-
-                case OpCode::HALT: {
-                    if (this->stack.empty()) {
-                        return std::string("");
-                    }
-
-                    return this->stack.back();
-                }
-
-                default:
-                    this->diagnostics.addError(this->currentLoc, "Unknown opcode");
-                    break;
-            }
+            } break;
+            default: break;
         }
     }
+
 
     ValueNode::ValueType VM::callFunctionRef(
         const FunctionRefPtr& func,
