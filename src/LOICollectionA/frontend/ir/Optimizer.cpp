@@ -12,9 +12,10 @@
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 
 namespace LOICollection::frontend::ir {
+namespace {
     struct TrackedValue {
         ValueNode::ValueType value;
-        int producer = -1; 
+        int producer = -1;
         bool removable = false;
     };
 
@@ -258,6 +259,7 @@ namespace LOICollection::frontend::ir {
 
         out.push_back({ op, addConstant(chunk, value), loc });
     }
+}
 
     Optimizer::Stats Optimizer::optimize(BytecodeChunk& chunk) {
         Stats total;
