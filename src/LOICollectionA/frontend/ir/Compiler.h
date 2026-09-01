@@ -133,7 +133,12 @@ namespace LOICollection::frontend::ir {
 
         [[nodiscard]] int fieldSlotOf(const TypeInfo& owner, const std::string& memberName) const;
 
-        [[nodiscard]] auto suspendLoops();
+        [[nodiscard]] auto suspendLoops() {
+            auto saved = std::exchange(this->loopStack, {});
+            return make_scope_guard([this, saved = std::move(saved)]() mutable {
+                this->loopStack = std::move(saved);
+            });
+        }
 
         void pushScope(bool hasThis, int base, bool inherits = false);
         int closeScope();

@@ -20,9 +20,9 @@ namespace LOICollection::frontend::ir {
     public:
         LOICOLLECTION_A_NDAPI VM(DiagnosticEngine& diag) : VM(diag, std::make_shared<GlobalsTable>()) {}
 
-        LOICOLLECTION_A_NDAPI VM(DiagnosticEngine& diag, std::shared_ptr<GlobalsTable> globals)
+        LOICOLLECTION_A_NDAPI VM(DiagnosticEngine& diag, std::shared_ptr<GlobalsTable> globalsTable)
             : diagnostics(diag),
-              globals(std::move(globals)) {}
+              globals(std::move(globalsTable)) {}
 
         LOICOLLECTION_A_NDAPI ValueNode::ValueType run(
             const std::shared_ptr<const BytecodeChunk>& chunk,
@@ -104,5 +104,35 @@ namespace LOICollection::frontend::ir {
         [[nodiscard]] bool isDerived(const BytecodeChunk& chunk, int derivedClassIndex, int baseClassIndex) const;
 
         [[nodiscard]] static ValueNode::ValueType cloneValue(const ValueNode::ValueType& val);
+
+        struct ExecArgs {
+            const std::shared_ptr<const BytecodeChunk>& owner;
+            const BytecodeChunk& chunk;
+            const BytecodeChunk& cur;
+            Frame& frame;
+            const Instruction& instr;
+            const CallbackTypePlaces& placeholders;
+        };
+
+        void failBudget(sandbox::SandboxBudget::Violation violation, const std::string& message);
+
+        void execPushConst(ExecArgs& s);
+        void execStackManip(ExecArgs& s);
+        void execOptional(ExecArgs& s);
+        void execLocalSlot(ExecArgs& s);
+        void execVariable(ExecArgs& s);
+        void execFieldAccess(ExecArgs& s);
+        void execArray(ExecArgs& s);
+        void execClosure(ExecArgs& s);
+        void execInstanceof(ExecArgs& s);
+        void execObjectCreate(ExecArgs& s);
+        void execMethodDispatch(ExecArgs& s);
+        void execNativeCall(ExecArgs& s);
+        void execFunctionCall(ExecArgs& s);
+        void execArithmetic(ExecArgs& s);
+        void execComparison(ExecArgs& s);
+        void execLogic(ExecArgs& s);
+        void execHostCall(ExecArgs& s);
+        void execBranch(ExecArgs& s);
     };
 }
