@@ -431,6 +431,38 @@ TEST(OptimizerTest, PropagationInvalidatedByCalls) {
     EXPECT_EQ(chunk.code.size(), 5u);
 }
 
+namespace {
+    std::size_t optimizeInvalidationProbe(OpCode op) {
+        ir::BytecodeChunk chunk;
+        chunk.constants.push_back(3);
+        chunk.constants.push_back(std::string("x"));
+        chunk.constants.push_back(std::string("hook"));
+
+        chunk.code = {
+            { OpCode::PUSH_INT, 0 },
+            { OpCode::STORE_VAR, 1 },
+            { op, 2 },
+            { OpCode::LOAD_VAR, 1 },
+            { OpCode::HALT, 0 }
+        };
+
+        Optimizer optimizer;
+        optimizer.optimize(chunk);
+
+        EXPECT_TRUE(containsOp(chunk, OpCode::LOAD_VAR));
+
+        return chunk.code.size();
+    }
+}
+
+TEST(OptimizerTest, PropagationInvalidatedByByNameMethodCalls) {
+    EXPECT_EQ(optimizeInvalidationProbe(OpCode::CALL_METHOD_BY_NAME), 5u);
+}
+
+TEST(OptimizerTest, PropagationInvalidatedByNativeMethodCalls) {
+    EXPECT_EQ(optimizeInvalidationProbe(OpCode::CALL_NATIVE_METHOD), 5u);
+}
+
 // ---- NOT / branch fusion -------------------------------------------------------
 
 TEST(OptimizerTest, FusesNotIntoBranchOpcode) {

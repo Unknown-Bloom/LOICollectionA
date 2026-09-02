@@ -25,7 +25,9 @@ namespace LOICollection::frontend::ir::opt {
             case OpCode::CALL_MACRO:
             case OpCode::CALL_METHOD:
             case OpCode::CALL_METHOD_VIRTUAL:
+            case OpCode::CALL_METHOD_BY_NAME:
             case OpCode::CALL_FUNC:
+            case OpCode::CALL_NATIVE_METHOD:
             case OpCode::CALL_LAMBDA:
             case OpCode::CALL_SUPER_CTOR:
             case OpCode::NEW:
