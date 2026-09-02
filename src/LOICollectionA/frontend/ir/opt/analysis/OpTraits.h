@@ -35,7 +35,4 @@ namespace LOICollection::frontend::ir::opt {
                 return false;
         }
     }
-
-    std::string arithmeticOpName(OpCode op);
-    std::string comparisonOpName(OpCode op);
 }

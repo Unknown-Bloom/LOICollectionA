@@ -27,7 +27,7 @@ namespace {
     bool applyUnaryOperator(OpCode op, const ValueNode::ValueType& value, ValueNode::ValueType& out) {
         if (op == OpCode::NEG) {
             DiagnosticEngine foldDiag;
-            out = VM::applyUnary(value, "-", foldDiag);
+            out = VM::applyUnary(value, OpCode::NEG, foldDiag);
             return !foldDiag.hasErrors();
         }
 
@@ -323,7 +323,7 @@ namespace {
 
             DiagnosticEngine foldDiag;
             const ValueNode::ValueType result = VM::applyArithmetic(
-                knownValue(left).value, knownValue(right).value, arithmeticOpName(instr.op), foldDiag);
+                knownValue(left).value, knownValue(right).value, instr.op, foldDiag);
 
             if (foldDiag.hasErrors())
                 return emitUnknown(instr);
@@ -399,7 +399,7 @@ namespace {
             DiagnosticEngine foldDiag;
 
             result = VM::applyComparison(
-                knownValue(left).value, knownValue(right).value, comparisonOpName(instr.op), foldDiag);
+                knownValue(left).value, knownValue(right).value, instr.op, foldDiag);
 
             if (foldDiag.hasErrors())
                 return emitUnknown(instr);
