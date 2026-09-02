@@ -39,6 +39,7 @@ namespace LOICollection::frontend::ir::opt {
         Step foldStoreIndex(const Instruction& instr);
         Step foldCall(const Instruction& instr, int oldIdx);
         Step foldBranch(const Instruction& instr, int oldIdx);
+        Step foldNativeMethod(const Instruction& instr, int oldIdx);
 
         Step emitUnknown(const Instruction& instr);
         Step emitOpaque(const Instruction& instr);

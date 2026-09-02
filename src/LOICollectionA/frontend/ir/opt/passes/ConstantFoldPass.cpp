@@ -1,10 +1,12 @@
 #include <algorithm>
+#include <charconv>
 #include <memory>
 #include <string>
 #include <variant>
 #include <vector>
 
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
+#include "LOICollectionA/frontend/Unicode.h"
 
 #include "LOICollectionA/frontend/ir/VM.h"
 
@@ -33,6 +35,37 @@ namespace {
 
         out = !VM::valueToBool(value);
         return true;
+    }
+
+    // Mirrors ArrayClass::valuesEqual: int/float compare numerically, the rest by identity.
+    bool valuesEqual(const ValueNode::ValueType& left, const ValueNode::ValueType& right) {
+        if (auto li = std::get_if<int>(&left)) {
+            if (auto ri = std::get_if<int>(&right)) return *li == *ri;
+            if (auto rf = std::get_if<float>(&right)) return *li == *rf;
+            return false;
+        }
+        if (auto lf = std::get_if<float>(&left)) {
+            if (auto ri = std::get_if<int>(&right)) return *lf == *ri;
+            if (auto rf = std::get_if<float>(&right)) return *lf == *rf;
+            return false;
+        }
+        if (auto ls = std::get_if<std::string>(&left)) {
+            if (auto rs = std::get_if<std::string>(&right)) return *ls == *rs;
+            return false;
+        }
+        if (auto lb = std::get_if<bool>(&left)) {
+            if (auto rb = std::get_if<bool>(&right)) return *lb == *rb;
+            return false;
+        }
+        if (auto lo = std::get_if<ObjectRef>(&left)) {
+            if (auto ro = std::get_if<ObjectRef>(&right)) return *lo == *ro;
+            return false;
+        }
+        if (auto la = std::get_if<ArrayRef>(&left)) {
+            if (auto ra = std::get_if<ArrayRef>(&right)) return *la == *ra;
+            return false;
+        }
+        return false;
     }
 }
 
@@ -124,6 +157,9 @@ namespace {
 
             case OpCode::CALL:
                 return foldCall(instr, oldIdx);
+
+            case OpCode::CALL_NATIVE_METHOD:
+                return foldNativeMethod(instr, oldIdx);
 
             case OpCode::JMP_IF_FALSE:
             case OpCode::JMP_IF_TRUE:
@@ -538,6 +574,152 @@ namespace {
 
         const int at = emitConstant(result, instr.loc);
 
+        mCtx.stack.emplace_back(TrackedValue{ result, at, !mJumps.isTarget(oldIdx) });
+        ++mCtx.stats.folded;
+
+        return { at, false };
+    }
+
+    ConstantFoldPass::Step ConstantFoldPass::foldNativeMethod(const Instruction& instr, int oldIdx) {
+        if (instr.operand < 0 || instr.operand >= static_cast<int>(mChunk.nativeCalls.size()))
+            return emitOpaque(instr);
+
+        const auto& meta = mChunk.nativeCalls[instr.operand];
+
+        if (meta.isStatic || static_cast<int>(mCtx.stack.size()) <= meta.argCount + 1)
+            return emitOpaque(instr);
+
+        const StackEntry receiver = popEntry(mCtx.stack);
+        std::vector<StackEntry> args(meta.argCount);
+        for (int i = 0; i < meta.argCount; ++i)
+            args[meta.argCount - 1 - i] = popEntry(mCtx.stack);
+
+        if (!isKnown(receiver) || !knownValue(receiver).removable)
+            return emitOpaque(instr);
+        for (const auto& arg : args)
+            if (!isKnown(arg) || !knownValue(arg).removable)
+                return emitOpaque(instr);
+
+        const auto& recv = knownValue(receiver).value;
+
+        ValueNode::ValueType result;
+        bool folded = false;
+
+        if (std::holds_alternative<std::string>(recv)) {
+            const auto& s = std::get<std::string>(recv);
+
+            if (meta.name == "length" && meta.argCount == 0) {
+                result = static_cast<int>(codepointCount(s));
+                folded = true;
+            } else if (meta.name == "contains" && meta.argCount == 1) {
+                result = s.find(std::get<std::string>(knownValue(args[0]).value)) != std::string::npos;
+                folded = true;
+            } else if (meta.name == "startsWith" && meta.argCount == 1) {
+                const auto& p = std::get<std::string>(knownValue(args[0]).value);
+                result = s.size() >= p.size() && s.compare(0, p.size(), p) == 0;
+                folded = true;
+            } else if (meta.name == "endsWith" && meta.argCount == 1) {
+                const auto& p = std::get<std::string>(knownValue(args[0]).value);
+                result = s.size() >= p.size() && s.compare(s.size() - p.size(), p.size(), p) == 0;
+                folded = true;
+            } else if (meta.name == "indexOf" && meta.argCount == 1) {
+                const auto& needle = std::get<std::string>(knownValue(args[0]).value);
+                const size_t pos = s.find(needle);
+                result = pos == std::string::npos ? -1 : static_cast<int>(codepointDistance(s, pos));
+                folded = true;
+            } else if (meta.name == "split" && meta.argCount == 1) {
+                const auto& sep = std::get<std::string>(knownValue(args[0]).value);
+                auto arr = std::make_shared<ArrayValue>();
+                if (sep.empty()) {
+                    for (size_t i = 0; i < s.size(); i += codepointWidth(s[i]))
+                        arr->elements.emplace_back(s.substr(i, codepointWidth(s[i])));
+                } else {
+                    size_t start = 0;
+                    while (true) {
+                        const size_t pos = s.find(sep, start);
+                        if (pos == std::string::npos) {
+                            arr->elements.emplace_back(s.substr(start));
+                            break;
+                        }
+                        arr->elements.emplace_back(s.substr(start, pos - start));
+                        start = pos + sep.size();
+                    }
+                }
+                result = arr;
+                folded = true;
+            } else if (meta.name == "toInt" && meta.argCount == 0) {
+                int v = 0;
+                const auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
+                if (ec == std::errc{} && ptr == s.data() + s.size()) {
+                    result = v;
+                    folded = true;
+                }
+            } else if (meta.name == "toFloat" && meta.argCount == 0) {
+                float v = 0.0f;
+                const auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
+                if (ec == std::errc{} && ptr == s.data() + s.size()) {
+                    result = v;
+                    folded = true;
+                }
+            }
+        } else if (std::holds_alternative<ArrayRef>(recv)) {
+            const auto& arr = std::get<ArrayRef>(recv);
+
+            if (meta.name == "length" && meta.argCount == 0) {
+                result = static_cast<int>(arr->elements.size());
+                folded = true;
+            } else if (meta.name == "contains" && meta.argCount == 1) {
+                const auto& needle = knownValue(args[0]).value;
+                bool found = false;
+                for (const auto& element : arr->elements) {
+                    if (valuesEqual(element, needle)) {
+                        found = true;
+                        break;
+                    }
+                }
+                result = found;
+                folded = true;
+            } else if (meta.name == "indexOf" && meta.argCount == 1) {
+                const auto& needle = knownValue(args[0]).value;
+                int found = -1;
+                for (size_t i = 0; i < arr->elements.size(); ++i) {
+                    if (valuesEqual(arr->elements[i], needle)) {
+                        found = static_cast<int>(i);
+                        break;
+                    }
+                }
+                result = found;
+                folded = true;
+            } else if (meta.name == "join" && meta.argCount == 1) {
+                const auto& sep = std::get<std::string>(knownValue(args[0]).value);
+                std::string out;
+                for (size_t i = 0; i < arr->elements.size(); ++i) {
+                    if (i != 0)
+                        out += sep;
+                    out += VM::valueToString(arr->elements[i]);
+                }
+                result = out;
+                folded = true;
+            } else if (meta.name == "slice" && meta.argCount == 2) {
+                const int len = static_cast<int>(arr->elements.size());
+                const int start = std::clamp(std::get<int>(knownValue(args[0]).value), 0, len);
+                const int end = std::clamp(std::get<int>(knownValue(args[1]).value), 0, len);
+                auto out = std::make_shared<ArrayValue>();
+                if (start < end)
+                    out->elements.assign(arr->elements.begin() + start, arr->elements.begin() + end);
+                result = out;
+                folded = true;
+            }
+        }
+
+        if (!folded)
+            return emitOpaque(instr);
+
+        mCtx.drop(knownValue(receiver).producer);
+        for (const auto& arg : args)
+            mCtx.drop(knownValue(arg).producer);
+
+        const int at = emitConstant(result, instr.loc);
         mCtx.stack.emplace_back(TrackedValue{ result, at, !mJumps.isTarget(oldIdx) });
         ++mCtx.stats.folded;
 
