@@ -50,8 +50,8 @@ namespace LOICollection::frontend::ir {
                 return;
             }
 
-            this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
             this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, loc);
+            this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
 
             int metaIdx = this->addByNameCall(std::string(elementMethod), 1);
             this->current.get().emit(OpCode::CALL_METHOD_BY_NAME, metaIdx, loc);
