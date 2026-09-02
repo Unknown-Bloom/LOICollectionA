@@ -18,6 +18,21 @@
 
 namespace LOICollection::frontend::ir {
 
+    int VM::resolveFieldSlot(Object& obj, const std::string& name, const Instruction& instr) {
+        if (!obj.layout)
+            obj.adoptLayout();
+
+        FieldCacheSlot& cached = this->mFieldSlots[&instr];
+
+        if (cached.name != name || cached.layout != obj.layout.get()) {
+            cached.name = name;
+            cached.layout = obj.layout.get();
+            cached.slot = obj.slotOf(name);
+        }
+
+        return cached.slot;
+    }
+
     void VM::execFieldAccess(ExecArgs& s) {
         const auto& instr = s.instr;
         const BytecodeChunk& cur = s.cur;
@@ -42,7 +57,7 @@ namespace LOICollection::frontend::ir {
                     }
 
                     auto obj = std::get<ObjectRef>(objValue);
-                    const auto* field = obj->find(name);
+                    const auto* field = obj->fieldAt(this->resolveFieldSlot(*obj, name, instr), name);
                     if (!field) {
                         this->diagnostics.addError(this->currentLoc, "Object has no field: " + name);
                         break;
@@ -60,7 +75,8 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
 
-                    std::get<ObjectRef>(objValue)->assign(name, val);
+                    auto obj = std::get<ObjectRef>(objValue);
+                    obj->fieldAtOrSpill(this->resolveFieldSlot(*obj, name, instr), name) = std::move(val);
             } break;
             case OpCode::LOAD_FIELD_SLOT: {
                     auto objValue = this->pop();

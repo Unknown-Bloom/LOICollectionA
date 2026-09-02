@@ -48,6 +48,12 @@ namespace LOICollection::frontend::ir {
         LOICOLLECTION_A_NDAPI static bool applyComparison(const ValueNode::ValueType& left, const ValueNode::ValueType& right, const std::string& op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
 
     private:
+        struct FieldCacheSlot {
+            std::string name;
+            const FieldLayout* layout = nullptr;
+            int slot = -1;
+        };
+
         struct Frame {
             std::reference_wrapper<const BytecodeChunk> chunk;
 
@@ -81,8 +87,11 @@ namespace LOICollection::frontend::ir {
         std::unordered_map<int, NativeValueMethodCacheSlot> mNativeValueMethodSlots;
         std::unordered_map<int, NativeConstructorCacheSlot> mNativeConstructorSlots;
         std::unordered_map<int, FieldLayoutPtr> mClassLayouts;
+        std::unordered_map<const Instruction*, FieldCacheSlot> mFieldSlots;
 
         [[nodiscard]] const FieldLayoutPtr& classLayout(const BytecodeChunk& chunk, int classIndex);
+
+        [[nodiscard]] int resolveFieldSlot(Object& obj, const std::string& name, const Instruction& instr);
 
         ValueNode::ValueType execute(
             const std::shared_ptr<const BytecodeChunk>& owner,
