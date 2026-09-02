@@ -2,6 +2,7 @@
 #include "LOICollectionA/frontend/ir/opt/analysis/JumpTargetAnalysis.h"
 #include "LOICollectionA/frontend/ir/opt/passes/ConstantFoldPass.h"
 #include "LOICollectionA/frontend/ir/opt/passes/DeadCodePass.h"
+#include "LOICollectionA/frontend/ir/opt/passes/DeadStorePass.h"
 
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 
@@ -50,6 +51,9 @@ namespace LOICollection::frontend::ir {
 
         opt::ConstantFoldPass foldPass{ chunk, ctx, jumps };
         foldPass.run(this->enabled(Pass::ConstantFold));
+
+        opt::DeadStorePass storePass{ chunk, ctx, jumps };
+        storePass.run(this->enabled(Pass::DeadStore));
 
         opt::DeadCodePass deadPass;
         deadPass.run(chunk, ctx, this->enabled(Pass::DeadCode));

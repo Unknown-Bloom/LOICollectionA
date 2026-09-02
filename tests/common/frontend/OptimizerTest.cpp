@@ -783,3 +783,116 @@ TEST(OptimizerTest, PassMaskDefaultsToEveryPassEnabled) {
     optimizer.setEnabledPasses(Optimizer::allPasses);
     EXPECT_EQ(optimizer.enabledPasses(), Optimizer::allPasses);
 }
+
+// ---- dead store elimination ---------------------------------------------------
+
+namespace {
+    int countOp(const BytecodeChunk& chunk, OpCode op) {
+        int total = 0;
+        for (const auto& instr : chunk.code)
+            if (instr.op == op)
+                ++total;
+
+        return total;
+    }
+}
+
+TEST(OptimizerTest, RemovesStoreOverwrittenBeforeAnyRead) {
+    auto program = compileAndOptimize("let x = 1; x = 2; x");
+
+    EXPECT_FALSE(program.diagnostics.hasErrors());
+    EXPECT_EQ(countOp(*program.chunk, OpCode::STORE_VAR) + countOp(*program.chunk, OpCode::DUP_STORE), 1);
+    EXPECT_EQ(countOp(*program.chunk, OpCode::POP), 1);
+
+    VM vm(program.diagnostics);
+    EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "2");
+    EXPECT_FALSE(program.diagnostics.hasErrors());
+}
+
+TEST(OptimizerTest, RemovesDeadSlotStoreInStraightLineCode) {
+    ir::BytecodeChunk chunk;
+    chunk.slotCount = 1;
+    chunk.constants.push_back(1);
+    chunk.constants.push_back(2);
+
+    chunk.code = {
+        { OpCode::PUSH_INT, 0 },
+        { OpCode::STORE_SLOT, 0 },
+        { OpCode::PUSH_INT, 1 },
+        { OpCode::STORE_SLOT, 0 },
+        { OpCode::LOAD_SLOT, 0 },
+        { OpCode::HALT, 0 }
+    };
+
+    Optimizer optimizer;
+    optimizer.optimize(chunk);
+
+    EXPECT_EQ(countOp(chunk, OpCode::STORE_SLOT), 1);
+    EXPECT_EQ(countOp(chunk, OpCode::POP), 0);
+
+    DiagnosticEngine diag;
+    VM vm(diag);
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(std::move(chunk)), {})), "2");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(OptimizerTest, KeepsSlotStoreThatAReadObserves) {
+    ir::BytecodeChunk chunk;
+    chunk.slotCount = 2;
+
+    chunk.code = {
+        { OpCode::LOAD_SLOT, 1 },
+        { OpCode::STORE_SLOT, 0 },
+        { OpCode::LOAD_SLOT, 0 },
+        { OpCode::POP, 0 },
+        { OpCode::LOAD_SLOT, 1 },
+        { OpCode::STORE_SLOT, 0 },
+        { OpCode::LOAD_SLOT, 0 },
+        { OpCode::HALT, 0 }
+    };
+
+    Optimizer optimizer;
+    optimizer.optimize(chunk);
+
+    EXPECT_EQ(countOp(chunk, OpCode::STORE_SLOT), 2);
+}
+
+TEST(OptimizerTest, KeepsStoreThatPrecedesACall) {
+    ir::BytecodeChunk chunk;
+    chunk.slotCount = 1;
+    chunk.constants.push_back(1);
+    chunk.constants.push_back(2);
+    chunk.constants.push_back(std::string("hook"));
+
+    chunk.code = {
+        { OpCode::PUSH_INT, 0 },
+        { OpCode::STORE_SLOT, 0 },
+        { OpCode::CALL, 2 },
+        { OpCode::PUSH_INT, 1 },
+        { OpCode::STORE_SLOT, 0 },
+        { OpCode::LOAD_SLOT, 0 },
+        { OpCode::HALT, 0 }
+    };
+
+    Optimizer optimizer;
+    optimizer.optimize(chunk);
+
+    EXPECT_EQ(countOp(chunk, OpCode::STORE_SLOT), 2);
+}
+
+TEST(OptimizerTest, PassMaskTurnsOffDeadStoreElimination) {
+    const std::string source = "let x = 1; x = 2; x";
+
+    auto full = compileAndOptimize(source);
+    auto noDeadStore = compileAndOptimize(
+        source,
+        static_cast<unsigned>(Optimizer::Pass::ConstantFold) | static_cast<unsigned>(Optimizer::Pass::DeadCode));
+
+    EXPECT_LT(
+        countOp(*full.chunk, OpCode::STORE_VAR) + countOp(*full.chunk, OpCode::DUP_STORE),
+        countOp(*noDeadStore.chunk, OpCode::STORE_VAR) + countOp(*noDeadStore.chunk, OpCode::DUP_STORE));
+
+    EXPECT_FALSE(full.diagnostics.hasErrors());
+    EXPECT_FALSE(noDeadStore.diagnostics.hasErrors());
+    EXPECT_EQ(runChunk(noDeadStore.chunk, noDeadStore.diagnostics), runChunk(full.chunk, full.diagnostics));
+}
