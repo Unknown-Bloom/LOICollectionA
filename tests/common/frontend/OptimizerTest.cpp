@@ -896,3 +896,18 @@ TEST(OptimizerTest, PassMaskTurnsOffDeadStoreElimination) {
     EXPECT_FALSE(noDeadStore.diagnostics.hasErrors());
     EXPECT_EQ(runChunk(noDeadStore.chunk, noDeadStore.diagnostics), runChunk(full.chunk, full.diagnostics));
 }
+
+TEST(OptimizerTest, RejectedFoldKeepsItsOperandsOnTheStack) {
+    auto program = compileAndOptimize("10.0 % 3.0");
+
+    EXPECT_FALSE(program.diagnostics.hasErrors());
+    EXPECT_EQ(countOp(*program.chunk, OpCode::MOD), 1);
+    EXPECT_GE(countOp(*program.chunk, OpCode::PUSH_FLOAT), 2);
+
+    VM vm(program.diagnostics);
+    [[maybe_unused]] auto result = vm.run(program.chunk, {});
+
+    EXPECT_TRUE(program.diagnostics.hasErrors());
+    EXPECT_EQ(program.diagnostics.getErrorMessage().find("Stack underflow"), std::string::npos);
+    EXPECT_NE(program.diagnostics.getErrorMessage().find("Modulo requires integral types"), std::string::npos);
+}

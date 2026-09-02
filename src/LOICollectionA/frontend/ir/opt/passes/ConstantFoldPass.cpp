@@ -354,15 +354,15 @@ namespace {
         const StackEntry left = popEntry(mCtx.stack);
 
         if (isKnown(left) && isKnown(right) && knownValue(left).removable && knownValue(right).removable) {
-            mCtx.drop(knownValue(left).producer);
-            mCtx.drop(knownValue(right).producer);
-
             DiagnosticEngine foldDiag;
             const ValueNode::ValueType result = VM::applyArithmetic(
                 knownValue(left).value, knownValue(right).value, instr.op, foldDiag);
 
             if (foldDiag.hasErrors())
                 return emitUnknown(instr);
+
+            mCtx.drop(knownValue(left).producer);
+            mCtx.drop(knownValue(right).producer);
 
             const int at = emitConstant(result, instr.loc);
 
@@ -397,8 +397,6 @@ namespace {
         if (!isKnown(operand) || !knownValue(operand).removable)
             return emitUnknown(instr);
 
-        mCtx.drop(knownValue(operand).producer);
-
         ValueNode::ValueType result;
         const bool foldable = applyUnaryOperator(instr.op, knownValue(operand).value, result);
 
@@ -406,6 +404,8 @@ namespace {
 
         if (!foldable)
             return emitUnknown(instr);
+
+        mCtx.drop(knownValue(operand).producer);
 
         const int at = emitConstant(result, instr.loc);
 
@@ -420,9 +420,6 @@ namespace {
 
         if (!isKnown(left) || !isKnown(right) || !knownValue(left).removable || !knownValue(right).removable)
             return emitUnknown(instr);
-
-        mCtx.drop(knownValue(left).producer);
-        mCtx.drop(knownValue(right).producer);
 
         bool result;
 
@@ -440,6 +437,9 @@ namespace {
             if (foldDiag.hasErrors())
                 return emitUnknown(instr);
         }
+
+        mCtx.drop(knownValue(left).producer);
+        mCtx.drop(knownValue(right).producer);
 
         const int at = emitConstant(result, instr.loc);
 
