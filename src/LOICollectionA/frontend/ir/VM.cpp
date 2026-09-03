@@ -70,6 +70,7 @@ namespace LOICollection::frontend::ir {
 
         this->stack.clear();
         this->frames.clear();
+        this->localPool.clear();
         this->globals->clear();
         this->mReport = sandbox::SandboxReport{};
 
@@ -83,6 +84,7 @@ namespace LOICollection::frontend::ir {
         }
 
         this->frames.emplace_back(*chunk);
+        this->localPool.resize(chunk->slotCount);
 
         CallbackTypePlaces placeholders = ctx.params;
         if (!ctx.scriptId.empty())
@@ -166,6 +168,7 @@ namespace LOICollection::frontend::ir {
 
                     Frame finished = std::move(this->frames.back());
                     this->frames.pop_back();
+                    this->localPool.resize(finished.localsBase);
 
                     if (this->frames.empty())
                         return result;
@@ -279,15 +282,16 @@ namespace LOICollection::frontend::ir {
         }
 
         const size_t paramBase = func->captures.size();
-        if (paramBase + static_cast<size_t>(func->argCount) > callee.locals.size()) {
+        if (paramBase + static_cast<size_t>(func->argCount) > callee.localsSize) {
             diagnostics.addError({}, "Lambda frame is too small for its parameters");
             return std::monostate{};
         }
 
-        std::copy_n(func->captures.begin(), paramBase, callee.locals.begin());
+        vm.localPool.resize(callee.localsSize);
+        std::copy_n(func->captures.begin(), paramBase, vm.localPool.begin());
 
         for (int i = 0; i < func->argCount; ++i)
-            callee.locals[paramBase + i] = args[i];
+            vm.localPool[paramBase + i] = args[i];
 
         vm.frames.push_back(std::move(callee));
         return vm.execute(func->owner, placeholders);

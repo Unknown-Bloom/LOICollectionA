@@ -282,9 +282,11 @@ namespace LOICollection::frontend::ir {
                     func->hasThis = frame.hasThis;
                     if (frame.hasThis)
                         func->thisObj = std::get<ObjectRef>(frame.thisObj);
+                    const size_t captureCount =
+                        std::min(static_cast<size_t>(meta.captureCount), frame.localsSize);
                     func->captures.assign(
-                        frame.locals.begin(),
-                        frame.locals.begin() + std::min(static_cast<size_t>(meta.captureCount), frame.locals.size())
+                        this->localPool.begin() + frame.localsBase,
+                        this->localPool.begin() + frame.localsBase + captureCount
                     );
                     func->globals = this->globals;
 
@@ -352,16 +354,6 @@ namespace LOICollection::frontend::ir {
 
                     const auto& cls = chunk.classes[instr.operand];
 
-                    std::vector<ValueNode::ValueType> args;
-
-                    if (cls.constructorIndex != -1) {
-                        const auto& ctor = chunk.methods[cls.constructorIndex];
-                        args.resize(ctor.argCount);
-
-                        for (int i = 0; i < ctor.argCount; ++i)
-                            args[ctor.argCount - 1 - i] = this->pop();
-                    }
-
                     auto obj = std::make_shared<Object>();
                     obj->className = cls.name;
                     obj->classIndex = instr.operand;
@@ -382,11 +374,12 @@ namespace LOICollection::frontend::ir {
                         callee.hasPending = true;
                         callee.pendingPush = obj;
 
-                        for (int i = 0; i < ctor.argCount; ++i)
-                            callee.locals[i] = args[i];
-
                         if (!this->pushFrame(std::move(callee)))
                             break;
+
+                        Frame& top = this->frames.back();
+                        for (int i = 0; i < ctor.argCount; ++i)
+                            this->localPool[top.localsBase + ctor.argCount - 1 - i] = this->pop();
                     } else {
                         this->push(obj);
                     }

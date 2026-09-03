@@ -61,7 +61,8 @@ namespace LOICollection::frontend::ir {
             std::reference_wrapper<const BytecodeChunk> chunk;
 
             size_t ip = 0;
-            std::vector<ValueNode::ValueType> locals;
+            size_t localsBase = 0;
+            size_t localsSize = 0;
 
             ValueNode::ValueType thisObj;
             bool hasThis = false;
@@ -70,7 +71,7 @@ namespace LOICollection::frontend::ir {
             bool hasPending = false;
 
             explicit Frame(const BytecodeChunk& chunkRef)
-                : chunk(chunkRef), locals(chunkRef.slotCount) {}
+                : chunk(chunkRef), localsSize(chunkRef.slotCount) {}
         };
 
         DiagnosticEngine& diagnostics;
@@ -81,6 +82,7 @@ namespace LOICollection::frontend::ir {
 
         std::vector<Frame> frames;
         std::vector<ValueNode::ValueType> stack;
+        std::vector<ValueNode::ValueType> localPool;
 
         std::shared_ptr<GlobalsTable> globals;
 

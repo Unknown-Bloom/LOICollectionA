@@ -96,6 +96,8 @@ namespace LOICollection::frontend::ir {
             return false;
         }
 
+        frame.localsBase = this->localPool.size();
+        this->localPool.resize(this->localPool.size() + frame.localsSize);
         this->frames.push_back(std::move(frame));
         return true;
     }
@@ -220,20 +222,20 @@ namespace LOICollection::frontend::ir {
         Frame& frame = s.frame;
         switch (instr.op) {
             case OpCode::LOAD_SLOT: {
-                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.locals.size()) {
+                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.localsSize) {
                         this->diagnostics.addError(this->currentLoc, "Slot index out of range");
                         break;
                     }
 
-                    this->push(frame.locals[instr.operand]);
+                    this->push(this->localPool[frame.localsBase + instr.operand]);
             } break;
             case OpCode::STORE_SLOT: {
-                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.locals.size()) {
+                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.localsSize) {
                         this->diagnostics.addError(this->currentLoc, "Slot index out of range");
                         break;
                     }
 
-                    frame.locals[instr.operand] = this->pop();
+                    this->localPool[frame.localsBase + instr.operand] = this->pop();
             } break;
             case OpCode::DUP_STORE_SLOT: {
                     if (this->stack.empty()) {
@@ -241,12 +243,12 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
 
-                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.locals.size()) {
+                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.localsSize) {
                         this->diagnostics.addError(this->currentLoc, "Slot index out of range");
                         break;
                     }
 
-                    frame.locals[instr.operand] = this->stack.back();
+                    this->localPool[frame.localsBase + instr.operand] = this->stack.back();
             } break;
             default: break;
         }

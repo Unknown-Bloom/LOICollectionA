@@ -54,11 +54,12 @@ namespace LOICollection::frontend::ir {
                     callee.hasThis = true;
                     callee.thisObj = receiver;
 
-                    for (int i = 0; i < meta.argCount; ++i)
-                        callee.locals[meta.argCount - 1 - i] = this->pop();
-
                     if (!this->pushFrame(std::move(callee)))
                         break;
+
+                    Frame& top = this->frames.back();
+                    for (int i = 0; i < meta.argCount; ++i)
+                        this->localPool[top.localsBase + meta.argCount - 1 - i] = this->pop();
             } break;
             case OpCode::CALL_METHOD_VIRTUAL: {
                     const auto& meta = cur.virtualCalls[instr.operand];
@@ -98,11 +99,12 @@ namespace LOICollection::frontend::ir {
                     callee.hasThis = true;
                     callee.thisObj = receiver;
 
-                    for (int i = 0; i < method.argCount; ++i)
-                        callee.locals[method.argCount - 1 - i] = this->pop();
-
                     if (!this->pushFrame(std::move(callee)))
                         break;
+
+                    Frame& top = this->frames.back();
+                    for (int i = 0; i < method.argCount; ++i)
+                        this->localPool[top.localsBase + method.argCount - 1 - i] = this->pop();
             } break;
             case OpCode::CALL_METHOD_BY_NAME: {
                     const auto& meta = cur.byNameCalls[instr.operand];
@@ -141,11 +143,12 @@ namespace LOICollection::frontend::ir {
                     callee.hasThis = true;
                     callee.thisObj = receiver;
 
-                    for (int i = 0; i < method.argCount; ++i)
-                        callee.locals[method.argCount - 1 - i] = this->pop();
-
                     if (!this->pushFrame(std::move(callee)))
                         break;
+
+                    Frame& top = this->frames.back();
+                    for (int i = 0; i < method.argCount; ++i)
+                        this->localPool[top.localsBase + method.argCount - 1 - i] = this->pop();
             } break;
             case OpCode::CALL_SUPER_CTOR: {
                     const auto& meta = cur.superCalls[instr.operand];
@@ -177,11 +180,12 @@ namespace LOICollection::frontend::ir {
                     callee.hasThis = true;
                     callee.thisObj = receiver;
 
-                    for (int i = 0; i < ctor.argCount; ++i)
-                        callee.locals[ctor.argCount - 1 - i] = this->pop();
-
                     if (!this->pushFrame(std::move(callee)))
                         break;
+
+                    Frame& top = this->frames.back();
+                    for (int i = 0; i < ctor.argCount; ++i)
+                        this->localPool[top.localsBase + ctor.argCount - 1 - i] = this->pop();
             } break;
             default: break;
         }
@@ -281,18 +285,15 @@ namespace LOICollection::frontend::ir {
             case OpCode::CALL_FUNC: {
                     const auto& meta = chunk.methods[instr.operand];
 
-                    std::vector<ValueNode::ValueType> args(meta.argCount);
-                    for (int i = 0; i < meta.argCount; ++i)
-                        args[meta.argCount - 1 - i] = this->pop();
-
                     Frame callee(*chunk.methodBodies[meta.bodyIndex]);
                     callee.hasThis = false;
 
-                    for (int i = 0; i < meta.argCount; ++i)
-                        callee.locals[i] = args[i];
-
                     if (!this->pushFrame(std::move(callee)))
                         break;
+
+                    Frame& top = this->frames.back();
+                    for (int i = 0; i < meta.argCount; ++i)
+                        this->localPool[top.localsBase + meta.argCount - 1 - i] = this->pop();
             } break;
             case OpCode::CALL_LAMBDA: {
                     auto funcValue = this->pop();
@@ -329,18 +330,19 @@ namespace LOICollection::frontend::ir {
                     }
 
                     const size_t paramBase = func->captures.size();
-                    if (paramBase + static_cast<size_t>(func->argCount) > callee.locals.size()) {
+                    if (paramBase + static_cast<size_t>(func->argCount) > callee.localsSize) {
                         this->diagnostics.addError(this->currentLoc, "Lambda frame is too small for its parameters");
                         break;
                     }
 
-                    std::copy_n(func->captures.begin(), paramBase, callee.locals.begin());
-
-                    for (int i = 0; i < func->argCount; ++i)
-                        callee.locals[paramBase + func->argCount - 1 - i] = this->pop();
-
                     if (!this->pushFrame(std::move(callee)))
                         break;
+
+                    Frame& top = this->frames.back();
+                    std::copy_n(func->captures.begin(), paramBase, this->localPool.begin() + top.localsBase);
+
+                    for (int i = 0; i < func->argCount; ++i)
+                        this->localPool[top.localsBase + paramBase + func->argCount - 1 - i] = this->pop();
             } break;
             default: break;
         }
