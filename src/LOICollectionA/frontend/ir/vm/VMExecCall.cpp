@@ -50,16 +50,12 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
 
-                    std::vector<ValueNode::ValueType> args(meta.argCount);
-                    for (int i = 0; i < meta.argCount; ++i)
-                        args[meta.argCount - 1 - i] = this->pop();
-
                     Frame callee(*chunk.methodBodies[meta.bodyIndex]);
                     callee.hasThis = true;
                     callee.thisObj = receiver;
 
                     for (int i = 0; i < meta.argCount; ++i)
-                        callee.locals[i] = args[i];
+                        callee.locals[meta.argCount - 1 - i] = this->pop();
 
                     if (!this->pushFrame(std::move(callee)))
                         break;
@@ -98,16 +94,12 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
 
-                    std::vector<ValueNode::ValueType> args(method.argCount);
-                    for (int i = 0; i < method.argCount; ++i)
-                        args[method.argCount - 1 - i] = this->pop();
-
                     Frame callee(*chunk.methodBodies[method.bodyIndex]);
                     callee.hasThis = true;
                     callee.thisObj = receiver;
 
                     for (int i = 0; i < method.argCount; ++i)
-                        callee.locals[i] = args[i];
+                        callee.locals[method.argCount - 1 - i] = this->pop();
 
                     if (!this->pushFrame(std::move(callee)))
                         break;
@@ -144,16 +136,13 @@ namespace LOICollection::frontend::ir {
                     }
 
                     const auto& method = chunk.methods[cls.methods[ordinal]];
-                    std::vector<ValueNode::ValueType> args(method.argCount);
-                    for (int i = 0; i < method.argCount; ++i)
-                        args[method.argCount - 1 - i] = this->pop();
 
                     Frame callee(*chunk.methodBodies[method.bodyIndex]);
                     callee.hasThis = true;
                     callee.thisObj = receiver;
 
                     for (int i = 0; i < method.argCount; ++i)
-                        callee.locals[i] = args[i];
+                        callee.locals[method.argCount - 1 - i] = this->pop();
 
                     if (!this->pushFrame(std::move(callee)))
                         break;
@@ -184,16 +173,12 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
 
-                    std::vector<ValueNode::ValueType> args(ctor.argCount);
-                    for (int i = 0; i < ctor.argCount; ++i)
-                        args[ctor.argCount - 1 - i] = this->pop();
-
                     Frame callee(*chunk.methodBodies[ctor.bodyIndex]);
                     callee.hasThis = true;
                     callee.thisObj = receiver;
 
                     for (int i = 0; i < ctor.argCount; ++i)
-                        callee.locals[i] = args[i];
+                        callee.locals[ctor.argCount - 1 - i] = this->pop();
 
                     if (!this->pushFrame(std::move(callee)))
                         break;
@@ -331,10 +316,6 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
 
-                    std::vector<ValueNode::ValueType> args(func->argCount);
-                    for (int i = 0; i < func->argCount; ++i)
-                        args[func->argCount - 1 - i] = this->pop();
-
                     Frame callee(*func->owner->methodBodies[func->bodyIndex]);
                     callee.hasThis = func->hasThis;
                     if (func->hasThis) {
@@ -356,7 +337,7 @@ namespace LOICollection::frontend::ir {
                     std::copy_n(func->captures.begin(), paramBase, callee.locals.begin());
 
                     for (int i = 0; i < func->argCount; ++i)
-                        callee.locals[paramBase + i] = args[i];
+                        callee.locals[paramBase + func->argCount - 1 - i] = this->pop();
 
                     if (!this->pushFrame(std::move(callee)))
                         break;

@@ -34,13 +34,17 @@ namespace LOICollection::frontend::ir {
         this->stack.push_back(v);
     }
 
+    void VM::push(ValueNode::ValueType&& v) {
+        this->stack.push_back(std::move(v));
+    }
+
     ValueNode::ValueType VM::pop() {
         if (this->stack.empty()) {
             this->diagnostics.addError(this->currentLoc, "Stack underflow");
             return ValueNode::ValueType{};
         }
 
-        auto v = this->stack.back();
+        ValueNode::ValueType v = std::move(this->stack.back());
         this->stack.pop_back();
 
         return v;

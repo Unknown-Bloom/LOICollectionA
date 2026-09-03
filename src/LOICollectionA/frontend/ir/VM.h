@@ -102,6 +102,7 @@ namespace LOICollection::frontend::ir {
         );
 
         void push(const ValueNode::ValueType& v);
+        void push(ValueNode::ValueType&& v);
         ValueNode::ValueType pop();
 
         void storeVariable(
