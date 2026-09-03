@@ -911,3 +911,60 @@ TEST(OptimizerTest, RejectedFoldKeepsItsOperandsOnTheStack) {
     EXPECT_EQ(program.diagnostics.getErrorMessage().find("Stack underflow"), std::string::npos);
     EXPECT_NE(program.diagnostics.getErrorMessage().find("Modulo requires integral types"), std::string::npos);
 }
+
+// ---- common subexpression elimination ----------------------------------------
+
+namespace {
+    int countOpEverywhere(const BytecodeChunk& chunk, OpCode op) {
+        int total = countOp(chunk, op);
+        for (const auto& body : chunk.methodBodies)
+            total += countOp(*body, op);
+        return total;
+    }
+
+    bool containsOpEverywhere(const BytecodeChunk& chunk, OpCode op) {
+        if (containsOp(chunk, op))
+            return true;
+        for (const auto& body : chunk.methodBodies)
+            if (containsOp(*body, op))
+                return true;
+        return false;
+    }
+}
+
+TEST(OptimizerTest, EliminatesRepeatedSubexpression) {
+    const std::string source =
+        "func f(a: int, b: int) -> int { return (a + b) * (a + b) + (a + b); }\n"
+        "f(2, 3)";
+
+    auto withCse = compileAndOptimize(source);
+    auto withoutCse = compileAndOptimize(
+        source, Optimizer::allPasses & ~static_cast<unsigned>(Optimizer::Pass::CSE));
+
+    EXPECT_FALSE(withCse.diagnostics.hasErrors());
+    EXPECT_FALSE(withoutCse.diagnostics.hasErrors());
+
+    EXPECT_LT(countOpEverywhere(*withCse.chunk, OpCode::ADD),
+        countOpEverywhere(*withoutCse.chunk, OpCode::ADD));
+    EXPECT_TRUE(containsOpEverywhere(*withCse.chunk, OpCode::DUP_STORE_SLOT));
+
+    VM vm(withCse.diagnostics);
+    EXPECT_EQ(VM::valueToString(vm.run(withCse.chunk, {})), "30");
+}
+
+TEST(OptimizerTest, CSEStaysCorrectAcrossCalls) {
+    const std::string source =
+        "func g(x: int) -> int { return x + 1; }\n"
+        "func f(a: int, b: int) -> int {\n"
+        "  let s = (a + b) + g(a);\n"
+        "  return (a + b) + g(a);\n"
+        "}\n"
+        "f(2, 3)";
+
+    auto program = compileAndOptimize(source);
+
+    EXPECT_FALSE(program.diagnostics.hasErrors());
+
+    VM vm(program.diagnostics);
+    EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "8");
+}

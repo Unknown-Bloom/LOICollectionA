@@ -4,6 +4,7 @@
 #include "LOICollectionA/frontend/ir/opt/passes/DeadCodePass.h"
 #include "LOICollectionA/frontend/ir/opt/passes/DeadStorePass.h"
 #include "LOICollectionA/frontend/ir/opt/passes/LICMPass.h"
+#include "LOICollectionA/frontend/ir/opt/passes/CSEPass.h"
 
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 
@@ -75,6 +76,11 @@ namespace LOICollection::frontend::ir {
 
         opt::DeadCodePass deadPass;
         deadPass.run(chunk, ctx, this->enabled(Pass::DeadCode));
+
+        opt::CSEPass csePass{ chunk };
+        if (this->enabled(Pass::CSE)) {
+            ctx.stats.removed += csePass.run();
+        }
 
         return ctx.stats;
     }
