@@ -42,6 +42,14 @@ namespace LOICollection::frontend::ir {
         }
     }
 
+    std::optional<int> topInt(std::vector<ValueNode::ValueType>& stack, size_t back) {
+        if (stack.size() <= back)
+            return std::nullopt;
+        if (auto p = std::get_if<int>(&stack[stack.size() - 1 - back]))
+            return *p;
+        return std::nullopt;
+    }
+
     static std::optional<OpCode> arithmeticOp(std::string_view op) {
         if (op == "+") return OpCode::ADD;
         if (op == "-") return OpCode::SUB;
@@ -63,17 +71,17 @@ namespace LOICollection::frontend::ir {
     }
 
     ValueNode::ValueType VM::applyArithmetic(const ValueNode::ValueType& left, const ValueNode::ValueType& right, OpCode op, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
-        const std::string token = std::string(opToken(op));
+        const std::string_view token = opToken(op);
 
         if (auto leftObj = std::get_if<ObjectRef>(&left)) {
-            if (ClassCall::getInstance().hasOperator((*leftObj)->className, token)) {
+            if (ClassCall::getInstance().hasOperator((*leftObj)->className, std::string(token))) {
                 auto result = ClassCall::getInstance().callOperator(
-                    (*leftObj)->className, token, left, right, diagnostics, loc
+                    (*leftObj)->className, std::string(token), left, right, diagnostics, loc
                 );
 
                 if (!result.has_value()) {
                     diagnostics.addError(loc,
-                        "Operator '" + token + "' failed for class '" + (*leftObj)->className +
+                        "Operator '" + std::string(token) + "' failed for class '" + (*leftObj)->className +
                         "': " + result.error().message());
                     return 0;
                 }
@@ -83,14 +91,14 @@ namespace LOICollection::frontend::ir {
         }
 
         if (auto rightObj = std::get_if<ObjectRef>(&right)) {
-            if (ClassCall::getInstance().hasOperator((*rightObj)->className, token)) {
+            if (ClassCall::getInstance().hasOperator((*rightObj)->className, std::string(token))) {
                 auto result = ClassCall::getInstance().callOperator(
-                    (*rightObj)->className, token, left, right, diagnostics, loc
+                    (*rightObj)->className, std::string(token), left, right, diagnostics, loc
                 );
 
                 if (!result.has_value()) {
                     diagnostics.addError(loc,
-                        "Operator '" + token + "' failed for class '" + (*rightObj)->className +
+                        "Operator '" + std::string(token) + "' failed for class '" + (*rightObj)->className +
                         "': " + result.error().message());
                     return 0;
                 }
@@ -157,7 +165,7 @@ namespace LOICollection::frontend::ir {
                         diagnostics.addError(loc, "Modulo requires integral types");
                         return 0;
                     default:
-                        diagnostics.addError(loc, "Unknown arithmetic op: " + token);
+                        diagnostics.addError(loc, "Unknown arithmetic op: " + std::string(token));
                         return 0;
                 }
             } else {
@@ -222,17 +230,17 @@ namespace LOICollection::frontend::ir {
     }
 
     bool VM::applyComparison(const ValueNode::ValueType& left, const ValueNode::ValueType& right, OpCode op, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
-        const std::string token = std::string(opToken(op));
+        const std::string_view token = opToken(op);
 
         if (auto leftObj = std::get_if<ObjectRef>(&left)) {
-            if (ClassCall::getInstance().hasOperator((*leftObj)->className, token)) {
+            if (ClassCall::getInstance().hasOperator((*leftObj)->className, std::string(token))) {
                 auto result = ClassCall::getInstance().callOperator(
-                    (*leftObj)->className, token, left, right, diagnostics, loc
+                    (*leftObj)->className, std::string(token), left, right, diagnostics, loc
                 );
 
                 if (!result.has_value()) {
                     diagnostics.addError(loc,
-                        "Operator '" + token + "' failed for class '" + (*leftObj)->className +
+                        "Operator '" + std::string(token) + "' failed for class '" + (*leftObj)->className +
                         "': " + result.error().message());
                     return false;
                 }
@@ -242,14 +250,14 @@ namespace LOICollection::frontend::ir {
         }
 
         if (auto rightObj = std::get_if<ObjectRef>(&right)) {
-            if (ClassCall::getInstance().hasOperator((*rightObj)->className, token)) {
+            if (ClassCall::getInstance().hasOperator((*rightObj)->className, std::string(token))) {
                 auto result = ClassCall::getInstance().callOperator(
-                    (*rightObj)->className, token, left, right, diagnostics, loc
+                    (*rightObj)->className, std::string(token), left, right, diagnostics, loc
                 );
 
                 if (!result.has_value()) {
                     diagnostics.addError(loc,
-                        "Operator '" + token + "' failed for class '" + (*rightObj)->className +
+                        "Operator '" + std::string(token) + "' failed for class '" + (*rightObj)->className +
                         "': " + result.error().message());
                     return false;
                 }
@@ -283,7 +291,7 @@ namespace LOICollection::frontend::ir {
                     default: break;
                 }
 
-                diagnostics.addError(loc, "Unknown comparison op: " + token);
+                diagnostics.addError(loc, "Unknown comparison op: " + std::string(token));
                 return false;
             } else if constexpr (
                 (std::is_same_v<T, ObjectRef> && std::is_same_v<U, ObjectRef>) ||
@@ -296,7 +304,7 @@ namespace LOICollection::frontend::ir {
                     default: break;
                 }
 
-                diagnostics.addError(loc, "Unknown comparison op: " + token);
+                diagnostics.addError(loc, "Unknown comparison op: " + std::string(token));
                 return false;
             } else if constexpr (std::is_same_v<T, U>) {
                 auto cmp = l <=> r;
@@ -311,7 +319,7 @@ namespace LOICollection::frontend::ir {
                     default: break;
                 }
 
-                diagnostics.addError(loc, "Unknown comparison op: " + token);
+                diagnostics.addError(loc, "Unknown comparison op: " + std::string(token));
                 return false;
             } else {
                 diagnostics.addError(loc, "Type mismatch in comparison");
@@ -331,27 +339,56 @@ namespace LOICollection::frontend::ir {
     void VM::execArithmetic(ExecArgs& s) {
         const auto& instr = s.instr;
         switch (instr.op) {
-            case OpCode::ADD: {
-                    auto r = this->pop();
-                    auto l = this->pop();
-
-                    auto result = VM::applyArithmetic(l, r, instr.op, this->diagnostics, this->currentLoc);
-
-                    if (std::holds_alternative<std::string>(result)) {
-                        if (const auto violation = this->mBudget->accountString(std::get<std::string>(result).size());
-                            violation != sandbox::SandboxBudget::Violation::None) {
-                            this->failBudget(violation, "String size budget exhausted");
+            case OpCode::ADD: case OpCode::SUB: case OpCode::MUL: case OpCode::MOD: {
+                auto r = topInt(this->stack, 0);
+                auto l = topInt(this->stack, 1);
+                if (l && r) {
+                    this->stack.pop_back();
+                    this->stack.pop_back();
+                    long long res = 0;
+                    switch (instr.op) {
+                        case OpCode::ADD: res = static_cast<long long>(*l) + *r; break;
+                        case OpCode::SUB: res = static_cast<long long>(*l) - *r; break;
+                        case OpCode::MUL: res = static_cast<long long>(*l) * *r; break;
+                        case OpCode::MOD:
+                            if (*r == 0) {
+                                this->diagnostics.addError(this->currentLoc, "Modulo by zero");
+                                this->push(0);
+                                break;
+                            }
+                            res = static_cast<long long>(*l) % *r;
+                            break;
+                        default: break;
+                    }
+                    if (instr.op != OpCode::MOD) {
+                        if (res < std::numeric_limits<int>::min() || res > std::numeric_limits<int>::max()) {
+                            this->diagnostics.addError(this->currentLoc,
+                                instr.op == OpCode::ADD ? "Integer overflow in addition"
+                                : instr.op == OpCode::SUB ? "Integer overflow in subtraction"
+                                : "Integer overflow in multiplication");
+                            this->push(0);
                             break;
                         }
                     }
-
-                    this->push(std::move(result));
+                    this->push(static_cast<int>(res));
+                    break;
+                }
+                auto rr = this->pop();
+                auto ll = this->pop();
+                auto result = VM::applyArithmetic(ll, rr, instr.op, this->diagnostics, this->currentLoc);
+                if (std::holds_alternative<std::string>(result)) {
+                    if (const auto violation = this->mBudget->accountString(std::get<std::string>(result).size());
+                        violation != sandbox::SandboxBudget::Violation::None) {
+                        this->failBudget(violation, "String size budget exhausted");
+                        break;
+                    }
+                }
+                this->push(std::move(result));
             } break;
-            case OpCode::SUB: case OpCode::MUL: case OpCode::DIV: case OpCode::MOD: case OpCode::POW: {
-                    auto r = this->pop();
-                    auto l = this->pop();
-
-                    this->push(VM::applyArithmetic(l, r, instr.op, this->diagnostics, this->currentLoc));
+            case OpCode::DIV: case OpCode::POW: {
+                auto rr = this->pop();
+                auto ll = this->pop();
+                this->push(VM::applyArithmetic(ll, rr, instr.op, this->diagnostics, this->currentLoc));
             } break;
             default: break;
         }
@@ -359,10 +396,31 @@ namespace LOICollection::frontend::ir {
 
     void VM::execComparison(ExecArgs& s) {
         const auto& instr = s.instr;
-        auto r = this->pop();
-        auto l = this->pop();
-
-        this->push(VM::applyComparison(l, r, instr.op, this->diagnostics, this->currentLoc));
+        auto r = topInt(this->stack, 0);
+        auto l = topInt(this->stack, 1);
+        if (l && r) {
+            this->stack.pop_back();
+            this->stack.pop_back();
+            bool b = false;
+            switch (instr.op) {
+                case OpCode::CMP_EQ: b = *l == *r; break;
+                case OpCode::CMP_NE: b = *l != *r; break;
+                case OpCode::CMP_GT: b = *l > *r; break;
+                case OpCode::CMP_LT: b = *l < *r; break;
+                case OpCode::CMP_GE: b = *l >= *r; break;
+                case OpCode::CMP_LE: b = *l <= *r; break;
+                default:
+                    this->stack.push_back(*l);
+                    this->stack.push_back(*r);
+                    this->push(VM::applyComparison(ValueNode::ValueType(*l), ValueNode::ValueType(*r), instr.op, this->diagnostics, this->currentLoc));
+                    return;
+            }
+            this->push(b);
+            return;
+        }
+        auto rr = this->pop();
+        auto ll = this->pop();
+        this->push(VM::applyComparison(ll, rr, instr.op, this->diagnostics, this->currentLoc));
     }
 
     void VM::execLogic(ExecArgs& s) {
@@ -381,9 +439,18 @@ namespace LOICollection::frontend::ir {
                     this->push(VM::valueToBool(l) || VM::valueToBool(r));
             } break;
             case OpCode::NEG: {
-                    auto v = this->pop();
-
-                    this->push(VM::applyUnary(v, instr.op, this->diagnostics, this->currentLoc));
+                if (!this->stack.empty() && std::holds_alternative<int>(this->stack.back())) {
+                    const int v = std::get<int>(this->stack.back());
+                    if (v == std::numeric_limits<int>::min()) {
+                        this->diagnostics.addError(this->currentLoc, "Integer overflow in unary negation");
+                        this->stack.back() = 0;
+                        break;
+                    }
+                    this->stack.back() = -v;
+                    break;
+                }
+                auto v = this->pop();
+                this->push(VM::applyUnary(v, instr.op, this->diagnostics, this->currentLoc));
             } break;
             case OpCode::NOT: {
                     auto v = this->pop();
