@@ -128,41 +128,70 @@ namespace LOICollection::frontend::ir::opt {
             }
         }
 
+        // Rewrites the code and, because jumps here are relative, re-resolves every
+        // one of them: an insertion or an erasure shifts the distance between a jump
+        // and its target. Jumps that aimed at an erased operand now aim at the reload
+        // that replaced it.
         void apply(std::vector<Instruction>& code, std::vector<CSEPass::Edit>& edits) {
             std::sort(edits.begin(), edits.end(),
                 [](const CSEPass::Edit& a, const CSEPass::Edit& b) { return a.at < b.at; });
 
+            const int n = static_cast<int>(code.size());
+
             std::vector<Instruction> rewritten;
             rewritten.reserve(code.size());
 
-            const int n = static_cast<int>(code.size());
-            size_t ei = 0;
+            std::vector<int> oldToNew(n, -1);
+            std::vector<int> origin;
+            std::vector<std::vector<int>> placed(edits.size());
 
             for (int pos = 0; pos <= n; ++pos) {
-                while (ei < edits.size() && edits[ei].at == pos) {
-                    for (const Instruction& ins : edits[ei].insert)
-                        rewritten.push_back(ins);
-                    ++ei;
+                bool erased = false;
+                int redirect = -1;
+
+                for (size_t e = 0; e < edits.size(); ++e) {
+                    if (edits[e].at == pos)
+                        for (const Instruction& ins : edits[e].insert) {
+                            placed[e].push_back(static_cast<int>(rewritten.size()));
+                            rewritten.push_back(ins);
+                            origin.push_back(-1);
+                        }
+
+                    if (pos >= edits[e].at && pos < edits[e].eraseTo) {
+                        erased = true;
+                        if (!placed[e].empty())
+                            redirect = placed[e].front();
+                    }
                 }
 
                 if (pos == n)
                     break;
 
-                bool erased = false;
-                for (const CSEPass::Edit& e : edits)
-                    if (e.at <= pos && pos < e.eraseTo) {
-                        erased = true;
-                        break;
-                    }
+                if (erased) {
+                    if (redirect >= 0)
+                        oldToNew[pos] = redirect;
+                    continue;
+                }
 
-                if (!erased)
-                    rewritten.push_back(code[pos]);
+                oldToNew[pos] = static_cast<int>(rewritten.size());
+                origin.push_back(pos);
+                rewritten.push_back(code[pos]);
             }
 
-            while (ei < edits.size()) {
-                for (const Instruction& ins : edits[ei].insert)
-                    rewritten.push_back(ins);
-                ++ei;
+            for (size_t k = 0; k < rewritten.size(); ++k) {
+                if (origin[k] < 0 || !isJump(rewritten[k].op))
+                    continue;
+
+                const int oldTarget = origin[k] + 1 + rewritten[k].operand;
+
+                int newTarget = static_cast<int>(rewritten.size());
+                if (oldTarget >= 0 && oldTarget < n) {
+                    newTarget = oldToNew[oldTarget];
+                    for (int j = oldTarget; j < n && newTarget < 0; ++j)
+                        newTarget = oldToNew[j];
+                }
+
+                rewritten[k].operand = newTarget - static_cast<int>(k) - 1;
             }
 
             code = std::move(rewritten);
@@ -265,10 +294,14 @@ namespace LOICollection::frontend::ir::opt {
                     rs.insert(rs.end(), right.readSlots.begin(), right.readSlots.end());
                     const int curStart = std::min(left.start, right.start);
 
+                    // Every instruction is emitted even when it is about to be erased:
+                    // keeping `out` index-aligned with the input is what lets jumps,
+                    // whose offsets are relative, be re-resolved in `apply`.
                     auto it = avail.find(key);
                     if (it != avail.end() && it->second.spilled && left.atom && right.atom) {
-                        edits.push_back({ curStart, static_cast<int>(out.size()),
+                        edits.push_back({ curStart, static_cast<int>(out.size()) + 1,
                             { Instruction{ OpCode::LOAD_SLOT, it->second.slot, loc } } });
+                        out.push_back(ins);
                         ++eliminated;
                         vstack.push_back(Val{ key, curStart, rs, true });
                     } else {
@@ -278,8 +311,9 @@ namespace LOICollection::frontend::ir::opt {
                             it->second.spilled = true;
                             edits.push_back({ it->second.firstOpPos + 1, -1,
                                 { Instruction{ OpCode::DUP_STORE_SLOT, s, mChunk.code[it->second.firstOpPos].loc } } });
-                            edits.push_back({ curStart, static_cast<int>(out.size()),
+                            edits.push_back({ curStart, static_cast<int>(out.size()) + 1,
                                 { Instruction{ OpCode::LOAD_SLOT, s, loc } } });
+                            out.push_back(ins);
                             ++eliminated;
                             vstack.push_back(Val{ key, curStart, rs, true });
                         } else {
@@ -306,8 +340,9 @@ namespace LOICollection::frontend::ir::opt {
 
                     auto it = avail.find(key);
                     if (it != avail.end() && it->second.spilled && arg.atom) {
-                        edits.push_back({ curStart, static_cast<int>(out.size()),
+                        edits.push_back({ curStart, static_cast<int>(out.size()) + 1,
                             { Instruction{ OpCode::LOAD_SLOT, it->second.slot, loc } } });
+                        out.push_back(ins);
                         ++eliminated;
                         vstack.push_back(Val{ key, curStart, arg.readSlots, true });
                     } else if (it != avail.end() && arg.atom) {
@@ -316,8 +351,9 @@ namespace LOICollection::frontend::ir::opt {
                         it->second.spilled = true;
                         edits.push_back({ it->second.firstOpPos + 1, -1,
                             { Instruction{ OpCode::DUP_STORE_SLOT, s, mChunk.code[it->second.firstOpPos].loc } } });
-                        edits.push_back({ curStart, static_cast<int>(out.size()),
+                        edits.push_back({ curStart, static_cast<int>(out.size()) + 1,
                             { Instruction{ OpCode::LOAD_SLOT, s, loc } } });
+                        out.push_back(ins);
                         ++eliminated;
                         vstack.push_back(Val{ key, curStart, arg.readSlots, true });
                     } else {

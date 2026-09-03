@@ -968,3 +968,31 @@ TEST(OptimizerTest, CSEStaysCorrectAcrossCalls) {
     VM vm(program.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "8");
 }
+
+// Rewriting inside a loop body shifts the distance between a jump and its target,
+// so the relative offsets of the back edge and the exit branch have to survive the
+// rewrite as well.
+TEST(OptimizerTest, CSEInsideLoopKeepsJumpOffsets) {
+    const std::string source =
+        "func f(a: int, b: int, n: int) -> int {\n"
+        "  let s = 0;\n"
+        "  let i = 0;\n"
+        "  while (i < n) [\n"
+        "    s = s + (a + b) * (a + b) + (a + b);\n"
+        "    i = i + 1;\n"
+        "  ]\n"
+        "  return s;\n"
+        "}\n"
+        "f(2, 3, 5)";
+
+    auto program = compileAndOptimize(source);
+
+    EXPECT_FALSE(program.diagnostics.hasErrors());
+    EXPECT_TRUE(containsOpEverywhere(*program.chunk, OpCode::DUP_STORE_SLOT));
+
+    VM vm(program.diagnostics);
+    auto result = vm.run(program.chunk, {});
+
+    EXPECT_FALSE(program.diagnostics.hasErrors());
+    EXPECT_EQ(VM::valueToString(result), "150");
+}
