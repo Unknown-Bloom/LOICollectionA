@@ -12,13 +12,15 @@ namespace LOICollection::frontend::ir {
         enum class Pass : unsigned {
             ConstantFold = 1u << 0,
             DeadCode = 1u << 1,
-            DeadStore = 1u << 2
+            DeadStore = 1u << 2,
+            LICM = 1u << 3
         };
 
         static constexpr unsigned allPasses =
             static_cast<unsigned>(Pass::ConstantFold) |
             static_cast<unsigned>(Pass::DeadCode) |
-            static_cast<unsigned>(Pass::DeadStore);
+            static_cast<unsigned>(Pass::DeadStore) |
+            static_cast<unsigned>(Pass::LICM);
 
         struct Stats {
             size_t folded = 0;

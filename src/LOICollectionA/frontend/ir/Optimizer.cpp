@@ -3,6 +3,7 @@
 #include "LOICollectionA/frontend/ir/opt/passes/ConstantFoldPass.h"
 #include "LOICollectionA/frontend/ir/opt/passes/DeadCodePass.h"
 #include "LOICollectionA/frontend/ir/opt/passes/DeadStorePass.h"
+#include "LOICollectionA/frontend/ir/opt/passes/LICMPass.h"
 
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 
@@ -26,8 +27,25 @@ namespace LOICollection::frontend::ir {
     // Repeat the single pass until it stops making progress: each round's rewrites
     // (forwarded loads, folded branches, dropped operands) expose new opportunities
     // for the next round. A pass that changes nothing means the chunk is stable.
+    // Hoisting runs after the fixpoint so that loops which turn out to be dead are
+    // already gone, and runs before a last fixpoint so the peephole passes can tidy
+    // up the DUP/POP pair the hoist leaves around the loop.
     Optimizer::Stats Optimizer::optimizeChunk(BytecodeChunk& chunk) {
         Stats total;
+
+        for (int pass = 0; pass < 16; ++pass) {
+            Stats once = this->optimizeChunkOnce(chunk);
+            total.folded += once.folded;
+            total.removed += once.removed;
+
+            if (once.folded == 0 && once.removed == 0)
+                break;
+        }
+
+        if (this->enabled(Pass::LICM)) {
+            opt::LICMPass licm{ chunk };
+            licm.run();
+        }
 
         for (int pass = 0; pass < 16; ++pass) {
             Stats once = this->optimizeChunkOnce(chunk);
