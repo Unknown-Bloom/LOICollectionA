@@ -34,13 +34,17 @@ namespace LOICollection::frontend::ir {
         this->stack.push_back(v);
     }
 
+    void VM::push(ValueNode::ValueType&& v) {
+        this->stack.push_back(std::move(v));
+    }
+
     ValueNode::ValueType VM::pop() {
         if (this->stack.empty()) {
             this->diagnostics.addError(this->currentLoc, "Stack underflow");
             return ValueNode::ValueType{};
         }
 
-        auto v = this->stack.back();
+        ValueNode::ValueType v = std::move(this->stack.back());
         this->stack.pop_back();
 
         return v;
@@ -92,6 +96,8 @@ namespace LOICollection::frontend::ir {
             return false;
         }
 
+        frame.localsBase = this->localPool.size();
+        this->localPool.resize(this->localPool.size() + frame.localsSize);
         this->frames.push_back(std::move(frame));
         return true;
     }
@@ -101,26 +107,26 @@ namespace LOICollection::frontend::ir {
         const BytecodeChunk& cur = s.cur;
         switch (instr.op) {
             case OpCode::PUSH_INT: {
-                    this->push(VM::cloneValue(cur.constants[instr.operand]));
+                this->push(VM::cloneValue(cur.constants[instr.operand]));
             } break;
             case OpCode::PUSH_FLOAT: {
-                    this->push(VM::cloneValue(cur.constants[instr.operand]));
+                this->push(VM::cloneValue(cur.constants[instr.operand]));
             } break;
             case OpCode::PUSH_BOOL: {
-                    this->push(VM::cloneValue(cur.constants[instr.operand]));
+                this->push(VM::cloneValue(cur.constants[instr.operand]));
             } break;
             case OpCode::PUSH_NONE: {
-                    this->push(VM::cloneValue(cur.constants[instr.operand]));
+                this->push(VM::cloneValue(cur.constants[instr.operand]));
             } break;
             case OpCode::PUSH_STR: {
-                    const auto& value = std::get<std::string>(cur.constants[instr.operand]);
-                    if (const auto violation = this->mBudget->accountString(value.size());
-                        violation != sandbox::SandboxBudget::Violation::None) {
-                        this->failBudget(violation, "String size budget exhausted");
-                        break;
-                    }
+                const auto& value = std::get<std::string>(cur.constants[instr.operand]);
+                if (const auto violation = this->mBudget->accountString(value.size());
+                    violation != sandbox::SandboxBudget::Violation::None) {
+                    this->failBudget(violation, "String size budget exhausted");
+                    break;
+                }
 
-                    this->push(value);
+                this->push(value);
             } break;
             default: break;
         }
@@ -130,44 +136,44 @@ namespace LOICollection::frontend::ir {
         const auto& instr = s.instr;
         switch (instr.op) {
             case OpCode::POP: {
-                    this->pop();
+                this->pop();
             } break;
             case OpCode::DUP: {
-                    if (this->stack.empty()) {
-                        this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP");
-                        break;
-                    }
+                if (this->stack.empty()) {
+                    this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP");
+                    break;
+                }
 
-                    this->stack.push_back(this->stack.back());
+                this->stack.push_back(this->stack.back());
             } break;
             case OpCode::DUP2: {
-                    if (this->stack.size() < 2) {
-                        this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP2");
-                        break;
-                    }
+                if (this->stack.size() < 2) {
+                    this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP2");
+                    break;
+                }
 
-                    auto second = this->stack[this->stack.size() - 2];
-                    this->stack.push_back(second);
-                    this->stack.push_back(this->stack[this->stack.size() - 2]);
+                auto second = this->stack[this->stack.size() - 2];
+                this->stack.push_back(second);
+                this->stack.push_back(this->stack[this->stack.size() - 2]);
             } break;
             case OpCode::ROT3: {
-                    if (this->stack.size() < 3) {
-                        this->diagnostics.addError(this->currentLoc, "Stack underflow during ROT3");
-                        break;
-                    }
+                if (this->stack.size() < 3) {
+                    this->diagnostics.addError(this->currentLoc, "Stack underflow during ROT3");
+                    break;
+                }
 
-                    auto bottom = std::move(this->stack[this->stack.size() - 3]);
-                    this->stack.erase(this->stack.end() - 3);
-                    this->stack.push_back(std::move(bottom));
+                auto bottom = std::move(this->stack[this->stack.size() - 3]);
+                this->stack.erase(this->stack.end() - 3);
+                this->stack.push_back(std::move(bottom));
             } break;
             case OpCode::SWAP2: {
-                    if (this->stack.size() < 4) {
-                        this->diagnostics.addError(this->currentLoc, "Stack underflow during SWAP2");
-                        break;
-                    }
+                if (this->stack.size() < 4) {
+                    this->diagnostics.addError(this->currentLoc, "Stack underflow during SWAP2");
+                    break;
+                }
 
-                    std::swap(this->stack[this->stack.size() - 4], this->stack[this->stack.size() - 2]);
-                    std::swap(this->stack[this->stack.size() - 3], this->stack[this->stack.size() - 1]);
+                std::swap(this->stack[this->stack.size() - 4], this->stack[this->stack.size() - 2]);
+                std::swap(this->stack[this->stack.size() - 3], this->stack[this->stack.size() - 1]);
             } break;
             default: break;
         }
@@ -177,35 +183,35 @@ namespace LOICollection::frontend::ir {
         const auto& instr = s.instr;
         switch (instr.op) {
             case OpCode::IS_NONE: {
-                    auto value = this->pop();
-                    this->push(std::holds_alternative<std::monostate>(value));
+                auto value = this->pop();
+                this->push(std::holds_alternative<std::monostate>(value));
             } break;
             case OpCode::UNWRAP: {
-                    auto value = this->pop();
-                    if (std::holds_alternative<std::monostate>(value)) {
-                        this->diagnostics.addError(this->currentLoc, "Optional value is empty");
-                        break;
-                    }
+                auto value = this->pop();
+                if (std::holds_alternative<std::monostate>(value)) {
+                    this->diagnostics.addError(this->currentLoc, "Optional value is empty");
+                    break;
+                }
 
-                    this->push(value);
+                this->push(value);
             } break;
             case OpCode::TYPE_OF: {
-                    auto value = this->pop();
-                    this->push(VM::typeNameOf(value));
+                auto value = this->pop();
+                this->push(VM::typeNameOf(value));
             } break;
             case OpCode::HAS_VALUE: {
-                    auto value = this->pop();
-                    this->push(!std::holds_alternative<std::monostate>(value));
+                auto value = this->pop();
+                this->push(!std::holds_alternative<std::monostate>(value));
             } break;
             case OpCode::DUP_IS_NONE: {
-                    if (this->stack.empty()) {
-                        this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP_IS_NONE");
-                        break;
-                    }
+                if (this->stack.empty()) {
+                    this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP_IS_NONE");
+                    break;
+                }
 
-                    this->push(ValueNode::ValueType{
-                        std::holds_alternative<std::monostate>(this->stack.back())
-                    });
+                this->push(ValueNode::ValueType{
+                    std::holds_alternative<std::monostate>(this->stack.back())
+                });
             } break;
             default: break;
         }
@@ -216,33 +222,33 @@ namespace LOICollection::frontend::ir {
         Frame& frame = s.frame;
         switch (instr.op) {
             case OpCode::LOAD_SLOT: {
-                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.locals.size()) {
-                        this->diagnostics.addError(this->currentLoc, "Slot index out of range");
-                        break;
-                    }
+                if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.localsSize) {
+                    this->diagnostics.addError(this->currentLoc, "Slot index out of range");
+                    break;
+                }
 
-                    this->push(frame.locals[instr.operand]);
+                this->push(this->localPool[frame.localsBase + instr.operand]);
             } break;
             case OpCode::STORE_SLOT: {
-                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.locals.size()) {
-                        this->diagnostics.addError(this->currentLoc, "Slot index out of range");
-                        break;
-                    }
+                if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.localsSize) {
+                    this->diagnostics.addError(this->currentLoc, "Slot index out of range");
+                    break;
+                }
 
-                    frame.locals[instr.operand] = this->pop();
+                this->localPool[frame.localsBase + instr.operand] = this->pop();
             } break;
             case OpCode::DUP_STORE_SLOT: {
-                    if (this->stack.empty()) {
-                        this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP_STORE_SLOT");
-                        break;
-                    }
+                if (this->stack.empty()) {
+                    this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP_STORE_SLOT");
+                    break;
+                }
 
-                    if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.locals.size()) {
-                        this->diagnostics.addError(this->currentLoc, "Slot index out of range");
-                        break;
-                    }
+                if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= frame.localsSize) {
+                    this->diagnostics.addError(this->currentLoc, "Slot index out of range");
+                    break;
+                }
 
-                    frame.locals[instr.operand] = this->stack.back();
+                this->localPool[frame.localsBase + instr.operand] = this->stack.back();
             } break;
             default: break;
         }
@@ -255,75 +261,75 @@ namespace LOICollection::frontend::ir {
         const BytecodeChunk& chunk = s.chunk;
         switch (instr.op) {
             case OpCode::LOAD_VAR: {
-                    const auto& name = std::get<std::string>(cur.constants[instr.operand]);
+                const auto& name = std::get<std::string>(cur.constants[instr.operand]);
 
-                    if (frame.hasThis) {
-                        auto obj = std::get<ObjectRef>(frame.thisObj);
+                if (frame.hasThis) {
+                    auto obj = std::get<ObjectRef>(frame.thisObj);
 
-                        if (obj->classIndex >= 0) {
-                            const auto& cls = chunk.classes[obj->classIndex];
-                            bool isField = std::ranges::find(cls.fieldNames, name) != cls.fieldNames.end();
+                    if (obj->classIndex >= 0) {
+                        const auto& cls = chunk.classes[obj->classIndex];
+                        bool isField = std::ranges::find(cls.fieldNames, name) != cls.fieldNames.end();
 
-                            if (isField) {
-                                const auto* field = obj->find(name);
-                                if (!field) {
-                                    this->diagnostics.addError(this->currentLoc, "Object has no field: " + name);
-                                    break;
-                                }
-
-                                this->push(*field);
+                        if (isField) {
+                            const auto* field = obj->find(name);
+                            if (!field) {
+                                this->diagnostics.addError(this->currentLoc, "Object has no field: " + name);
                                 break;
                             }
-                        }
 
-                        if (const auto* existing = obj->find(name)) {
-                            this->push(*existing);
+                            this->push(*field);
                             break;
                         }
                     }
 
-                    std::string className;
-                    std::string fieldName;
-                    if (splitStaticMemberName(name, className, fieldName) &&
-                        std::ranges::none_of(chunk.classes, [&className](const auto& cls) {
-                            return cls.name == className;
-                        }) &&
-                        ClassCall::getInstance().isRegistered(className) &&
-                        ClassCall::getInstance().hasStaticField(className, fieldName)) {
-                        auto result = ClassCall::getInstance().getStaticField(className, fieldName);
-                        if (!result.has_value()) {
-                            this->diagnostics.addError(this->currentLoc,
-                                "Failed to load native static field '" + name + "': " + result.error().message());
-                            break;
-                        }
+                    if (const auto* existing = obj->find(name)) {
+                        this->push(*existing);
+                        break;
+                    }
+                }
 
-                        this->push(result.value());
+                std::string className;
+                std::string fieldName;
+                if (splitStaticMemberName(name, className, fieldName) &&
+                    std::ranges::none_of(chunk.classes, [&className](const auto& cls) {
+                        return cls.name == className;
+                    }) &&
+                    ClassCall::getInstance().isRegistered(className) &&
+                    ClassCall::getInstance().hasStaticField(className, fieldName)) {
+                    auto result = ClassCall::getInstance().getStaticField(className, fieldName);
+                    if (!result.has_value()) {
+                        this->diagnostics.addError(this->currentLoc,
+                            "Failed to load native static field '" + name + "': " + result.error().message());
                         break;
                     }
 
-                    auto globalIt = this->globals->find(name);
-                    if (globalIt == this->globals->end()) {
-                        this->diagnostics.addError(this->currentLoc, "Undefined variable: " + name);
-                        break;
-                    }
+                    this->push(result.value());
+                    break;
+                }
 
-                    this->push(globalIt->second);
+                auto globalIt = this->globals->find(name);
+                if (globalIt == this->globals->end()) {
+                    this->diagnostics.addError(this->currentLoc, "Undefined variable: " + name);
+                    break;
+                }
+
+                this->push(globalIt->second);
             } break;
             case OpCode::STORE_VAR: {
-                    const auto& name = std::get<std::string>(cur.constants[instr.operand]);
+                const auto& name = std::get<std::string>(cur.constants[instr.operand]);
 
-                    auto val = this->pop();
+                auto val = this->pop();
 
-                    this->storeVariable(chunk, frame, name, val);
+                this->storeVariable(chunk, frame, name, val);
             } break;
             case OpCode::DUP_STORE: {
-                    if (this->stack.empty()) {
-                        this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP_STORE");
-                        break;
-                    }
+                if (this->stack.empty()) {
+                    this->diagnostics.addError(this->currentLoc, "Stack underflow during DUP_STORE");
+                    break;
+                }
 
-                    const auto& name = std::get<std::string>(cur.constants[instr.operand]);
-                    this->storeVariable(chunk, frame, name, this->stack.back());
+                const auto& name = std::get<std::string>(cur.constants[instr.operand]);
+                this->storeVariable(chunk, frame, name, this->stack.back());
             } break;
             default: break;
         }

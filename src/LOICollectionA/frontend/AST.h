@@ -907,41 +907,67 @@ namespace LOICollection::frontend {
 
         void adoptLayout();
 
+        [[nodiscard]] int slotOf(const std::string& name) const {
+            return this->layout ? this->layout->slotOf(name) : -1;
+        }
+
+        [[nodiscard]] ValueNode::ValueType* declaredAt(int slot) {
+            return slot < 0 || static_cast<size_t>(slot) >= this->slots.size()
+                ? nullptr
+                : &this->slots[static_cast<size_t>(slot)];
+        }
+
+        [[nodiscard]] const ValueNode::ValueType* declaredAt(int slot) const {
+            return slot < 0 || static_cast<size_t>(slot) >= this->slots.size()
+                ? nullptr
+                : &this->slots[static_cast<size_t>(slot)];
+        }
+
+        [[nodiscard]] ValueNode::ValueType* fieldAt(int slot, const std::string& name) {
+            if (ValueNode::ValueType* declared = this->declaredAt(slot))
+                return declared;
+
+            if (!this->spill)
+                return nullptr;
+
+            auto it = this->spill->find(name);
+            return it == this->spill->end() ? nullptr : &it->second;
+        }
+
+        [[nodiscard]] const ValueNode::ValueType* fieldAt(int slot, const std::string& name) const {
+            if (const ValueNode::ValueType* declared = this->declaredAt(slot))
+                return declared;
+
+            if (!this->spill)
+                return nullptr;
+
+            auto it = this->spill->find(name);
+            return it == this->spill->end() ? nullptr : &it->second;
+        }
+
+        [[nodiscard]] ValueNode::ValueType& fieldAtOrSpill(int slot, const std::string& name) {
+            if (ValueNode::ValueType* declared = this->declaredAt(slot))
+                return *declared;
+
+            return this->spillSlot(name);
+        }
+
         void assign(const std::string& name, ValueNode::ValueType value) {
             if (!this->layout)
                 this->adoptLayout();
 
-            if (ValueNode::ValueType* slot = this->findDeclared(name)) {
-                *slot = std::move(value);
-                return;
-            }
-
-            this->spillSlot(name) = std::move(value);
+            this->fieldAtOrSpill(this->slotOf(name), name) = std::move(value);
         }
 
         [[nodiscard]] ValueNode::ValueType* find(const std::string& name) {
             if (!this->layout)
                 this->adoptLayout();
 
-            if (ValueNode::ValueType* slot = this->findDeclared(name))
-                return slot;
-
-            if (!this->spill)
-                return nullptr;
-
-            auto it = this->spill->find(name);
-            return it == this->spill->end() ? nullptr : &it->second;
+            return this->fieldAt(this->slotOf(name), name);
         }
 
         [[nodiscard]] const ValueNode::ValueType* find(const std::string& name) const {
-            if (const ValueNode::ValueType* slot = this->findDeclared(name))
-                return slot;
-
-            if (!this->spill)
-                return nullptr;
-
-            auto it = this->spill->find(name);
-            return it == this->spill->end() ? nullptr : &it->second;
+            return this->fieldAt(this->slotOf(name), name);
         }
 
         [[nodiscard]] ValueNode::ValueType& at(const std::string& name) {
@@ -952,20 +978,6 @@ namespace LOICollection::frontend {
         }
 
     private:
-        [[nodiscard]] ValueNode::ValueType* findDeclared(const std::string& name) {
-            int index = this->layout ? this->layout->slotOf(name) : -1;
-            return index < 0 || static_cast<size_t>(index) >= this->slots.size()
-                ? nullptr
-                : &this->slots[static_cast<size_t>(index)];
-        }
-
-        [[nodiscard]] const ValueNode::ValueType* findDeclared(const std::string& name) const {
-            int index = this->layout ? this->layout->slotOf(name) : -1;
-            return index < 0 || static_cast<size_t>(index) >= this->slots.size()
-                ? nullptr
-                : &this->slots[static_cast<size_t>(index)];
-        }
-
         ValueNode::ValueType& spillSlot(const std::string& name) {
             if (!this->spill)
                 this->spill = std::make_unique<SpillMap>();

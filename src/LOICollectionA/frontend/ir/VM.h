@@ -42,17 +42,27 @@ namespace LOICollection::frontend::ir {
 
         LOICOLLECTION_A_NDAPI static std::string valueToString(const ValueNode::ValueType& val);
         LOICOLLECTION_A_NDAPI static std::string typeNameOf(const ValueNode::ValueType& val);
+        LOICOLLECTION_A_NDAPI static ValueNode::ValueType applyArithmetic(const ValueNode::ValueType& left, const ValueNode::ValueType& right, OpCode op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
         LOICOLLECTION_A_NDAPI static ValueNode::ValueType applyArithmetic(const ValueNode::ValueType& left, const ValueNode::ValueType& right, const std::string& op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
+        LOICOLLECTION_A_NDAPI static ValueNode::ValueType applyUnary(const ValueNode::ValueType& operand, OpCode op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
         LOICOLLECTION_A_NDAPI static ValueNode::ValueType applyUnary(const ValueNode::ValueType& operand, const std::string& op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
         LOICOLLECTION_A_NDAPI static bool valueToBool(const ValueNode::ValueType& val);
+        LOICOLLECTION_A_NDAPI static bool applyComparison(const ValueNode::ValueType& left, const ValueNode::ValueType& right, OpCode op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
         LOICOLLECTION_A_NDAPI static bool applyComparison(const ValueNode::ValueType& left, const ValueNode::ValueType& right, const std::string& op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
 
     private:
+        struct FieldCacheSlot {
+            std::string name;
+            const FieldLayout* layout = nullptr;
+            int slot = -1;
+        };
+
         struct Frame {
             std::reference_wrapper<const BytecodeChunk> chunk;
 
             size_t ip = 0;
-            std::vector<ValueNode::ValueType> locals;
+            size_t localsBase = 0;
+            size_t localsSize = 0;
 
             ValueNode::ValueType thisObj;
             bool hasThis = false;
@@ -61,7 +71,7 @@ namespace LOICollection::frontend::ir {
             bool hasPending = false;
 
             explicit Frame(const BytecodeChunk& chunkRef)
-                : chunk(chunkRef), locals(chunkRef.slotCount) {}
+                : chunk(chunkRef), localsSize(chunkRef.slotCount) {}
         };
 
         DiagnosticEngine& diagnostics;
@@ -72,6 +82,7 @@ namespace LOICollection::frontend::ir {
 
         std::vector<Frame> frames;
         std::vector<ValueNode::ValueType> stack;
+        std::vector<ValueNode::ValueType> localPool;
 
         std::shared_ptr<GlobalsTable> globals;
 
@@ -81,8 +92,11 @@ namespace LOICollection::frontend::ir {
         std::unordered_map<int, NativeValueMethodCacheSlot> mNativeValueMethodSlots;
         std::unordered_map<int, NativeConstructorCacheSlot> mNativeConstructorSlots;
         std::unordered_map<int, FieldLayoutPtr> mClassLayouts;
+        std::unordered_map<const Instruction*, FieldCacheSlot> mFieldSlots;
 
         [[nodiscard]] const FieldLayoutPtr& classLayout(const BytecodeChunk& chunk, int classIndex);
+
+        [[nodiscard]] int resolveFieldSlot(Object& obj, const std::string& name, const Instruction& instr);
 
         ValueNode::ValueType execute(
             const std::shared_ptr<const BytecodeChunk>& owner,
@@ -90,6 +104,7 @@ namespace LOICollection::frontend::ir {
         );
 
         void push(const ValueNode::ValueType& v);
+        void push(ValueNode::ValueType&& v);
         ValueNode::ValueType pop();
 
         void storeVariable(

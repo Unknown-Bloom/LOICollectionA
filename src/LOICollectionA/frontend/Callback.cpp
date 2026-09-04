@@ -65,8 +65,8 @@ namespace LOICollection::frontend {
     std::vector<ParamType> valuesToTypes(const CallbackTypeValues& values, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
         std::vector<ParamType> argTypes;
         for (const auto& arg : values) {
-            std::visit([&argTypes, &diagnostics, &loc](auto&& arg) {
-                using T = std::decay_t<decltype(arg)>;
+            std::visit([&argTypes, &diagnostics, &loc](auto&& value) {
+                using T = std::decay_t<decltype(value)>;
 
                 if constexpr (std::is_same_v<T, int>)
                     argTypes.push_back(ParamType::INT);

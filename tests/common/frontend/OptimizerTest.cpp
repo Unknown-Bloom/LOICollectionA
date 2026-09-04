@@ -14,42 +14,59 @@
 using namespace LOICollection::frontend;
 using namespace LOICollection::frontend::ir;
 
-namespace {
-    struct CompiledProgram {
-        std::shared_ptr<BytecodeChunk> chunk;
-        DiagnosticEngine diagnostics;
-        Optimizer::Stats stats;
-    };
+    namespace {
+        struct CompiledProgram {
+            std::shared_ptr<BytecodeChunk> chunk;
+            DiagnosticEngine diagnostics;
+            Optimizer::Stats stats;
+        };
 
-    CompiledProgram compileAndOptimize(const std::string& source, unsigned mask = Optimizer::allPasses) {
-        CompiledProgram out;
+        CompiledProgram compileAndOptimize(const std::string& source, unsigned mask = Optimizer::allPasses) {
+            CompiledProgram out;
 
-        Lexer lexer(source, out.diagnostics);
-        Parser parser(lexer, out.diagnostics);
+            Lexer lexer(source, out.diagnostics);
+            Parser parser(lexer, out.diagnostics);
 
-        auto ast = parser.parse();
-        if (ast->getType() == ASTNode::Type::Program) {
-            SemanticAnalyzer analyzer(out.diagnostics);
-            analyzer.analyze(static_cast<ProgramNode&>(*ast));
+            auto ast = parser.parse();
+            if (ast->getType() == ASTNode::Type::Program) {
+                SemanticAnalyzer analyzer(out.diagnostics);
+                analyzer.analyze(static_cast<ProgramNode&>(*ast));
+            }
+
+            Compiler compiler(out.diagnostics);
+            out.chunk = std::make_shared<BytecodeChunk>(compiler.compile(*ast));
+
+            Optimizer optimizer;
+            optimizer.setEnabledPasses(mask);
+            out.stats = optimizer.optimize(*out.chunk);
+
+            return out;
         }
 
-        Compiler compiler(out.diagnostics);
-        out.chunk = std::make_shared<BytecodeChunk>(compiler.compile(*ast));
+        OpCode canonicalOp(OpCode op) {
+            switch (op) {
+                case OpCode::ADD_I: return OpCode::ADD;
+                case OpCode::SUB_I: return OpCode::SUB;
+                case OpCode::MUL_I: return OpCode::MUL;
+                case OpCode::MOD_I: return OpCode::MOD;
+                case OpCode::CMP_EQ_I: return OpCode::CMP_EQ;
+                case OpCode::CMP_NE_I: return OpCode::CMP_NE;
+                case OpCode::CMP_GT_I: return OpCode::CMP_GT;
+                case OpCode::CMP_LT_I: return OpCode::CMP_LT;
+                case OpCode::CMP_GE_I: return OpCode::CMP_GE;
+                case OpCode::CMP_LE_I: return OpCode::CMP_LE;
+                case OpCode::NEG_I: return OpCode::NEG;
+                default: return op;
+            }
+        }
 
-        Optimizer optimizer;
-        optimizer.setEnabledPasses(mask);
-        out.stats = optimizer.optimize(*out.chunk);
+        bool containsOp(const BytecodeChunk& chunk, OpCode op) {
+            for (const auto& instr : chunk.code)
+                if (canonicalOp(instr.op) == op)
+                    return true;
 
-        return out;
-    }
-
-    bool containsOp(const BytecodeChunk& chunk, OpCode op) {
-        for (const auto& instr : chunk.code)
-            if (instr.op == op)
-                return true;
-
-        return false;
-    }
+            return false;
+        }
 }
 
 TEST(OptimizerTest, ConstantFolding) {
@@ -328,8 +345,6 @@ TEST(OptimizerTest, LoopWithContinueSurvivesOptimization) {
     EXPECT_FALSE(program.diagnostics.hasErrors());
 }
 
-// ---- local constant propagation ------------------------------------------------
-
 TEST(OptimizerTest, PropagatesStoredScalarIntoArithmetic) {
     auto program = compileAndOptimize("let x = 4; x += 0; x");
 
@@ -368,8 +383,6 @@ TEST(OptimizerTest, PropagationTracksLatestAssignment) {
 }
 
 TEST(OptimizerTest, PropagationDropsSlotForNonScalarValues) {
-    // Forwarding an array reference would alias the pool constant on every load,
-    // so storing a non-scalar must retire the slot and keep the LOAD_VAR.
     auto program = compileAndOptimize("let x = [1, 2]; x = [3, 4]; x");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
@@ -391,8 +404,6 @@ TEST(OptimizerTest, PropagationInvalidatedAtBranchMerge) {
     EXPECT_EQ(VM::valueToString(vmTaken.run(taken.chunk, {})), "10");
     EXPECT_FALSE(taken.diagnostics.hasErrors());
 
-    // If the then-branch's r = 10 leaked past the merge point, the untaken
-    // branch would wrongly observe 10.
     auto untaken = compileAndOptimize(source + "f(2)");
     EXPECT_FALSE(untaken.diagnostics.hasErrors());
 
@@ -409,8 +420,6 @@ TEST(OptimizerTest, PropagationInvalidatedAtBranchMerge) {
 }
 
 TEST(OptimizerTest, PropagationInvalidatedByCalls) {
-    // Calls can execute script code that rebinds the variable, so the load
-    // after CALL must not be forwarded even though x was just stored.
     ir::BytecodeChunk chunk;
     chunk.constants.push_back(3);
     chunk.constants.push_back(std::string("x"));
@@ -431,11 +440,39 @@ TEST(OptimizerTest, PropagationInvalidatedByCalls) {
     EXPECT_EQ(chunk.code.size(), 5u);
 }
 
-// ---- NOT / branch fusion -------------------------------------------------------
+    namespace {
+        std::size_t optimizeInvalidationProbe(OpCode op) {
+            ir::BytecodeChunk chunk;
+            chunk.constants.push_back(3);
+            chunk.constants.push_back(std::string("x"));
+            chunk.constants.push_back(std::string("hook"));
+
+            chunk.code = {
+                { OpCode::PUSH_INT, 0 },
+                { OpCode::STORE_VAR, 1 },
+                { op, 2 },
+                { OpCode::LOAD_VAR, 1 },
+                { OpCode::HALT, 0 }
+            };
+
+            Optimizer optimizer;
+            optimizer.optimize(chunk);
+
+            EXPECT_TRUE(containsOp(chunk, OpCode::LOAD_VAR));
+
+            return chunk.code.size();
+        }
+}
+
+TEST(OptimizerTest, PropagationInvalidatedByByNameMethodCalls) {
+    EXPECT_EQ(optimizeInvalidationProbe(OpCode::CALL_METHOD_BY_NAME), 5u);
+}
+
+TEST(OptimizerTest, PropagationInvalidatedByNativeMethodCalls) {
+    EXPECT_EQ(optimizeInvalidationProbe(OpCode::CALL_NATIVE_METHOD), 5u);
+}
 
 TEST(OptimizerTest, FusesNotIntoBranchOpcode) {
-    // The loop head is a merge point, so `i >= 2` stays dynamic: the leading
-    // NOT must fuse into the branch instead of evaluating at runtime.
     auto program = compileAndOptimize("let i = 0; while (!(i >= 2)) [ i = i + 1; ]; i");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
@@ -450,12 +487,7 @@ TEST(OptimizerTest, FusesNotIntoBranchOpcode) {
     EXPECT_FALSE(program.diagnostics.hasErrors());
 }
 
-// ---- fixed-point iteration -----------------------------------------------------
-
 TEST(OptimizerTest, FixedPointExposesPropagationAfterBranchRemoval) {
-    // Pass one folds x == 1 and deletes the else branch; only once the jump
-    // over it is gone does the final LOAD_VAR stop being a merge target and
-    // become forwardable in the next pass.
     auto program = compileAndOptimize("let x = 1; if (x == 1) [ let y = 10 : y = 20 ]; y");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
@@ -485,11 +517,7 @@ TEST(OptimizerTest, FixedPointExposesPropagationAfterBranchRemoval) {
     EXPECT_FALSE(program.diagnostics.hasErrors());
 }
 
-// ---- algebraic identity elimination --------------------------------------------
-
 TEST(OptimizerTest, EliminatesAlgebraicIdentities) {
-    // The kept operand is duplicated, so it is known but not removable: the
-    // identities 42 + 0 and 42 * 1 must drop their operand instead of folding.
     ir::BytecodeChunk chunk;
     chunk.constants.push_back(42);
     chunk.constants.push_back(0);
@@ -559,8 +587,6 @@ TEST(OptimizerTest, EliminatesFloatMulDivPowIdentities) {
 }
 
 TEST(OptimizerTest, FloatAddZeroIsNotIdentityFolded) {
-    // IEEE754: -0.0 + 0.0 == +0.0, so dropping a float `+ 0.0` would flip the
-    // sign of negative zero. The ADD has to run.
     ir::BytecodeChunk chunk;
     chunk.constants.push_back(-0.0f);
     chunk.constants.push_back(0.0f);
@@ -586,11 +612,7 @@ TEST(OptimizerTest, FloatAddZeroIsNotIdentityFolded) {
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ---- signed-zero semantics -----------------------------------------------------
-
 TEST(OptimizerTest, PropagatesSignedZeroCorrectly) {
-    // Pool dedup must not conflate -0.0 with +0.0 even though they compare
-    // equal: the forwarded load has to reproduce the stored negative zero.
     auto program = compileAndOptimize("let x = -0.0; x");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
@@ -604,7 +626,6 @@ TEST(OptimizerTest, PropagatesSignedZeroCorrectly) {
 }
 
 TEST(OptimizerTest, FoldsFloatAddZeroWithCorrectSignedZero) {
-    // Full folding computes the IEEE754 result: -0.0 + 0.0 is +0.0.
     auto program = compileAndOptimize("let x = -0.0; let y = x + 0.0; y");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
@@ -615,8 +636,6 @@ TEST(OptimizerTest, FoldsFloatAddZeroWithCorrectSignedZero) {
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "0");
     EXPECT_FALSE(program.diagnostics.hasErrors());
 }
-
-// ---- IS_NONE folding and constant-pool dedup -----------------------------------
 
 TEST(OptimizerTest, FoldsIsNoneOpcode) {
     ir::BytecodeChunk chunk;
@@ -667,7 +686,6 @@ TEST(OptimizerTest, ReusesScalarConstantsWhenFolding) {
     ASSERT_EQ(chunk.code.size(), 2u);
     EXPECT_EQ(chunk.code[0].op, OpCode::PUSH_INT);
     EXPECT_EQ(chunk.code[1].op, OpCode::HALT);
-    // the folded 5 reuses the existing pool slot instead of appending one
     EXPECT_EQ(chunk.code[0].operand, 0);
     EXPECT_EQ(chunk.constants.size(), 2u);
     EXPECT_EQ(std::get<int>(chunk.constants[chunk.code[0].operand]), 5);
@@ -678,11 +696,7 @@ TEST(OptimizerTest, ReusesScalarConstantsWhenFolding) {
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ---- coalesce keeps duplicated operands ----------------------------------------
-
 TEST(OptimizerTest, CoalesceKeepsDuplicatedOperand) {
-    // ?? duplicates the left operand before IS_NONE; the duplicate protects
-    // the original push from being dropped while only the copy is consumed.
     auto noneCase = compileAndOptimize("let x = None; x ?? \"d\"");
 
     EXPECT_FALSE(noneCase.diagnostics.hasErrors());
@@ -700,13 +714,11 @@ TEST(OptimizerTest, CoalesceKeepsDuplicatedOperand) {
     EXPECT_FALSE(valueCase.diagnostics.hasErrors());
 }
 
-// ---- pass mask (A/B comparison inside a single build) --------------------------
-
-namespace {
-    std::string runChunk(const std::shared_ptr<BytecodeChunk>& chunk, DiagnosticEngine& diag) {
-        VM vm(diag);
-        return VM::valueToString(vm.run(chunk, {}));
-    }
+    namespace {
+        std::string runChunk(const std::shared_ptr<BytecodeChunk>& chunk, DiagnosticEngine& diag) {
+            VM vm(diag);
+            return VM::valueToString(vm.run(chunk, {}));
+        }
 }
 
 TEST(OptimizerTest, PassMaskTurnsOffConstantFolding) {
@@ -750,4 +762,210 @@ TEST(OptimizerTest, PassMaskDefaultsToEveryPassEnabled) {
 
     optimizer.setEnabledPasses(Optimizer::allPasses);
     EXPECT_EQ(optimizer.enabledPasses(), Optimizer::allPasses);
+}
+
+    namespace {
+        int countOp(const BytecodeChunk& chunk, OpCode op) {
+            int total = 0;
+            for (const auto& instr : chunk.code)
+                if (canonicalOp(instr.op) == op)
+                    ++total;
+
+            return total;
+        }
+}
+
+TEST(OptimizerTest, RemovesStoreOverwrittenBeforeAnyRead) {
+    auto program = compileAndOptimize("let x = 1; x = 2; x");
+
+    EXPECT_FALSE(program.diagnostics.hasErrors());
+    EXPECT_EQ(countOp(*program.chunk, OpCode::STORE_VAR) + countOp(*program.chunk, OpCode::DUP_STORE), 1);
+    EXPECT_EQ(countOp(*program.chunk, OpCode::POP), 1);
+
+    VM vm(program.diagnostics);
+    EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "2");
+    EXPECT_FALSE(program.diagnostics.hasErrors());
+}
+
+TEST(OptimizerTest, RemovesDeadSlotStoreInStraightLineCode) {
+    ir::BytecodeChunk chunk;
+    chunk.slotCount = 1;
+    chunk.constants.push_back(1);
+    chunk.constants.push_back(2);
+
+    chunk.code = {
+        { OpCode::PUSH_INT, 0 },
+        { OpCode::STORE_SLOT, 0 },
+        { OpCode::PUSH_INT, 1 },
+        { OpCode::STORE_SLOT, 0 },
+        { OpCode::LOAD_SLOT, 0 },
+        { OpCode::HALT, 0 }
+    };
+
+    Optimizer optimizer;
+    optimizer.optimize(chunk);
+
+    EXPECT_EQ(countOp(chunk, OpCode::STORE_SLOT), 1);
+    EXPECT_EQ(countOp(chunk, OpCode::POP), 0);
+
+    DiagnosticEngine diag;
+    VM vm(diag);
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(std::move(chunk)), {})), "2");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(OptimizerTest, KeepsSlotStoreThatAReadObserves) {
+    ir::BytecodeChunk chunk;
+    chunk.slotCount = 2;
+
+    chunk.code = {
+        { OpCode::LOAD_SLOT, 1 },
+        { OpCode::STORE_SLOT, 0 },
+        { OpCode::LOAD_SLOT, 0 },
+        { OpCode::POP, 0 },
+        { OpCode::LOAD_SLOT, 1 },
+        { OpCode::STORE_SLOT, 0 },
+        { OpCode::LOAD_SLOT, 0 },
+        { OpCode::HALT, 0 }
+    };
+
+    Optimizer optimizer;
+    optimizer.optimize(chunk);
+
+    EXPECT_EQ(countOp(chunk, OpCode::STORE_SLOT), 2);
+}
+
+TEST(OptimizerTest, KeepsStoreThatPrecedesACall) {
+    ir::BytecodeChunk chunk;
+    chunk.slotCount = 1;
+    chunk.constants.push_back(1);
+    chunk.constants.push_back(2);
+    chunk.constants.push_back(std::string("hook"));
+
+    chunk.code = {
+        { OpCode::PUSH_INT, 0 },
+        { OpCode::STORE_SLOT, 0 },
+        { OpCode::CALL, 2 },
+        { OpCode::PUSH_INT, 1 },
+        { OpCode::STORE_SLOT, 0 },
+        { OpCode::LOAD_SLOT, 0 },
+        { OpCode::HALT, 0 }
+    };
+
+    Optimizer optimizer;
+    optimizer.optimize(chunk);
+
+    EXPECT_EQ(countOp(chunk, OpCode::STORE_SLOT), 2);
+}
+
+TEST(OptimizerTest, PassMaskTurnsOffDeadStoreElimination) {
+    const std::string source = "let x = 1; x = 2; x";
+
+    auto full = compileAndOptimize(source);
+    auto noDeadStore = compileAndOptimize(
+        source,
+        static_cast<unsigned>(Optimizer::Pass::ConstantFold) | static_cast<unsigned>(Optimizer::Pass::DeadCode));
+
+    EXPECT_LT(
+        countOp(*full.chunk, OpCode::STORE_VAR) + countOp(*full.chunk, OpCode::DUP_STORE),
+        countOp(*noDeadStore.chunk, OpCode::STORE_VAR) + countOp(*noDeadStore.chunk, OpCode::DUP_STORE));
+
+    EXPECT_FALSE(full.diagnostics.hasErrors());
+    EXPECT_FALSE(noDeadStore.diagnostics.hasErrors());
+    EXPECT_EQ(runChunk(noDeadStore.chunk, noDeadStore.diagnostics), runChunk(full.chunk, full.diagnostics));
+}
+
+TEST(OptimizerTest, RejectedFoldKeepsItsOperandsOnTheStack) {
+    auto program = compileAndOptimize("10.0 % 3.0");
+
+    EXPECT_FALSE(program.diagnostics.hasErrors());
+    EXPECT_EQ(countOp(*program.chunk, OpCode::MOD), 1);
+    EXPECT_GE(countOp(*program.chunk, OpCode::PUSH_FLOAT), 2);
+
+    VM vm(program.diagnostics);
+    [[maybe_unused]] auto result = vm.run(program.chunk, {});
+
+    EXPECT_TRUE(program.diagnostics.hasErrors());
+    EXPECT_EQ(program.diagnostics.getErrorMessage().find("Stack underflow"), std::string::npos);
+    EXPECT_NE(program.diagnostics.getErrorMessage().find("Modulo requires integral types"), std::string::npos);
+}
+
+    namespace {
+        int countOpEverywhere(const BytecodeChunk& chunk, OpCode op) {
+            int total = countOp(chunk, op);
+            for (const auto& body : chunk.methodBodies)
+                total += countOp(*body, op);
+            return total;
+        }
+
+        bool containsOpEverywhere(const BytecodeChunk& chunk, OpCode op) {
+            if (containsOp(chunk, op))
+                return true;
+            for (const auto& body : chunk.methodBodies)
+                if (containsOp(*body, op))
+                    return true;
+            return false;
+        }
+}
+
+TEST(OptimizerTest, EliminatesRepeatedSubexpression) {
+    const std::string source =
+        "func f(a: int, b: int) -> int { return (a + b) * (a + b) + (a + b); }\n"
+        "f(2, 3)";
+
+    auto withCse = compileAndOptimize(source);
+    auto withoutCse = compileAndOptimize(
+        source, Optimizer::allPasses & ~static_cast<unsigned>(Optimizer::Pass::CSE));
+
+    EXPECT_FALSE(withCse.diagnostics.hasErrors());
+    EXPECT_FALSE(withoutCse.diagnostics.hasErrors());
+
+    EXPECT_LT(countOpEverywhere(*withCse.chunk, OpCode::ADD),
+        countOpEverywhere(*withoutCse.chunk, OpCode::ADD));
+    EXPECT_TRUE(containsOpEverywhere(*withCse.chunk, OpCode::DUP_STORE_SLOT));
+
+    VM vm(withCse.diagnostics);
+    EXPECT_EQ(VM::valueToString(vm.run(withCse.chunk, {})), "30");
+}
+
+TEST(OptimizerTest, CSEStaysCorrectAcrossCalls) {
+    const std::string source =
+        "func g(x: int) -> int { return x + 1; }\n"
+        "func f(a: int, b: int) -> int {\n"
+        "  let s = (a + b) + g(a);\n"
+        "  return (a + b) + g(a);\n"
+        "}\n"
+        "f(2, 3)";
+
+    auto program = compileAndOptimize(source);
+
+    EXPECT_FALSE(program.diagnostics.hasErrors());
+
+    VM vm(program.diagnostics);
+    EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "8");
+}
+
+TEST(OptimizerTest, CSEInsideLoopKeepsJumpOffsets) {
+    const std::string source =
+        "func f(a: int, b: int, n: int) -> int {\n"
+        "  let s = 0;\n"
+        "  let i = 0;\n"
+        "  while (i < n) [\n"
+        "    s = s + (a + b) * (a + b) + (a + b);\n"
+        "    i = i + 1;\n"
+        "  ]\n"
+        "  return s;\n"
+        "}\n"
+        "f(2, 3, 5)";
+
+    auto program = compileAndOptimize(source);
+
+    EXPECT_FALSE(program.diagnostics.hasErrors());
+    EXPECT_TRUE(containsOpEverywhere(*program.chunk, OpCode::DUP_STORE_SLOT));
+
+    VM vm(program.diagnostics);
+    auto result = vm.run(program.chunk, {});
+
+    EXPECT_FALSE(program.diagnostics.hasErrors());
+    EXPECT_EQ(VM::valueToString(result), "150");
 }

@@ -265,8 +265,7 @@ TEST(ForInTest, NonIterable) {
 }
 
 TEST(ForInTest, LambdaCapturesCurrentIterationValue) {
-    // A lambda created inside the loop must capture the value of its own
-    // iteration, not a reference that later follows the loop variable.
+    
     EXPECT_EQ(eval(
         "let fns = []; "
         "for (item in [10, 20, 30]) [ "

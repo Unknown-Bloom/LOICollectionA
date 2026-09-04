@@ -2,6 +2,9 @@
 #include "LOICollectionA/frontend/ir/opt/analysis/JumpTargetAnalysis.h"
 #include "LOICollectionA/frontend/ir/opt/passes/ConstantFoldPass.h"
 #include "LOICollectionA/frontend/ir/opt/passes/DeadCodePass.h"
+#include "LOICollectionA/frontend/ir/opt/passes/DeadStorePass.h"
+#include "LOICollectionA/frontend/ir/opt/passes/LICMPass.h"
+#include "LOICollectionA/frontend/ir/opt/passes/CSEPass.h"
 
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 
@@ -22,11 +25,22 @@ namespace LOICollection::frontend::ir {
         return total;
     }
 
-    // Repeat the single pass until it stops making progress: each round's rewrites
-    // (forwarded loads, folded branches, dropped operands) expose new opportunities
-    // for the next round. A pass that changes nothing means the chunk is stable.
     Optimizer::Stats Optimizer::optimizeChunk(BytecodeChunk& chunk) {
         Stats total;
+
+        for (int pass = 0; pass < 16; ++pass) {
+            Stats once = this->optimizeChunkOnce(chunk);
+            total.folded += once.folded;
+            total.removed += once.removed;
+
+            if (once.folded == 0 && once.removed == 0)
+                break;
+        }
+
+        if (this->enabled(Pass::LICM)) {
+            opt::LICMPass licm{ chunk };
+            licm.run();
+        }
 
         for (int pass = 0; pass < 16; ++pass) {
             Stats once = this->optimizeChunkOnce(chunk);
@@ -51,8 +65,16 @@ namespace LOICollection::frontend::ir {
         opt::ConstantFoldPass foldPass{ chunk, ctx, jumps };
         foldPass.run(this->enabled(Pass::ConstantFold));
 
+        opt::DeadStorePass storePass{ chunk, ctx, jumps };
+        storePass.run(this->enabled(Pass::DeadStore));
+
         opt::DeadCodePass deadPass;
         deadPass.run(chunk, ctx, this->enabled(Pass::DeadCode));
+
+        opt::CSEPass csePass{ chunk };
+        if (this->enabled(Pass::CSE)) {
+            ctx.stats.removed += csePass.run();
+        }
 
         return ctx.stats;
     }

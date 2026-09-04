@@ -113,7 +113,7 @@ namespace LOICollection::frontend::ir {
         void compileForInIterable(ForInNode& node, size_t uid, const IterableProtocol& protocol);
         void emitIterableLength(const IterableProtocol& protocol, int seqSlot, const SourceLocation& loc);
         void emitIterableElement(const IterableProtocol& protocol, int seqSlot, int idxSlot, const SourceLocation& loc);
-        void emitArithmeticOp(const std::string& op, const SourceLocation& loc);
+        void emitArithmeticOp(const std::string& op, const TypeInfo& leftType, const TypeInfo& rightType, const SourceLocation& loc);
 
         void desugarDeclarativeStatements(std::unique_ptr<ASTNode>& node, const std::string& receiver);
         void compileDeclarativeBlock(BlockNode& block, const std::string& receiverName);

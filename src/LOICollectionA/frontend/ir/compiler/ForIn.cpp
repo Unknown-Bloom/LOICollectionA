@@ -50,8 +50,8 @@ namespace LOICollection::frontend::ir {
                 return;
             }
 
-            this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
             this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, loc);
+            this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
 
             int metaIdx = this->addByNameCall(std::string(elementMethod), 1);
             this->current.get().emit(OpCode::CALL_METHOD_BY_NAME, metaIdx, loc);
@@ -81,7 +81,7 @@ namespace LOICollection::frontend::ir {
 
         this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
         this->emitIterableLength(protocol, seqSlot, node.loc);
-        this->current.get().emit(OpCode::CMP_LT, 0, node.loc);
+        this->current.get().emit(OpCode::CMP_LT_I, 0, node.loc);
 
         size_t jmpFalseIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
 
@@ -99,7 +99,7 @@ namespace LOICollection::frontend::ir {
         int oneIdx = this->addConstant(1);
         this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
         this->current.get().emit(OpCode::PUSH_INT, oneIdx, node.loc);
-        this->current.get().emit(OpCode::ADD, 0, node.loc);
+        this->current.get().emit(OpCode::ADD_I, 0, node.loc);
         this->current.get().emit(OpCode::STORE_SLOT, idxSlot, node.loc);
 
         node.body->accept(*this);

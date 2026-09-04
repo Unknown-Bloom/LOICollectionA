@@ -13,7 +13,7 @@ namespace LOICollection::frontend::ir {
         OpCode op;
 
         int operand;
-        SourceLocation loc;
+        SourceLocation loc{};
     };
 
     struct FuncMeta {
@@ -96,11 +96,7 @@ namespace LOICollection::frontend::ir {
         std::vector<ByNameCallMeta> byNameCalls;
         std::vector<SuperCallMeta> superCalls;
         std::vector<LambdaMeta> lambdas;
-        /* Deque of owners on purpose: the compiler keeps `current` references
-         * into nested bodies while appending siblings, so references must stay
-         * valid across push_back. The bodies are held by unique_ptr because
-         * MSVC STL's std::deque does not support an incomplete value type
-         * (a self-referencing member), while libstdc++ accepts it. */
+        
         std::deque<std::unique_ptr<BytecodeChunk>> methodBodies;
 
         int slotCount = 0;

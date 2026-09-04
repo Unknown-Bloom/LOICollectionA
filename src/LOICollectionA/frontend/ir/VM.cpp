@@ -70,6 +70,7 @@ namespace LOICollection::frontend::ir {
 
         this->stack.clear();
         this->frames.clear();
+        this->localPool.clear();
         this->globals->clear();
         this->mReport = sandbox::SandboxReport{};
 
@@ -83,6 +84,7 @@ namespace LOICollection::frontend::ir {
         }
 
         this->frames.emplace_back(*chunk);
+        this->localPool.resize(chunk->slotCount);
 
         CallbackTypePlaces placeholders = ctx.params;
         if (!ctx.scriptId.empty())
@@ -156,9 +158,13 @@ namespace LOICollection::frontend::ir {
                 case OpCode::CALL_METHOD: case OpCode::CALL_METHOD_VIRTUAL: case OpCode::CALL_METHOD_BY_NAME: case OpCode::CALL_SUPER_CTOR: this->execMethodDispatch(s); break;
                 case OpCode::CALL_NATIVE_METHOD: this->execNativeCall(s); break;
                 case OpCode::CALL_FUNC: case OpCode::CALL_LAMBDA: this->execFunctionCall(s); break;
-                case OpCode::ADD: case OpCode::SUB: case OpCode::MUL: case OpCode::DIV: case OpCode::MOD: case OpCode::POW: this->execArithmetic(s); break;
-                case OpCode::CMP_EQ: case OpCode::CMP_NE: case OpCode::CMP_GT: case OpCode::CMP_LT: case OpCode::CMP_GE: case OpCode::CMP_LE: this->execComparison(s); break;
-                case OpCode::LOGIC_AND: case OpCode::LOGIC_OR: case OpCode::NEG: case OpCode::NOT: this->execLogic(s); break;
+                case OpCode::ADD: case OpCode::SUB: case OpCode::MUL: case OpCode::DIV: case OpCode::MOD: case OpCode::POW:
+                case OpCode::ADD_I: case OpCode::SUB_I: case OpCode::MUL_I: case OpCode::MOD_I:
+                    this->execArithmetic(s); break;
+                case OpCode::CMP_EQ: case OpCode::CMP_NE: case OpCode::CMP_GT: case OpCode::CMP_LT: case OpCode::CMP_GE: case OpCode::CMP_LE:
+                case OpCode::CMP_EQ_I: case OpCode::CMP_NE_I: case OpCode::CMP_GT_I: case OpCode::CMP_LT_I: case OpCode::CMP_GE_I: case OpCode::CMP_LE_I:
+                    this->execComparison(s); break;
+                case OpCode::LOGIC_AND: case OpCode::LOGIC_OR: case OpCode::NEG: case OpCode::NOT: case OpCode::NEG_I: this->execLogic(s); break;
                 case OpCode::CALL: case OpCode::CALL_MACRO: this->execHostCall(s); break;
                 case OpCode::JMP_IF_FALSE: case OpCode::JMP_IF_TRUE: case OpCode::JMP: this->execBranch(s); break;
                 case OpCode::RETURN: {
@@ -166,6 +172,7 @@ namespace LOICollection::frontend::ir {
 
                     Frame finished = std::move(this->frames.back());
                     this->frames.pop_back();
+                    this->localPool.resize(finished.localsBase);
 
                     if (this->frames.empty())
                         return result;
@@ -201,17 +208,17 @@ namespace LOICollection::frontend::ir {
         Frame& frame = s.frame;
         switch (instr.op) {
             case OpCode::JMP_IF_FALSE: {
-                    auto cond = this->pop();
-                    if (!VM::valueToBool(cond))
-                        frame.ip += instr.operand;
+                auto cond = this->pop();
+                if (!VM::valueToBool(cond))
+                    frame.ip += instr.operand;
             } break;
             case OpCode::JMP_IF_TRUE: {
-                    auto cond = this->pop();
-                    if (VM::valueToBool(cond))
-                        frame.ip += instr.operand;
+                auto cond = this->pop();
+                if (VM::valueToBool(cond))
+                    frame.ip += instr.operand;
             } break;
             case OpCode::JMP: {
-                    frame.ip += instr.operand;
+                frame.ip += instr.operand;
             } break;
             default: break;
         }
@@ -279,15 +286,16 @@ namespace LOICollection::frontend::ir {
         }
 
         const size_t paramBase = func->captures.size();
-        if (paramBase + static_cast<size_t>(func->argCount) > callee.locals.size()) {
+        if (paramBase + static_cast<size_t>(func->argCount) > callee.localsSize) {
             diagnostics.addError({}, "Lambda frame is too small for its parameters");
             return std::monostate{};
         }
 
-        std::copy_n(func->captures.begin(), paramBase, callee.locals.begin());
+        vm.localPool.resize(callee.localsSize);
+        std::copy_n(func->captures.begin(), paramBase, vm.localPool.begin());
 
         for (int i = 0; i < func->argCount; ++i)
-            callee.locals[paramBase + i] = args[i];
+            vm.localPool[paramBase + i] = args[i];
 
         vm.frames.push_back(std::move(callee));
         return vm.execute(func->owner, placeholders);

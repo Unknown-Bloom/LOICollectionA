@@ -55,13 +55,13 @@ namespace LOICollection::frontend::ir {
             }
 
             for (auto node : this->bodyOrder) {
-                ASTNode& current = node.get();
-                switch (current.getType()) {
+                ASTNode& target = node.get();
+                switch (target.getType()) {
                     case ASTNode::Type::Class:
-                        this->compileClassBodies(static_cast<ClassNode&>(current));
+                        this->compileClassBodies(static_cast<ClassNode&>(target));
                         break;
                     case ASTNode::Type::FunctionDef:
-                        this->compileFunctionBody(static_cast<FunctionDefNode&>(current));
+                        this->compileFunctionBody(static_cast<FunctionDefNode&>(target));
                         break;
                     default:
                         break;
@@ -180,7 +180,7 @@ namespace LOICollection::frontend::ir {
                     this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
 
                 this->compileValue(*node.value, node.loc);
-                this->emitArithmeticOp(node.op, node.loc);
+                this->emitArithmeticOp(node.op, var.type, node.value->type, node.loc);
 
                 this->current.get().emit(OpCode::DUP, 0, node.loc);
                 this->emitStore(name, node.loc);
@@ -196,7 +196,7 @@ namespace LOICollection::frontend::ir {
                         this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
 
                     this->compileValue(*node.value, node.loc);
-                    this->emitArithmeticOp(node.op, node.loc);
+                    this->emitArithmeticOp(node.op, member.type, node.value->type, node.loc);
 
                     this->current.get().emit(OpCode::DUP, 0, node.loc);
                     this->emitStore(name, node.loc);
@@ -211,7 +211,7 @@ namespace LOICollection::frontend::ir {
                     this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
 
                 this->compileValue(*node.value, node.loc);
-                this->emitArithmeticOp(node.op, node.loc);
+                this->emitArithmeticOp(node.op, member.type, node.value->type, node.loc);
 
                 this->current.get().emit(OpCode::DUP, 0, node.loc);
                 this->current.get().emit(OpCode::ROT3, 0, node.loc);
@@ -228,7 +228,7 @@ namespace LOICollection::frontend::ir {
                 this->current.get().emit(OpCode::LOAD_INDEX, 0, node.loc);
 
                 this->compileValue(*node.value, node.loc);
-                this->emitArithmeticOp(node.op, node.loc);
+                this->emitArithmeticOp(node.op, indexNode.type, node.value->type, node.loc);
 
                 this->current.get().emit(OpCode::DUP, 0, node.loc);
                 this->current.get().emit(OpCode::SWAP2, 0, node.loc);
@@ -282,12 +282,15 @@ namespace LOICollection::frontend::ir {
             this->compileForInIterable(node, uid, *protocol);
     }
 
-    void Compiler::emitArithmeticOp(const std::string& op, const SourceLocation& loc) {
-        if (op == "+") this->current.get().emit(OpCode::ADD, 0, loc);
-        else if (op == "-") this->current.get().emit(OpCode::SUB, 0, loc);
-        else if (op == "*") this->current.get().emit(OpCode::MUL, 0, loc);
+    void Compiler::emitArithmeticOp(const std::string& op, const TypeInfo& leftType, const TypeInfo& rightType, const SourceLocation& loc) {
+        const bool intOp = (op == "+" || op == "-" || op == "*" || op == "%") &&
+            leftType.kind == TypeKind::Int && rightType.kind == TypeKind::Int;
+
+        if (op == "+") this->current.get().emit(intOp ? OpCode::ADD_I : OpCode::ADD, 0, loc);
+        else if (op == "-") this->current.get().emit(intOp ? OpCode::SUB_I : OpCode::SUB, 0, loc);
+        else if (op == "*") this->current.get().emit(intOp ? OpCode::MUL_I : OpCode::MUL, 0, loc);
         else if (op == "/") this->current.get().emit(OpCode::DIV, 0, loc);
-        else if (op == "%") this->current.get().emit(OpCode::MOD, 0, loc);
+        else if (op == "%") this->current.get().emit(intOp ? OpCode::MOD_I : OpCode::MOD, 0, loc);
         else
             this->diagnostics.addError(loc, "Unknown compound assignment op: " + op);
     }
@@ -416,12 +419,14 @@ namespace LOICollection::frontend::ir {
         this->compileValue(*node.left, node.loc);
         this->compileValue(*node.right, node.loc);
 
-        if (node.op == "==") this->current.get().emit(OpCode::CMP_EQ, 0, node.loc);
-        else if (node.op == "!=") this->current.get().emit(OpCode::CMP_NE, 0, node.loc);
-        else if (node.op == ">") this->current.get().emit(OpCode::CMP_GT, 0, node.loc);
-        else if (node.op == "<") this->current.get().emit(OpCode::CMP_LT, 0, node.loc);
-        else if (node.op == ">=") this->current.get().emit(OpCode::CMP_GE, 0, node.loc);
-        else if (node.op == "<=") this->current.get().emit(OpCode::CMP_LE, 0, node.loc);
+        const bool intOp = node.left->type.kind == TypeKind::Int && node.right->type.kind == TypeKind::Int;
+
+        if (node.op == "==") this->current.get().emit(intOp ? OpCode::CMP_EQ_I : OpCode::CMP_EQ, 0, node.loc);
+        else if (node.op == "!=") this->current.get().emit(intOp ? OpCode::CMP_NE_I : OpCode::CMP_NE, 0, node.loc);
+        else if (node.op == ">") this->current.get().emit(intOp ? OpCode::CMP_GT_I : OpCode::CMP_GT, 0, node.loc);
+        else if (node.op == "<") this->current.get().emit(intOp ? OpCode::CMP_LT_I : OpCode::CMP_LT, 0, node.loc);
+        else if (node.op == ">=") this->current.get().emit(intOp ? OpCode::CMP_GE_I : OpCode::CMP_GE, 0, node.loc);
+        else if (node.op == "<=") this->current.get().emit(intOp ? OpCode::CMP_LE_I : OpCode::CMP_LE, 0, node.loc);
         else
             this->diagnostics.addError(node.loc, "Unknown compare op: " + node.op);
     }
@@ -506,11 +511,14 @@ namespace LOICollection::frontend::ir {
         this->compileValue(*node.left, node.loc);
         this->compileValue(*node.right, node.loc);
 
-        if (node.op == "+") this->current.get().emit(OpCode::ADD, 0, node.loc);
-        else if (node.op == "-") this->current.get().emit(OpCode::SUB, 0, node.loc);
-        else if (node.op == "*") this->current.get().emit(OpCode::MUL, 0, node.loc);
+        const bool intOp = (node.op == "+" || node.op == "-" || node.op == "*" || node.op == "%") &&
+            node.left->type.kind == TypeKind::Int && node.right->type.kind == TypeKind::Int;
+
+        if (node.op == "+") this->current.get().emit(intOp ? OpCode::ADD_I : OpCode::ADD, 0, node.loc);
+        else if (node.op == "-") this->current.get().emit(intOp ? OpCode::SUB_I : OpCode::SUB, 0, node.loc);
+        else if (node.op == "*") this->current.get().emit(intOp ? OpCode::MUL_I : OpCode::MUL, 0, node.loc);
         else if (node.op == "/") this->current.get().emit(OpCode::DIV, 0, node.loc);
-        else if (node.op == "%") this->current.get().emit(OpCode::MOD, 0, node.loc);
+        else if (node.op == "%") this->current.get().emit(intOp ? OpCode::MOD_I : OpCode::MOD, 0, node.loc);
         else if (node.op == "^") this->current.get().emit(OpCode::POW, 0, node.loc);
         else
             this->diagnostics.addError(node.loc, "Unknown arithmetic op: " + node.op);
@@ -519,7 +527,9 @@ namespace LOICollection::frontend::ir {
     void Compiler::visit(UnaryNode& node) {
         this->compileValue(*node.operand, node.loc);
 
-        if (node.op == "-") this->current.get().emit(OpCode::NEG, 0, node.loc);
+        if (node.op == "-")
+            this->current.get().emit(
+                node.operand->type.kind == TypeKind::Int ? OpCode::NEG_I : OpCode::NEG, 0, node.loc);
         else if (node.op == "!") this->current.get().emit(OpCode::NOT, 0, node.loc);
         else if (node.op == "+") {}
         else

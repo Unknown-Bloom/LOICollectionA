@@ -36,7 +36,7 @@ namespace LOICollection::frontend::ir {
 
         class Reader {
         public:
-            explicit Reader(const std::string& blob) : blob(blob) {}
+            explicit Reader(const std::string& data) : blob(data) {}
 
             bool raw(void* out, size_t size) {
                 if (this->pos + size > this->blob.size())
