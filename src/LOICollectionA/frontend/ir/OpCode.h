@@ -54,6 +54,9 @@ namespace LOICollection::frontend::ir {
         CMP_EQ_I, CMP_NE_I, CMP_GT_I, CMP_LT_I, CMP_GE_I, CMP_LE_I,
         NEG_I,
 
+        ADD_SS, SUB_SS, MUL_SS, MOD_SS,
+        CMP_EQ_SS, CMP_NE_SS, CMP_GT_SS, CMP_LT_SS, CMP_GE_SS, CMP_LE_SS,
+
         COUNT
     };
 }

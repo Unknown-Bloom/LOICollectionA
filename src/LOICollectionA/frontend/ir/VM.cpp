@@ -160,9 +160,11 @@ namespace LOICollection::frontend::ir {
                 case OpCode::CALL_FUNC: case OpCode::CALL_LAMBDA: this->execFunctionCall(s); break;
                 case OpCode::ADD: case OpCode::SUB: case OpCode::MUL: case OpCode::DIV: case OpCode::MOD: case OpCode::POW:
                 case OpCode::ADD_I: case OpCode::SUB_I: case OpCode::MUL_I: case OpCode::MOD_I:
+                case OpCode::ADD_SS: case OpCode::SUB_SS: case OpCode::MUL_SS: case OpCode::MOD_SS:
                     this->execArithmetic(s); break;
                 case OpCode::CMP_EQ: case OpCode::CMP_NE: case OpCode::CMP_GT: case OpCode::CMP_LT: case OpCode::CMP_GE: case OpCode::CMP_LE:
                 case OpCode::CMP_EQ_I: case OpCode::CMP_NE_I: case OpCode::CMP_GT_I: case OpCode::CMP_LT_I: case OpCode::CMP_GE_I: case OpCode::CMP_LE_I:
+                case OpCode::CMP_EQ_SS: case OpCode::CMP_NE_SS: case OpCode::CMP_GT_SS: case OpCode::CMP_LT_SS: case OpCode::CMP_GE_SS: case OpCode::CMP_LE_SS:
                     this->execComparison(s); break;
                 case OpCode::LOGIC_AND: case OpCode::LOGIC_OR: case OpCode::NEG: case OpCode::NOT: case OpCode::NEG_I: this->execLogic(s); break;
                 case OpCode::CALL: case OpCode::CALL_MACRO: this->execHostCall(s); break;

@@ -35,6 +35,16 @@ namespace LOICollection::frontend::ir {
             case OpCode::CMP_GE_I: return OpCode::CMP_GE;
             case OpCode::CMP_LE_I: return OpCode::CMP_LE;
             case OpCode::NEG_I: return OpCode::NEG;
+            case OpCode::ADD_SS: return OpCode::ADD;
+            case OpCode::SUB_SS: return OpCode::SUB;
+            case OpCode::MUL_SS: return OpCode::MUL;
+            case OpCode::MOD_SS: return OpCode::MOD;
+            case OpCode::CMP_EQ_SS: return OpCode::CMP_EQ;
+            case OpCode::CMP_NE_SS: return OpCode::CMP_NE;
+            case OpCode::CMP_GT_SS: return OpCode::CMP_GT;
+            case OpCode::CMP_LT_SS: return OpCode::CMP_LT;
+            case OpCode::CMP_GE_SS: return OpCode::CMP_GE;
+            case OpCode::CMP_LE_SS: return OpCode::CMP_LE;
             default: return op;
         }
     }
@@ -454,6 +464,62 @@ namespace LOICollection::frontend::ir {
                 auto ll = this->pop();
                 this->push(VM::applyArithmetic(ll, rr, instr.op, this->diagnostics, this->currentLoc));
             } break;
+            case OpCode::ADD_SS: case OpCode::SUB_SS: case OpCode::MUL_SS: case OpCode::MOD_SS: {
+                const int ls = instr.operand >> 16;
+                const int rs = instr.operand & 0xFFFF;
+                const Frame& frame = s.frame;
+
+                if (ls < 0 || rs < 0 ||
+                    static_cast<size_t>(ls) >= frame.localsSize ||
+                    static_cast<size_t>(rs) >= frame.localsSize) {
+                    this->diagnostics.addError(this->currentLoc, "Slot index out of range");
+                    break;
+                }
+
+                const auto& lv = this->localPool[frame.localsBase + static_cast<size_t>(ls)];
+                const auto& rv = this->localPool[frame.localsBase + static_cast<size_t>(rs)];
+
+                if (!std::holds_alternative<int>(lv) || !std::holds_alternative<int>(rv)) {
+                    this->push(lv);
+                    this->push(rv);
+                    auto rr = this->pop();
+                    auto ll = this->pop();
+                    this->push(VM::applyArithmetic(ll, rr, genericOp(instr.op), this->diagnostics, this->currentLoc));
+                    break;
+                }
+
+                const int l = std::get<int>(lv);
+                const int r = std::get<int>(rv);
+
+                if (instr.op == OpCode::MOD_SS) {
+                    if (r == 0) {
+                        this->diagnostics.addError(this->currentLoc, "Modulo by zero");
+                        this->push(0);
+                        break;
+                    }
+                    this->push(l % r);
+                    break;
+                }
+
+                long long res = 0;
+                switch (instr.op) {
+                    case OpCode::ADD_SS: res = static_cast<long long>(l) + r; break;
+                    case OpCode::SUB_SS: res = static_cast<long long>(l) - r; break;
+                    case OpCode::MUL_SS: res = static_cast<long long>(l) * r; break;
+                    default: break;
+                }
+
+                if (res < std::numeric_limits<int>::min() || res > std::numeric_limits<int>::max()) {
+                    this->diagnostics.addError(this->currentLoc,
+                        instr.op == OpCode::ADD_SS ? "Integer overflow in addition"
+                        : instr.op == OpCode::SUB_SS ? "Integer overflow in subtraction"
+                        : "Integer overflow in multiplication");
+                    this->push(0);
+                    break;
+                }
+
+                this->push(static_cast<int>(res));
+            } break;
             default: break;
         }
     }
@@ -485,6 +551,48 @@ namespace LOICollection::frontend::ir {
                     case OpCode::CMP_LT_I: b = l < r; break;
                     case OpCode::CMP_GE_I: b = l >= r; break;
                     case OpCode::CMP_LE_I: b = l <= r; break;
+                    default: break;
+                }
+
+                this->push(b);
+                return;
+            }
+            case OpCode::CMP_EQ_SS: case OpCode::CMP_NE_SS: case OpCode::CMP_GT_SS:
+            case OpCode::CMP_LT_SS: case OpCode::CMP_GE_SS: case OpCode::CMP_LE_SS: {
+                const int ls = instr.operand >> 16;
+                const int rs = instr.operand & 0xFFFF;
+                const Frame& frame = s.frame;
+
+                if (ls < 0 || rs < 0 ||
+                    static_cast<size_t>(ls) >= frame.localsSize ||
+                    static_cast<size_t>(rs) >= frame.localsSize) {
+                    this->diagnostics.addError(this->currentLoc, "Slot index out of range");
+                    return;
+                }
+
+                const auto& lv = this->localPool[frame.localsBase + static_cast<size_t>(ls)];
+                const auto& rv = this->localPool[frame.localsBase + static_cast<size_t>(rs)];
+
+                if (!std::holds_alternative<int>(lv) || !std::holds_alternative<int>(rv)) {
+                    this->push(lv);
+                    this->push(rv);
+                    auto rr = this->pop();
+                    auto ll = this->pop();
+                    this->push(VM::applyComparison(ll, rr, genericOp(instr.op), this->diagnostics, this->currentLoc));
+                    return;
+                }
+
+                const int l = std::get<int>(lv);
+                const int r = std::get<int>(rv);
+
+                bool b = false;
+                switch (instr.op) {
+                    case OpCode::CMP_EQ_SS: b = l == r; break;
+                    case OpCode::CMP_NE_SS: b = l != r; break;
+                    case OpCode::CMP_GT_SS: b = l > r; break;
+                    case OpCode::CMP_LT_SS: b = l < r; break;
+                    case OpCode::CMP_GE_SS: b = l >= r; break;
+                    case OpCode::CMP_LE_SS: b = l <= r; break;
                     default: break;
                 }
 

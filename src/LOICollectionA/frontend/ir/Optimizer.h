@@ -14,7 +14,8 @@ namespace LOICollection::frontend::ir {
             DeadCode = 1u << 1,
             DeadStore = 1u << 2,
             LICM = 1u << 3,
-            CSE = 1u << 4
+            CSE = 1u << 4,
+            Fuse = 1u << 5
         };
 
         static constexpr unsigned allPasses =
@@ -22,7 +23,8 @@ namespace LOICollection::frontend::ir {
             static_cast<unsigned>(Pass::DeadCode) |
             static_cast<unsigned>(Pass::DeadStore) |
             static_cast<unsigned>(Pass::LICM) |
-            static_cast<unsigned>(Pass::CSE);
+            static_cast<unsigned>(Pass::CSE) |
+            static_cast<unsigned>(Pass::Fuse);
 
         struct Stats {
             size_t folded = 0;

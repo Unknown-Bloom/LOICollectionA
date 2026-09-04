@@ -56,6 +56,16 @@ using namespace LOICollection::frontend::ir;
                 case OpCode::CMP_GE_I: return OpCode::CMP_GE;
                 case OpCode::CMP_LE_I: return OpCode::CMP_LE;
                 case OpCode::NEG_I: return OpCode::NEG;
+                case OpCode::ADD_SS: return OpCode::ADD;
+                case OpCode::SUB_SS: return OpCode::SUB;
+                case OpCode::MUL_SS: return OpCode::MUL;
+                case OpCode::MOD_SS: return OpCode::MOD;
+                case OpCode::CMP_EQ_SS: return OpCode::CMP_EQ;
+                case OpCode::CMP_NE_SS: return OpCode::CMP_NE;
+                case OpCode::CMP_GT_SS: return OpCode::CMP_GT;
+                case OpCode::CMP_LT_SS: return OpCode::CMP_LT;
+                case OpCode::CMP_GE_SS: return OpCode::CMP_GE;
+                case OpCode::CMP_LE_SS: return OpCode::CMP_LE;
                 default: return op;
             }
         }
@@ -968,4 +978,37 @@ TEST(OptimizerTest, CSEInsideLoopKeepsJumpOffsets) {
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
     EXPECT_EQ(VM::valueToString(result), "150");
+}
+
+TEST(OptimizerTest, FusesSlotArithmetic) {
+    const std::string source =
+        "func f(a: int, b: int) -> int { let t = a + b; return t * 2; }\n"
+        "f(2, 3)";
+
+    auto withFuse = compileAndOptimize(source);
+    auto withoutFuse = compileAndOptimize(
+        source, Optimizer::allPasses & ~static_cast<unsigned>(Optimizer::Pass::Fuse));
+
+    EXPECT_FALSE(withFuse.diagnostics.hasErrors());
+    EXPECT_FALSE(withoutFuse.diagnostics.hasErrors());
+
+    auto hasRaw = [](const BytecodeChunk& chunk, OpCode op) {
+        for (const auto& instr : chunk.code)
+            if (instr.op == op)
+                return true;
+        for (const auto& body : chunk.methodBodies)
+            for (const auto& instr : body->code)
+                if (instr.op == op)
+                    return true;
+        return false;
+    };
+
+    EXPECT_TRUE(hasRaw(*withFuse.chunk, OpCode::ADD_SS));
+    EXPECT_FALSE(hasRaw(*withoutFuse.chunk, OpCode::ADD_SS));
+
+    VM vm(withFuse.diagnostics);
+    EXPECT_EQ(VM::valueToString(vm.run(withFuse.chunk, {})), "10");
+
+    VM vmOff(withoutFuse.diagnostics);
+    EXPECT_EQ(VM::valueToString(vmOff.run(withoutFuse.chunk, {})), "10");
 }

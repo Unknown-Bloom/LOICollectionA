@@ -90,6 +90,19 @@ namespace LOICollection::frontend::ir::opt {
                 out.pushes = 1;
                 return true;
 
+            case OpCode::ADD_SS:
+            case OpCode::SUB_SS:
+            case OpCode::MUL_SS:
+            case OpCode::MOD_SS:
+            case OpCode::CMP_EQ_SS:
+            case OpCode::CMP_NE_SS:
+            case OpCode::CMP_GT_SS:
+            case OpCode::CMP_LT_SS:
+            case OpCode::CMP_GE_SS:
+            case OpCode::CMP_LE_SS:
+                out.pushes = 1;
+                return true;
+
             case OpCode::JMP_IF_FALSE:
             case OpCode::JMP_IF_TRUE:
                 out.pops = 1;
