@@ -18,7 +18,7 @@ TEST(ASTTest, NodeTypesFromParsing) {
         ASSERT_EQ(ast->getType(), ASTNode::Type::Program);
 
         auto& program = static_cast<ProgramNode&>(*ast);
-        ASSERT_EQ(program.parts.size(), 1);
+        ASSERT_EQ(program.parts.size(), 1u);
         EXPECT_EQ(program.parts[0]->getType(), ASTNode::Type::Value);
     }
     {

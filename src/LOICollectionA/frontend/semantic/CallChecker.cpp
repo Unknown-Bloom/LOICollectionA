@@ -174,10 +174,10 @@ namespace LOICollection::frontend {
         }
 
         if (targetType.kind == TypeKind::Unknown) {
-            ClassCall& classes = ClassCall::getInstance();
-            for (const auto& className : classes.getClassNames()) {
+            ClassCall& classCall = ClassCall::getInstance();
+            for (const auto& className : classCall.getClassNames()) {
                 std::vector<CallbackTypeArgs> signatures =
-                    classes.getValueMethodSignatures(className, node.methodName);
+                    classCall.getValueMethodSignatures(className, node.methodName);
 
                 for (const auto& signature : signatures) {
                     if (matchesNativeSignature(signature, argTypes)) {

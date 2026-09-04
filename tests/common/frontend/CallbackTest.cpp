@@ -110,7 +110,7 @@ TEST(CallbackTest, ValuesToTypes) {
     CallbackTypeValues vals = { 1, 2.5f, std::string("hello"), true };
     
     auto types = valuesToTypes(vals, diagnostics);
-    ASSERT_EQ(types.size(), 4);
+    ASSERT_EQ(types.size(), 4u);
     EXPECT_EQ(types[0], ParamType::INT);
     EXPECT_EQ(types[1], ParamType::FLOAT);
     EXPECT_EQ(types[2], ParamType::STRING);
@@ -433,7 +433,7 @@ TEST(ClassCallCacheTest, MethodCacheFollowsReceiverClass) {
     auto& cc = ClassCall::getInstance();
     DiagnosticEngine diagnostics;
 
-    for (const std::string& name : { "CacheLeft", "CacheRight" }) {
+    for (const char* name : { "CacheLeft", "CacheRight" }) {
         cc.registerClass(name, {});
         cc.registerMethod(name, "who",
             [name](const ObjectRef&, const CallbackTypeValues&) -> TypedValue {

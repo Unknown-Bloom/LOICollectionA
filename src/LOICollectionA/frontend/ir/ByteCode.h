@@ -13,7 +13,7 @@ namespace LOICollection::frontend::ir {
         OpCode op;
 
         int operand;
-        SourceLocation loc;
+        SourceLocation loc{};
     };
 
     struct FuncMeta {
