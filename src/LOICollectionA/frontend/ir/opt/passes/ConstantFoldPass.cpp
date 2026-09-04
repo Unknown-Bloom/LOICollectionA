@@ -181,8 +181,6 @@ namespace {
     }
 
     ConstantFoldPass::Step ConstantFoldPass::foldNullish(const Instruction& instr, int oldIdx) {
-        // Fuse a preceding untargeted DUP into the test: DUP_IS_NONE keeps the operand
-        // on the stack instead of duplicating it first.
         const bool fusable = instr.op == OpCode::IS_NONE && oldIdx > 0 &&
             mChunk.code[oldIdx - 1].op == OpCode::DUP &&
             !mJumps.isTarget(oldIdx) && !mJumps.isTarget(oldIdx - 1) &&
@@ -729,8 +727,6 @@ namespace {
         const StackEntry cond = popEntry(mCtx.stack);
         const bool targeted = mJumps.isTarget(oldIdx);
 
-        // `if c then X else X` — both arms land on the same place, so the branch itself
-        // is dead and only the condition's side effects remain.
         const bool deadElse = oldIdx + 1 < static_cast<int>(mChunk.code.size()) &&
             mChunk.code[oldIdx + 1].op == OpCode::JMP &&
             !targeted && !mJumps.isTarget(oldIdx + 1) &&
@@ -768,9 +764,6 @@ namespace {
             return step;
         }
 
-        // A constant condition that other code still reads cannot be dropped, but the
-        // branch can still become unconditional when the producing push is only ever
-        // re-entered by backward jumps.
         if (isKnown(cond) && !knownValue(cond).removable && isScalarValue(knownValue(cond).value) &&
             alwaysJumps(instr.op, knownValue(cond).value) &&
             reachedOnlyByBackwardJumps(knownValue(cond).producer)) {
@@ -782,8 +775,6 @@ namespace {
             return { mCtx.emit({ OpCode::JMP, instr.operand, instr.loc }), false };
         }
 
-        // Fuse a preceding untargeted NOT into the branch: invert the condition instead
-        // of computing its negation at runtime.
         const bool fusable = oldIdx > 0 && mChunk.code[oldIdx - 1].op == OpCode::NOT &&
             !targeted && !mJumps.isTarget(oldIdx - 1) &&
             !mCtx.foldedCode.empty() && mCtx.foldedCode.back().op == OpCode::NOT;

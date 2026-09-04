@@ -17,8 +17,6 @@ namespace LOICollection::frontend::ir::opt {
         return op == OpCode::STORE_VAR || op == OpCode::STORE_SLOT;
     }
 
-    // Opcodes that may execute script code (function bodies, lambdas, constructors) or
-    // create object fields; any of these can rebind what a later LOAD_VAR resolves to.
     inline bool canWriteVariables(OpCode op) {
         switch (op) {
             case OpCode::CALL:

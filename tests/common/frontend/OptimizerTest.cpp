@@ -328,8 +328,6 @@ TEST(OptimizerTest, LoopWithContinueSurvivesOptimization) {
     EXPECT_FALSE(program.diagnostics.hasErrors());
 }
 
-// ---- local constant propagation ------------------------------------------------
-
 TEST(OptimizerTest, PropagatesStoredScalarIntoArithmetic) {
     auto program = compileAndOptimize("let x = 4; x += 0; x");
 
@@ -368,8 +366,6 @@ TEST(OptimizerTest, PropagationTracksLatestAssignment) {
 }
 
 TEST(OptimizerTest, PropagationDropsSlotForNonScalarValues) {
-    // Forwarding an array reference would alias the pool constant on every load,
-    // so storing a non-scalar must retire the slot and keep the LOAD_VAR.
     auto program = compileAndOptimize("let x = [1, 2]; x = [3, 4]; x");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
@@ -391,8 +387,6 @@ TEST(OptimizerTest, PropagationInvalidatedAtBranchMerge) {
     EXPECT_EQ(VM::valueToString(vmTaken.run(taken.chunk, {})), "10");
     EXPECT_FALSE(taken.diagnostics.hasErrors());
 
-    // If the then-branch's r = 10 leaked past the merge point, the untaken
-    // branch would wrongly observe 10.
     auto untaken = compileAndOptimize(source + "f(2)");
     EXPECT_FALSE(untaken.diagnostics.hasErrors());
 
@@ -409,8 +403,6 @@ TEST(OptimizerTest, PropagationInvalidatedAtBranchMerge) {
 }
 
 TEST(OptimizerTest, PropagationInvalidatedByCalls) {
-    // Calls can execute script code that rebinds the variable, so the load
-    // after CALL must not be forwarded even though x was just stored.
     ir::BytecodeChunk chunk;
     chunk.constants.push_back(3);
     chunk.constants.push_back(std::string("x"));
@@ -463,11 +455,7 @@ TEST(OptimizerTest, PropagationInvalidatedByNativeMethodCalls) {
     EXPECT_EQ(optimizeInvalidationProbe(OpCode::CALL_NATIVE_METHOD), 5u);
 }
 
-// ---- NOT / branch fusion -------------------------------------------------------
-
 TEST(OptimizerTest, FusesNotIntoBranchOpcode) {
-    // The loop head is a merge point, so `i >= 2` stays dynamic: the leading
-    // NOT must fuse into the branch instead of evaluating at runtime.
     auto program = compileAndOptimize("let i = 0; while (!(i >= 2)) [ i = i + 1; ]; i");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
@@ -482,12 +470,7 @@ TEST(OptimizerTest, FusesNotIntoBranchOpcode) {
     EXPECT_FALSE(program.diagnostics.hasErrors());
 }
 
-// ---- fixed-point iteration -----------------------------------------------------
-
 TEST(OptimizerTest, FixedPointExposesPropagationAfterBranchRemoval) {
-    // Pass one folds x == 1 and deletes the else branch; only once the jump
-    // over it is gone does the final LOAD_VAR stop being a merge target and
-    // become forwardable in the next pass.
     auto program = compileAndOptimize("let x = 1; if (x == 1) [ let y = 10 : y = 20 ]; y");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
@@ -517,11 +500,7 @@ TEST(OptimizerTest, FixedPointExposesPropagationAfterBranchRemoval) {
     EXPECT_FALSE(program.diagnostics.hasErrors());
 }
 
-// ---- algebraic identity elimination --------------------------------------------
-
 TEST(OptimizerTest, EliminatesAlgebraicIdentities) {
-    // The kept operand is duplicated, so it is known but not removable: the
-    // identities 42 + 0 and 42 * 1 must drop their operand instead of folding.
     ir::BytecodeChunk chunk;
     chunk.constants.push_back(42);
     chunk.constants.push_back(0);
@@ -591,8 +570,6 @@ TEST(OptimizerTest, EliminatesFloatMulDivPowIdentities) {
 }
 
 TEST(OptimizerTest, FloatAddZeroIsNotIdentityFolded) {
-    // IEEE754: -0.0 + 0.0 == +0.0, so dropping a float `+ 0.0` would flip the
-    // sign of negative zero. The ADD has to run.
     ir::BytecodeChunk chunk;
     chunk.constants.push_back(-0.0f);
     chunk.constants.push_back(0.0f);
@@ -618,11 +595,7 @@ TEST(OptimizerTest, FloatAddZeroIsNotIdentityFolded) {
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ---- signed-zero semantics -----------------------------------------------------
-
 TEST(OptimizerTest, PropagatesSignedZeroCorrectly) {
-    // Pool dedup must not conflate -0.0 with +0.0 even though they compare
-    // equal: the forwarded load has to reproduce the stored negative zero.
     auto program = compileAndOptimize("let x = -0.0; x");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
@@ -636,7 +609,6 @@ TEST(OptimizerTest, PropagatesSignedZeroCorrectly) {
 }
 
 TEST(OptimizerTest, FoldsFloatAddZeroWithCorrectSignedZero) {
-    // Full folding computes the IEEE754 result: -0.0 + 0.0 is +0.0.
     auto program = compileAndOptimize("let x = -0.0; let y = x + 0.0; y");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
@@ -647,8 +619,6 @@ TEST(OptimizerTest, FoldsFloatAddZeroWithCorrectSignedZero) {
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "0");
     EXPECT_FALSE(program.diagnostics.hasErrors());
 }
-
-// ---- IS_NONE folding and constant-pool dedup -----------------------------------
 
 TEST(OptimizerTest, FoldsIsNoneOpcode) {
     ir::BytecodeChunk chunk;
@@ -699,7 +669,6 @@ TEST(OptimizerTest, ReusesScalarConstantsWhenFolding) {
     ASSERT_EQ(chunk.code.size(), 2u);
     EXPECT_EQ(chunk.code[0].op, OpCode::PUSH_INT);
     EXPECT_EQ(chunk.code[1].op, OpCode::HALT);
-    // the folded 5 reuses the existing pool slot instead of appending one
     EXPECT_EQ(chunk.code[0].operand, 0);
     EXPECT_EQ(chunk.constants.size(), 2u);
     EXPECT_EQ(std::get<int>(chunk.constants[chunk.code[0].operand]), 5);
@@ -710,11 +679,7 @@ TEST(OptimizerTest, ReusesScalarConstantsWhenFolding) {
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ---- coalesce keeps duplicated operands ----------------------------------------
-
 TEST(OptimizerTest, CoalesceKeepsDuplicatedOperand) {
-    // ?? duplicates the left operand before IS_NONE; the duplicate protects
-    // the original push from being dropped while only the copy is consumed.
     auto noneCase = compileAndOptimize("let x = None; x ?? \"d\"");
 
     EXPECT_FALSE(noneCase.diagnostics.hasErrors());
@@ -731,8 +696,6 @@ TEST(OptimizerTest, CoalesceKeepsDuplicatedOperand) {
     EXPECT_EQ(VM::valueToString(vmValue.run(valueCase.chunk, {})), "v");
     EXPECT_FALSE(valueCase.diagnostics.hasErrors());
 }
-
-// ---- pass mask (A/B comparison inside a single build) --------------------------
 
 namespace {
     std::string runChunk(const std::shared_ptr<BytecodeChunk>& chunk, DiagnosticEngine& diag) {

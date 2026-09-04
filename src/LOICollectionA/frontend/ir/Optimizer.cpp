@@ -25,9 +25,6 @@ namespace LOICollection::frontend::ir {
         return total;
     }
 
-    // Repeat the single pass until it stops making progress: each round's rewrites
-    // (forwarded loads, folded branches, dropped operands) expose new opportunities
-    // for the next round. A pass that changes nothing means the chunk is stable.
     Optimizer::Stats Optimizer::optimizeChunk(BytecodeChunk& chunk) {
         Stats total;
 
