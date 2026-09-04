@@ -14,59 +14,59 @@
 using namespace LOICollection::frontend;
 using namespace LOICollection::frontend::ir;
 
-namespace {
-    struct CompiledProgram {
-        std::shared_ptr<BytecodeChunk> chunk;
-        DiagnosticEngine diagnostics;
-        Optimizer::Stats stats;
-    };
+    namespace {
+        struct CompiledProgram {
+            std::shared_ptr<BytecodeChunk> chunk;
+            DiagnosticEngine diagnostics;
+            Optimizer::Stats stats;
+        };
 
-    CompiledProgram compileAndOptimize(const std::string& source, unsigned mask = Optimizer::allPasses) {
-        CompiledProgram out;
+        CompiledProgram compileAndOptimize(const std::string& source, unsigned mask = Optimizer::allPasses) {
+            CompiledProgram out;
 
-        Lexer lexer(source, out.diagnostics);
-        Parser parser(lexer, out.diagnostics);
+            Lexer lexer(source, out.diagnostics);
+            Parser parser(lexer, out.diagnostics);
 
-        auto ast = parser.parse();
-        if (ast->getType() == ASTNode::Type::Program) {
-            SemanticAnalyzer analyzer(out.diagnostics);
-            analyzer.analyze(static_cast<ProgramNode&>(*ast));
+            auto ast = parser.parse();
+            if (ast->getType() == ASTNode::Type::Program) {
+                SemanticAnalyzer analyzer(out.diagnostics);
+                analyzer.analyze(static_cast<ProgramNode&>(*ast));
+            }
+
+            Compiler compiler(out.diagnostics);
+            out.chunk = std::make_shared<BytecodeChunk>(compiler.compile(*ast));
+
+            Optimizer optimizer;
+            optimizer.setEnabledPasses(mask);
+            out.stats = optimizer.optimize(*out.chunk);
+
+            return out;
         }
 
-        Compiler compiler(out.diagnostics);
-        out.chunk = std::make_shared<BytecodeChunk>(compiler.compile(*ast));
-
-        Optimizer optimizer;
-        optimizer.setEnabledPasses(mask);
-        out.stats = optimizer.optimize(*out.chunk);
-
-        return out;
-    }
-
-    OpCode canonicalOp(OpCode op) {
-        switch (op) {
-            case OpCode::ADD_I: return OpCode::ADD;
-            case OpCode::SUB_I: return OpCode::SUB;
-            case OpCode::MUL_I: return OpCode::MUL;
-            case OpCode::MOD_I: return OpCode::MOD;
-            case OpCode::CMP_EQ_I: return OpCode::CMP_EQ;
-            case OpCode::CMP_NE_I: return OpCode::CMP_NE;
-            case OpCode::CMP_GT_I: return OpCode::CMP_GT;
-            case OpCode::CMP_LT_I: return OpCode::CMP_LT;
-            case OpCode::CMP_GE_I: return OpCode::CMP_GE;
-            case OpCode::CMP_LE_I: return OpCode::CMP_LE;
-            case OpCode::NEG_I: return OpCode::NEG;
-            default: return op;
+        OpCode canonicalOp(OpCode op) {
+            switch (op) {
+                case OpCode::ADD_I: return OpCode::ADD;
+                case OpCode::SUB_I: return OpCode::SUB;
+                case OpCode::MUL_I: return OpCode::MUL;
+                case OpCode::MOD_I: return OpCode::MOD;
+                case OpCode::CMP_EQ_I: return OpCode::CMP_EQ;
+                case OpCode::CMP_NE_I: return OpCode::CMP_NE;
+                case OpCode::CMP_GT_I: return OpCode::CMP_GT;
+                case OpCode::CMP_LT_I: return OpCode::CMP_LT;
+                case OpCode::CMP_GE_I: return OpCode::CMP_GE;
+                case OpCode::CMP_LE_I: return OpCode::CMP_LE;
+                case OpCode::NEG_I: return OpCode::NEG;
+                default: return op;
+            }
         }
-    }
 
-    bool containsOp(const BytecodeChunk& chunk, OpCode op) {
-        for (const auto& instr : chunk.code)
-            if (canonicalOp(instr.op) == op)
-                return true;
+        bool containsOp(const BytecodeChunk& chunk, OpCode op) {
+            for (const auto& instr : chunk.code)
+                if (canonicalOp(instr.op) == op)
+                    return true;
 
-        return false;
-    }
+            return false;
+        }
 }
 
 TEST(OptimizerTest, ConstantFolding) {
@@ -440,28 +440,28 @@ TEST(OptimizerTest, PropagationInvalidatedByCalls) {
     EXPECT_EQ(chunk.code.size(), 5u);
 }
 
-namespace {
-    std::size_t optimizeInvalidationProbe(OpCode op) {
-        ir::BytecodeChunk chunk;
-        chunk.constants.push_back(3);
-        chunk.constants.push_back(std::string("x"));
-        chunk.constants.push_back(std::string("hook"));
+    namespace {
+        std::size_t optimizeInvalidationProbe(OpCode op) {
+            ir::BytecodeChunk chunk;
+            chunk.constants.push_back(3);
+            chunk.constants.push_back(std::string("x"));
+            chunk.constants.push_back(std::string("hook"));
 
-        chunk.code = {
-            { OpCode::PUSH_INT, 0 },
-            { OpCode::STORE_VAR, 1 },
-            { op, 2 },
-            { OpCode::LOAD_VAR, 1 },
-            { OpCode::HALT, 0 }
-        };
+            chunk.code = {
+                { OpCode::PUSH_INT, 0 },
+                { OpCode::STORE_VAR, 1 },
+                { op, 2 },
+                { OpCode::LOAD_VAR, 1 },
+                { OpCode::HALT, 0 }
+            };
 
-        Optimizer optimizer;
-        optimizer.optimize(chunk);
+            Optimizer optimizer;
+            optimizer.optimize(chunk);
 
-        EXPECT_TRUE(containsOp(chunk, OpCode::LOAD_VAR));
+            EXPECT_TRUE(containsOp(chunk, OpCode::LOAD_VAR));
 
-        return chunk.code.size();
-    }
+            return chunk.code.size();
+        }
 }
 
 TEST(OptimizerTest, PropagationInvalidatedByByNameMethodCalls) {
@@ -714,11 +714,11 @@ TEST(OptimizerTest, CoalesceKeepsDuplicatedOperand) {
     EXPECT_FALSE(valueCase.diagnostics.hasErrors());
 }
 
-namespace {
-    std::string runChunk(const std::shared_ptr<BytecodeChunk>& chunk, DiagnosticEngine& diag) {
-        VM vm(diag);
-        return VM::valueToString(vm.run(chunk, {}));
-    }
+    namespace {
+        std::string runChunk(const std::shared_ptr<BytecodeChunk>& chunk, DiagnosticEngine& diag) {
+            VM vm(diag);
+            return VM::valueToString(vm.run(chunk, {}));
+        }
 }
 
 TEST(OptimizerTest, PassMaskTurnsOffConstantFolding) {
@@ -764,15 +764,15 @@ TEST(OptimizerTest, PassMaskDefaultsToEveryPassEnabled) {
     EXPECT_EQ(optimizer.enabledPasses(), Optimizer::allPasses);
 }
 
-namespace {
-    int countOp(const BytecodeChunk& chunk, OpCode op) {
-        int total = 0;
-        for (const auto& instr : chunk.code)
-            if (canonicalOp(instr.op) == op)
-                ++total;
+    namespace {
+        int countOp(const BytecodeChunk& chunk, OpCode op) {
+            int total = 0;
+            for (const auto& instr : chunk.code)
+                if (canonicalOp(instr.op) == op)
+                    ++total;
 
-        return total;
-    }
+            return total;
+        }
 }
 
 TEST(OptimizerTest, RemovesStoreOverwrittenBeforeAnyRead) {
@@ -890,22 +890,22 @@ TEST(OptimizerTest, RejectedFoldKeepsItsOperandsOnTheStack) {
     EXPECT_NE(program.diagnostics.getErrorMessage().find("Modulo requires integral types"), std::string::npos);
 }
 
-namespace {
-    int countOpEverywhere(const BytecodeChunk& chunk, OpCode op) {
-        int total = countOp(chunk, op);
-        for (const auto& body : chunk.methodBodies)
-            total += countOp(*body, op);
-        return total;
-    }
+    namespace {
+        int countOpEverywhere(const BytecodeChunk& chunk, OpCode op) {
+            int total = countOp(chunk, op);
+            for (const auto& body : chunk.methodBodies)
+                total += countOp(*body, op);
+            return total;
+        }
 
-    bool containsOpEverywhere(const BytecodeChunk& chunk, OpCode op) {
-        if (containsOp(chunk, op))
-            return true;
-        for (const auto& body : chunk.methodBodies)
-            if (containsOp(*body, op))
+        bool containsOpEverywhere(const BytecodeChunk& chunk, OpCode op) {
+            if (containsOp(chunk, op))
                 return true;
-        return false;
-    }
+            for (const auto& body : chunk.methodBodies)
+                if (containsOp(*body, op))
+                    return true;
+            return false;
+        }
 }
 
 TEST(OptimizerTest, EliminatesRepeatedSubexpression) {

@@ -16,56 +16,56 @@
 #include "LOICollectionA/frontend/ir/opt/passes/ConstantFoldPass.h"
 
 namespace LOICollection::frontend::ir::opt {
-namespace {
-    bool alwaysJumps(OpCode op, const ValueNode::ValueType& value) {
-        const bool truthy = VM::valueToBool(value);
-        return (op == OpCode::JMP_IF_FALSE) ? !truthy : truthy;
-    }
-
-    OpCode invertedBranch(OpCode op) {
-        return op == OpCode::JMP_IF_FALSE ? OpCode::JMP_IF_TRUE : OpCode::JMP_IF_FALSE;
-    }
-
-    bool applyUnaryOperator(OpCode op, const ValueNode::ValueType& value, ValueNode::ValueType& out) {
-        if (op == OpCode::NEG || op == OpCode::NEG_I) {
-            DiagnosticEngine foldDiag;
-            out = VM::applyUnary(value, OpCode::NEG, foldDiag);
-            return !foldDiag.hasErrors();
+    namespace {
+        bool alwaysJumps(OpCode op, const ValueNode::ValueType& value) {
+            const bool truthy = VM::valueToBool(value);
+            return (op == OpCode::JMP_IF_FALSE) ? !truthy : truthy;
         }
 
-        out = !VM::valueToBool(value);
-        return true;
-    }
+        OpCode invertedBranch(OpCode op) {
+            return op == OpCode::JMP_IF_FALSE ? OpCode::JMP_IF_TRUE : OpCode::JMP_IF_FALSE;
+        }
 
-    bool valuesEqual(const ValueNode::ValueType& left, const ValueNode::ValueType& right) {
-        if (auto li = std::get_if<int>(&left)) {
-            if (auto ri = std::get_if<int>(&right)) return *li == *ri;
-            if (auto rf = std::get_if<float>(&right)) return *li == *rf;
+        bool applyUnaryOperator(OpCode op, const ValueNode::ValueType& value, ValueNode::ValueType& out) {
+            if (op == OpCode::NEG || op == OpCode::NEG_I) {
+                DiagnosticEngine foldDiag;
+                out = VM::applyUnary(value, OpCode::NEG, foldDiag);
+                return !foldDiag.hasErrors();
+            }
+
+            out = !VM::valueToBool(value);
+            return true;
+        }
+
+        bool valuesEqual(const ValueNode::ValueType& left, const ValueNode::ValueType& right) {
+            if (auto li = std::get_if<int>(&left)) {
+                if (auto ri = std::get_if<int>(&right)) return *li == *ri;
+                if (auto rf = std::get_if<float>(&right)) return *li == *rf;
+                return false;
+            }
+            if (auto lf = std::get_if<float>(&left)) {
+                if (auto ri = std::get_if<int>(&right)) return *lf == *ri;
+                if (auto rf = std::get_if<float>(&right)) return *lf == *rf;
+                return false;
+            }
+            if (auto ls = std::get_if<std::string>(&left)) {
+                if (auto rs = std::get_if<std::string>(&right)) return *ls == *rs;
+                return false;
+            }
+            if (auto lb = std::get_if<bool>(&left)) {
+                if (auto rb = std::get_if<bool>(&right)) return *lb == *rb;
+                return false;
+            }
+            if (auto lo = std::get_if<ObjectRef>(&left)) {
+                if (auto ro = std::get_if<ObjectRef>(&right)) return *lo == *ro;
+                return false;
+            }
+            if (auto la = std::get_if<ArrayRef>(&left)) {
+                if (auto ra = std::get_if<ArrayRef>(&right)) return *la == *ra;
+                return false;
+            }
             return false;
         }
-        if (auto lf = std::get_if<float>(&left)) {
-            if (auto ri = std::get_if<int>(&right)) return *lf == *ri;
-            if (auto rf = std::get_if<float>(&right)) return *lf == *rf;
-            return false;
-        }
-        if (auto ls = std::get_if<std::string>(&left)) {
-            if (auto rs = std::get_if<std::string>(&right)) return *ls == *rs;
-            return false;
-        }
-        if (auto lb = std::get_if<bool>(&left)) {
-            if (auto rb = std::get_if<bool>(&right)) return *lb == *rb;
-            return false;
-        }
-        if (auto lo = std::get_if<ObjectRef>(&left)) {
-            if (auto ro = std::get_if<ObjectRef>(&right)) return *lo == *ro;
-            return false;
-        }
-        if (auto la = std::get_if<ArrayRef>(&left)) {
-            if (auto ra = std::get_if<ArrayRef>(&right)) return *la == *ra;
-            return false;
-        }
-        return false;
-    }
 }
 
     void ConstantFoldPass::run(bool enabled) {

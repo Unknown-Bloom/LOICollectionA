@@ -5,10 +5,10 @@
 #include "LOICollectionA/frontend/ir/opt/analysis/ControlFlowGraph.h"
 
 namespace LOICollection::frontend::ir::opt {
-namespace {
-    int jumpTarget(const Instruction& instr, int at) {
-        return at + 1 + instr.operand;
-    }
+    namespace {
+        int jumpTarget(const Instruction& instr, int at) {
+            return at + 1 + instr.operand;
+        }
 }
 
     std::vector<int> ControlFlowGraph::leaders(const std::vector<Instruction>& code) {

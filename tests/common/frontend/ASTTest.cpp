@@ -41,16 +41,16 @@ TEST(ASTTest, NodeTypesFromParsing) {
     }
 }
 
-namespace {
-    ASTNode::Type firstPartType(const std::string& source) {
-        DiagnosticEngine diagnostics;
-        Lexer lexer(source, diagnostics);
-        Parser parser(lexer, diagnostics);
+    namespace {
+        ASTNode::Type firstPartType(const std::string& source) {
+            DiagnosticEngine diagnostics;
+            Lexer lexer(source, diagnostics);
+            Parser parser(lexer, diagnostics);
 
-        auto ast = parser.parse();
-        auto& program = static_cast<ProgramNode&>(*ast);
-        return program.parts[0]->getType();
-    }
+            auto ast = parser.parse();
+            auto& program = static_cast<ProgramNode&>(*ast);
+            return program.parts[0]->getType();
+        }
 }
 
 TEST(ASTTest, ExpressionNodeTypes) {

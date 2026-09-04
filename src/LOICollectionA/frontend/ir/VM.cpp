@@ -208,17 +208,17 @@ namespace LOICollection::frontend::ir {
         Frame& frame = s.frame;
         switch (instr.op) {
             case OpCode::JMP_IF_FALSE: {
-                    auto cond = this->pop();
-                    if (!VM::valueToBool(cond))
-                        frame.ip += instr.operand;
+                auto cond = this->pop();
+                if (!VM::valueToBool(cond))
+                    frame.ip += instr.operand;
             } break;
             case OpCode::JMP_IF_TRUE: {
-                    auto cond = this->pop();
-                    if (VM::valueToBool(cond))
-                        frame.ip += instr.operand;
+                auto cond = this->pop();
+                if (VM::valueToBool(cond))
+                    frame.ip += instr.operand;
             } break;
             case OpCode::JMP: {
-                    frame.ip += instr.operand;
+                frame.ip += instr.operand;
             } break;
             default: break;
         }

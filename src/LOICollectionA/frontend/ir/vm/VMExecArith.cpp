@@ -525,24 +525,34 @@ namespace LOICollection::frontend::ir {
         const auto& instr = s.instr;
         switch (instr.op) {
             case OpCode::LOGIC_AND: {
-                    auto r = this->pop();
-                    auto l = this->pop();
+                auto r = this->pop();
+                auto l = this->pop();
 
-                    this->push(VM::valueToBool(l) && VM::valueToBool(r));
+                this->push(VM::valueToBool(l) && VM::valueToBool(r));
             } break;
             case OpCode::LOGIC_OR: {
-                    auto r = this->pop();
-                    auto l = this->pop();
+                auto r = this->pop();
+                auto l = this->pop();
 
-                    this->push(VM::valueToBool(l) || VM::valueToBool(r));
+                this->push(VM::valueToBool(l) || VM::valueToBool(r));
             } break;
             case OpCode::NEG_I: {
-                    if (this->stack.empty() || !std::holds_alternative<int>(this->stack.back())) {
-                        auto v = this->pop();
-                        this->push(VM::applyUnary(v, OpCode::NEG, this->diagnostics, this->currentLoc));
-                        break;
-                    }
+                if (this->stack.empty() || !std::holds_alternative<int>(this->stack.back())) {
+                    auto v = this->pop();
+                    this->push(VM::applyUnary(v, OpCode::NEG, this->diagnostics, this->currentLoc));
+                    break;
+                }
 
+                const int v = std::get<int>(this->stack.back());
+                if (v == std::numeric_limits<int>::min()) {
+                    this->diagnostics.addError(this->currentLoc, "Integer overflow in unary negation");
+                    this->stack.back() = 0;
+                    break;
+                }
+                this->stack.back() = -v;
+            } break;
+            case OpCode::NEG: {
+                if (!this->stack.empty() && std::holds_alternative<int>(this->stack.back())) {
                     const int v = std::get<int>(this->stack.back());
                     if (v == std::numeric_limits<int>::min()) {
                         this->diagnostics.addError(this->currentLoc, "Integer overflow in unary negation");
@@ -550,25 +560,15 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
                     this->stack.back() = -v;
-            } break;
-            case OpCode::NEG: {
-                    if (!this->stack.empty() && std::holds_alternative<int>(this->stack.back())) {
-                        const int v = std::get<int>(this->stack.back());
-                        if (v == std::numeric_limits<int>::min()) {
-                            this->diagnostics.addError(this->currentLoc, "Integer overflow in unary negation");
-                            this->stack.back() = 0;
-                            break;
-                        }
-                        this->stack.back() = -v;
-                        break;
-                    }
-                    auto v = this->pop();
-                    this->push(VM::applyUnary(v, instr.op, this->diagnostics, this->currentLoc));
+                    break;
+                }
+                auto v = this->pop();
+                this->push(VM::applyUnary(v, instr.op, this->diagnostics, this->currentLoc));
             } break;
             case OpCode::NOT: {
-                    auto v = this->pop();
+                auto v = this->pop();
 
-                    this->push(!VM::valueToBool(v));
+                this->push(!VM::valueToBool(v));
             } break;
             default: break;
         }

@@ -3,14 +3,14 @@
 #include "LOICollectionA/frontend/ir/opt/passes/DeadStorePass.h"
 
 namespace LOICollection::frontend::ir::opt {
-namespace {
-    bool capturesLocals(OpCode op) {
-        return op == OpCode::MAKE_LAMBDA;
-    }
+    namespace {
+        bool capturesLocals(OpCode op) {
+            return op == OpCode::MAKE_LAMBDA;
+        }
 
-    bool closesBlock(OpCode op) {
-        return isJump(op) || isTerminator(op) || canWriteVariables(op) || capturesLocals(op);
-    }
+        bool closesBlock(OpCode op) {
+            return isJump(op) || isTerminator(op) || canWriteVariables(op) || capturesLocals(op);
+        }
 }
 
     void DeadStorePass::run(bool enabled) {
