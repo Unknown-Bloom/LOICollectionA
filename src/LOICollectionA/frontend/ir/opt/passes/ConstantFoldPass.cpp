@@ -27,7 +27,7 @@ namespace {
     }
 
     bool applyUnaryOperator(OpCode op, const ValueNode::ValueType& value, ValueNode::ValueType& out) {
-        if (op == OpCode::NEG) {
+        if (op == OpCode::NEG || op == OpCode::NEG_I) {
             DiagnosticEngine foldDiag;
             out = VM::applyUnary(value, OpCode::NEG, foldDiag);
             return !foldDiag.hasErrors();
@@ -129,9 +129,14 @@ namespace {
             case OpCode::DIV:
             case OpCode::MOD:
             case OpCode::POW:
+            case OpCode::ADD_I:
+            case OpCode::SUB_I:
+            case OpCode::MUL_I:
+            case OpCode::MOD_I:
                 return foldArithmetic(instr, oldIdx);
 
             case OpCode::NEG:
+            case OpCode::NEG_I:
             case OpCode::NOT:
                 return foldUnary(instr, oldIdx);
 
@@ -141,6 +146,12 @@ namespace {
             case OpCode::CMP_LT:
             case OpCode::CMP_GE:
             case OpCode::CMP_LE:
+            case OpCode::CMP_EQ_I:
+            case OpCode::CMP_NE_I:
+            case OpCode::CMP_GT_I:
+            case OpCode::CMP_LT_I:
+            case OpCode::CMP_GE_I:
+            case OpCode::CMP_LE_I:
             case OpCode::LOGIC_AND:
             case OpCode::LOGIC_OR:
                 return foldComparison(instr, oldIdx);
@@ -377,7 +388,10 @@ namespace {
             return {};
         }
 
-        if ((instr.op == OpCode::ADD || instr.op == OpCode::MUL) && identityEligible(instr.op, right, left)) {
+        const bool identityOp = instr.op == OpCode::ADD || instr.op == OpCode::MUL ||
+            instr.op == OpCode::ADD_I || instr.op == OpCode::MUL_I;
+
+        if (identityOp && identityEligible(instr.op, right, left)) {
             mCtx.drop(knownValue(left).producer);
             mCtx.stack.emplace_back(knownValue(right));
             ++mCtx.stats.folded;

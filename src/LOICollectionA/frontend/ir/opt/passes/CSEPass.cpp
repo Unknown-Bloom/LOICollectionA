@@ -46,6 +46,16 @@ namespace LOICollection::frontend::ir::opt {
                 case OpCode::CMP_LT:
                 case OpCode::CMP_GE:
                 case OpCode::CMP_LE:
+                case OpCode::ADD_I:
+                case OpCode::SUB_I:
+                case OpCode::MUL_I:
+                case OpCode::MOD_I:
+                case OpCode::CMP_EQ_I:
+                case OpCode::CMP_NE_I:
+                case OpCode::CMP_GT_I:
+                case OpCode::CMP_LT_I:
+                case OpCode::CMP_GE_I:
+                case OpCode::CMP_LE_I:
                     return true;
                 default:
                     return false;
@@ -55,6 +65,7 @@ namespace LOICollection::frontend::ir::opt {
         bool isPureUnary(OpCode op) {
             switch (op) {
                 case OpCode::NEG:
+                case OpCode::NEG_I:
                 case OpCode::NOT:
                 case OpCode::INSTANCEOF:
                 case OpCode::LOAD_LEN:
@@ -81,19 +92,6 @@ namespace LOICollection::frontend::ir::opt {
             }
         }
 
-        bool isStackReset(OpCode op) {
-            switch (op) {
-                case OpCode::ROT3:
-                case OpCode::SWAP2:
-                case OpCode::DUP2:
-                case OpCode::UNWRAP:
-                case OpCode::BIND_THIS:
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
         std::string opName(OpCode op) {
             switch (op) {
                 case OpCode::ADD: return "ADD";
@@ -110,6 +108,17 @@ namespace LOICollection::frontend::ir::opt {
                 case OpCode::CMP_LE: return "LE";
                 case OpCode::NEG: return "NEG";
                 case OpCode::NOT: return "NOT";
+                case OpCode::ADD_I: return "ADDI";
+                case OpCode::SUB_I: return "SUBI";
+                case OpCode::MUL_I: return "MULI";
+                case OpCode::MOD_I: return "MODI";
+                case OpCode::CMP_EQ_I: return "EQI";
+                case OpCode::CMP_NE_I: return "NEI";
+                case OpCode::CMP_GT_I: return "GTI";
+                case OpCode::CMP_LT_I: return "LTI";
+                case OpCode::CMP_GE_I: return "GEI";
+                case OpCode::CMP_LE_I: return "LEI";
+                case OpCode::NEG_I: return "NEGI";
                 case OpCode::INSTANCEOF: return "INST";
                 case OpCode::LOAD_LEN: return "LEN";
                 case OpCode::DUP_IS_NONE: return "ISNONE";

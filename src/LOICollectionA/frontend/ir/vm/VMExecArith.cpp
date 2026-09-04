@@ -22,7 +22,25 @@
 
 namespace LOICollection::frontend::ir {
 
+    static OpCode genericOp(OpCode op) {
+        switch (op) {
+            case OpCode::ADD_I: return OpCode::ADD;
+            case OpCode::SUB_I: return OpCode::SUB;
+            case OpCode::MUL_I: return OpCode::MUL;
+            case OpCode::MOD_I: return OpCode::MOD;
+            case OpCode::CMP_EQ_I: return OpCode::CMP_EQ;
+            case OpCode::CMP_NE_I: return OpCode::CMP_NE;
+            case OpCode::CMP_GT_I: return OpCode::CMP_GT;
+            case OpCode::CMP_LT_I: return OpCode::CMP_LT;
+            case OpCode::CMP_GE_I: return OpCode::CMP_GE;
+            case OpCode::CMP_LE_I: return OpCode::CMP_LE;
+            case OpCode::NEG_I: return OpCode::NEG;
+            default: return op;
+        }
+    }
+
     static std::string_view opToken(OpCode op) {
+        op = genericOp(op);
         switch (op) {
             case OpCode::ADD: return "+";
             case OpCode::SUB: return "-";
@@ -71,6 +89,7 @@ namespace LOICollection::frontend::ir {
     }
 
     ValueNode::ValueType VM::applyArithmetic(const ValueNode::ValueType& left, const ValueNode::ValueType& right, OpCode op, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
+        op = genericOp(op);
         const std::string_view token = opToken(op);
 
         if (auto leftObj = std::get_if<ObjectRef>(&left)) {
@@ -186,13 +205,14 @@ namespace LOICollection::frontend::ir {
     }
 
     ValueNode::ValueType VM::applyUnary(const ValueNode::ValueType& operand, OpCode op, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
+        op = genericOp(op);
         return std::visit([&diagnostics, &loc, op](auto&& arg) -> ValueNode::ValueType {
             using T = std::decay_t<decltype(arg)>;
 
             if constexpr (std::is_arithmetic_v<T>) {
                 switch (op) {
                     case OpCode::NEG:
-                        if constexpr (std::is_integral_v<T>) {
+                        if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>) {
                             if (arg == std::numeric_limits<int>::min()) {
                                 diagnostics.addError(loc, "Integer overflow in unary negation");
                                 return 0;
@@ -230,6 +250,7 @@ namespace LOICollection::frontend::ir {
     }
 
     bool VM::applyComparison(const ValueNode::ValueType& left, const ValueNode::ValueType& right, OpCode op, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
+        op = genericOp(op);
         const std::string_view token = opToken(op);
 
         if (auto leftObj = std::get_if<ObjectRef>(&left)) {
@@ -339,6 +360,49 @@ namespace LOICollection::frontend::ir {
     void VM::execArithmetic(ExecArgs& s) {
         const auto& instr = s.instr;
         switch (instr.op) {
+            case OpCode::ADD_I: case OpCode::SUB_I: case OpCode::MUL_I: case OpCode::MOD_I: {
+                if (this->stack.size() < 2 || !std::holds_alternative<int>(this->stack.back()) ||
+                    !std::holds_alternative<int>(this->stack[this->stack.size() - 2])) {
+                    auto rr = this->pop();
+                    auto ll = this->pop();
+                    this->push(VM::applyArithmetic(ll, rr, genericOp(instr.op), this->diagnostics, this->currentLoc));
+                    break;
+                }
+
+                const int r = std::get<int>(this->stack.back());
+                this->stack.pop_back();
+                const int l = std::get<int>(this->stack.back());
+                this->stack.pop_back();
+
+                if (instr.op == OpCode::MOD_I) {
+                    if (r == 0) {
+                        this->diagnostics.addError(this->currentLoc, "Modulo by zero");
+                        this->push(0);
+                        break;
+                    }
+                    this->push(l % r);
+                    break;
+                }
+
+                long long res = 0;
+                switch (instr.op) {
+                    case OpCode::ADD_I: res = static_cast<long long>(l) + r; break;
+                    case OpCode::SUB_I: res = static_cast<long long>(l) - r; break;
+                    case OpCode::MUL_I: res = static_cast<long long>(l) * r; break;
+                    default: break;
+                }
+
+                if (res < std::numeric_limits<int>::min() || res > std::numeric_limits<int>::max()) {
+                    this->diagnostics.addError(this->currentLoc,
+                        instr.op == OpCode::ADD_I ? "Integer overflow in addition"
+                        : instr.op == OpCode::SUB_I ? "Integer overflow in subtraction"
+                        : "Integer overflow in multiplication");
+                    this->push(0);
+                    break;
+                }
+
+                this->push(static_cast<int>(res));
+            } break;
             case OpCode::ADD: case OpCode::SUB: case OpCode::MUL: case OpCode::MOD: {
                 auto r = topInt(this->stack, 0);
                 auto l = topInt(this->stack, 1);
@@ -396,6 +460,40 @@ namespace LOICollection::frontend::ir {
 
     void VM::execComparison(ExecArgs& s) {
         const auto& instr = s.instr;
+
+        switch (instr.op) {
+            case OpCode::CMP_EQ_I: case OpCode::CMP_NE_I: case OpCode::CMP_GT_I:
+            case OpCode::CMP_LT_I: case OpCode::CMP_GE_I: case OpCode::CMP_LE_I: {
+                if (this->stack.size() < 2 || !std::holds_alternative<int>(this->stack.back()) ||
+                    !std::holds_alternative<int>(this->stack[this->stack.size() - 2])) {
+                    auto rr = this->pop();
+                    auto ll = this->pop();
+                    this->push(VM::applyComparison(ll, rr, genericOp(instr.op), this->diagnostics, this->currentLoc));
+                    return;
+                }
+
+                const int r = std::get<int>(this->stack.back());
+                this->stack.pop_back();
+                const int l = std::get<int>(this->stack.back());
+                this->stack.pop_back();
+
+                bool b = false;
+                switch (instr.op) {
+                    case OpCode::CMP_EQ_I: b = l == r; break;
+                    case OpCode::CMP_NE_I: b = l != r; break;
+                    case OpCode::CMP_GT_I: b = l > r; break;
+                    case OpCode::CMP_LT_I: b = l < r; break;
+                    case OpCode::CMP_GE_I: b = l >= r; break;
+                    case OpCode::CMP_LE_I: b = l <= r; break;
+                    default: break;
+                }
+
+                this->push(b);
+                return;
+            }
+            default: break;
+        }
+
         auto r = topInt(this->stack, 0);
         auto l = topInt(this->stack, 1);
         if (l && r) {
@@ -438,8 +536,13 @@ namespace LOICollection::frontend::ir {
 
                     this->push(VM::valueToBool(l) || VM::valueToBool(r));
             } break;
-            case OpCode::NEG: {
-                if (!this->stack.empty() && std::holds_alternative<int>(this->stack.back())) {
+            case OpCode::NEG_I: {
+                    if (this->stack.empty() || !std::holds_alternative<int>(this->stack.back())) {
+                        auto v = this->pop();
+                        this->push(VM::applyUnary(v, OpCode::NEG, this->diagnostics, this->currentLoc));
+                        break;
+                    }
+
                     const int v = std::get<int>(this->stack.back());
                     if (v == std::numeric_limits<int>::min()) {
                         this->diagnostics.addError(this->currentLoc, "Integer overflow in unary negation");
@@ -447,10 +550,20 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
                     this->stack.back() = -v;
-                    break;
-                }
-                auto v = this->pop();
-                this->push(VM::applyUnary(v, instr.op, this->diagnostics, this->currentLoc));
+            } break;
+            case OpCode::NEG: {
+                    if (!this->stack.empty() && std::holds_alternative<int>(this->stack.back())) {
+                        const int v = std::get<int>(this->stack.back());
+                        if (v == std::numeric_limits<int>::min()) {
+                            this->diagnostics.addError(this->currentLoc, "Integer overflow in unary negation");
+                            this->stack.back() = 0;
+                            break;
+                        }
+                        this->stack.back() = -v;
+                        break;
+                    }
+                    auto v = this->pop();
+                    this->push(VM::applyUnary(v, instr.op, this->diagnostics, this->currentLoc));
             } break;
             case OpCode::NOT: {
                     auto v = this->pop();

@@ -74,6 +74,17 @@ namespace LOICollection::frontend::ir::opt {
             case OpCode::TYPE_OF:
             case OpCode::HAS_VALUE:
             case OpCode::IS_NONE:
+            case OpCode::ADD_I:
+            case OpCode::SUB_I:
+            case OpCode::MUL_I:
+            case OpCode::MOD_I:
+            case OpCode::CMP_EQ_I:
+            case OpCode::CMP_NE_I:
+            case OpCode::CMP_GT_I:
+            case OpCode::CMP_LT_I:
+            case OpCode::CMP_GE_I:
+            case OpCode::CMP_LE_I:
+            case OpCode::NEG_I:
                 return true;
 
             case OpCode::LOAD_SLOT:

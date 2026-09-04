@@ -56,6 +56,7 @@ namespace LOICollection::frontend::ir::opt {
             case OpCode::HAS_VALUE:
             case OpCode::IS_NONE:
             case OpCode::NEG:
+            case OpCode::NEG_I:
             case OpCode::NOT:
                 out.pops = 1;
                 out.pushes = 1;
@@ -73,6 +74,16 @@ namespace LOICollection::frontend::ir::opt {
             case OpCode::CMP_LT:
             case OpCode::CMP_GE:
             case OpCode::CMP_LE:
+            case OpCode::ADD_I:
+            case OpCode::SUB_I:
+            case OpCode::MUL_I:
+            case OpCode::MOD_I:
+            case OpCode::CMP_EQ_I:
+            case OpCode::CMP_NE_I:
+            case OpCode::CMP_GT_I:
+            case OpCode::CMP_LT_I:
+            case OpCode::CMP_GE_I:
+            case OpCode::CMP_LE_I:
             case OpCode::LOGIC_AND:
             case OpCode::LOGIC_OR:
                 out.pops = 2;

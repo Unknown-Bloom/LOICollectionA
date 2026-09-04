@@ -43,9 +43,26 @@ namespace {
         return out;
     }
 
+    OpCode canonicalOp(OpCode op) {
+        switch (op) {
+            case OpCode::ADD_I: return OpCode::ADD;
+            case OpCode::SUB_I: return OpCode::SUB;
+            case OpCode::MUL_I: return OpCode::MUL;
+            case OpCode::MOD_I: return OpCode::MOD;
+            case OpCode::CMP_EQ_I: return OpCode::CMP_EQ;
+            case OpCode::CMP_NE_I: return OpCode::CMP_NE;
+            case OpCode::CMP_GT_I: return OpCode::CMP_GT;
+            case OpCode::CMP_LT_I: return OpCode::CMP_LT;
+            case OpCode::CMP_GE_I: return OpCode::CMP_GE;
+            case OpCode::CMP_LE_I: return OpCode::CMP_LE;
+            case OpCode::NEG_I: return OpCode::NEG;
+            default: return op;
+        }
+    }
+
     bool containsOp(const BytecodeChunk& chunk, OpCode op) {
         for (const auto& instr : chunk.code)
-            if (instr.op == op)
+            if (canonicalOp(instr.op) == op)
                 return true;
 
         return false;
@@ -751,7 +768,7 @@ namespace {
     int countOp(const BytecodeChunk& chunk, OpCode op) {
         int total = 0;
         for (const auto& instr : chunk.code)
-            if (instr.op == op)
+            if (canonicalOp(instr.op) == op)
                 ++total;
 
         return total;

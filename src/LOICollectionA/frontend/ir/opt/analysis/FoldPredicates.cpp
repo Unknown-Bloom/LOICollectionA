@@ -60,6 +60,12 @@ namespace LOICollection::frontend::ir::opt {
                 return keptIsInt && identityIntZero;
             case OpCode::MUL: // x * 1 / 1 * x
                 return (keptIsInt && identityIntOne) || (keptIsFloat && (identityIntOne || identityFloatOne));
+            case OpCode::ADD_I:
+                return keptIsInt && identityIntZero;
+            case OpCode::SUB_I:
+                return keptIsInt && identityIntZero;
+            case OpCode::MUL_I:
+                return keptIsInt && identityIntOne;
             case OpCode::DIV: // x / 1
                 return keptIsFloat && (identityIntOne || identityFloatOne);
             case OpCode::POW: // x ^ 1

@@ -158,9 +158,13 @@ namespace LOICollection::frontend::ir {
                 case OpCode::CALL_METHOD: case OpCode::CALL_METHOD_VIRTUAL: case OpCode::CALL_METHOD_BY_NAME: case OpCode::CALL_SUPER_CTOR: this->execMethodDispatch(s); break;
                 case OpCode::CALL_NATIVE_METHOD: this->execNativeCall(s); break;
                 case OpCode::CALL_FUNC: case OpCode::CALL_LAMBDA: this->execFunctionCall(s); break;
-                case OpCode::ADD: case OpCode::SUB: case OpCode::MUL: case OpCode::DIV: case OpCode::MOD: case OpCode::POW: this->execArithmetic(s); break;
-                case OpCode::CMP_EQ: case OpCode::CMP_NE: case OpCode::CMP_GT: case OpCode::CMP_LT: case OpCode::CMP_GE: case OpCode::CMP_LE: this->execComparison(s); break;
-                case OpCode::LOGIC_AND: case OpCode::LOGIC_OR: case OpCode::NEG: case OpCode::NOT: this->execLogic(s); break;
+                case OpCode::ADD: case OpCode::SUB: case OpCode::MUL: case OpCode::DIV: case OpCode::MOD: case OpCode::POW:
+                case OpCode::ADD_I: case OpCode::SUB_I: case OpCode::MUL_I: case OpCode::MOD_I:
+                    this->execArithmetic(s); break;
+                case OpCode::CMP_EQ: case OpCode::CMP_NE: case OpCode::CMP_GT: case OpCode::CMP_LT: case OpCode::CMP_GE: case OpCode::CMP_LE:
+                case OpCode::CMP_EQ_I: case OpCode::CMP_NE_I: case OpCode::CMP_GT_I: case OpCode::CMP_LT_I: case OpCode::CMP_GE_I: case OpCode::CMP_LE_I:
+                    this->execComparison(s); break;
+                case OpCode::LOGIC_AND: case OpCode::LOGIC_OR: case OpCode::NEG: case OpCode::NOT: case OpCode::NEG_I: this->execLogic(s); break;
                 case OpCode::CALL: case OpCode::CALL_MACRO: this->execHostCall(s); break;
                 case OpCode::JMP_IF_FALSE: case OpCode::JMP_IF_TRUE: case OpCode::JMP: this->execBranch(s); break;
                 case OpCode::RETURN: {

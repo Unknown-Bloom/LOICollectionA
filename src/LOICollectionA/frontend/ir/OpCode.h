@@ -50,6 +50,10 @@ namespace LOICollection::frontend::ir {
         LOAD_FIELD_SLOT,
         STORE_FIELD_SLOT,
 
+        ADD_I, SUB_I, MUL_I, MOD_I,
+        CMP_EQ_I, CMP_NE_I, CMP_GT_I, CMP_LT_I, CMP_GE_I, CMP_LE_I,
+        NEG_I,
+
         COUNT
     };
 }
