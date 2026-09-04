@@ -146,12 +146,13 @@ namespace LOICollection::frontend::ir::opt {
                 int redirect = -1;
 
                 for (size_t e = 0; e < edits.size(); ++e) {
-                    if (edits[e].at == pos)
+                    if (edits[e].at == pos) {
                         for (const Instruction& ins : edits[e].insert) {
                             placed[e].push_back(static_cast<int>(rewritten.size()));
                             rewritten.push_back(ins);
                             origin.push_back(-1);
                         }
+                    }
 
                     if (pos >= edits[e].at && pos < edits[e].eraseTo) {
                         erased = true;
