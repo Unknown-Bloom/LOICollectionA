@@ -31,7 +31,7 @@ namespace LOICollection::frontend::ir::opt {
             if (std::ranges::find(into, value) == into.end())
                 into.push_back(value);
         }
-}
+    }
 
     bool NaturalLoop::contains(int block) const {
         return std::ranges::find(blocks, block) != blocks.end();

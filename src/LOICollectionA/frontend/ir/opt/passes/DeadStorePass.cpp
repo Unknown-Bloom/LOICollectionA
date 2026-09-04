@@ -11,7 +11,7 @@ namespace LOICollection::frontend::ir::opt {
         bool closesBlock(OpCode op) {
             return isJump(op) || isTerminator(op) || canWriteVariables(op) || capturesLocals(op);
         }
-}
+    }
 
     void DeadStorePass::run(bool enabled) {
         mPending.clear();

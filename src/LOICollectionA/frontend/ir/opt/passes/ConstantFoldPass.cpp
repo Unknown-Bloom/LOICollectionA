@@ -66,7 +66,7 @@ namespace LOICollection::frontend::ir::opt {
             }
             return false;
         }
-}
+    }
 
     void ConstantFoldPass::run(bool enabled) {
         for (size_t i = 0; i < mChunk.code.size(); ++i) {

@@ -9,7 +9,7 @@ namespace LOICollection::frontend::ir::opt {
         int jumpTarget(const Instruction& instr, int at) {
             return at + 1 + instr.operand;
         }
-}
+    }
 
     std::vector<int> ControlFlowGraph::leaders(const std::vector<Instruction>& code) {
         const int size = static_cast<int>(code.size());
