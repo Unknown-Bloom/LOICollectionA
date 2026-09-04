@@ -14,8 +14,7 @@ TEST(StdlibArrayTest, PushReturnsNewLength) {
 }
 
 TEST(StdlibArrayTest, ValueMethodOnDynamicTarget) {
-    // Method call on a dynamically typed target (member read): the dispatch is
-    // deferred to the VM, which selects "Array"/"String" by the runtime value.
+    
     EXPECT_EQ(eval("class Holder { public: value = []; } let h = new Holder(); h.value.push(1); h.value.push(2); h.value"), "[1, 2]");
     EXPECT_EQ(eval("class Holder { public: value = []; } let h = new Holder(); let v = h.value; v.push(7); v.length()"), "1");
     EXPECT_EQ(eval("class Holder { public: value = \"a,b\"; } let h = new Holder(); h.value.split(\",\")[1]"), "b");

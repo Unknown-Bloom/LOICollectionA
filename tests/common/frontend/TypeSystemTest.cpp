@@ -39,8 +39,7 @@ TEST(TypeSystemTest, OptionalEmptyAccessErrors) {
 }
 
 TEST(TypeSystemTest, NoneOnlyInOptionalContext) {
-    // Dynamic variables may hold 'None' (needed for '??' / '?.' semantics);
-    // typed variables still reject it.
+    
     EXPECT_EQ(eval("let c = None; c ?? 1"), "1");
     EXPECT_THROW(eval("let c: int = None;"), std::runtime_error);
     EXPECT_THROW(eval("func f() -> int { return None; } f()"), std::runtime_error);

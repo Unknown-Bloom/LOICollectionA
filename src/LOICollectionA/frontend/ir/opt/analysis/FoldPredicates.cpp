@@ -16,10 +16,6 @@ namespace LOICollection::frontend::ir::opt {
         return std::monostate{};
     }
 
-    // ValueType holds non-comparable alternatives, so scalar equality is checked per kind.
-    // Floats compare bitwise-sign aware: `+0.0 == -0.0` under IEEE754, but they are
-    // observably different values (`to_string` and `1/x` disagree), so pool dedup must
-    // never conflate them.
     bool sameScalar(const ValueNode::ValueType& a, const ValueNode::ValueType& b) {
         if (a.index() != b.index() || !isScalarValue(a))
             return false;
@@ -37,9 +33,6 @@ namespace LOICollection::frontend::ir::opt {
         }
     }
 
-    // `kept op identity == kept`, applicable when the kept operand is a known number of a
-    // compatible kind. Divided by type-promotion rules: `x / 1` and `x ^ 1` always produce
-    // floats, and float `x + 0.0` flips -0.0, so those combinations stay untouched.
     bool identityEligible(OpCode op, const StackEntry& kept, const StackEntry& identity) {
         if (!isKnown(kept) || !isKnown(identity) || !knownValue(identity).removable)
             return false;
@@ -54,11 +47,11 @@ namespace LOICollection::frontend::ir::opt {
         bool identityFloatOne = std::holds_alternative<float>(identityValue) && std::get<float>(identityValue) == 1.0f;
 
         switch (op) {
-            case OpCode::ADD: // x + 0 / 0 + x
+            case OpCode::ADD: 
                 return keptIsInt && identityIntZero;
-            case OpCode::SUB: // x - 0
+            case OpCode::SUB: 
                 return keptIsInt && identityIntZero;
-            case OpCode::MUL: // x * 1 / 1 * x
+            case OpCode::MUL: 
                 return (keptIsInt && identityIntOne) || (keptIsFloat && (identityIntOne || identityFloatOne));
             case OpCode::ADD_I:
                 return keptIsInt && identityIntZero;
@@ -66,9 +59,9 @@ namespace LOICollection::frontend::ir::opt {
                 return keptIsInt && identityIntZero;
             case OpCode::MUL_I:
                 return keptIsInt && identityIntOne;
-            case OpCode::DIV: // x / 1
+            case OpCode::DIV: 
                 return keptIsFloat && (identityIntOne || identityFloatOne);
-            case OpCode::POW: // x ^ 1
+            case OpCode::POW: 
                 return keptIsFloat && (identityIntOne || identityFloatOne);
             default:
                 return false;

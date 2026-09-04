@@ -90,8 +90,7 @@ namespace LOICollection::frontend {
                         return parseNumber();
 
                     if (peekChar() == '.') {
-                        /* "1...10" would otherwise lex as "1", "..", ".10" and
-                         * fail later with a misleading message — reject it here. */
+                        
                         if (position + 2 < input.size() && input[position + 2] == '.') {
                             diagnostics.addError({line, column, position},
                                 "Unexpected '...' (a range uses exactly two dots: '..')");

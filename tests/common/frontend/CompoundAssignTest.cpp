@@ -40,8 +40,7 @@ TEST(CompoundAssignTest, IndexTargetPreservesOtherElements) {
 }
 
 TEST(CompoundAssignTest, IndexTargetEvaluatedExactlyOnce) {
-    // The index expression of "arr[n()] += 1" must be evaluated exactly once;
-    // a second evaluation would double the side effect inside n().
+    
     EXPECT_EQ(eval(
         "let calls = 0; "
         "let arr = [10, 20]; "
