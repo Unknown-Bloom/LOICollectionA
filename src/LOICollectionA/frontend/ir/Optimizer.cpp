@@ -28,9 +28,6 @@ namespace LOICollection::frontend::ir {
     // Repeat the single pass until it stops making progress: each round's rewrites
     // (forwarded loads, folded branches, dropped operands) expose new opportunities
     // for the next round. A pass that changes nothing means the chunk is stable.
-    // Hoisting runs after the fixpoint so that loops which turn out to be dead are
-    // already gone, and runs before a last fixpoint so the peephole passes can tidy
-    // up the DUP/POP pair the hoist leaves around the loop.
     Optimizer::Stats Optimizer::optimizeChunk(BytecodeChunk& chunk) {
         Stats total;
 

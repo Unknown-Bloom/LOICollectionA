@@ -37,7 +37,6 @@ namespace {
         return true;
     }
 
-    // Mirrors ArrayClass::valuesEqual: int/float compare numerically, the rest by identity.
     bool valuesEqual(const ValueNode::ValueType& left, const ValueNode::ValueType& right) {
         if (auto li = std::get_if<int>(&left)) {
             if (auto ri = std::get_if<int>(&right)) return *li == *ri;

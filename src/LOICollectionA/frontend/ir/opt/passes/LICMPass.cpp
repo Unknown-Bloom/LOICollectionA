@@ -114,13 +114,6 @@ namespace LOICollection::frontend::ir::opt {
         const std::vector<bool> written = this->writtenSlots(cfg, loop);
         const auto& header = cfg.blocks()[loop.header];
 
-        // Pull the longest run of loop-invariant code off the top of the header. The
-        // hoisted sequence must leave exactly one value on the stack: the preheader
-        // computes it once, the header duplicates it for each iteration, and the single
-        // exit pops the leftover so every path stays balanced.
-        // A run that reaches below its own first value would read whatever the loop
-        // was entered with, and only the first iteration would see it: the back edge
-        // arrives with a different stack. Stop before such an instruction instead.
         std::vector<Instruction> invariant;
         int depth = 0;
         int net = 0;
@@ -150,8 +143,6 @@ namespace LOICollection::frontend::ir::opt {
 
         edits.push_back({ insertAt, false, -1, invariant });
 
-        // The header's first instruction is replaced in place by the DUP that feeds
-        // each iteration, so back edges that targeted it stay pointed at the header.
         edits.push_back({ header.begin, true, 0, { Instruction{ OpCode::DUP, 0, invariant.front().loc } } });
         for (int k = 1; k < static_cast<int>(invariant.size()); ++k)
             edits.push_back({ header.begin + k, true, -1, {} });
@@ -185,9 +176,6 @@ namespace LOICollection::frontend::ir::opt {
                     origin.push_back(-1);
                 }
 
-                // The first edit that asks for it decides where jumps to `at` now land:
-                // an insertion ahead of `at` (the balancing POP) and a replacement of
-                // `at` itself (the DUP) both have to own that address.
                 if (edits[e].retarget >= 0 && owner < 0)
                     owner = static_cast<int>(e);
 

@@ -128,10 +128,6 @@ namespace LOICollection::frontend::ir::opt {
             }
         }
 
-        // Rewrites the code and, because jumps here are relative, re-resolves every
-        // one of them: an insertion or an erasure shifts the distance between a jump
-        // and its target. Jumps that aimed at an erased operand now aim at the reload
-        // that replaced it.
         void apply(std::vector<Instruction>& code, std::vector<CSEPass::Edit>& edits) {
             std::sort(edits.begin(), edits.end(),
                 [](const CSEPass::Edit& a, const CSEPass::Edit& b) { return a.at < b.at; });
@@ -294,9 +290,6 @@ namespace LOICollection::frontend::ir::opt {
                     rs.insert(rs.end(), right.readSlots.begin(), right.readSlots.end());
                     const int curStart = std::min(left.start, right.start);
 
-                    // Every instruction is emitted even when it is about to be erased:
-                    // keeping `out` index-aligned with the input is what lets jumps,
-                    // whose offsets are relative, be re-resolved in `apply`.
                     auto it = avail.find(key);
                     if (it != avail.end() && it->second.spilled && left.atom && right.atom) {
                         edits.push_back({ curStart, static_cast<int>(out.size()) + 1,

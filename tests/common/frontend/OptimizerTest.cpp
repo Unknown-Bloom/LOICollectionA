@@ -784,8 +784,6 @@ TEST(OptimizerTest, PassMaskDefaultsToEveryPassEnabled) {
     EXPECT_EQ(optimizer.enabledPasses(), Optimizer::allPasses);
 }
 
-// ---- dead store elimination ---------------------------------------------------
-
 namespace {
     int countOp(const BytecodeChunk& chunk, OpCode op) {
         int total = 0;
@@ -912,8 +910,6 @@ TEST(OptimizerTest, RejectedFoldKeepsItsOperandsOnTheStack) {
     EXPECT_NE(program.diagnostics.getErrorMessage().find("Modulo requires integral types"), std::string::npos);
 }
 
-// ---- common subexpression elimination ----------------------------------------
-
 namespace {
     int countOpEverywhere(const BytecodeChunk& chunk, OpCode op) {
         int total = countOp(chunk, op);
@@ -969,9 +965,6 @@ TEST(OptimizerTest, CSEStaysCorrectAcrossCalls) {
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "8");
 }
 
-// Rewriting inside a loop body shifts the distance between a jump and its target,
-// so the relative offsets of the back edge and the exit branch have to survive the
-// rewrite as well.
 TEST(OptimizerTest, CSEInsideLoopKeepsJumpOffsets) {
     const std::string source =
         "func f(a: int, b: int, n: int) -> int {\n"

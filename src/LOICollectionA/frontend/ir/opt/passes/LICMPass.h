@@ -16,9 +16,6 @@ namespace LOICollection::frontend::ir::opt {
         size_t run();
 
     private:
-        // `retarget` names which inserted instruction inherits the jumps that used
-        // to land on `at`, so a back edge keeps pointing at the loop header after
-        // the instruction it targeted is deleted.
         struct Edit {
             int at = 0;
             bool erase = false;
