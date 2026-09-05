@@ -149,11 +149,11 @@ namespace LOICollection::frontend::ir {
             mm.argCount = static_cast<int>(method.params.size());
 
             int bodyIdx = static_cast<int>(this->chunk.methodBodies.size());
-            auto body = std::make_unique<BytecodeChunk>();
-            BytecodeChunk& bodyChunk = *body;
+            auto body = std::make_unique<MirChunk>();
+            MirChunk& bodyChunk = *body;
             this->chunk.methodBodies.push_back(std::move(body));
 
-            std::reference_wrapper<BytecodeChunk> saved = this->current;
+            std::reference_wrapper<MirChunk> saved = this->current;
             this->current = std::ref(bodyChunk);
             auto loops = this->suspendLoops();
 
@@ -176,19 +176,19 @@ namespace LOICollection::frontend::ir {
 
                 int argCount = ctorIdx >= 0 ? this->chunk.methods[ctorIdx].argCount : 0;
                 int superIdx = this->addSuperCall(ctorIdx, argCount);
-                this->current.get().emit(OpCode::LOAD_THIS, 0, node.loc);
-                this->current.get().emit(OpCode::CALL_SUPER_CTOR, superIdx, node.loc);
-                this->current.get().emit(OpCode::POP, 0, node.loc);
+                this->current.get().emit(MirOp::LOAD_THIS, 0, node.loc);
+                this->current.get().emit(MirOp::CALL_SUPER_CTOR, superIdx, node.loc);
+                this->current.get().emit(MirOp::POP, 0, node.loc);
             }
 
             if (method.body)
                 method.body->accept(*this);
 
-            this->current.get().emit(OpCode::POP);
+            this->current.get().emit(MirOp::POP);
 
             int emptyIdx = this->addConstant(std::string(""));
-            this->current.get().emit(OpCode::PUSH_STR, emptyIdx);
-            this->current.get().emit(OpCode::RETURN);
+            this->current.get().emit(MirOp::PUSH_STR, emptyIdx);
+            this->current.get().emit(MirOp::RETURN);
 
             this->current = saved;
             bodyChunk.slotCount = this->closeScope();

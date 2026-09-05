@@ -17,23 +17,23 @@ namespace LOICollection::frontend::ir {
     void Compiler::emitIterableLength(
         const IterableProtocol& protocol, int seqSlot, const SourceLocation& loc
     ) {
-        this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
+        this->current.get().emit(MirOp::LOAD_SLOT, seqSlot, loc);
 
         if (protocol.shape == IterableShape::Convention) {
             if (ClassCall::getInstance().isRegistered(protocol.className)) {
                 int metaIdx = this->addNativeCall(protocol.className, std::string(lengthMethod), 0);
-                this->current.get().emit(OpCode::CALL_NATIVE_METHOD, metaIdx, loc);
+                this->current.get().emit(MirOp::CALL_NATIVE_METHOD, metaIdx, loc);
 
                 return;
             }
 
             int metaIdx = this->addByNameCall(std::string(lengthMethod), 0);
-            this->current.get().emit(OpCode::CALL_METHOD_BY_NAME, metaIdx, loc);
+            this->current.get().emit(MirOp::CALL_METHOD_BY_NAME, metaIdx, loc);
 
             return;
         }
 
-        this->current.get().emit(OpCode::LOAD_LEN, 0, loc);
+        this->current.get().emit(MirOp::LOAD_LEN, 0, loc);
     }
 
     void Compiler::emitIterableElement(
@@ -41,27 +41,27 @@ namespace LOICollection::frontend::ir {
     ) {
         if (protocol.shape == IterableShape::Convention) {
             if (ClassCall::getInstance().isRegistered(protocol.className)) {
-                this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, loc);
-                this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
+                this->current.get().emit(MirOp::LOAD_SLOT, idxSlot, loc);
+                this->current.get().emit(MirOp::LOAD_SLOT, seqSlot, loc);
 
                 int metaIdx = this->addNativeCall(protocol.className, std::string(elementMethod), 1);
-                this->current.get().emit(OpCode::CALL_NATIVE_METHOD, metaIdx, loc);
+                this->current.get().emit(MirOp::CALL_NATIVE_METHOD, metaIdx, loc);
 
                 return;
             }
 
-            this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, loc);
-            this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
+            this->current.get().emit(MirOp::LOAD_SLOT, idxSlot, loc);
+            this->current.get().emit(MirOp::LOAD_SLOT, seqSlot, loc);
 
             int metaIdx = this->addByNameCall(std::string(elementMethod), 1);
-            this->current.get().emit(OpCode::CALL_METHOD_BY_NAME, metaIdx, loc);
+            this->current.get().emit(MirOp::CALL_METHOD_BY_NAME, metaIdx, loc);
 
             return;
         }
 
-        this->current.get().emit(OpCode::LOAD_SLOT, seqSlot, loc);
-        this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, loc);
-        this->current.get().emit(OpCode::LOAD_INDEX, 0, loc);
+        this->current.get().emit(MirOp::LOAD_SLOT, seqSlot, loc);
+        this->current.get().emit(MirOp::LOAD_SLOT, idxSlot, loc);
+        this->current.get().emit(MirOp::LOAD_INDEX, 0, loc);
     }
 
     void Compiler::compileForInIterable(ForInNode& node, size_t uid, const IterableProtocol& protocol) {
@@ -71,41 +71,41 @@ namespace LOICollection::frontend::ir {
         const int indexSlot = node.hasIndexVar ? this->declareSlot(node.indexVar) : -1;
 
         this->compileValue(*node.iterable, node.loc);
-        this->current.get().emit(OpCode::STORE_SLOT, seqSlot, node.loc);
+        this->current.get().emit(MirOp::STORE_SLOT, seqSlot, node.loc);
 
         int zeroIdx = this->addConstant(0);
-        this->current.get().emit(OpCode::PUSH_INT, zeroIdx, node.loc);
-        this->current.get().emit(OpCode::STORE_SLOT, idxSlot, node.loc);
+        this->current.get().emit(MirOp::PUSH_INT, zeroIdx, node.loc);
+        this->current.get().emit(MirOp::STORE_SLOT, idxSlot, node.loc);
 
         size_t loopStart = this->current.get().currentIP();
 
-        this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
+        this->current.get().emit(MirOp::LOAD_SLOT, idxSlot, node.loc);
         this->emitIterableLength(protocol, seqSlot, node.loc);
-        this->current.get().emit(OpCode::CMP_LT_I, 0, node.loc);
+        this->current.get().emit(MirOp::CMP_LT, 0, node.loc, TypeInfo{ TypeKind::Int });
 
-        size_t jmpFalseIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+        size_t jmpFalseIdx = this->current.get().emit(MirOp::JMP_IF_FALSE, 0, node.loc);
 
         this->loopStack.push_back(LoopContext{});
         this->loopStack.back().continueTarget = loopStart;
 
         this->emitIterableElement(protocol, seqSlot, idxSlot, node.loc);
-        this->current.get().emit(OpCode::STORE_SLOT, elemSlot, node.loc);
+        this->current.get().emit(MirOp::STORE_SLOT, elemSlot, node.loc);
 
         if (indexSlot >= 0) {
-            this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
-            this->current.get().emit(OpCode::STORE_SLOT, indexSlot, node.loc);
+            this->current.get().emit(MirOp::LOAD_SLOT, idxSlot, node.loc);
+            this->current.get().emit(MirOp::STORE_SLOT, indexSlot, node.loc);
         }
 
         int oneIdx = this->addConstant(1);
-        this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
-        this->current.get().emit(OpCode::PUSH_INT, oneIdx, node.loc);
-        this->current.get().emit(OpCode::ADD_I, 0, node.loc);
-        this->current.get().emit(OpCode::STORE_SLOT, idxSlot, node.loc);
+        this->current.get().emit(MirOp::LOAD_SLOT, idxSlot, node.loc);
+        this->current.get().emit(MirOp::PUSH_INT, oneIdx, node.loc);
+        this->current.get().emit(MirOp::ADD, 0, node.loc, TypeInfo{ TypeKind::Int });
+        this->current.get().emit(MirOp::STORE_SLOT, idxSlot, node.loc);
 
         node.body->accept(*this);
-        this->current.get().emit(OpCode::POP, 0, node.loc);
+        this->current.get().emit(MirOp::POP, 0, node.loc);
 
-        size_t jmpBackIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        size_t jmpBackIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
         this->current.get().patchJump(jmpBackIdx, static_cast<int>(loopStart) - static_cast<int>(jmpBackIdx) - 1);
 
         size_t exitPos = this->current.get().currentIP();
@@ -119,7 +119,7 @@ namespace LOICollection::frontend::ir {
         this->loopStack.pop_back();
 
         int emptyIdx = this->addConstant(std::string(""));
-        this->current.get().emit(OpCode::PUSH_STR, emptyIdx, node.loc);
+        this->current.get().emit(MirOp::PUSH_STR, emptyIdx, node.loc);
     }
 
     void Compiler::compileForInCounter(ForInNode& node, size_t uid) {
@@ -132,66 +132,66 @@ namespace LOICollection::frontend::ir {
         const int indexSlot = node.hasIndexVar ? this->declareSlot(node.indexVar) : -1;
 
         this->compileValue(*range.start, node.loc);
-        this->current.get().emit(OpCode::STORE_SLOT, idxSlot, node.loc);
+        this->current.get().emit(MirOp::STORE_SLOT, idxSlot, node.loc);
 
         this->compileValue(*range.end, node.loc);
-        this->current.get().emit(OpCode::STORE_SLOT, endSlot, node.loc);
+        this->current.get().emit(MirOp::STORE_SLOT, endSlot, node.loc);
 
-        this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
-        this->current.get().emit(OpCode::LOAD_SLOT, endSlot, node.loc);
-        this->current.get().emit(OpCode::CMP_LE, 0, node.loc);
+        this->current.get().emit(MirOp::LOAD_SLOT, idxSlot, node.loc);
+        this->current.get().emit(MirOp::LOAD_SLOT, endSlot, node.loc);
+        this->current.get().emit(MirOp::CMP_LE, 0, node.loc);
 
-        size_t jmpDescIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+        size_t jmpDescIdx = this->current.get().emit(MirOp::JMP_IF_FALSE, 0, node.loc);
 
         int ascIdx = this->addConstant(1);
-        this->current.get().emit(OpCode::PUSH_INT, ascIdx, node.loc);
+        this->current.get().emit(MirOp::PUSH_INT, ascIdx, node.loc);
 
-        size_t jmpDirEndIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        size_t jmpDirEndIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
 
         int descStart = static_cast<int>(this->current.get().currentIP());
         this->current.get().patchJump(jmpDescIdx, descStart - static_cast<int>(jmpDescIdx) - 1);
 
         int descIdx = this->addConstant(-1);
-        this->current.get().emit(OpCode::PUSH_INT, descIdx, node.loc);
+        this->current.get().emit(MirOp::PUSH_INT, descIdx, node.loc);
 
         int dirEndPos = static_cast<int>(this->current.get().currentIP());
         this->current.get().patchJump(jmpDirEndIdx, dirEndPos - static_cast<int>(jmpDirEndIdx) - 1);
 
-        this->current.get().emit(OpCode::STORE_SLOT, dirSlot, node.loc);
+        this->current.get().emit(MirOp::STORE_SLOT, dirSlot, node.loc);
 
         size_t loopStart = this->current.get().currentIP();
 
-        this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
-        this->current.get().emit(OpCode::LOAD_SLOT, endSlot, node.loc);
-        this->current.get().emit(OpCode::SUB, 0, node.loc);
-        this->current.get().emit(OpCode::LOAD_SLOT, dirSlot, node.loc);
-        this->current.get().emit(OpCode::MUL, 0, node.loc);
+        this->current.get().emit(MirOp::LOAD_SLOT, idxSlot, node.loc);
+        this->current.get().emit(MirOp::LOAD_SLOT, endSlot, node.loc);
+        this->current.get().emit(MirOp::SUB, 0, node.loc);
+        this->current.get().emit(MirOp::LOAD_SLOT, dirSlot, node.loc);
+        this->current.get().emit(MirOp::MUL, 0, node.loc);
         int zeroIdx = this->addConstant(0);
-        this->current.get().emit(OpCode::PUSH_INT, zeroIdx, node.loc);
-        this->current.get().emit(OpCode::CMP_LT, 0, node.loc);
+        this->current.get().emit(MirOp::PUSH_INT, zeroIdx, node.loc);
+        this->current.get().emit(MirOp::CMP_LT, 0, node.loc);
 
-        size_t jmpFalseIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+        size_t jmpFalseIdx = this->current.get().emit(MirOp::JMP_IF_FALSE, 0, node.loc);
 
         this->loopStack.push_back(LoopContext{});
         this->loopStack.back().continueTarget = loopStart;
 
-        this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
-        this->current.get().emit(OpCode::STORE_SLOT, elemSlot, node.loc);
+        this->current.get().emit(MirOp::LOAD_SLOT, idxSlot, node.loc);
+        this->current.get().emit(MirOp::STORE_SLOT, elemSlot, node.loc);
 
         if (indexSlot >= 0) {
-            this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
-            this->current.get().emit(OpCode::STORE_SLOT, indexSlot, node.loc);
+            this->current.get().emit(MirOp::LOAD_SLOT, idxSlot, node.loc);
+            this->current.get().emit(MirOp::STORE_SLOT, indexSlot, node.loc);
         }
 
-        this->current.get().emit(OpCode::LOAD_SLOT, idxSlot, node.loc);
-        this->current.get().emit(OpCode::LOAD_SLOT, dirSlot, node.loc);
-        this->current.get().emit(OpCode::ADD, 0, node.loc);
-        this->current.get().emit(OpCode::STORE_SLOT, idxSlot, node.loc);
+        this->current.get().emit(MirOp::LOAD_SLOT, idxSlot, node.loc);
+        this->current.get().emit(MirOp::LOAD_SLOT, dirSlot, node.loc);
+        this->current.get().emit(MirOp::ADD, 0, node.loc);
+        this->current.get().emit(MirOp::STORE_SLOT, idxSlot, node.loc);
 
         node.body->accept(*this);
-        this->current.get().emit(OpCode::POP, 0, node.loc);
+        this->current.get().emit(MirOp::POP, 0, node.loc);
 
-        size_t jmpBackIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        size_t jmpBackIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
         this->current.get().patchJump(jmpBackIdx, static_cast<int>(loopStart) - static_cast<int>(jmpBackIdx) - 1);
 
         size_t exitPos = this->current.get().currentIP();
@@ -205,7 +205,7 @@ namespace LOICollection::frontend::ir {
         this->loopStack.pop_back();
 
         int emptyIdx = this->addConstant(std::string(""));
-        this->current.get().emit(OpCode::PUSH_STR, emptyIdx, node.loc);
+        this->current.get().emit(MirOp::PUSH_STR, emptyIdx, node.loc);
     }
 
 }

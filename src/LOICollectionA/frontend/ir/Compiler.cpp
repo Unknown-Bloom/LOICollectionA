@@ -8,6 +8,7 @@
 #include <unordered_set>
 
 #include "LOICollectionA/frontend/ir/ByteCode.h"
+#include "LOICollectionA/frontend/ir/MirLowering.h"
 #include "LOICollectionA/frontend/Callback.h"
 
 #include "LOICollectionA/frontend/ir/Compiler.h"
@@ -93,17 +94,17 @@ namespace LOICollection::frontend::ir {
                 program.parts[i]->accept(*this);
 
                 if (i != lastValuePart)
-                    this->current.get().emit(OpCode::POP);
+                    this->current.get().emit(MirOp::POP);
             }
         } else {
             root.accept(*this);
         }
 
-        this->current.get().emit(OpCode::HALT);
+        this->current.get().emit(MirOp::HALT);
 
         this->chunk.slotCount = this->closeScope();
 
-        return std::move(chunk);
+        return MirLowering::lower(chunk);
     }
 
     void Compiler::visit(ValueNode& node) {
@@ -111,11 +112,11 @@ namespace LOICollection::frontend::ir {
 
         int idx = this->addConstant(val);
         switch (val.index()) {
-            case 0: current.get().emit(OpCode::PUSH_INT, idx, node.loc); break;
-            case 1: current.get().emit(OpCode::PUSH_FLOAT, idx, node.loc); break;
-            case 2: current.get().emit(OpCode::PUSH_STR, idx, node.loc); break;
-            case 3: current.get().emit(OpCode::PUSH_BOOL, idx, node.loc); break;
-            case 7: current.get().emit(OpCode::PUSH_NONE, idx, node.loc); break;
+            case 0: current.get().emit(MirOp::PUSH_INT, idx, node.loc); break;
+            case 1: current.get().emit(MirOp::PUSH_FLOAT, idx, node.loc); break;
+            case 2: current.get().emit(MirOp::PUSH_STR, idx, node.loc); break;
+            case 3: current.get().emit(MirOp::PUSH_BOOL, idx, node.loc); break;
+            case 7: current.get().emit(MirOp::PUSH_NONE, idx, node.loc); break;
             default:
                 this->diagnostics.addError(node.loc, "Unsupported constant value type");
                 break;
@@ -126,7 +127,7 @@ namespace LOICollection::frontend::ir {
         this->emitLoad(qualifiedName(node), node.loc);
 
         if (node.type.kind == TypeKind::Optional && !node.preserveOptional)
-            this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+            this->current.get().emit(MirOp::UNWRAP, 0, node.loc);
     }
 
     void Compiler::visit(AssignmentNode& node) {
@@ -134,10 +135,10 @@ namespace LOICollection::frontend::ir {
             this->compileValue(*node.value, node.loc);
         } else {
             int emptyIdx = this->addConstant(std::string(""));
-            this->current.get().emit(OpCode::PUSH_STR, emptyIdx, node.loc);
+            this->current.get().emit(MirOp::PUSH_STR, emptyIdx, node.loc);
         }
 
-        this->current.get().emit(OpCode::DUP, 0, node.loc);
+        this->current.get().emit(MirOp::DUP, 0, node.loc);
 
         switch (node.target->getType()) {
             case ASTNode::Type::Variable: {
@@ -160,7 +161,7 @@ namespace LOICollection::frontend::ir {
                 auto& indexNode = static_cast<IndexAccessNode&>(*node.target);
                 indexNode.target->accept(*this);
                 indexNode.index->accept(*this);
-                this->current.get().emit(OpCode::STORE_INDEX, 0, node.loc);
+                this->current.get().emit(MirOp::STORE_INDEX, 0, node.loc);
                 break;
             }
             default:
@@ -177,12 +178,12 @@ namespace LOICollection::frontend::ir {
 
                 this->emitLoad(name, node.loc);
                 if (var.type.kind == TypeKind::Optional && !var.preserveOptional)
-                    this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+                    this->current.get().emit(MirOp::UNWRAP, 0, node.loc);
 
                 this->compileValue(*node.value, node.loc);
                 this->emitArithmeticOp(node.op, var.type, node.value->type, node.loc);
 
-                this->current.get().emit(OpCode::DUP, 0, node.loc);
+                this->current.get().emit(MirOp::DUP, 0, node.loc);
                 this->emitStore(name, node.loc);
                 break;
             }
@@ -193,29 +194,29 @@ namespace LOICollection::frontend::ir {
 
                     this->emitLoad(name, node.loc);
                     if (member.type.kind == TypeKind::Optional && !member.preserveOptional)
-                        this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+                        this->current.get().emit(MirOp::UNWRAP, 0, node.loc);
 
                     this->compileValue(*node.value, node.loc);
                     this->emitArithmeticOp(node.op, member.type, node.value->type, node.loc);
 
-                    this->current.get().emit(OpCode::DUP, 0, node.loc);
+                    this->current.get().emit(MirOp::DUP, 0, node.loc);
                     this->emitStore(name, node.loc);
                     break;
                 }
 
                 this->compileValue(*member.target, node.loc);
-                this->current.get().emit(OpCode::DUP, 0, node.loc);
+                this->current.get().emit(MirOp::DUP, 0, node.loc);
 
-                this->emitFieldAccess(OpCode::LOAD_FIELD_SLOT, OpCode::LOAD_FIELD, member);
+                this->emitFieldAccess(MirOp::LOAD_FIELD_SLOT, MirOp::LOAD_FIELD, member);
                 if (member.type.kind == TypeKind::Optional && !member.preserveOptional)
-                    this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+                    this->current.get().emit(MirOp::UNWRAP, 0, node.loc);
 
                 this->compileValue(*node.value, node.loc);
                 this->emitArithmeticOp(node.op, member.type, node.value->type, node.loc);
 
-                this->current.get().emit(OpCode::DUP, 0, node.loc);
-                this->current.get().emit(OpCode::ROT3, 0, node.loc);
-                this->emitFieldAccess(OpCode::STORE_FIELD_SLOT, OpCode::STORE_FIELD, member);
+                this->current.get().emit(MirOp::DUP, 0, node.loc);
+                this->current.get().emit(MirOp::ROT3, 0, node.loc);
+                this->emitFieldAccess(MirOp::STORE_FIELD_SLOT, MirOp::STORE_FIELD, member);
                 break;
             }
             case ASTNode::Type::Index: {
@@ -224,15 +225,15 @@ namespace LOICollection::frontend::ir {
                 this->compileValue(*indexNode.target, node.loc);
                 this->compileValue(*indexNode.index, node.loc);
 
-                this->current.get().emit(OpCode::DUP2, 0, node.loc);
-                this->current.get().emit(OpCode::LOAD_INDEX, 0, node.loc);
+                this->current.get().emit(MirOp::DUP2, 0, node.loc);
+                this->current.get().emit(MirOp::LOAD_INDEX, 0, node.loc);
 
                 this->compileValue(*node.value, node.loc);
                 this->emitArithmeticOp(node.op, indexNode.type, node.value->type, node.loc);
 
-                this->current.get().emit(OpCode::DUP, 0, node.loc);
-                this->current.get().emit(OpCode::SWAP2, 0, node.loc);
-                this->current.get().emit(OpCode::STORE_INDEX, 0, node.loc);
+                this->current.get().emit(MirOp::DUP, 0, node.loc);
+                this->current.get().emit(MirOp::SWAP2, 0, node.loc);
+                this->current.get().emit(MirOp::STORE_INDEX, 0, node.loc);
                 break;
             }
             default:
@@ -244,15 +245,15 @@ namespace LOICollection::frontend::ir {
     void Compiler::visit(CoalesceNode& node) {
         this->compileValue(*node.left, node.loc);
 
-        this->current.get().emit(OpCode::DUP, 0, node.loc);
-        this->current.get().emit(OpCode::IS_NONE, 0, node.loc);
+        this->current.get().emit(MirOp::DUP, 0, node.loc);
+        this->current.get().emit(MirOp::IS_NONE, 0, node.loc);
 
-        size_t jmpSkipIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+        size_t jmpSkipIdx = this->current.get().emit(MirOp::JMP_IF_FALSE, 0, node.loc);
 
-        this->current.get().emit(OpCode::POP, 0, node.loc);
+        this->current.get().emit(MirOp::POP, 0, node.loc);
         this->compileValue(*node.right, node.loc);
 
-        size_t jmpEndIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        size_t jmpEndIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
 
         int skipTarget = static_cast<int>(this->current.get().currentIP());
         this->current.get().patchJump(jmpSkipIdx, skipTarget - static_cast<int>(jmpSkipIdx) - 1);
@@ -283,14 +284,15 @@ namespace LOICollection::frontend::ir {
     }
 
     void Compiler::emitArithmeticOp(const std::string& op, const TypeInfo& leftType, const TypeInfo& rightType, const SourceLocation& loc) {
-        const bool intOp = (op == "+" || op == "-" || op == "*" || op == "%") &&
-            leftType.kind == TypeKind::Int && rightType.kind == TypeKind::Int;
+        const TypeInfo resultType = leftType.kind == TypeKind::Int && rightType.kind == TypeKind::Int
+            ? leftType
+            : TypeInfo{};
 
-        if (op == "+") this->current.get().emit(intOp ? OpCode::ADD_I : OpCode::ADD, 0, loc);
-        else if (op == "-") this->current.get().emit(intOp ? OpCode::SUB_I : OpCode::SUB, 0, loc);
-        else if (op == "*") this->current.get().emit(intOp ? OpCode::MUL_I : OpCode::MUL, 0, loc);
-        else if (op == "/") this->current.get().emit(OpCode::DIV, 0, loc);
-        else if (op == "%") this->current.get().emit(intOp ? OpCode::MOD_I : OpCode::MOD, 0, loc);
+        if (op == "+") this->current.get().emit(MirOp::ADD, 0, loc, resultType);
+        else if (op == "-") this->current.get().emit(MirOp::SUB, 0, loc, resultType);
+        else if (op == "*") this->current.get().emit(MirOp::MUL, 0, loc, resultType);
+        else if (op == "/") this->current.get().emit(MirOp::DIV, 0, loc);
+        else if (op == "%") this->current.get().emit(MirOp::MOD, 0, loc, resultType);
         else
             this->diagnostics.addError(loc, "Unknown compound assignment op: " + op);
     }
@@ -298,11 +300,11 @@ namespace LOICollection::frontend::ir {
     void Compiler::visit(IfNode& node) {
         this->compileValue(*node.condition, node.loc);
 
-        size_t jmpFalseIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+        size_t jmpFalseIdx = this->current.get().emit(MirOp::JMP_IF_FALSE, 0, node.loc);
 
         node.trueBranch->accept(*this);
 
-        size_t jmpEndIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        size_t jmpEndIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
 
         int falseStart = static_cast<int>(this->current.get().currentIP());
         this->current.get().patchJump(jmpFalseIdx, falseStart - static_cast<int>(jmpFalseIdx) - 1);
@@ -311,7 +313,7 @@ namespace LOICollection::frontend::ir {
             node.falseBranch->accept(*this);
         } else {
             int emptyIdx = this->addConstant(std::string(""));
-            this->current.get().emit(OpCode::PUSH_STR, emptyIdx, node.loc);
+            this->current.get().emit(MirOp::PUSH_STR, emptyIdx, node.loc);
         }
 
         int endPos = static_cast<int>(this->current.get().currentIP());
@@ -323,16 +325,16 @@ namespace LOICollection::frontend::ir {
 
         this->compileValue(*node.condition, node.loc);
 
-        size_t jmpFalseIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+        size_t jmpFalseIdx = this->current.get().emit(MirOp::JMP_IF_FALSE, 0, node.loc);
 
         this->loopStack.push_back(LoopContext{});
         this->loopStack.back().continueTarget = loopStart;
 
         node.body->accept(*this);
 
-        this->current.get().emit(OpCode::POP, 0, node.loc);
+        this->current.get().emit(MirOp::POP, 0, node.loc);
 
-        size_t jmpBackIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        size_t jmpBackIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
         this->current.get().patchJump(jmpBackIdx, static_cast<int>(loopStart) - static_cast<int>(jmpBackIdx) - 1);
 
         size_t exitPos = this->current.get().currentIP();
@@ -346,13 +348,13 @@ namespace LOICollection::frontend::ir {
         this->loopStack.pop_back();
 
         int emptyIdx = this->addConstant(std::string(""));
-        this->current.get().emit(OpCode::PUSH_STR, emptyIdx, node.loc);
+        this->current.get().emit(MirOp::PUSH_STR, emptyIdx, node.loc);
     }
 
     void Compiler::visit(ForNode& node) {
         if (node.init) {
             this->compileValue(*node.init, node.loc);
-            this->current.get().emit(OpCode::POP, 0, node.loc);
+            this->current.get().emit(MirOp::POP, 0, node.loc);
         }
 
         size_t loopStart = this->current.get().currentIP();
@@ -360,24 +362,24 @@ namespace LOICollection::frontend::ir {
         size_t jmpFalseIdx = static_cast<size_t>(-1);
         if (node.condition) {
             this->compileValue(*node.condition, node.loc);
-            jmpFalseIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+            jmpFalseIdx = this->current.get().emit(MirOp::JMP_IF_FALSE, 0, node.loc);
         }
 
         this->loopStack.push_back(LoopContext{});
 
         node.body->accept(*this);
 
-        this->current.get().emit(OpCode::POP, 0, node.loc);
+        this->current.get().emit(MirOp::POP, 0, node.loc);
 
         size_t continuePos = this->current.get().currentIP();
         this->loopStack.back().continueTarget = continuePos;
 
         if (node.step) {
             this->compileValue(*node.step, node.loc);
-            this->current.get().emit(OpCode::POP, 0, node.loc);
+            this->current.get().emit(MirOp::POP, 0, node.loc);
         }
 
-        size_t jmpBackIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        size_t jmpBackIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
         this->current.get().patchJump(jmpBackIdx, static_cast<int>(loopStart) - static_cast<int>(jmpBackIdx) - 1);
 
         size_t exitPos = this->current.get().currentIP();
@@ -392,7 +394,7 @@ namespace LOICollection::frontend::ir {
         this->loopStack.pop_back();
 
         int emptyIdx = this->addConstant(std::string(""));
-        this->current.get().emit(OpCode::PUSH_STR, emptyIdx, node.loc);
+        this->current.get().emit(MirOp::PUSH_STR, emptyIdx, node.loc);
     }
 
     void Compiler::visit(BreakNode& node) {
@@ -401,7 +403,7 @@ namespace LOICollection::frontend::ir {
             return;
         }
 
-        size_t idx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        size_t idx = this->current.get().emit(MirOp::JMP, 0, node.loc);
         this->loopStack.back().breakJumps.push_back(idx);
     }
 
@@ -411,7 +413,7 @@ namespace LOICollection::frontend::ir {
             return;
         }
 
-        size_t idx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        size_t idx = this->current.get().emit(MirOp::JMP, 0, node.loc);
         this->loopStack.back().continueJumps.push_back(idx);
     }
 
@@ -419,14 +421,16 @@ namespace LOICollection::frontend::ir {
         this->compileValue(*node.left, node.loc);
         this->compileValue(*node.right, node.loc);
 
-        const bool intOp = node.left->type.kind == TypeKind::Int && node.right->type.kind == TypeKind::Int;
+        const TypeInfo resultType = node.left->type.kind == TypeKind::Int && node.right->type.kind == TypeKind::Int
+            ? node.left->type
+            : TypeInfo{};
 
-        if (node.op == "==") this->current.get().emit(intOp ? OpCode::CMP_EQ_I : OpCode::CMP_EQ, 0, node.loc);
-        else if (node.op == "!=") this->current.get().emit(intOp ? OpCode::CMP_NE_I : OpCode::CMP_NE, 0, node.loc);
-        else if (node.op == ">") this->current.get().emit(intOp ? OpCode::CMP_GT_I : OpCode::CMP_GT, 0, node.loc);
-        else if (node.op == "<") this->current.get().emit(intOp ? OpCode::CMP_LT_I : OpCode::CMP_LT, 0, node.loc);
-        else if (node.op == ">=") this->current.get().emit(intOp ? OpCode::CMP_GE_I : OpCode::CMP_GE, 0, node.loc);
-        else if (node.op == "<=") this->current.get().emit(intOp ? OpCode::CMP_LE_I : OpCode::CMP_LE, 0, node.loc);
+        if (node.op == "==") this->current.get().emit(MirOp::CMP_EQ, 0, node.loc, resultType);
+        else if (node.op == "!=") this->current.get().emit(MirOp::CMP_NE, 0, node.loc, resultType);
+        else if (node.op == ">") this->current.get().emit(MirOp::CMP_GT, 0, node.loc, resultType);
+        else if (node.op == "<") this->current.get().emit(MirOp::CMP_LT, 0, node.loc, resultType);
+        else if (node.op == ">=") this->current.get().emit(MirOp::CMP_GE, 0, node.loc, resultType);
+        else if (node.op == "<=") this->current.get().emit(MirOp::CMP_LE, 0, node.loc, resultType);
         else
             this->diagnostics.addError(node.loc, "Unknown compare op: " + node.op);
     }
@@ -441,26 +445,26 @@ namespace LOICollection::frontend::ir {
                 if (isAnd) {
                     if (leftBool) {
                         int idxTrue = this->addConstant(true);
-                        this->current.get().emit(OpCode::PUSH_BOOL, idxTrue, node.loc);
+                        this->current.get().emit(MirOp::PUSH_BOOL, idxTrue, node.loc);
 
                         this->compileValue(*node.right, node.loc);
 
-                        this->current.get().emit(OpCode::LOGIC_AND, 0, node.loc);
+                        this->current.get().emit(MirOp::LOGIC_AND, 0, node.loc);
                     } else {
                         int idxFalse = this->addConstant(false);
-                        this->current.get().emit(OpCode::PUSH_BOOL, idxFalse, node.loc);
+                        this->current.get().emit(MirOp::PUSH_BOOL, idxFalse, node.loc);
                     }
                 } else {
                     if (leftBool) {
                         int idxTrue = this->addConstant(true);
-                        this->current.get().emit(OpCode::PUSH_BOOL, idxTrue, node.loc);
+                        this->current.get().emit(MirOp::PUSH_BOOL, idxTrue, node.loc);
                     } else {
                         int idxFalse = this->addConstant(false);
-                        this->current.get().emit(OpCode::PUSH_BOOL, idxFalse, node.loc);
+                        this->current.get().emit(MirOp::PUSH_BOOL, idxFalse, node.loc);
 
                         this->compileValue(*node.right, node.loc);
                         
-                        this->current.get().emit(OpCode::LOGIC_OR, 0, node.loc);
+                        this->current.get().emit(MirOp::LOGIC_OR, 0, node.loc);
                     }
                 }
                 return;
@@ -468,20 +472,20 @@ namespace LOICollection::frontend::ir {
         }
 
         this->compileValue(*node.left, node.loc);
-        this->current.get().emit(OpCode::DUP, 0, node.loc);
+        this->current.get().emit(MirOp::DUP, 0, node.loc);
 
-        size_t jumpToShort = this->current.get().emit(isAnd ? OpCode::JMP_IF_FALSE : OpCode::JMP_IF_TRUE, 0, node.loc);
+        size_t jumpToShort = this->current.get().emit(isAnd ? MirOp::JMP_IF_FALSE : MirOp::JMP_IF_TRUE, 0, node.loc);
 
         this->compileValue(*node.right, node.loc);
-        this->current.get().emit(isAnd ? OpCode::LOGIC_AND : OpCode::LOGIC_OR, 0, node.loc);
+        this->current.get().emit(isAnd ? MirOp::LOGIC_AND : MirOp::LOGIC_OR, 0, node.loc);
 
-        size_t jumpToEnd = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        size_t jumpToEnd = this->current.get().emit(MirOp::JMP, 0, node.loc);
 
         int shortStart = static_cast<int>(this->current.get().currentIP());
 
         int shortIdx = this->addConstant(isAnd ? false : true);
-        this->current.get().emit(OpCode::POP, 0, node.loc);
-        this->current.get().emit(OpCode::PUSH_BOOL, shortIdx, node.loc);
+        this->current.get().emit(MirOp::POP, 0, node.loc);
+        this->current.get().emit(MirOp::PUSH_BOOL, shortIdx, node.loc);
 
         this->current.get().patchJump(jumpToShort, shortStart - static_cast<int>(jumpToShort) - 1);
 
@@ -495,7 +499,7 @@ namespace LOICollection::frontend::ir {
 
         int argCount = static_cast<int>(node.args.size());
         int metaIdx = this->addFunction(node.namespaces + "::" + node.name, argCount);
-        this->current.get().emit(OpCode::CALL, metaIdx, node.loc);
+        this->current.get().emit(MirOp::CALL, metaIdx, node.loc);
     }
 
     void Compiler::visit(MacroNode& node) {
@@ -504,22 +508,19 @@ namespace LOICollection::frontend::ir {
 
         int argCount = static_cast<int>(node.args.size());
         int metaIdx = addMacro(node.name, argCount);
-        this->current.get().emit(OpCode::CALL_MACRO, metaIdx, node.loc);
+        this->current.get().emit(MirOp::CALL_MACRO, metaIdx, node.loc);
     }
 
     void Compiler::visit(ArithmeticNode& node) {
         this->compileValue(*node.left, node.loc);
         this->compileValue(*node.right, node.loc);
 
-        const bool intOp = (node.op == "+" || node.op == "-" || node.op == "*" || node.op == "%") &&
-            node.left->type.kind == TypeKind::Int && node.right->type.kind == TypeKind::Int;
-
-        if (node.op == "+") this->current.get().emit(intOp ? OpCode::ADD_I : OpCode::ADD, 0, node.loc);
-        else if (node.op == "-") this->current.get().emit(intOp ? OpCode::SUB_I : OpCode::SUB, 0, node.loc);
-        else if (node.op == "*") this->current.get().emit(intOp ? OpCode::MUL_I : OpCode::MUL, 0, node.loc);
-        else if (node.op == "/") this->current.get().emit(OpCode::DIV, 0, node.loc);
-        else if (node.op == "%") this->current.get().emit(intOp ? OpCode::MOD_I : OpCode::MOD, 0, node.loc);
-        else if (node.op == "^") this->current.get().emit(OpCode::POW, 0, node.loc);
+        if (node.op == "+") this->current.get().emit(MirOp::ADD, 0, node.loc, node.type);
+        else if (node.op == "-") this->current.get().emit(MirOp::SUB, 0, node.loc, node.type);
+        else if (node.op == "*") this->current.get().emit(MirOp::MUL, 0, node.loc, node.type);
+        else if (node.op == "/") this->current.get().emit(MirOp::DIV, 0, node.loc);
+        else if (node.op == "%") this->current.get().emit(MirOp::MOD, 0, node.loc, node.type);
+        else if (node.op == "^") this->current.get().emit(MirOp::POW, 0, node.loc);
         else
             this->diagnostics.addError(node.loc, "Unknown arithmetic op: " + node.op);
     }
@@ -528,9 +529,8 @@ namespace LOICollection::frontend::ir {
         this->compileValue(*node.operand, node.loc);
 
         if (node.op == "-")
-            this->current.get().emit(
-                node.operand->type.kind == TypeKind::Int ? OpCode::NEG_I : OpCode::NEG, 0, node.loc);
-        else if (node.op == "!") this->current.get().emit(OpCode::NOT, 0, node.loc);
+            this->current.get().emit(MirOp::NEG, 0, node.loc, node.type);
+        else if (node.op == "!") this->current.get().emit(MirOp::NOT, 0, node.loc);
         else if (node.op == "+") {}
         else
             this->diagnostics.addError(node.loc, "Unknown unary op: " + node.op);
@@ -539,7 +539,7 @@ namespace LOICollection::frontend::ir {
     void Compiler::compileSequence(SequenceNode& node) {
         if (node.parts.empty()) {
             int idx = this->addConstant(std::string(""));
-            this->current.get().emit(OpCode::PUSH_STR, idx);
+            this->current.get().emit(MirOp::PUSH_STR, idx);
 
             return;
         }
@@ -554,7 +554,7 @@ namespace LOICollection::frontend::ir {
                 && node.parts[i]->getType() != ASTNode::Type::Component;
 
             if (i != node.parts.size() - 1 && producesValue)
-                this->current.get().emit(OpCode::POP);
+                this->current.get().emit(MirOp::POP);
         }
     }
 
@@ -582,10 +582,10 @@ namespace LOICollection::frontend::ir {
             node.value->accept(*this);
         } else {
             int idx = this->addConstant(std::string(""));
-            this->current.get().emit(OpCode::PUSH_STR, idx);
+            this->current.get().emit(MirOp::PUSH_STR, idx);
         }
 
-        this->current.get().emit(OpCode::RETURN);
+        this->current.get().emit(MirOp::RETURN);
     }
 
     void Compiler::visit(NewNode& node) {
@@ -598,7 +598,7 @@ namespace LOICollection::frontend::ir {
                 int argCount = static_cast<int>(node.args.size());
                 int metaIdx = this->addNativeCall(node.className, "", argCount);
 
-                this->current.get().emit(OpCode::NEW_NATIVE, metaIdx, node.loc);
+                this->current.get().emit(MirOp::NEW_NATIVE, metaIdx, node.loc);
                 if (node.declarativeBlock)
                     this->compileDeclarativeBlock(*node.declarativeBlock, node.receiverName);
                 return;
@@ -608,7 +608,7 @@ namespace LOICollection::frontend::ir {
             return;
         }
 
-        this->current.get().emit(OpCode::NEW, it->second, node.loc);
+        this->current.get().emit(MirOp::NEW, it->second, node.loc);
 
         if (node.declarativeBlock)
             this->compileDeclarativeBlock(*node.declarativeBlock, node.receiverName);
@@ -624,7 +624,7 @@ namespace LOICollection::frontend::ir {
         }
 
         if (receiverSlot >= 0)
-            this->current.get().emit(OpCode::STORE_SLOT, receiverSlot);
+            this->current.get().emit(MirOp::STORE_SLOT, receiverSlot);
         else
             this->emitStore(receiver, {});
 
@@ -639,11 +639,11 @@ namespace LOICollection::frontend::ir {
                 && part->getType() != ASTNode::Type::Using;
 
             if (producesValue)
-                this->current.get().emit(OpCode::POP);
+                this->current.get().emit(MirOp::POP);
         }
 
         if (receiverSlot >= 0)
-            this->current.get().emit(OpCode::LOAD_SLOT, receiverSlot);
+            this->current.get().emit(MirOp::LOAD_SLOT, receiverSlot);
         else
             this->emitLoad(receiver, {});
     }
@@ -709,40 +709,40 @@ namespace LOICollection::frontend::ir {
             this->emitLoad(qualifiedName(node), node.loc);
 
             if (node.type.kind == TypeKind::Optional && !node.preserveOptional)
-                this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+                this->current.get().emit(MirOp::UNWRAP, 0, node.loc);
             return;
         }
 
         if (node.isSafe) {
             this->compileValue(*node.target, node.loc);
 
-            this->current.get().emit(OpCode::DUP, 0, node.loc);
-            this->current.get().emit(OpCode::IS_NONE, 0, node.loc);
+            this->current.get().emit(MirOp::DUP, 0, node.loc);
+            this->current.get().emit(MirOp::IS_NONE, 0, node.loc);
 
-            size_t jmpSkipIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+            size_t jmpSkipIdx = this->current.get().emit(MirOp::JMP_IF_FALSE, 0, node.loc);
 
-            this->current.get().emit(OpCode::POP, 0, node.loc);
+            this->current.get().emit(MirOp::POP, 0, node.loc);
             int noneIdx = this->addConstant(std::monostate{});
-            this->current.get().emit(OpCode::PUSH_NONE, noneIdx, node.loc);
+            this->current.get().emit(MirOp::PUSH_NONE, noneIdx, node.loc);
 
-            size_t jmpEndIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+            size_t jmpEndIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
 
             int skipTarget = static_cast<int>(this->current.get().currentIP());
             this->current.get().patchJump(jmpSkipIdx, skipTarget - static_cast<int>(jmpSkipIdx) - 1);
 
             switch (node.memberKind) {
                 case MemberAccessNode::MemberKind::TypeOf:
-                    this->current.get().emit(OpCode::TYPE_OF, 0, node.loc);
+                    this->current.get().emit(MirOp::TYPE_OF, 0, node.loc);
                     break;
                 case MemberAccessNode::MemberKind::HasValue:
-                    this->current.get().emit(OpCode::HAS_VALUE, 0, node.loc);
+                    this->current.get().emit(MirOp::HAS_VALUE, 0, node.loc);
                     break;
                 case MemberAccessNode::MemberKind::Value:
                     
-                    this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+                    this->current.get().emit(MirOp::UNWRAP, 0, node.loc);
                     break;
                 default: {
-                    this->emitFieldAccess(OpCode::LOAD_FIELD_SLOT, OpCode::LOAD_FIELD, node);
+                    this->emitFieldAccess(MirOp::LOAD_FIELD_SLOT, MirOp::LOAD_FIELD, node);
                     break;
                 }
             }
@@ -755,16 +755,16 @@ namespace LOICollection::frontend::ir {
         switch (node.memberKind) {
             case MemberAccessNode::MemberKind::TypeOf:
                 node.target->accept(*this);
-                this->current.get().emit(OpCode::TYPE_OF, 0, node.loc);
+                this->current.get().emit(MirOp::TYPE_OF, 0, node.loc);
                 return;
             case MemberAccessNode::MemberKind::Value:
                 node.target->accept(*this);
                 if (node.target->type.kind == TypeKind::Optional)
-                    this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+                    this->current.get().emit(MirOp::UNWRAP, 0, node.loc);
                 return;
             case MemberAccessNode::MemberKind::HasValue:
                 node.target->accept(*this);
-                this->current.get().emit(OpCode::HAS_VALUE, 0, node.loc);
+                this->current.get().emit(MirOp::HAS_VALUE, 0, node.loc);
                 return;
             case MemberAccessNode::MemberKind::Normal:
                 break;
@@ -773,36 +773,36 @@ namespace LOICollection::frontend::ir {
         this->emitLoadField(node);
 
         if (node.type.kind == TypeKind::Optional && !node.preserveOptional)
-            this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+            this->current.get().emit(MirOp::UNWRAP, 0, node.loc);
     }
 
     void Compiler::visit(ArrayNode& node) {
         for (auto& element : node.elements)
             this->compileValue(*element, node.loc);
 
-        this->current.get().emit(OpCode::MAKE_ARRAY, static_cast<int>(node.elements.size()), node.loc);
+        this->current.get().emit(MirOp::MAKE_ARRAY, static_cast<int>(node.elements.size()), node.loc);
     }
 
     void Compiler::visit(IndexAccessNode& node) {
         this->compileValue(*node.target, node.loc);
 
         if (node.isSafe) {
-            this->current.get().emit(OpCode::DUP, 0, node.loc);
-            this->current.get().emit(OpCode::IS_NONE, 0, node.loc);
+            this->current.get().emit(MirOp::DUP, 0, node.loc);
+            this->current.get().emit(MirOp::IS_NONE, 0, node.loc);
 
-            size_t jmpSkipIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+            size_t jmpSkipIdx = this->current.get().emit(MirOp::JMP_IF_FALSE, 0, node.loc);
 
-            this->current.get().emit(OpCode::POP, 0, node.loc);
+            this->current.get().emit(MirOp::POP, 0, node.loc);
             int noneIdx = this->addConstant(std::monostate{});
-            this->current.get().emit(OpCode::PUSH_NONE, noneIdx, node.loc);
+            this->current.get().emit(MirOp::PUSH_NONE, noneIdx, node.loc);
 
-            size_t jmpEndIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+            size_t jmpEndIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
 
             int skipTarget = static_cast<int>(this->current.get().currentIP());
             this->current.get().patchJump(jmpSkipIdx, skipTarget - static_cast<int>(jmpSkipIdx) - 1);
 
             this->compileValue(*node.index, node.loc);
-            this->current.get().emit(OpCode::LOAD_INDEX, 0, node.loc);
+            this->current.get().emit(MirOp::LOAD_INDEX, 0, node.loc);
 
             int endPos = static_cast<int>(this->current.get().currentIP());
             this->current.get().patchJump(jmpEndIdx, endPos - static_cast<int>(jmpEndIdx) - 1);
@@ -810,7 +810,7 @@ namespace LOICollection::frontend::ir {
         }
 
         this->compileValue(*node.index, node.loc);
-        this->current.get().emit(OpCode::LOAD_INDEX, 0, node.loc);
+        this->current.get().emit(MirOp::LOAD_INDEX, 0, node.loc);
     }
 
     void Compiler::visit(MethodCallNode& node) {
@@ -828,9 +828,9 @@ namespace LOICollection::frontend::ir {
             this->compileValue(*node.target, node.loc);
             for (int arg : callbackArgs)
                 this->current.get().emit(
-                    OpCode::BIND_THIS, static_cast<int>(node.args.size()) - arg, node.loc);
+                    MirOp::BIND_THIS, static_cast<int>(node.args.size()) - arg, node.loc);
             int metaIdx = this->addByNameCall(node.methodName, static_cast<int>(node.args.size()));
-            this->current.get().emit(OpCode::CALL_METHOD_BY_NAME, metaIdx, node.loc);
+            this->current.get().emit(MirOp::CALL_METHOD_BY_NAME, metaIdx, node.loc);
             return;
         }
 
@@ -839,14 +839,14 @@ namespace LOICollection::frontend::ir {
                 int argCount = static_cast<int>(node.args.size());
                 int metaIdx = this->addNativeCall(node.staticClassName, node.methodName, argCount, true);
 
-                this->current.get().emit(OpCode::CALL_NATIVE_METHOD, metaIdx, node.loc);
+                this->current.get().emit(MirOp::CALL_NATIVE_METHOD, metaIdx, node.loc);
                 return;
             }
 
             auto it = this->classStaticMethodIndices.find(node.staticClassName);
             if (it != this->classStaticMethodIndices.end() && node.methodOrdinal >= 0 &&
                 static_cast<size_t>(node.methodOrdinal) < it->second.size()) {
-                this->current.get().emit(OpCode::CALL_FUNC, it->second[node.methodOrdinal], node.loc);
+                this->current.get().emit(MirOp::CALL_FUNC, it->second[node.methodOrdinal], node.loc);
             } else {
                 this->diagnostics.addError(node.loc, "Unresolved static method call: " + node.methodName);
             }
@@ -857,7 +857,7 @@ namespace LOICollection::frontend::ir {
 
         for (int arg : callbackArgs)
             this->current.get().emit(
-                OpCode::BIND_THIS, static_cast<int>(node.args.size()) - arg, node.loc);
+                MirOp::BIND_THIS, static_cast<int>(node.args.size()) - arg, node.loc);
 
         auto it = classMethodIndices.find(node.className);
         if (it != classMethodIndices.end() && node.methodOrdinal >= 0 &&
@@ -865,11 +865,11 @@ namespace LOICollection::frontend::ir {
             int argCount = static_cast<int>(node.args.size());
 
             if (node.target->getType() == ASTNode::Type::Super) {
-                this->current.get().emit(OpCode::CALL_METHOD, it->second[node.methodOrdinal], node.loc);
+                this->current.get().emit(MirOp::CALL_METHOD, it->second[node.methodOrdinal], node.loc);
             } else {
                 int classIdx = this->classIndices[node.className];
                 int metaIdx = this->addVirtualCall(classIdx, node.methodOrdinal, argCount);
-                this->current.get().emit(OpCode::CALL_METHOD_VIRTUAL, metaIdx, node.loc);
+                this->current.get().emit(MirOp::CALL_METHOD_VIRTUAL, metaIdx, node.loc);
             }
             return;
         }
@@ -878,7 +878,7 @@ namespace LOICollection::frontend::ir {
             int argCount = static_cast<int>(node.args.size());
             int metaIdx = this->addNativeCall(node.className, node.methodName, argCount);
 
-            this->current.get().emit(OpCode::CALL_NATIVE_METHOD, metaIdx, node.loc);
+            this->current.get().emit(MirOp::CALL_NATIVE_METHOD, metaIdx, node.loc);
             return;
         }
 
@@ -886,18 +886,18 @@ namespace LOICollection::frontend::ir {
     }
 
     void Compiler::visit(ThisNode& node) {
-        this->current.get().emit(OpCode::LOAD_THIS, 0, node.loc);
+        this->current.get().emit(MirOp::LOAD_THIS, 0, node.loc);
     }
 
     void Compiler::visit(SuperNode& node) {
-        this->current.get().emit(OpCode::LOAD_THIS, 0, node.loc);
+        this->current.get().emit(MirOp::LOAD_THIS, 0, node.loc);
     }
 
     void Compiler::visit(SuperCallNode& node) {
         for (auto& arg : node.args)
             this->compileValue(*arg, node.loc);
 
-        this->current.get().emit(OpCode::LOAD_THIS, 0, node.loc);
+        this->current.get().emit(MirOp::LOAD_THIS, 0, node.loc);
 
         int constructorIndex = -1;
         if (node.constructorIndex >= 0) {
@@ -908,14 +908,14 @@ namespace LOICollection::frontend::ir {
 
         int argCount = static_cast<int>(node.args.size());
         int metaIdx = this->addSuperCall(constructorIndex, argCount);
-        this->current.get().emit(OpCode::CALL_SUPER_CTOR, metaIdx, node.loc);
+        this->current.get().emit(MirOp::CALL_SUPER_CTOR, metaIdx, node.loc);
     }
 
     void Compiler::visit(InstanceOfNode& node) {
         this->compileValue(*node.target, node.loc);
 
         int nameIdx = this->addConstant(node.className);
-        this->current.get().emit(OpCode::INSTANCEOF, nameIdx, node.loc);
+        this->current.get().emit(MirOp::INSTANCEOF, nameIdx, node.loc);
     }
 
     void Compiler::visit(FunctionDefNode& node) {
@@ -936,11 +936,11 @@ namespace LOICollection::frontend::ir {
         mm.argCount = static_cast<int>(node.decl.params.size());
 
         int bodyIdx = static_cast<int>(this->chunk.methodBodies.size());
-        auto body = std::make_unique<BytecodeChunk>();
-        BytecodeChunk& bodyChunk = *body;
+        auto body = std::make_unique<MirChunk>();
+        MirChunk& bodyChunk = *body;
         this->chunk.methodBodies.push_back(std::move(body));
 
-        std::reference_wrapper<BytecodeChunk> saved = this->current;
+        std::reference_wrapper<MirChunk> saved = this->current;
         this->current = std::ref(bodyChunk);
         auto loops = this->suspendLoops();
 
@@ -951,11 +951,11 @@ namespace LOICollection::frontend::ir {
         if (node.decl.body)
             node.decl.body->accept(*this);
 
-        this->current.get().emit(OpCode::POP);
+        this->current.get().emit(MirOp::POP);
 
         int emptyIdx = this->addConstant(std::string(""));
-        this->current.get().emit(OpCode::PUSH_STR, emptyIdx);
-        this->current.get().emit(OpCode::RETURN);
+        this->current.get().emit(MirOp::PUSH_STR, emptyIdx);
+        this->current.get().emit(MirOp::RETURN);
 
         this->current = saved;
         bodyChunk.slotCount = this->closeScope();
@@ -974,14 +974,14 @@ namespace LOICollection::frontend::ir {
                 int argCount = static_cast<int>(node.args.size());
                 int metaIdx = this->addNativeCall(node.staticClassName, node.name, argCount, true);
 
-                this->current.get().emit(OpCode::CALL_NATIVE_METHOD, metaIdx, node.loc);
+                this->current.get().emit(MirOp::CALL_NATIVE_METHOD, metaIdx, node.loc);
                 return;
             }
 
             auto it = this->classStaticMethodIndices.find(node.staticClassName);
             if (it != this->classStaticMethodIndices.end() && node.methodOrdinal >= 0 &&
                 static_cast<size_t>(node.methodOrdinal) < it->second.size()) {
-                this->current.get().emit(OpCode::CALL_FUNC, it->second[node.methodOrdinal], node.loc);
+                this->current.get().emit(MirOp::CALL_FUNC, it->second[node.methodOrdinal], node.loc);
             } else {
                 this->diagnostics.addError(node.loc, "Unresolved static method call: " + node.name);
             }
@@ -992,7 +992,7 @@ namespace LOICollection::frontend::ir {
             this->emitLoad(node.resolvedName, node.loc);
 
             int argCount = static_cast<int>(node.args.size());
-            this->current.get().emit(OpCode::CALL_LAMBDA, argCount, node.loc);
+            this->current.get().emit(MirOp::CALL_LAMBDA, argCount, node.loc);
             return;
         }
 
@@ -1003,16 +1003,16 @@ namespace LOICollection::frontend::ir {
             return;
         }
 
-        this->current.get().emit(OpCode::CALL_FUNC, it->second[node.functionOrdinal], node.loc);
+        this->current.get().emit(MirOp::CALL_FUNC, it->second[node.functionOrdinal], node.loc);
     }
 
     void Compiler::visit(LambdaNode& node) {
         int bodyIdx = static_cast<int>(this->chunk.methodBodies.size());
-        auto body = std::make_unique<BytecodeChunk>();
-        BytecodeChunk& bodyChunk = *body;
+        auto body = std::make_unique<MirChunk>();
+        MirChunk& bodyChunk = *body;
         this->chunk.methodBodies.push_back(std::move(body));
 
-        std::reference_wrapper<BytecodeChunk> saved = this->current;
+        std::reference_wrapper<MirChunk> saved = this->current;
         this->current = std::ref(bodyChunk);
         auto loops = this->suspendLoops();
 
@@ -1023,11 +1023,11 @@ namespace LOICollection::frontend::ir {
         if (node.decl.body)
             node.decl.body->accept(*this);
 
-        this->current.get().emit(OpCode::POP);
+        this->current.get().emit(MirOp::POP);
 
         int emptyIdx = this->addConstant(std::string(""));
-        this->current.get().emit(OpCode::PUSH_STR, emptyIdx);
-        this->current.get().emit(OpCode::RETURN);
+        this->current.get().emit(MirOp::PUSH_STR, emptyIdx);
+        this->current.get().emit(MirOp::RETURN);
 
         this->current = saved;
 
@@ -1035,7 +1035,7 @@ namespace LOICollection::frontend::ir {
         bodyChunk.slotCount = this->closeScope();
 
         int lambdaIdx = this->addLambda(bodyIdx, static_cast<int>(node.decl.params.size()), captureCount);
-        this->current.get().emit(OpCode::MAKE_LAMBDA, lambdaIdx, node.loc);
+        this->current.get().emit(MirOp::MAKE_LAMBDA, lambdaIdx, node.loc);
     }
 
     int Compiler::addNativeCall(const std::string& className, const std::string& name, int argCount, bool isStatic) {
@@ -1122,20 +1122,20 @@ namespace LOICollection::frontend::ir {
 
     void Compiler::emitLoad(const std::string& name, const SourceLocation& loc) {
         if (auto slot = this->resolveSlot(name)) {
-            this->current.get().emit(OpCode::LOAD_SLOT, *slot, loc);
+            this->current.get().emit(MirOp::LOAD_SLOT, *slot, loc);
             return;
         }
 
-        this->current.get().emit(OpCode::LOAD_VAR, this->addConstant(name), loc);
+        this->current.get().emit(MirOp::LOAD_VAR, this->addConstant(name), loc);
     }
 
     void Compiler::emitStore(const std::string& name, const SourceLocation& loc) {
         if (auto slot = this->resolveSlot(name)) {
-            this->current.get().emit(OpCode::STORE_SLOT, *slot, loc);
+            this->current.get().emit(MirOp::STORE_SLOT, *slot, loc);
             return;
         }
 
-        this->current.get().emit(OpCode::STORE_VAR, this->addConstant(name), loc);
+        this->current.get().emit(MirOp::STORE_VAR, this->addConstant(name), loc);
     }
 
     int Compiler::fieldSlotOf(const TypeInfo& owner, const std::string& memberName) const {
@@ -1156,7 +1156,7 @@ namespace LOICollection::frontend::ir {
         return it == fields.end() ? -1 : static_cast<int>(std::distance(fields.begin(), it));
     }
 
-    void Compiler::emitFieldAccess(OpCode slotOp, OpCode namedOp, const MemberAccessNode& node) {
+    void Compiler::emitFieldAccess(MirOp slotOp, MirOp namedOp, const MemberAccessNode& node) {
         int slot = this->fieldSlotOf(node.target->type, node.memberName);
         if (slot >= 0) {
             this->current.get().emit(slotOp, slot, node.loc);
@@ -1168,11 +1168,11 @@ namespace LOICollection::frontend::ir {
 
     void Compiler::emitLoadField(const MemberAccessNode& node) {
         this->compileValue(*node.target, node.loc);
-        this->emitFieldAccess(OpCode::LOAD_FIELD_SLOT, OpCode::LOAD_FIELD, node);
+        this->emitFieldAccess(MirOp::LOAD_FIELD_SLOT, MirOp::LOAD_FIELD, node);
     }
 
     void Compiler::emitStoreField(const MemberAccessNode& node) {
-        this->emitFieldAccess(OpCode::STORE_FIELD_SLOT, OpCode::STORE_FIELD, node);
+        this->emitFieldAccess(MirOp::STORE_FIELD_SLOT, MirOp::STORE_FIELD, node);
     }
 
     ClassLookup Compiler::classLookup() const {
@@ -1187,7 +1187,7 @@ namespace LOICollection::frontend::ir {
         node.accept(*this);
 
         if (node.type.kind == TypeKind::Optional && !node.preserveOptional)
-            this->current.get().emit(OpCode::UNWRAP, 0, loc);
+            this->current.get().emit(MirOp::UNWRAP, 0, loc);
     }
 
     std::optional<ValueNode::ValueType> Compiler::constantValue(ExprNode& node) const {

@@ -15,6 +15,7 @@
 #include "LOICollectionA/frontend/Iteration.h"
 
 #include "LOICollectionA/frontend/ir/ByteCode.h"
+#include "LOICollectionA/frontend/ir/Mir.h"
 
 namespace LOICollection::frontend::ir {
     class Compiler : public ASTVisitor {
@@ -24,9 +25,9 @@ namespace LOICollection::frontend::ir {
         LOICOLLECTION_A_NDAPI BytecodeChunk compile(ASTNode& root);
 
     private:
-        BytecodeChunk chunk;
+        MirChunk chunk;
         
-        std::reference_wrapper<BytecodeChunk> current;
+        std::reference_wrapper<MirChunk> current;
 
         DiagnosticEngine& diagnostics;
 
@@ -150,6 +151,6 @@ namespace LOICollection::frontend::ir {
 
         void emitLoadField(const MemberAccessNode& node);
         void emitStoreField(const MemberAccessNode& node);
-        void emitFieldAccess(OpCode slotOp, OpCode namedOp, const MemberAccessNode& node);
+        void emitFieldAccess(MirOp slotOp, MirOp namedOp, const MemberAccessNode& node);
     };
 }
