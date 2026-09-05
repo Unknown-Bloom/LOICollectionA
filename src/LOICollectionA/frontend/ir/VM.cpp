@@ -199,12 +199,10 @@ namespace LOICollection::frontend::ir {
                 case MirOp::CALL_NATIVE_METHOD: this->execNativeCall(s); break;
                 case MirOp::CALL_FUNC: case MirOp::CALL_LAMBDA: this->execFunctionCall(s); break;
                 case MirOp::ADD: case MirOp::SUB: case MirOp::MUL: case MirOp::DIV: case MirOp::MOD: case MirOp::POW:
-                case MirOp::ADD_I: case MirOp::SUB_I: case MirOp::MUL_I: case MirOp::MOD_I:
                     this->execArithmetic(s); break;
                 case MirOp::CMP_EQ: case MirOp::CMP_NE: case MirOp::CMP_GT: case MirOp::CMP_LT: case MirOp::CMP_GE: case MirOp::CMP_LE:
-                case MirOp::CMP_EQ_I: case MirOp::CMP_NE_I: case MirOp::CMP_GT_I: case MirOp::CMP_LT_I: case MirOp::CMP_GE_I: case MirOp::CMP_LE_I:
                     this->execComparison(s); break;
-                case MirOp::LOGIC_AND: case MirOp::LOGIC_OR: case MirOp::NEG: case MirOp::NEG_I: case MirOp::NOT: this->execLogic(s); break;
+                case MirOp::LOGIC_AND: case MirOp::LOGIC_OR: case MirOp::NEG: case MirOp::NOT: this->execLogic(s); break;
                 case MirOp::CALL: case MirOp::CALL_MACRO: this->execHostCall(s); break;
                 case MirOp::JMP_IF_FALSE: case MirOp::JMP_IF_TRUE: case MirOp::JMP: this->execBranch(s); break;
                 case MirOp::RETURN: {

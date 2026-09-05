@@ -26,11 +26,8 @@ namespace LOICollection::frontend::ir::opt {
             switch (op) {
                 case MirOp::ADD: case MirOp::SUB: case MirOp::MUL: case MirOp::DIV:
                 case MirOp::MOD: case MirOp::POW:
-                case MirOp::ADD_I: case MirOp::SUB_I: case MirOp::MUL_I: case MirOp::MOD_I:
                 case MirOp::CMP_EQ: case MirOp::CMP_NE: case MirOp::CMP_GT: case MirOp::CMP_LT:
                 case MirOp::CMP_GE: case MirOp::CMP_LE:
-                case MirOp::CMP_EQ_I: case MirOp::CMP_NE_I: case MirOp::CMP_GT_I: case MirOp::CMP_LT_I:
-                case MirOp::CMP_GE_I: case MirOp::CMP_LE_I:
                 case MirOp::LOGIC_AND: case MirOp::LOGIC_OR:
                     return true;
                 default:
@@ -41,7 +38,6 @@ namespace LOICollection::frontend::ir::opt {
         bool isPureUnary(MirOp op) {
             switch (op) {
                 case MirOp::NEG:
-                case MirOp::NEG_I:
                 case MirOp::NOT:
                 case MirOp::INSTANCEOF:
                 case MirOp::LOAD_LEN:
@@ -66,21 +62,21 @@ namespace LOICollection::frontend::ir::opt {
 
         std::string opName(MirOp op) {
             switch (op) {
-                case MirOp::ADD: case MirOp::ADD_I: return "ADD";
-                case MirOp::SUB: case MirOp::SUB_I: return "SUB";
-                case MirOp::MUL: case MirOp::MUL_I: return "MUL";
+                case MirOp::ADD: return "ADD";
+                case MirOp::SUB: return "SUB";
+                case MirOp::MUL: return "MUL";
                 case MirOp::DIV: return "DIV";
-                case MirOp::MOD: case MirOp::MOD_I: return "MOD";
+                case MirOp::MOD: return "MOD";
                 case MirOp::POW: return "POW";
-                case MirOp::CMP_EQ: case MirOp::CMP_EQ_I: return "EQ";
-                case MirOp::CMP_NE: case MirOp::CMP_NE_I: return "NE";
-                case MirOp::CMP_GT: case MirOp::CMP_GT_I: return "GT";
-                case MirOp::CMP_LT: case MirOp::CMP_LT_I: return "LT";
-                case MirOp::CMP_GE: case MirOp::CMP_GE_I: return "GE";
-                case MirOp::CMP_LE: case MirOp::CMP_LE_I: return "LE";
+                case MirOp::CMP_EQ: return "EQ";
+                case MirOp::CMP_NE: return "NE";
+                case MirOp::CMP_GT: return "GT";
+                case MirOp::CMP_LT: return "LT";
+                case MirOp::CMP_GE: return "GE";
+                case MirOp::CMP_LE: return "LE";
                 case MirOp::LOGIC_AND: return "AND";
                 case MirOp::LOGIC_OR: return "OR";
-                case MirOp::NEG: case MirOp::NEG_I: return "NEG";
+                case MirOp::NEG: return "NEG";
                 case MirOp::NOT: return "NOT";
                 case MirOp::INSTANCEOF: return "INST";
                 case MirOp::LOAD_LEN: return "LEN";

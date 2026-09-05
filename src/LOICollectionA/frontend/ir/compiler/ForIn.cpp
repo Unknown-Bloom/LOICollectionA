@@ -95,7 +95,7 @@ namespace LOICollection::frontend::ir {
         const int lenReg = this->emitIterableLength(protocol, seqSlot, node.loc);
         const int cmpReg = this->allocReg();
         this->current.get().emit(
-            MirOp::CMP_LT_I, 0, cmpReg, idxReg, lenReg, node.loc, TypeInfo{ TypeKind::Int });
+            MirOp::CMP_LT, 0, cmpReg, idxReg, lenReg, node.loc, TypeInfo{ TypeKind::Int });
 
         size_t jmpFalseIdx = this->current.get().emit(
             MirOp::JMP_IF_FALSE, 0, -1, cmpReg, -1, node.loc);
@@ -115,7 +115,7 @@ namespace LOICollection::frontend::ir {
 
         const int nextReg = this->allocReg();
         this->current.get().emit(
-            MirOp::ADD_I, 0, nextReg, idxSlot, oneReg, node.loc, TypeInfo{ TypeKind::Int });
+            MirOp::ADD, 0, nextReg, idxSlot, oneReg, node.loc, TypeInfo{ TypeKind::Int });
         this->current.get().emit(MirOp::STORE_SLOT, idxSlot, -1, nextReg, -1, node.loc);
 
         node.body->accept(*this);

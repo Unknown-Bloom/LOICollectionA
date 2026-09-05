@@ -135,7 +135,7 @@ namespace LOICollection::frontend::ir {
         int emitBoolConst(bool value, const SourceLocation& loc);
 
         int emitBinary(
-            MirOp genericOp, MirOp intOp, bool isInt,
+            MirOp op,
             int lhs, int rhs,
             const SourceLocation& loc, const TypeInfo& type = {}
         );

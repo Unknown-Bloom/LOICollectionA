@@ -86,14 +86,12 @@ namespace LOICollection::frontend::ir {
         MOVE,
 
         ADD, SUB, MUL, DIV, MOD, POW,
-        ADD_I, SUB_I, MUL_I, MOD_I,
 
         CMP_EQ, CMP_NE, CMP_GT, CMP_LT, CMP_GE, CMP_LE,
-        CMP_EQ_I, CMP_NE_I, CMP_GT_I, CMP_LT_I, CMP_GE_I, CMP_LE_I,
 
         LOGIC_AND, LOGIC_OR,
 
-        NEG, NEG_I, NOT,
+        NEG, NOT,
         UNWRAP, TYPE_OF, HAS_VALUE, IS_NONE,
 
         LOAD_FIELD, LOAD_FIELD_SLOT,

@@ -211,11 +211,11 @@ namespace LOICollection::frontend::ir {
     }
 
     int Compiler::emitBinary(
-        MirOp genericOp, MirOp intOp, bool isInt,
+        MirOp op,
         int lhs, int rhs, const SourceLocation& loc, const TypeInfo& type
     ) {
         const int dst = this->allocReg();
-        this->current.get().emit(isInt ? intOp : genericOp, 0, dst, lhs, rhs, loc, type);
+        this->current.get().emit(op, 0, dst, lhs, rhs, loc, type);
         return dst;
     }
 
@@ -628,11 +628,11 @@ namespace LOICollection::frontend::ir {
         const bool isInt = leftType.kind == TypeKind::Int && rightType.kind == TypeKind::Int;
         const TypeInfo resultType = isInt ? leftType : TypeInfo{};
 
-        if (op == "+") return this->emitBinary(MirOp::ADD, MirOp::ADD_I, isInt, lhs, rhs, loc, resultType);
-        if (op == "-") return this->emitBinary(MirOp::SUB, MirOp::SUB_I, isInt, lhs, rhs, loc, resultType);
-        if (op == "*") return this->emitBinary(MirOp::MUL, MirOp::MUL_I, isInt, lhs, rhs, loc, resultType);
-        if (op == "/") return this->emitBinary(MirOp::DIV, MirOp::DIV, false, lhs, rhs, loc);
-        if (op == "%") return this->emitBinary(MirOp::MOD, MirOp::MOD_I, isInt, lhs, rhs, loc, resultType);
+        if (op == "+") return this->emitBinary(MirOp::ADD, lhs, rhs, loc, resultType);
+        if (op == "-") return this->emitBinary(MirOp::SUB, lhs, rhs, loc, resultType);
+        if (op == "*") return this->emitBinary(MirOp::MUL, lhs, rhs, loc, resultType);
+        if (op == "/") return this->emitBinary(MirOp::DIV, lhs, rhs, loc);
+        if (op == "%") return this->emitBinary(MirOp::MOD, lhs, rhs, loc, resultType);
 
         this->diagnostics.addError(loc, "Unknown compound assignment op: " + op);
         return lhs;
@@ -758,12 +758,12 @@ namespace LOICollection::frontend::ir {
         const bool isInt = node.left->type.kind == TypeKind::Int && node.right->type.kind == TypeKind::Int;
         const TypeInfo resultType = isInt ? node.left->type : TypeInfo{};
 
-        if (node.op == "==") this->lastResultReg = this->emitBinary(MirOp::CMP_EQ, MirOp::CMP_EQ_I, isInt, lhs, rhs, node.loc, resultType);
-        else if (node.op == "!=") this->lastResultReg = this->emitBinary(MirOp::CMP_NE, MirOp::CMP_NE_I, isInt, lhs, rhs, node.loc, resultType);
-        else if (node.op == ">") this->lastResultReg = this->emitBinary(MirOp::CMP_GT, MirOp::CMP_GT_I, isInt, lhs, rhs, node.loc, resultType);
-        else if (node.op == "<") this->lastResultReg = this->emitBinary(MirOp::CMP_LT, MirOp::CMP_LT_I, isInt, lhs, rhs, node.loc, resultType);
-        else if (node.op == ">=") this->lastResultReg = this->emitBinary(MirOp::CMP_GE, MirOp::CMP_GE_I, isInt, lhs, rhs, node.loc, resultType);
-        else if (node.op == "<=") this->lastResultReg = this->emitBinary(MirOp::CMP_LE, MirOp::CMP_LE_I, isInt, lhs, rhs, node.loc, resultType);
+        if (node.op == "==") this->lastResultReg = this->emitBinary(MirOp::CMP_EQ, lhs, rhs, node.loc, resultType);
+        else if (node.op == "!=") this->lastResultReg = this->emitBinary(MirOp::CMP_NE, lhs, rhs, node.loc, resultType);
+        else if (node.op == ">") this->lastResultReg = this->emitBinary(MirOp::CMP_GT, lhs, rhs, node.loc, resultType);
+        else if (node.op == "<") this->lastResultReg = this->emitBinary(MirOp::CMP_LT, lhs, rhs, node.loc, resultType);
+        else if (node.op == ">=") this->lastResultReg = this->emitBinary(MirOp::CMP_GE, lhs, rhs, node.loc, resultType);
+        else if (node.op == "<=") this->lastResultReg = this->emitBinary(MirOp::CMP_LE, lhs, rhs, node.loc, resultType);
         else this->diagnostics.addError(node.loc, "Unknown compare op: " + node.op);
     }
 
@@ -780,7 +780,7 @@ namespace LOICollection::frontend::ir {
                         const int lhs = this->emitBoolConst(true, node.loc);
                         const int rhs = this->compileValue(*node.right, node.loc);
                         this->lastResultReg = this->emitBinary(
-                            MirOp::LOGIC_AND, MirOp::LOGIC_AND, false, lhs, rhs, node.loc);
+                            MirOp::LOGIC_AND, lhs, rhs, node.loc);
                     } else {
                         this->lastResultReg = this->emitBoolConst(false, node.loc);
                     }
@@ -791,7 +791,7 @@ namespace LOICollection::frontend::ir {
                         const int lhs = this->emitBoolConst(false, node.loc);
                         const int rhs = this->compileValue(*node.right, node.loc);
                         this->lastResultReg = this->emitBinary(
-                            MirOp::LOGIC_OR, MirOp::LOGIC_OR, false, lhs, rhs, node.loc);
+                            MirOp::LOGIC_OR, lhs, rhs, node.loc);
                     }
                 }
                 return;
@@ -855,12 +855,12 @@ namespace LOICollection::frontend::ir {
 
         const bool isInt = node.type.kind == TypeKind::Int;
 
-        if (node.op == "+") this->lastResultReg = this->emitBinary(MirOp::ADD, MirOp::ADD_I, isInt, lhs, rhs, node.loc, node.type);
-        else if (node.op == "-") this->lastResultReg = this->emitBinary(MirOp::SUB, MirOp::SUB_I, isInt, lhs, rhs, node.loc, node.type);
-        else if (node.op == "*") this->lastResultReg = this->emitBinary(MirOp::MUL, MirOp::MUL_I, isInt, lhs, rhs, node.loc, node.type);
-        else if (node.op == "/") this->lastResultReg = this->emitBinary(MirOp::DIV, MirOp::DIV, false, lhs, rhs, node.loc);
-        else if (node.op == "%") this->lastResultReg = this->emitBinary(MirOp::MOD, MirOp::MOD_I, isInt, lhs, rhs, node.loc, node.type);
-        else if (node.op == "^") this->lastResultReg = this->emitBinary(MirOp::POW, MirOp::POW, false, lhs, rhs, node.loc);
+        if (node.op == "+") this->lastResultReg = this->emitBinary(MirOp::ADD, lhs, rhs, node.loc, node.type);
+        else if (node.op == "-") this->lastResultReg = this->emitBinary(MirOp::SUB, lhs, rhs, node.loc, node.type);
+        else if (node.op == "*") this->lastResultReg = this->emitBinary(MirOp::MUL, lhs, rhs, node.loc, node.type);
+        else if (node.op == "/") this->lastResultReg = this->emitBinary(MirOp::DIV, lhs, rhs, node.loc);
+        else if (node.op == "%") this->lastResultReg = this->emitBinary(MirOp::MOD, lhs, rhs, node.loc, node.type);
+        else if (node.op == "^") this->lastResultReg = this->emitBinary(MirOp::POW, lhs, rhs, node.loc);
         else this->diagnostics.addError(node.loc, "Unknown arithmetic op: " + node.op);
     }
 
@@ -868,10 +868,8 @@ namespace LOICollection::frontend::ir {
         const int src = this->compileValue(*node.operand, node.loc);
 
         if (node.op == "-") {
-            const bool isInt = node.type.kind == TypeKind::Int;
             const int dst = this->allocReg();
-            this->current.get().emit(
-                isInt ? MirOp::NEG_I : MirOp::NEG, 0, dst, src, -1, node.loc, node.type);
+            this->current.get().emit(MirOp::NEG, 0, dst, src, -1, node.loc, node.type);
             this->lastResultReg = dst;
         } else if (node.op == "!") {
             const int dst = this->allocReg();

@@ -54,13 +54,13 @@ namespace LOICollection::frontend::ir::opt {
 
         bool isZero(const ValueNode::ValueType& v) {
             if (auto i = std::get_if<int>(&v)) return *i == 0;
-            if (auto f = std::get_if<float>(&v)) return f == 0.0f;
+            if (auto f = std::get_if<float>(&v)) return *f == 0.0f;
             return false;
         }
 
         bool isOne(const ValueNode::ValueType& v) {
             if (auto i = std::get_if<int>(&v)) return *i == 1;
-            if (auto f = std::get_if<float>(&v)) return f == 1.0f;
+            if (auto f = std::get_if<float>(&v)) return *f == 1.0f;
             return false;
         }
 
@@ -68,12 +68,9 @@ namespace LOICollection::frontend::ir::opt {
             switch (op) {
                 case MirOp::ADD:
                 case MirOp::SUB:
-                case MirOp::ADD_I:
-                case MirOp::SUB_I:
                     return isZero(identity);
                 case MirOp::MUL:
                 case MirOp::DIV:
-                case MirOp::MUL_I:
                 case MirOp::POW:
                     return isOne(identity);
                 default:
@@ -125,17 +122,14 @@ namespace LOICollection::frontend::ir::opt {
 
             case MirOp::ADD: case MirOp::SUB: case MirOp::MUL: case MirOp::DIV:
             case MirOp::MOD: case MirOp::POW:
-            case MirOp::ADD_I: case MirOp::SUB_I: case MirOp::MUL_I: case MirOp::MOD_I:
                 return foldBinary(instr, oldIdx);
 
             case MirOp::CMP_EQ: case MirOp::CMP_NE: case MirOp::CMP_GT: case MirOp::CMP_LT:
             case MirOp::CMP_GE: case MirOp::CMP_LE:
-            case MirOp::CMP_EQ_I: case MirOp::CMP_NE_I: case MirOp::CMP_GT_I: case MirOp::CMP_LT_I:
-            case MirOp::CMP_GE_I: case MirOp::CMP_LE_I:
             case MirOp::LOGIC_AND: case MirOp::LOGIC_OR:
                 return foldComparison(instr, oldIdx);
 
-            case MirOp::NEG: case MirOp::NEG_I: case MirOp::NOT:
+            case MirOp::NEG: case MirOp::NOT:
                 return foldUnary(instr, oldIdx);
 
             case MirOp::UNWRAP: case MirOp::TYPE_OF: case MirOp::HAS_VALUE: case MirOp::IS_NONE:
@@ -234,11 +228,7 @@ namespace LOICollection::frontend::ir::opt {
         }
 
         DiagnosticEngine diag;
-        ValueNode::ValueType result;
-        if (instr.op == MirOp::NEG_I)
-            result = VM::applyUnary(operand.value, MirOp::NEG, diag, instr.loc);
-        else
-            result = VM::applyUnary(operand.value, MirOp::NEG, diag, instr.loc);
+        ValueNode::ValueType result = VM::applyUnary(operand.value, MirOp::NEG, diag, instr.loc);
 
         if (diag.hasErrors())
             return emitOriginalAfterForget(instr);

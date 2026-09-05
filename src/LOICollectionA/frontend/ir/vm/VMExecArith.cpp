@@ -20,25 +20,7 @@
 
 namespace LOICollection::frontend::ir {
 
-    static MirOp genericOp(MirOp op) {
-        switch (op) {
-            case MirOp::ADD_I: return MirOp::ADD;
-            case MirOp::SUB_I: return MirOp::SUB;
-            case MirOp::MUL_I: return MirOp::MUL;
-            case MirOp::MOD_I: return MirOp::MOD;
-            case MirOp::CMP_EQ_I: return MirOp::CMP_EQ;
-            case MirOp::CMP_NE_I: return MirOp::CMP_NE;
-            case MirOp::CMP_GT_I: return MirOp::CMP_GT;
-            case MirOp::CMP_LT_I: return MirOp::CMP_LT;
-            case MirOp::CMP_GE_I: return MirOp::CMP_GE;
-            case MirOp::CMP_LE_I: return MirOp::CMP_LE;
-            case MirOp::NEG_I: return MirOp::NEG;
-            default: return op;
-        }
-    }
-
     static std::string_view opToken(MirOp op) {
-        op = genericOp(op);
         switch (op) {
             case MirOp::ADD: return "+";
             case MirOp::SUB: return "-";
@@ -79,7 +61,6 @@ namespace LOICollection::frontend::ir {
     }
 
     ValueNode::ValueType VM::applyArithmetic(const ValueNode::ValueType& left, const ValueNode::ValueType& right, MirOp op, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
-        op = genericOp(op);
         const std::string_view token = opToken(op);
 
         if (auto leftObj = std::get_if<ObjectRef>(&left)) {
@@ -195,7 +176,6 @@ namespace LOICollection::frontend::ir {
     }
 
     ValueNode::ValueType VM::applyUnary(const ValueNode::ValueType& operand, MirOp op, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
-        op = genericOp(op);
         return std::visit([&diagnostics, &loc, op](auto&& arg) -> ValueNode::ValueType {
             using T = std::decay_t<decltype(arg)>;
 
@@ -240,7 +220,6 @@ namespace LOICollection::frontend::ir {
     }
 
     bool VM::applyComparison(const ValueNode::ValueType& left, const ValueNode::ValueType& right, MirOp op, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
-        op = genericOp(op);
         const std::string_view token = opToken(op);
 
         if (auto leftObj = std::get_if<ObjectRef>(&left)) {
@@ -361,7 +340,7 @@ namespace LOICollection::frontend::ir {
             const int l = *li;
             const int r = *ri;
 
-            if (instr.op == MirOp::MOD || instr.op == MirOp::MOD_I) {
+            if (instr.op == MirOp::MOD) {
                 if (r == 0) {
                     this->diagnostics.addError(this->currentLoc, "Modulo by zero");
                     this->setReg(frame, instr.dst, 0);
@@ -373,16 +352,16 @@ namespace LOICollection::frontend::ir {
 
             long long res = 0;
             switch (instr.op) {
-                case MirOp::ADD: case MirOp::ADD_I: res = static_cast<long long>(l) + r; break;
-                case MirOp::SUB: case MirOp::SUB_I: res = static_cast<long long>(l) - r; break;
-                case MirOp::MUL: case MirOp::MUL_I: res = static_cast<long long>(l) * r; break;
+                case MirOp::ADD: res = static_cast<long long>(l) + r; break;
+                case MirOp::SUB: res = static_cast<long long>(l) - r; break;
+                case MirOp::MUL: res = static_cast<long long>(l) * r; break;
                 default: break;
             }
 
             if (res < std::numeric_limits<int>::min() || res > std::numeric_limits<int>::max()) {
                 this->diagnostics.addError(this->currentLoc,
-                    instr.op == MirOp::ADD || instr.op == MirOp::ADD_I ? "Integer overflow in addition"
-                    : instr.op == MirOp::SUB || instr.op == MirOp::SUB_I ? "Integer overflow in subtraction"
+                    instr.op == MirOp::ADD ? "Integer overflow in addition"
+                    : instr.op == MirOp::SUB ? "Integer overflow in subtraction"
                     : "Integer overflow in multiplication");
                 this->setReg(frame, instr.dst, 0);
                 return;
@@ -420,12 +399,12 @@ namespace LOICollection::frontend::ir {
             const int r = *ri;
 
             switch (instr.op) {
-                case MirOp::CMP_EQ: case MirOp::CMP_EQ_I: fast = l == r; break;
-                case MirOp::CMP_NE: case MirOp::CMP_NE_I: fast = l != r; break;
-                case MirOp::CMP_GT: case MirOp::CMP_GT_I: fast = l > r; break;
-                case MirOp::CMP_LT: case MirOp::CMP_LT_I: fast = l < r; break;
-                case MirOp::CMP_GE: case MirOp::CMP_GE_I: fast = l >= r; break;
-                case MirOp::CMP_LE: case MirOp::CMP_LE_I: fast = l <= r; break;
+                case MirOp::CMP_EQ: fast = l == r; break;
+                case MirOp::CMP_NE: fast = l != r; break;
+                case MirOp::CMP_GT: fast = l > r; break;
+                case MirOp::CMP_LT: fast = l < r; break;
+                case MirOp::CMP_GE: fast = l >= r; break;
+                case MirOp::CMP_LE: fast = l <= r; break;
                 default: break;
             }
 
@@ -452,7 +431,7 @@ namespace LOICollection::frontend::ir {
                     VM::valueToBool(this->regOf(frame, instr.src1)) ||
                     VM::valueToBool(this->regOf(frame, instr.src2)));
             } break;
-            case MirOp::NEG: case MirOp::NEG_I: {
+            case MirOp::NEG: {
                 const ValueNode::ValueType& v = this->regOf(frame, instr.src1);
 
                 if (auto* iv = std::get_if<int>(&v)) {

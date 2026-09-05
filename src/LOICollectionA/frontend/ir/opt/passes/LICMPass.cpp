@@ -11,11 +11,8 @@ namespace LOICollection::frontend::ir::opt {
             switch (op) {
                 case MirOp::ADD: case MirOp::SUB: case MirOp::MUL: case MirOp::DIV:
                 case MirOp::MOD: case MirOp::POW:
-                case MirOp::ADD_I: case MirOp::SUB_I: case MirOp::MUL_I: case MirOp::MOD_I:
                 case MirOp::CMP_EQ: case MirOp::CMP_NE: case MirOp::CMP_GT: case MirOp::CMP_LT:
                 case MirOp::CMP_GE: case MirOp::CMP_LE:
-                case MirOp::CMP_EQ_I: case MirOp::CMP_NE_I: case MirOp::CMP_GT_I: case MirOp::CMP_LT_I:
-                case MirOp::CMP_GE_I: case MirOp::CMP_LE_I:
                 case MirOp::LOGIC_AND: case MirOp::LOGIC_OR:
                     return true;
                 default:
@@ -26,7 +23,6 @@ namespace LOICollection::frontend::ir::opt {
         bool isPureUnary(MirOp op) {
             switch (op) {
                 case MirOp::NEG:
-                case MirOp::NEG_I:
                 case MirOp::NOT:
                 case MirOp::INSTANCEOF:
                 case MirOp::LOAD_LEN:
