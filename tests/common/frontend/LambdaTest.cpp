@@ -2,8 +2,6 @@
 
 #include "common/frontend/CommonTest.h"
 
-#include "LOICollectionA/frontend/ir/MirLowering.h"
-
 using namespace LOICollection::frontend;
 
 TEST(LambdaTest, AssignAndCall) {
@@ -119,7 +117,7 @@ TEST(LambdaTest, CallFunctionRefFromNative) {
     ASSERT_FALSE(diagnostics.hasErrors());
 
     ir::Compiler compiler(diagnostics);
-    auto chunk = std::make_shared<ir::BytecodeChunk>(ir::MirLowering::lower(compiler.compile(*ast)));
+    auto chunk = std::make_shared<ir::MirChunk>(compiler.compile(*ast));
     ASSERT_FALSE(diagnostics.hasErrors());
 
     ir::VM vm(diagnostics);
@@ -148,7 +146,7 @@ TEST(LambdaTest, CallFunctionRefKeepsCaptures) {
     ASSERT_FALSE(diagnostics.hasErrors());
 
     ir::Compiler compiler(diagnostics);
-    auto chunk = std::make_shared<ir::BytecodeChunk>(ir::MirLowering::lower(compiler.compile(*ast)));
+    auto chunk = std::make_shared<ir::MirChunk>(compiler.compile(*ast));
     ASSERT_FALSE(diagnostics.hasErrors());
 
     ir::VM vm(diagnostics);

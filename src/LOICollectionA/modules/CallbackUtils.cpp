@@ -19,7 +19,6 @@
 #include "LOICollectionA/frontend/Callback.h"
 #include "LOICollectionA/frontend/SemanticAnalyzer.h"
 #include "LOICollectionA/frontend/ir/Compiler.h"
-#include "LOICollectionA/frontend/ir/MirLowering.h"
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 #include "LOICollectionA/frontend/ir/VM.h"
 
@@ -28,7 +27,7 @@
 
 namespace LOICollection::LOICollectionAPI {
     struct CallbackUtils::Impl {
-        LRUKCache<std::string, frontend::ir::BytecodeChunk> mCache;
+        LRUKCache<std::string, frontend::ir::MirChunk> mCache;
 
         std::shared_ptr<ll::io::Logger> logger;
 
@@ -155,16 +154,13 @@ namespace LOICollection::LOICollectionAPI {
         frontend::ir::Optimizer optimizer;
         optimizer.optimize(*mir);
 
-        auto bytecode = std::make_shared<frontend::ir::BytecodeChunk>(
-            frontend::ir::MirLowering::lower(*mir));
-
-        auto result = mVM.run(bytecode, { std::ref(player) });
+        auto result = mVM.run(mir, { std::ref(player) });
         if (diagnostics.hasErrors()) {
             this->mImpl->logger->error("CallbackUtils: {}", diagnostics.getErrorMessage());
             return str;
         }
 
-        this->mImpl->mCache.put(str, bytecode);
+        this->mImpl->mCache.put(str, mir);
         return frontend::ir::VM::valueToString(result);
     }
 
@@ -221,16 +217,13 @@ namespace LOICollection::LOICollectionAPI {
         frontend::ir::Optimizer optimizer;
         optimizer.optimize(*mir);
 
-        auto bytecode = std::make_shared<frontend::ir::BytecodeChunk>(
-            frontend::ir::MirLowering::lower(*mir));
-
-        auto result = mVM.run(bytecode, {});
+        auto result = mVM.run(mir, {});
         if (diagnostics.hasErrors()) {
             this->mImpl->logger->error("CallbackUtils: {}", diagnostics.getErrorMessage());
             return str;
         }
 
-        this->mImpl->mCache.put(str, bytecode);
+        this->mImpl->mCache.put(str, mir);
         return frontend::ir::VM::valueToString(result);
     }
 }

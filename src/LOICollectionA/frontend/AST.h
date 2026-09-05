@@ -17,6 +17,10 @@ namespace LOICollection::frontend {
     struct FunctionRef;
     using FunctionRefPtr = std::shared_ptr<FunctionRef>;
 
+    namespace ir {
+        struct MirChunk;
+    }
+
     enum class TypeKind {
         Unknown,
         Int,
@@ -990,14 +994,10 @@ namespace LOICollection::frontend {
         std::vector<ValueNode::ValueType> elements;
     };
 
-    namespace ir {
-        struct BytecodeChunk;
-    }
-
     using GlobalsTable = std::unordered_map<std::string, ValueNode::ValueType>;
 
     struct FunctionRef {
-        std::shared_ptr<const ir::BytecodeChunk> owner;
+        std::shared_ptr<const ir::MirChunk> owner;
 
         int bodyIndex = -1;
         int argCount = 0;

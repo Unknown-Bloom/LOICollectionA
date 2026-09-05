@@ -5,7 +5,6 @@
 #include "LOICollectionA/frontend/ir/opt/passes/DeadStorePass.h"
 #include "LOICollectionA/frontend/ir/opt/passes/LICMPass.h"
 #include "LOICollectionA/frontend/ir/opt/passes/CSEPass.h"
-#include "LOICollectionA/frontend/ir/opt/passes/FusePass.h"
 
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 
@@ -50,11 +49,6 @@ namespace LOICollection::frontend::ir {
 
             if (once.folded == 0 && once.removed == 0)
                 break;
-        }
-
-        if (this->enabled(Pass::Fuse)) {
-            opt::FusePass fuse{ chunk };
-            total.removed += fuse.run();
         }
 
         return total;

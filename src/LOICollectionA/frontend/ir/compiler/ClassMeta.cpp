@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "LOICollectionA/frontend/ir/ByteCode.h"
+#include "LOICollectionA/frontend/ir/Mir.h"
 #include "LOICollectionA/frontend/Callback.h"
 
 #include "LOICollectionA/frontend/ir/Compiler.h"
@@ -174,21 +174,17 @@ namespace LOICollection::frontend::ir {
                     walkIdx = walkCls.baseClassIndex;
                 }
 
-                int argCount = ctorIdx >= 0 ? this->chunk.methods[ctorIdx].argCount : 0;
-                int superIdx = this->addSuperCall(ctorIdx, argCount);
-                this->current.get().emit(MirOp::LOAD_THIS, 0, node.loc);
-                this->current.get().emit(MirOp::CALL_SUPER_CTOR, superIdx, node.loc);
-                this->current.get().emit(MirOp::POP, 0, node.loc);
+                int superIdx = this->addSuperCall(ctorIdx, 0);
+                const int base = this->reserveRegs(1);
+                this->current.get().emit(MirOp::LOAD_THIS, 0, base, -1, -1, node.loc);
+                this->current.get().emitCall(MirOp::CALL_SUPER_CTOR, superIdx, -1, base, -1, 0, node.loc);
             }
 
+            int lastReg = -1;
             if (method.body)
-                method.body->accept(*this);
+                lastReg = this->compilePart(*method.body);
 
-            this->current.get().emit(MirOp::POP);
-
-            int emptyIdx = this->addConstant(std::string(""));
-            this->current.get().emit(MirOp::PUSH_STR, emptyIdx);
-            this->current.get().emit(MirOp::RETURN);
+            this->current.get().emit(MirOp::RETURN, 0, -1, lastReg, -1);
 
             this->current = saved;
             bodyChunk.slotCount = this->closeScope();

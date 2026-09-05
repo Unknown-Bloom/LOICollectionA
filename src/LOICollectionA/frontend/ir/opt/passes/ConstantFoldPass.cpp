@@ -17,44 +17,9 @@
 
 namespace LOICollection::frontend::ir::opt {
     namespace {
-        OpCode foldOp(MirOp op) {
-            switch (op) {
-                case MirOp::ADD: return OpCode::ADD;
-                case MirOp::SUB: return OpCode::SUB;
-                case MirOp::MUL: return OpCode::MUL;
-                case MirOp::DIV: return OpCode::DIV;
-                case MirOp::MOD: return OpCode::MOD;
-                case MirOp::POW: return OpCode::POW;
-                case MirOp::CMP_EQ: return OpCode::CMP_EQ;
-                case MirOp::CMP_NE: return OpCode::CMP_NE;
-                case MirOp::CMP_GT: return OpCode::CMP_GT;
-                case MirOp::CMP_LT: return OpCode::CMP_LT;
-                case MirOp::CMP_GE: return OpCode::CMP_GE;
-                case MirOp::CMP_LE: return OpCode::CMP_LE;
-                case MirOp::NEG: return OpCode::NEG;
-                case MirOp::NOT: return OpCode::NOT;
-                default: return OpCode::ADD;
-            }
-        }
-
         bool alwaysJumps(MirOp op, const ValueNode::ValueType& value) {
             const bool truthy = VM::valueToBool(value);
             return (op == MirOp::JMP_IF_FALSE) ? !truthy : truthy;
-        }
-
-        MirOp invertedBranch(MirOp op) {
-            return op == MirOp::JMP_IF_FALSE ? MirOp::JMP_IF_TRUE : MirOp::JMP_IF_FALSE;
-        }
-
-        bool applyUnaryOperator(MirOp op, const ValueNode::ValueType& value, ValueNode::ValueType& out) {
-            if (op == MirOp::NEG) {
-                DiagnosticEngine foldDiag;
-                out = VM::applyUnary(value, OpCode::NEG, foldDiag);
-                return !foldDiag.hasErrors();
-            }
-
-            out = !VM::valueToBool(value);
-            return true;
         }
 
         bool valuesEqual(const ValueNode::ValueType& left, const ValueNode::ValueType& right) {
@@ -86,6 +51,35 @@ namespace LOICollection::frontend::ir::opt {
             }
             return false;
         }
+
+        bool isZero(const ValueNode::ValueType& v) {
+            if (auto i = std::get_if<int>(&v)) return *i == 0;
+            if (auto f = std::get_if<float>(&v)) return f == 0.0f;
+            return false;
+        }
+
+        bool isOne(const ValueNode::ValueType& v) {
+            if (auto i = std::get_if<int>(&v)) return *i == 1;
+            if (auto f = std::get_if<float>(&v)) return f == 1.0f;
+            return false;
+        }
+
+        bool identityEligible(MirOp op, const ValueNode::ValueType& identity) {
+            switch (op) {
+                case MirOp::ADD:
+                case MirOp::SUB:
+                case MirOp::ADD_I:
+                case MirOp::SUB_I:
+                    return isZero(identity);
+                case MirOp::MUL:
+                case MirOp::DIV:
+                case MirOp::MUL_I:
+                case MirOp::POW:
+                    return isOne(identity);
+                default:
+                    return false;
+            }
+        }
     }
 
     void ConstantFoldPass::run(bool enabled) {
@@ -93,21 +87,20 @@ namespace LOICollection::frontend::ir::opt {
             const int oldIdx = static_cast<int>(i);
 
             if (mJumps.isTarget(oldIdx)) {
-                mCtx.resetStack();
-                mCtx.clearTracked();
+                mRegValues.clear();
+                mSlotValues.clear();
+                mNameValues.clear();
             } else if (canWriteVariables(mChunk.code[i].op)) {
-                mCtx.clearTracked();
+                mSlotValues.clear();
+                mNameValues.clear();
             }
 
-            const Step step = enabled ? fold(oldIdx) : emitOpaque(mChunk.code[i]);
+            const Step step = enabled ? fold(oldIdx) : emitOriginal(mChunk.code[i]);
 
             if (step.emittedAt >= 0) {
                 mCtx.oldToNew[oldIdx] = step.emittedAt;
                 mCtx.newToOld.push_back(oldIdx);
             }
-
-            if (step.skipNext)
-                ++i;
         }
     }
 
@@ -115,70 +108,50 @@ namespace LOICollection::frontend::ir::opt {
         const MirInstr& instr = mChunk.code[oldIdx];
 
         switch (instr.op) {
-            case MirOp::PUSH_INT:
-            case MirOp::PUSH_FLOAT:
-            case MirOp::PUSH_STR:
-            case MirOp::PUSH_BOOL:
-            case MirOp::PUSH_NONE:
-                return foldPush(instr, oldIdx);
+            case MirOp::LOAD_CONST: {
+                const int at = mCtx.emit(instr);
+                mRegValues[instr.dst] = { mChunk.constants[instr.operand], at, true };
+                return { at };
+            }
 
-            case MirOp::UNWRAP:
-            case MirOp::TYPE_OF:
-            case MirOp::HAS_VALUE:
-            case MirOp::IS_NONE:
-                return foldNullish(instr, oldIdx);
+            case MirOp::MOVE: {
+                const int at = mCtx.emit(instr);
+                if (auto it = mRegValues.find(instr.src1); it != mRegValues.end())
+                    mRegValues[instr.dst] = it->second;
+                else
+                    mRegValues.erase(instr.dst);
+                return { at };
+            }
 
-            case MirOp::DUP_IS_NONE:
-                return foldDupIsNone(instr);
+            case MirOp::ADD: case MirOp::SUB: case MirOp::MUL: case MirOp::DIV:
+            case MirOp::MOD: case MirOp::POW:
+            case MirOp::ADD_I: case MirOp::SUB_I: case MirOp::MUL_I: case MirOp::MOD_I:
+                return foldBinary(instr, oldIdx);
 
-            case MirOp::LOAD_SLOT:
-            case MirOp::LOAD_VAR:
-            case MirOp::STORE_SLOT:
-            case MirOp::STORE_VAR:
-            case MirOp::DUP_STORE_SLOT:
-            case MirOp::DUP_STORE:
-                return foldVariable(instr);
-
-            case MirOp::DUP:
-            case MirOp::POP:
-                return foldStack(instr, oldIdx);
-
-            case MirOp::ADD:
-            case MirOp::SUB:
-            case MirOp::MUL:
-            case MirOp::DIV:
-            case MirOp::MOD:
-            case MirOp::POW:
-                return foldArithmetic(instr, oldIdx);
-
-            case MirOp::NEG:
-            case MirOp::NOT:
-                return foldUnary(instr, oldIdx);
-
-            case MirOp::CMP_EQ:
-            case MirOp::CMP_NE:
-            case MirOp::CMP_GT:
-            case MirOp::CMP_LT:
-            case MirOp::CMP_GE:
-            case MirOp::CMP_LE:
-            case MirOp::LOGIC_AND:
-            case MirOp::LOGIC_OR:
+            case MirOp::CMP_EQ: case MirOp::CMP_NE: case MirOp::CMP_GT: case MirOp::CMP_LT:
+            case MirOp::CMP_GE: case MirOp::CMP_LE:
+            case MirOp::CMP_EQ_I: case MirOp::CMP_NE_I: case MirOp::CMP_GT_I: case MirOp::CMP_LT_I:
+            case MirOp::CMP_GE_I: case MirOp::CMP_LE_I:
+            case MirOp::LOGIC_AND: case MirOp::LOGIC_OR:
                 return foldComparison(instr, oldIdx);
 
-            case MirOp::MAKE_ARRAY:
-                return foldMakeArray(instr, oldIdx);
+            case MirOp::NEG: case MirOp::NEG_I: case MirOp::NOT:
+                return foldUnary(instr, oldIdx);
 
-            case MirOp::LOAD_INDEX:
-                return foldLoadIndex(instr, oldIdx);
+            case MirOp::UNWRAP: case MirOp::TYPE_OF: case MirOp::HAS_VALUE: case MirOp::IS_NONE:
+                return foldOptional(instr);
 
-            case MirOp::STORE_INDEX:
-                return foldStoreIndex(instr);
+            case MirOp::LOAD_SLOT: return foldLoadSlot(instr);
+            case MirOp::STORE_SLOT: return foldStoreSlot(instr);
+            case MirOp::LOAD_VAR: return foldLoadVar(instr);
+            case MirOp::STORE_VAR: return foldStoreVar(instr);
 
-            case MirOp::CALL:
-                return foldCall(instr, oldIdx);
+            case MirOp::MAKE_ARRAY: return foldMakeArray(instr, oldIdx);
+            case MirOp::LOAD_INDEX: return foldLoadIndex(instr, oldIdx);
+            case MirOp::STORE_INDEX: return foldStoreIndex(instr);
 
-            case MirOp::CALL_NATIVE_METHOD:
-                return foldNativeMethod(instr, oldIdx);
+            case MirOp::CALL: return foldCall(instr, oldIdx);
+            case MirOp::CALL_NATIVE_METHOD: return foldNativeMethod(instr, oldIdx);
 
             case MirOp::JMP_IF_FALSE:
             case MirOp::JMP_IF_TRUE:
@@ -187,371 +160,245 @@ namespace LOICollection::frontend::ir::opt {
             case MirOp::JMP:
             case MirOp::RETURN:
             case MirOp::HALT:
-            default:
-                return emitOpaque(instr);
-        }
-    }
+                return emitOriginal(instr);
 
-    ConstantFoldPass::Step ConstantFoldPass::foldPush(const MirInstr& instr, int oldIdx) {
-        const int at = mCtx.emit(instr);
+            case MirOp::MAKE_LAMBDA:
+            case MirOp::LOAD_THIS:
+            case MirOp::LOAD_FIELD:
+            case MirOp::LOAD_FIELD_SLOT:
+            case MirOp::LOAD_LEN:
+            case MirOp::INSTANCEOF:
+                this->forgetDst(instr.dst);
+                return emitOriginal(instr);
 
-        mCtx.stack.emplace_back(TrackedValue{ mChunk.constants[instr.operand], at, !mJumps.isTarget(oldIdx) });
+            case MirOp::STORE_FIELD:
+            case MirOp::STORE_FIELD_SLOT:
+            case MirOp::BIND_THIS:
+                return emitOriginal(instr);
 
-        return { at, false };
-    }
-
-    ConstantFoldPass::Step ConstantFoldPass::foldNullish(const MirInstr& instr, int oldIdx) {
-        const bool fusable = instr.op == MirOp::IS_NONE && oldIdx > 0 &&
-            mChunk.code[oldIdx - 1].op == MirOp::DUP &&
-            !mJumps.isTarget(oldIdx) && !mJumps.isTarget(oldIdx - 1) &&
-            !mCtx.foldedCode.empty() && mCtx.foldedCode.back().op == MirOp::DUP;
-
-        if (fusable) {
-            const StackEntry operand = popEntry(mCtx.stack);
-
-            mCtx.drop(static_cast<int>(mCtx.foldedCode.size()) - 1);
-
-            const int at = mCtx.emit({ MirOp::DUP_IS_NONE, 0, instr.loc });
-
-            if (isKnown(operand))
-                mCtx.stack.emplace_back(TrackedValue{ std::holds_alternative<std::monostate>(knownValue(operand).value), at, false });
-            else
-                mCtx.stack.emplace_back(std::monostate{});
-
-            ++mCtx.stats.folded;
-
-            return { at, false };
-        }
-
-        switch (instr.op) {
-            case MirOp::UNWRAP:
-                return foldOperand(instr, oldIdx, [](const ValueNode::ValueType& value, ValueNode::ValueType& out) {
-                    if (std::holds_alternative<std::monostate>(value))
-                        return false;
-
-                    out = value;
-                    return true;
-                });
-
-            case MirOp::TYPE_OF:
-                return foldOperand(instr, oldIdx, [](const ValueNode::ValueType& value, ValueNode::ValueType& out) {
-                    out = VM::typeNameOf(value);
-                    return true;
-                });
-
-            case MirOp::HAS_VALUE:
-                return foldOperand(instr, oldIdx, [](const ValueNode::ValueType& value, ValueNode::ValueType& out) {
-                    out = !std::holds_alternative<std::monostate>(value);
-                    return true;
-                });
+            case MirOp::NEW:
+            case MirOp::NEW_NATIVE:
+            case MirOp::CALL_MACRO:
+            case MirOp::CALL_FUNC:
+            case MirOp::CALL_LAMBDA:
+            case MirOp::CALL_METHOD:
+            case MirOp::CALL_METHOD_VIRTUAL:
+            case MirOp::CALL_METHOD_BY_NAME:
+            case MirOp::CALL_SUPER_CTOR:
+                this->forgetDst(instr.dst);
+                return emitOriginal(instr);
 
             default:
-                return foldOperand(instr, oldIdx, [](const ValueNode::ValueType& value, ValueNode::ValueType& out) {
-                    out = std::holds_alternative<std::monostate>(value);
-                    return true;
-                });
+                return emitOriginal(instr);
         }
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::foldDupIsNone(const MirInstr& instr) {
-        const int at = mCtx.emit(instr);
+    ConstantFoldPass::Step ConstantFoldPass::foldBinary(const MirInstr& instr, int oldIdx) {
+        Known left, right;
+        const bool lk = knownReg(instr.src1, left);
+        const bool rk = knownReg(instr.src2, right);
 
-        if (mCtx.stack.size() > 1 && isKnown(mCtx.stack.back())) {
-            const bool result = std::holds_alternative<std::monostate>(knownValue(mCtx.stack.back()).value);
-
-            mCtx.pinTop();
-            mCtx.stack.emplace_back(TrackedValue{ result, at, false });
-        } else {
-            mCtx.pinTop();
-            mCtx.stack.emplace_back(std::monostate{});
-        }
-
-        return { at, false };
-    }
-
-    ConstantFoldPass::Step ConstantFoldPass::foldVariable(const MirInstr& instr) {
-        switch (instr.op) {
-            case MirOp::LOAD_SLOT: {
-                if (auto slot = mCtx.slotValues.find(instr.operand); slot != mCtx.slotValues.end()) {
-                    const int at = emitConstant(slot->second, instr.loc);
-
-                    mCtx.stack.emplace_back(TrackedValue{ slot->second, at, true });
-                    ++mCtx.stats.folded;
-
-                    return { at, false };
-                }
-
-                return emitUnknown(instr);
-            }
-
-            case MirOp::LOAD_VAR: {
-                const std::string& name = std::get<std::string>(mChunk.constants[instr.operand]);
-
-                if (auto slot = mCtx.nameValues.find(name); slot != mCtx.nameValues.end()) {
-                    const int at = emitConstant(slot->second, instr.loc);
-
-                    mCtx.stack.emplace_back(TrackedValue{ slot->second, at, true });
-                    ++mCtx.stats.folded;
-
-                    return { at, false };
-                }
-
-                return emitUnknown(instr);
-            }
-
-            case MirOp::STORE_SLOT:
-                trackSlot(instr.operand, popEntry(mCtx.stack));
-                return { mCtx.emit(instr), false };
-
-            case MirOp::STORE_VAR:
-                trackName(std::get<std::string>(mChunk.constants[instr.operand]), popEntry(mCtx.stack));
-                return { mCtx.emit(instr), false };
-
-            case MirOp::DUP_STORE_SLOT:
-                trackSlot(instr.operand, mCtx.stack.back());
-                mCtx.pinTop();
-                return { mCtx.emit(instr), false };
-
-            default:
-                trackName(std::get<std::string>(mChunk.constants[instr.operand]), mCtx.stack.back());
-                mCtx.pinTop();
-                return { mCtx.emit(instr), false };
-        }
-    }
-
-    ConstantFoldPass::Step ConstantFoldPass::foldStack(const MirInstr& instr, int oldIdx) {
-        if (instr.op == MirOp::POP) {
-            if (!mJumps.isTarget(oldIdx) && mCtx.stack.size() > 1 &&
-                isKnown(mCtx.stack.back()) && knownValue(mCtx.stack.back()).removable) {
-                mCtx.drop(knownValue(mCtx.stack.back()).producer);
-                mCtx.stack.pop_back();
-                ++mCtx.stats.removed;
-
-                return {};
-            }
-
-            popEntry(mCtx.stack);
-
-            return { mCtx.emit(instr), false };
-        }
-
-        const bool fusable = oldIdx + 1 < static_cast<int>(mChunk.code.size()) &&
-            isStoreOp(mChunk.code[oldIdx + 1].op) &&
-            !mJumps.isTarget(oldIdx) && !mJumps.isTarget(oldIdx + 1);
-
-        if (fusable) {
-            const MirInstr& next = mChunk.code[oldIdx + 1];
-
-            mCtx.pinTop();
-
-            if (next.op == MirOp::STORE_SLOT)
-                trackSlot(next.operand, mCtx.stack.back());
-            else
-                trackName(std::get<std::string>(mChunk.constants[next.operand]), mCtx.stack.back());
-
-            ++mCtx.stats.folded;
-
-            const int at = mCtx.emit({
-                next.op == MirOp::STORE_SLOT ? MirOp::DUP_STORE_SLOT : MirOp::DUP_STORE,
-                next.operand,
-                instr.loc
-            });
-
-            return { at, true };
-        }
-
-        mCtx.pinTop();
-        mCtx.stack.push_back(mCtx.stack.back());
-
-        return { mCtx.emit(instr), false };
-    }
-
-    ConstantFoldPass::Step ConstantFoldPass::foldArithmetic(const MirInstr& instr, int oldIdx) {
-        const StackEntry right = popEntry(mCtx.stack);
-        const StackEntry left = popEntry(mCtx.stack);
-
-        if (isKnown(left) && isKnown(right) && knownValue(left).removable && knownValue(right).removable) {
-            DiagnosticEngine foldDiag;
+        if (lk && rk) {
+            DiagnosticEngine diag;
             const ValueNode::ValueType result = VM::applyArithmetic(
-                knownValue(left).value, knownValue(right).value, foldOp(instr.op), foldDiag);
+                left.value, right.value, instr.op, diag, instr.loc);
 
-            if (foldDiag.hasErrors())
-                return emitUnknown(instr);
-
-            mCtx.drop(knownValue(left).producer);
-            mCtx.drop(knownValue(right).producer);
-
-            const int at = emitConstant(result, instr.loc);
-
-            mCtx.stack.emplace_back(TrackedValue{ result, at, !mJumps.isTarget(oldIdx) });
-            ++mCtx.stats.folded;
-
-            return { at, false };
+            if (!diag.hasErrors()) {
+                ++mCtx.stats.folded;
+                return emitConst(result, instr.loc);
+            }
         }
 
-        if (identityEligible(instr.op, left, right)) {
-            mCtx.drop(knownValue(right).producer);
-            mCtx.stack.emplace_back(knownValue(left));
+        if (lk && identityEligible(instr.op, right.value)) {
             ++mCtx.stats.folded;
-
-            return {};
+            return emitMove(instr.dst, instr.src1, instr.loc);
         }
 
-        const bool identityOp = instr.op == MirOp::ADD || instr.op == MirOp::MUL;
-
-        if (identityOp && identityEligible(instr.op, right, left)) {
-            mCtx.drop(knownValue(left).producer);
-            mCtx.stack.emplace_back(knownValue(right));
+        if (rk && identityEligible(instr.op, left.value)) {
             ++mCtx.stats.folded;
-
-            return {};
+            return emitMove(instr.dst, instr.src2, instr.loc);
         }
 
-        return emitUnknown(instr);
+        this->forgetDst(instr.dst);
+        return emitOriginal(instr);
     }
 
     ConstantFoldPass::Step ConstantFoldPass::foldUnary(const MirInstr& instr, int oldIdx) {
-        const StackEntry operand = popEntry(mCtx.stack);
+        Known operand;
+        if (!knownReg(instr.src1, operand))
+            return emitOriginalAfterForget(instr);
 
-        if (!isKnown(operand) || !knownValue(operand).removable)
-            return emitUnknown(instr);
+        if (instr.op == MirOp::NOT) {
+            ++mCtx.stats.folded;
+            return emitConst(!VM::valueToBool(operand.value), instr.loc);
+        }
 
+        DiagnosticEngine diag;
         ValueNode::ValueType result;
-        const bool foldable = applyUnaryOperator(instr.op, knownValue(operand).value, result);
+        if (instr.op == MirOp::NEG_I)
+            result = VM::applyUnary(operand.value, MirOp::NEG, diag, instr.loc);
+        else
+            result = VM::applyUnary(operand.value, MirOp::NEG, diag, instr.loc);
+
+        if (diag.hasErrors())
+            return emitOriginalAfterForget(instr);
 
         ++mCtx.stats.folded;
-
-        if (!foldable)
-            return emitUnknown(instr);
-
-        mCtx.drop(knownValue(operand).producer);
-
-        const int at = emitConstant(result, instr.loc);
-
-        mCtx.stack.emplace_back(TrackedValue{ result, at, !mJumps.isTarget(oldIdx) });
-
-        return { at, false };
+        return emitConst(result, instr.loc);
     }
 
     ConstantFoldPass::Step ConstantFoldPass::foldComparison(const MirInstr& instr, int oldIdx) {
-        const StackEntry right = popEntry(mCtx.stack);
-        const StackEntry left = popEntry(mCtx.stack);
+        Known left, right;
+        const bool lk = knownReg(instr.src1, left);
+        const bool rk = knownReg(instr.src2, right);
 
-        if (!isKnown(left) || !isKnown(right) || !knownValue(left).removable || !knownValue(right).removable)
-            return emitUnknown(instr);
+        if (!lk || !rk)
+            return emitOriginalAfterForget(instr);
 
         bool result;
-
-        if (instr.op == MirOp::LOGIC_AND || instr.op == MirOp::LOGIC_OR) {
-            const bool l = VM::valueToBool(knownValue(left).value);
-            const bool r = VM::valueToBool(knownValue(right).value);
-
-            result = (instr.op == MirOp::LOGIC_AND) ? (l && r) : (l || r);
-        } else {
-            DiagnosticEngine foldDiag;
-
-            result = VM::applyComparison(
-                knownValue(left).value, knownValue(right).value, foldOp(instr.op), foldDiag);
-
-            if (foldDiag.hasErrors())
-                return emitUnknown(instr);
+        if (instr.op == MirOp::LOGIC_AND)
+            result = VM::valueToBool(left.value) && VM::valueToBool(right.value);
+        else if (instr.op == MirOp::LOGIC_OR)
+            result = VM::valueToBool(left.value) || VM::valueToBool(right.value);
+        else {
+            DiagnosticEngine diag;
+            result = VM::applyComparison(left.value, right.value, instr.op, diag, instr.loc);
+            if (diag.hasErrors())
+                return emitOriginalAfterForget(instr);
         }
 
-        mCtx.drop(knownValue(left).producer);
-        mCtx.drop(knownValue(right).producer);
-
-        const int at = emitConstant(result, instr.loc);
-
-        mCtx.stack.emplace_back(TrackedValue{ result, at, !mJumps.isTarget(oldIdx) });
         ++mCtx.stats.folded;
+        return emitConst(result, instr.loc);
+    }
 
-        return { at, false };
+    ConstantFoldPass::Step ConstantFoldPass::foldOptional(const MirInstr& instr) {
+        Known operand;
+        if (!knownReg(instr.src1, operand))
+            return emitOriginalAfterForget(instr);
+
+        ValueNode::ValueType out;
+        switch (instr.op) {
+            case MirOp::UNWRAP:
+                if (std::holds_alternative<std::monostate>(operand.value))
+                    return emitOriginalAfterForget(instr);
+                out = operand.value;
+                break;
+            case MirOp::TYPE_OF:
+                out = VM::typeNameOf(operand.value);
+                break;
+            case MirOp::HAS_VALUE:
+                out = !std::holds_alternative<std::monostate>(operand.value);
+                break;
+            case MirOp::IS_NONE:
+                out = std::holds_alternative<std::monostate>(operand.value);
+                break;
+            default:
+                return emitOriginalAfterForget(instr);
+        }
+
+        ++mCtx.stats.folded;
+        return emitConst(out, instr.loc);
+    }
+
+    ConstantFoldPass::Step ConstantFoldPass::foldLoadSlot(const MirInstr& instr) {
+        if (auto it = mSlotValues.find(instr.operand); it != mSlotValues.end()) {
+            ++mCtx.stats.folded;
+            const Step step = emitConst(it->second.value, instr.loc);
+            mRegValues[instr.dst] = it->second;
+            return step;
+        }
+
+        this->forgetDst(instr.dst);
+        return emitOriginal(instr);
+    }
+
+    ConstantFoldPass::Step ConstantFoldPass::foldStoreSlot(const MirInstr& instr) {
+        const int at = mCtx.emit(instr);
+
+        Known value;
+        if (knownReg(instr.src1, value))
+            mSlotValues[instr.operand] = value;
+        else
+            mSlotValues.erase(instr.operand);
+
+        return { at };
+    }
+
+    ConstantFoldPass::Step ConstantFoldPass::foldLoadVar(const MirInstr& instr) {
+        const std::string& name = std::get<std::string>(mChunk.constants[instr.operand]);
+
+        if (auto it = mNameValues.find(name); it != mNameValues.end()) {
+            ++mCtx.stats.folded;
+            const Step step = emitConst(it->second.value, instr.loc);
+            mRegValues[instr.dst] = it->second;
+            return step;
+        }
+
+        this->forgetDst(instr.dst);
+        return emitOriginal(instr);
+    }
+
+    ConstantFoldPass::Step ConstantFoldPass::foldStoreVar(const MirInstr& instr) {
+        const int at = mCtx.emit(instr);
+
+        const std::string& name = std::get<std::string>(mChunk.constants[instr.operand]);
+        Known value;
+        if (knownReg(instr.src1, value))
+            mNameValues[name] = value;
+        else
+            mNameValues.erase(name);
+
+        return { at };
     }
 
     ConstantFoldPass::Step ConstantFoldPass::foldMakeArray(const MirInstr& instr, int oldIdx) {
         const int count = instr.operand;
-        bool foldable = count == 0 || static_cast<int>(mCtx.stack.size()) > count;
+        if (count < 0) {
+            this->forgetDst(instr.dst);
+            return emitOriginal(instr);
+        }
 
-        std::vector<ValueNode::ValueType> elements;
-        std::vector<int> producers;
-
-        if (foldable && count > 0) {
-            elements.resize(count);
-            producers.resize(count);
-
-            for (int k = count - 1; k >= 0; --k) {
-                const StackEntry entry = popEntry(mCtx.stack);
-                if (!isKnown(entry) || !knownValue(entry).removable) {
-                    foldable = false;
-                    break;
-                }
-
-                elements[k] = knownValue(entry).value;
-                producers[k] = knownValue(entry).producer;
+        std::vector<ValueNode::ValueType> elements(count);
+        for (int k = 0; k < count; ++k) {
+            Known value;
+            if (!knownReg(instr.src1 + k, value) || !value.removable) {
+                this->forgetDst(instr.dst);
+                return emitOriginal(instr);
             }
+            elements[k] = value.value;
         }
-
-        if (!foldable) {
-            mCtx.resetStack();
-
-            return { mCtx.emit(instr), false };
-        }
-
-        for (const int producer : producers)
-            mCtx.drop(producer);
 
         auto arr = std::make_shared<ArrayValue>();
         arr->elements = std::move(elements);
 
-        const int at = emitConstant(arr, instr.loc);
-
-        mCtx.stack.emplace_back(TrackedValue{ arr, at, !mJumps.isTarget(oldIdx) });
         ++mCtx.stats.folded;
-
-        return { at, false };
+        return emitConst(arr, instr.loc);
     }
 
     ConstantFoldPass::Step ConstantFoldPass::foldLoadIndex(const MirInstr& instr, int oldIdx) {
-        const StackEntry indexEntry = popEntry(mCtx.stack);
-        const StackEntry targetEntry = popEntry(mCtx.stack);
+        Known target, index;
+        if (!knownReg(instr.src1, target) || !knownReg(instr.src2, index))
+            return emitOriginalAfterForget(instr);
 
-        bool foldable = isKnown(indexEntry) && isKnown(targetEntry) &&
-            knownValue(indexEntry).removable && knownValue(targetEntry).removable &&
-            std::holds_alternative<int>(knownValue(indexEntry).value) &&
-            std::holds_alternative<ArrayRef>(knownValue(targetEntry).value);
-
-        int index = 0;
-        if (foldable) {
-            index = std::get<int>(knownValue(indexEntry).value);
-
-            const auto& target = std::get<ArrayRef>(knownValue(targetEntry).value);
-
-            foldable = index >= 0 && index < static_cast<int>(target->elements.size()) &&
-                !std::holds_alternative<ArrayRef>(target->elements[index]);
+        if (!std::holds_alternative<int>(index.value) ||
+            !std::holds_alternative<ArrayRef>(target.value)) {
+            return emitOriginalAfterForget(instr);
         }
 
-        if (!foldable)
-            return emitUnknown(instr);
+        const int idx = std::get<int>(index.value);
+        const auto& arr = std::get<ArrayRef>(target.value);
 
-        mCtx.drop(knownValue(indexEntry).producer);
-        mCtx.drop(knownValue(targetEntry).producer);
+        if (idx < 0 || idx >= static_cast<int>(arr->elements.size()) ||
+            std::holds_alternative<ArrayRef>(arr->elements[idx])) {
+            return emitOriginalAfterForget(instr);
+        }
 
-        const auto& element = std::get<ArrayRef>(knownValue(targetEntry).value)->elements[index];
-
-        const int at = emitConstant(element, instr.loc);
-
-        mCtx.stack.emplace_back(TrackedValue{ element, at, !mJumps.isTarget(oldIdx) });
         ++mCtx.stats.folded;
-
-        return { at, false };
+        return emitConst(arr->elements[idx], instr.loc);
     }
 
     ConstantFoldPass::Step ConstantFoldPass::foldStoreIndex(const MirInstr& instr) {
-        popEntry(mCtx.stack);
-        popEntry(mCtx.stack);
-        popEntry(mCtx.stack);
-
-        return { mCtx.emit(instr), false };
+        return emitOriginal(instr);
     }
 
     ConstantFoldPass::Step ConstantFoldPass::foldCall(const MirInstr& instr, int oldIdx) {
@@ -559,342 +406,228 @@ namespace LOICollection::frontend::ir::opt {
             ? &mChunk.functions[instr.operand]
             : nullptr;
 
-        bool foldable = meta != nullptr && meta->argCount <= static_cast<int>(mCtx.stack.size()) - 1;
+        if (meta && meta->argCount == instr.imm) {
+            std::vector<ValueNode::ValueType> args(instr.imm);
+            bool allKnown = true;
 
-        std::vector<StackEntry> popped;
-        if (foldable) {
-            popped.reserve(meta->argCount);
+            for (int k = 0; k < instr.imm; ++k) {
+                Known value;
+                if (knownReg(instr.src1 + k, value))
+                    args[k] = value.value;
+                else {
+                    allKnown = false;
+                    break;
+                }
+            }
 
-            for (int k = 0; k < meta->argCount && foldable; ++k) {
-                StackEntry entry = popEntry(mCtx.stack);
-
-                foldable = isKnown(entry) && knownValue(entry).removable;
-                popped.push_back(std::move(entry));
+            if (allKnown) {
+                ValueNode::ValueType result;
+                if (foldPureMath(meta->name, args, result)) {
+                    ++mCtx.stats.folded;
+                    return emitConst(result, instr.loc);
+                }
             }
         }
 
-        ValueNode::ValueType result;
-        if (foldable) {
-            std::vector<ValueNode::ValueType> args(popped.size());
-            for (size_t k = 0; k < popped.size(); ++k)
-                args[popped.size() - 1 - k] = knownValue(popped[k]).value;
-
-            foldable = foldPureMath(meta->name, args, result);
-        }
-
-        if (!foldable) {
-            mCtx.resetStack();
-
-            return { mCtx.emit(instr), false };
-        }
-
-        for (const auto& entry : popped)
-            mCtx.drop(knownValue(entry).producer);
-
-        const int at = emitConstant(result, instr.loc);
-
-        mCtx.stack.emplace_back(TrackedValue{ result, at, !mJumps.isTarget(oldIdx) });
-        ++mCtx.stats.folded;
-
-        return { at, false };
+        this->forgetDst(instr.dst);
+        return emitOriginal(instr);
     }
 
     ConstantFoldPass::Step ConstantFoldPass::foldNativeMethod(const MirInstr& instr, int oldIdx) {
-        if (instr.operand < 0 || instr.operand >= static_cast<int>(mChunk.nativeCalls.size()))
-            return emitOpaque(instr);
+        if (instr.operand < 0 || instr.operand >= static_cast<int>(mChunk.nativeCalls.size())) {
+            this->forgetDst(instr.dst);
+            return emitOriginal(instr);
+        }
 
         const auto& meta = mChunk.nativeCalls[instr.operand];
 
-        if (meta.isStatic || static_cast<int>(mCtx.stack.size()) <= meta.argCount + 1)
-            return emitOpaque(instr);
+        if (!meta.isStatic) {
+            const int receiverReg = instr.src1 + instr.imm;
 
-        const StackEntry receiver = popEntry(mCtx.stack);
-        std::vector<StackEntry> args(meta.argCount);
-        for (int i = 0; i < meta.argCount; ++i)
-            args[meta.argCount - 1 - i] = popEntry(mCtx.stack);
+            Known recv;
+            if (knownReg(receiverReg, recv)) {
+                std::vector<Known> args(meta.argCount);
+                bool allKnown = true;
+                for (int k = 0; k < meta.argCount; ++k) {
+                    if (!knownReg(instr.src1 + k, args[k])) {
+                        allKnown = false;
+                        break;
+                    }
+                }
 
-        if (!isKnown(receiver) || !knownValue(receiver).removable)
-            return emitOpaque(instr);
-        for (const auto& arg : args)
-            if (!isKnown(arg) || !knownValue(arg).removable)
-                return emitOpaque(instr);
+                if (allKnown) {
+                    ValueNode::ValueType result;
+                    bool folded = false;
 
-        const auto& recv = knownValue(receiver).value;
+                    if (std::holds_alternative<std::string>(recv.value)) {
+                        const auto& s = std::get<std::string>(recv.value);
 
-        ValueNode::ValueType result;
-        bool folded = false;
-
-        if (std::holds_alternative<std::string>(recv)) {
-            const auto& s = std::get<std::string>(recv);
-
-            if (meta.name == "length" && meta.argCount == 0) {
-                result = static_cast<int>(codepointCount(s));
-                folded = true;
-            } else if (meta.name == "contains" && meta.argCount == 1) {
-                result = s.find(std::get<std::string>(knownValue(args[0]).value)) != std::string::npos;
-                folded = true;
-            } else if (meta.name == "startsWith" && meta.argCount == 1) {
-                const auto& p = std::get<std::string>(knownValue(args[0]).value);
-                result = s.size() >= p.size() && s.compare(0, p.size(), p) == 0;
-                folded = true;
-            } else if (meta.name == "endsWith" && meta.argCount == 1) {
-                const auto& p = std::get<std::string>(knownValue(args[0]).value);
-                result = s.size() >= p.size() && s.compare(s.size() - p.size(), p.size(), p) == 0;
-                folded = true;
-            } else if (meta.name == "indexOf" && meta.argCount == 1) {
-                const auto& needle = std::get<std::string>(knownValue(args[0]).value);
-                const size_t pos = s.find(needle);
-                result = pos == std::string::npos ? -1 : static_cast<int>(codepointDistance(s, pos));
-                folded = true;
-            } else if (meta.name == "split" && meta.argCount == 1) {
-                const auto& sep = std::get<std::string>(knownValue(args[0]).value);
-                auto arr = std::make_shared<ArrayValue>();
-                if (sep.empty()) {
-                    for (size_t i = 0; i < s.size(); i += codepointWidth(s[i]))
-                        arr->elements.emplace_back(s.substr(i, codepointWidth(s[i])));
-                } else {
-                    size_t start = 0;
-                    while (true) {
-                        const size_t pos = s.find(sep, start);
-                        if (pos == std::string::npos) {
-                            arr->elements.emplace_back(s.substr(start));
-                            break;
+                        if (meta.name == "length" && meta.argCount == 0) {
+                            result = static_cast<int>(codepointCount(s));
+                            folded = true;
+                        } else if (meta.name == "contains" && meta.argCount == 1) {
+                            result = s.find(std::get<std::string>(args[0].value)) != std::string::npos;
+                            folded = true;
+                        } else if (meta.name == "startsWith" && meta.argCount == 1) {
+                            const auto& p = std::get<std::string>(args[0].value);
+                            result = s.size() >= p.size() && s.compare(0, p.size(), p) == 0;
+                            folded = true;
+                        } else if (meta.name == "endsWith" && meta.argCount == 1) {
+                            const auto& p = std::get<std::string>(args[0].value);
+                            result = s.size() >= p.size() && s.compare(s.size() - p.size(), p.size(), p) == 0;
+                            folded = true;
+                        } else if (meta.name == "indexOf" && meta.argCount == 1) {
+                            const auto& needle = std::get<std::string>(args[0].value);
+                            const size_t pos = s.find(needle);
+                            result = pos == std::string::npos ? -1 : static_cast<int>(codepointDistance(s, pos));
+                            folded = true;
+                        } else if (meta.name == "split" && meta.argCount == 1) {
+                            const auto& sep = std::get<std::string>(args[0].value);
+                            auto arr = std::make_shared<ArrayValue>();
+                            if (sep.empty()) {
+                                for (size_t i = 0; i < s.size(); i += codepointWidth(s[i]))
+                                    arr->elements.emplace_back(s.substr(i, codepointWidth(s[i])));
+                            } else {
+                                size_t start = 0;
+                                while (true) {
+                                    const size_t pos = s.find(sep, start);
+                                    if (pos == std::string::npos) {
+                                        arr->elements.emplace_back(s.substr(start));
+                                        break;
+                                    }
+                                    arr->elements.emplace_back(s.substr(start, pos - start));
+                                    start = pos + sep.size();
+                                }
+                            }
+                            result = arr;
+                            folded = true;
+                        } else if (meta.name == "toInt" && meta.argCount == 0) {
+                            int v = 0;
+                            const auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
+                            if (ec == std::errc{} && ptr == s.data() + s.size()) {
+                                result = v;
+                                folded = true;
+                            }
+                        } else if (meta.name == "toFloat" && meta.argCount == 0) {
+                            float v = 0.0f;
+                            const auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
+                            if (ec == std::errc{} && ptr == s.data() + s.size()) {
+                                result = v;
+                                folded = true;
+                            }
                         }
-                        arr->elements.emplace_back(s.substr(start, pos - start));
-                        start = pos + sep.size();
-                    }
-                }
-                result = arr;
-                folded = true;
-            } else if (meta.name == "toInt" && meta.argCount == 0) {
-                int v = 0;
-                const auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
-                if (ec == std::errc{} && ptr == s.data() + s.size()) {
-                    result = v;
-                    folded = true;
-                }
-            } else if (meta.name == "toFloat" && meta.argCount == 0) {
-                float v = 0.0f;
-                const auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
-                if (ec == std::errc{} && ptr == s.data() + s.size()) {
-                    result = v;
-                    folded = true;
-                }
-            }
-        } else if (std::holds_alternative<ArrayRef>(recv)) {
-            const auto& arr = std::get<ArrayRef>(recv);
+                    } else if (std::holds_alternative<ArrayRef>(recv.value)) {
+                        const auto& arr = std::get<ArrayRef>(recv.value);
 
-            if (meta.name == "length" && meta.argCount == 0) {
-                result = static_cast<int>(arr->elements.size());
-                folded = true;
-            } else if (meta.name == "contains" && meta.argCount == 1) {
-                const auto& needle = knownValue(args[0]).value;
-                bool found = false;
-                for (const auto& element : arr->elements) {
-                    if (valuesEqual(element, needle)) {
-                        found = true;
-                        break;
+                        if (meta.name == "length" && meta.argCount == 0) {
+                            result = static_cast<int>(arr->elements.size());
+                            folded = true;
+                        } else if (meta.name == "contains" && meta.argCount == 1) {
+                            const auto& needle = args[0].value;
+                            bool found = false;
+                            for (const auto& element : arr->elements) {
+                                if (valuesEqual(element, needle)) {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            result = found;
+                            folded = true;
+                        } else if (meta.name == "indexOf" && meta.argCount == 1) {
+                            const auto& needle = args[0].value;
+                            int found = -1;
+                            for (size_t i = 0; i < arr->elements.size(); ++i) {
+                                if (valuesEqual(arr->elements[i], needle)) {
+                                    found = static_cast<int>(i);
+                                    break;
+                                }
+                            }
+                            result = found;
+                            folded = true;
+                        } else if (meta.name == "join" && meta.argCount == 1) {
+                            const auto& sep = std::get<std::string>(args[0].value);
+                            std::string out;
+                            for (size_t i = 0; i < arr->elements.size(); ++i) {
+                                if (i != 0)
+                                    out += sep;
+                                out += VM::valueToString(arr->elements[i]);
+                            }
+                            result = out;
+                            folded = true;
+                        } else if (meta.name == "slice" && meta.argCount == 2) {
+                            const int len = static_cast<int>(arr->elements.size());
+                            const int start = std::clamp(std::get<int>(args[0].value), 0, len);
+                            const int end = std::clamp(std::get<int>(args[1].value), 0, len);
+                            auto out = std::make_shared<ArrayValue>();
+                            if (start < end)
+                                out->elements.assign(arr->elements.begin() + start, arr->elements.begin() + end);
+                            result = out;
+                            folded = true;
+                        }
+                    }
+
+                    if (folded) {
+                        ++mCtx.stats.folded;
+                        return emitConst(result, instr.loc);
                     }
                 }
-                result = found;
-                folded = true;
-            } else if (meta.name == "indexOf" && meta.argCount == 1) {
-                const auto& needle = knownValue(args[0]).value;
-                int found = -1;
-                for (size_t i = 0; i < arr->elements.size(); ++i) {
-                    if (valuesEqual(arr->elements[i], needle)) {
-                        found = static_cast<int>(i);
-                        break;
-                    }
-                }
-                result = found;
-                folded = true;
-            } else if (meta.name == "join" && meta.argCount == 1) {
-                const auto& sep = std::get<std::string>(knownValue(args[0]).value);
-                std::string out;
-                for (size_t i = 0; i < arr->elements.size(); ++i) {
-                    if (i != 0)
-                        out += sep;
-                    out += VM::valueToString(arr->elements[i]);
-                }
-                result = out;
-                folded = true;
-            } else if (meta.name == "slice" && meta.argCount == 2) {
-                const int len = static_cast<int>(arr->elements.size());
-                const int start = std::clamp(std::get<int>(knownValue(args[0]).value), 0, len);
-                const int end = std::clamp(std::get<int>(knownValue(args[1]).value), 0, len);
-                auto out = std::make_shared<ArrayValue>();
-                if (start < end)
-                    out->elements.assign(arr->elements.begin() + start, arr->elements.begin() + end);
-                result = out;
-                folded = true;
             }
         }
 
-        if (!folded)
-            return emitOpaque(instr);
-
-        mCtx.drop(knownValue(receiver).producer);
-        for (const auto& arg : args)
-            mCtx.drop(knownValue(arg).producer);
-
-        const int at = emitConstant(result, instr.loc);
-        mCtx.stack.emplace_back(TrackedValue{ result, at, !mJumps.isTarget(oldIdx) });
-        ++mCtx.stats.folded;
-
-        return { at, false };
+        this->forgetDst(instr.dst);
+        return emitOriginal(instr);
     }
 
     ConstantFoldPass::Step ConstantFoldPass::foldBranch(const MirInstr& instr, int oldIdx) {
-        const StackEntry cond = popEntry(mCtx.stack);
-        const bool targeted = mJumps.isTarget(oldIdx);
+        if (instr.op == MirOp::JMP)
+            return emitOriginal(instr);
 
-        const bool deadElse = oldIdx + 1 < static_cast<int>(mChunk.code.size()) &&
-            mChunk.code[oldIdx + 1].op == MirOp::JMP &&
-            !targeted && !mJumps.isTarget(oldIdx + 1) &&
-            oldIdx + 1 + instr.operand == oldIdx + 2 + mChunk.code[oldIdx + 1].operand;
+        Known cond;
+        if (!knownReg(instr.src1, cond))
+            return emitOriginal(instr);
 
-        if (deadElse) {
-            Step step;
-
-            if (isKnown(cond) && knownValue(cond).removable) {
-                mCtx.drop(knownValue(cond).producer);
-                ++mCtx.stats.removed;
-            } else {
-                step = { mCtx.emit({ MirOp::POP, 0, instr.loc }), false };
-            }
-
+        if (alwaysJumps(instr.op, cond.value)) {
             ++mCtx.stats.folded;
-            mCtx.resetStack();
-
-            return step;
+            return { mCtx.emit({ MirOp::JMP, instr.operand, -1, -1, -1, -1, 0, {}, instr.loc }) };
         }
 
-        if (!targeted && isKnown(cond) && knownValue(cond).removable) {
-            mCtx.drop(knownValue(cond).producer);
-
-            Step step;
-
-            if (alwaysJumps(instr.op, knownValue(cond).value))
-                step = { mCtx.emit({ MirOp::JMP, instr.operand, instr.loc }), false };
-            else
-                ++mCtx.stats.removed;
-
-            ++mCtx.stats.folded;
-            mCtx.resetStack();
-
-            return step;
-        }
-
-        if (isKnown(cond) && !knownValue(cond).removable && isScalarValue(knownValue(cond).value) &&
-            alwaysJumps(instr.op, knownValue(cond).value) &&
-            reachedOnlyByBackwardJumps(knownValue(cond).producer)) {
-            mCtx.drop(knownValue(cond).producer);
-
-            ++mCtx.stats.folded;
-            mCtx.resetStack();
-
-            return { mCtx.emit({ MirOp::JMP, instr.operand, instr.loc }), false };
-        }
-
-        const bool fusable = oldIdx > 0 && mChunk.code[oldIdx - 1].op == MirOp::NOT &&
-            !targeted && !mJumps.isTarget(oldIdx - 1) &&
-            !mCtx.foldedCode.empty() && mCtx.foldedCode.back().op == MirOp::NOT;
-
-        if (fusable) {
-            mCtx.drop(static_cast<int>(mCtx.foldedCode.size()) - 1);
-
-            ++mCtx.stats.folded;
-            mCtx.resetStack();
-
-            return { mCtx.emit({ invertedBranch(instr.op), instr.operand, instr.loc }), false };
-        }
-
-        mCtx.resetStack();
-
-        return { mCtx.emit(instr), false };
+        ++mCtx.stats.removed;
+        return {};
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::emitUnknown(const MirInstr& instr) {
-        const int at = mCtx.emit(instr);
-
-        mCtx.stack.emplace_back(std::monostate{});
-
-        return { at, false };
+    ConstantFoldPass::Step ConstantFoldPass::emitConst(const ValueNode::ValueType& value, const SourceLocation& loc) {
+        const int at = emitLoadConst(mChunk, mCtx.foldedCode, value, loc);
+        return { at };
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::emitOpaque(const MirInstr& instr) {
-        const int at = mCtx.emit(instr);
-
-        mCtx.resetStack();
-
-        return { at, false };
-    }
-
-    template <typename Fold>
-    ConstantFoldPass::Step ConstantFoldPass::foldOperand(const MirInstr& instr, int oldIdx, Fold&& fold) {
-        const StackEntry operand = popEntry(mCtx.stack);
-
-        if (!isKnown(operand) || !knownValue(operand).removable)
-            return emitUnknown(instr);
-
-        ValueNode::ValueType result;
-        if (!fold(knownValue(operand).value, result))
-            return emitUnknown(instr);
-
-        mCtx.drop(knownValue(operand).producer);
-
-        const int at = emitConstant(result, instr.loc);
-
-        mCtx.stack.emplace_back(TrackedValue{ result, at, !mJumps.isTarget(oldIdx) });
-        ++mCtx.stats.folded;
-
-        return { at, false };
-    }
-
-    int ConstantFoldPass::emitConstant(const ValueNode::ValueType& value, const SourceLocation& loc) {
-        emitPush(mChunk, mCtx.foldedCode, value, loc);
-
-        return static_cast<int>(mCtx.foldedCode.size()) - 1;
-    }
-
-    void ConstantFoldPass::trackSlot(int slot, const StackEntry& value) {
-        if (isKnown(value) && isScalarValue(knownValue(value).value))
-            mCtx.slotValues[slot] = knownValue(value).value;
+    ConstantFoldPass::Step ConstantFoldPass::emitMove(int dst, int src, const SourceLocation& loc) {
+        const int at = mCtx.emit({ MirOp::MOVE, 0, dst, src, -1, -1, 0, {}, loc });
+        if (auto it = mRegValues.find(src); it != mRegValues.end())
+            mRegValues[dst] = it->second;
         else
-            mCtx.slotValues.erase(slot);
+            mRegValues.erase(dst);
+        return { at };
     }
 
-    void ConstantFoldPass::trackName(const std::string& name, const StackEntry& value) {
-        if (isKnown(value) && isScalarValue(knownValue(value).value))
-            mCtx.nameValues[name] = knownValue(value).value;
-        else
-            mCtx.nameValues.erase(name);
+    ConstantFoldPass::Step ConstantFoldPass::emitOriginal(const MirInstr& instr) {
+        return { mCtx.emit(instr) };
     }
 
-    bool ConstantFoldPass::reachedOnlyByBackwardJumps(int producer) const {
-        if (producer < 0 || producer >= static_cast<int>(mCtx.foldedCode.size()))
+    ConstantFoldPass::Step ConstantFoldPass::emitOriginalAfterForget(const MirInstr& instr) {
+        this->forgetDst(instr.dst);
+        return { mCtx.emit(instr) };
+    }
+
+    bool ConstantFoldPass::knownReg(int reg, Known& out) const {
+        auto it = mRegValues.find(reg);
+        if (it == mRegValues.end())
             return false;
+        out = it->second;
+        return true;
+    }
 
-        switch (mCtx.foldedCode[producer].op) {
-            case MirOp::PUSH_INT:
-            case MirOp::PUSH_FLOAT:
-            case MirOp::PUSH_STR:
-            case MirOp::PUSH_BOOL:
-            case MirOp::PUSH_NONE:
-                break;
-            default:
-                return false;
-        }
-
-        if (producer >= static_cast<int>(mCtx.newToOld.size()))
-            return false;
-
-        const int producerOld = mCtx.newToOld[producer];
-        const std::vector<int>* sources = mJumps.sourcesOf(producerOld);
-
-        return sources != nullptr && std::ranges::all_of(*sources, [producerOld](int source) {
-            return source > producerOld;
-        });
+    void ConstantFoldPass::forgetDst(int dst) {
+        if (dst >= 0)
+            mRegValues.erase(dst);
     }
 }

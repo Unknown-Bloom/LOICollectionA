@@ -4,12 +4,8 @@
 
 namespace LOICollection::frontend::ir::opt {
     namespace {
-        bool capturesLocals(MirOp op) {
-            return op == MirOp::MAKE_LAMBDA;
-        }
-
         bool closesBlock(MirOp op) {
-            return isJump(op) || isTerminator(op) || canWriteVariables(op) || capturesLocals(op);
+            return isJump(op) || isTerminator(op) || canWriteVariables(op);
         }
     }
 
@@ -37,12 +33,10 @@ namespace LOICollection::frontend::ir::opt {
                     break;
 
                 case MirOp::STORE_SLOT:
-                case MirOp::DUP_STORE_SLOT:
                     this->recordStore(VariableKey{ instr.operand }, static_cast<int>(j), instr.operand);
                     break;
 
                 case MirOp::STORE_VAR:
-                case MirOp::DUP_STORE:
                     this->recordStore(
                         VariableKey{ std::get<std::string>(mChunk.constants[instr.operand]) },
                         static_cast<int>(j),
@@ -70,7 +64,6 @@ namespace LOICollection::frontend::ir::opt {
             return;
 
         this->killStore(it->second);
-
         it->second = at;
     }
 
@@ -80,12 +73,6 @@ namespace LOICollection::frontend::ir::opt {
         switch (dead.op) {
             case MirOp::STORE_SLOT:
             case MirOp::STORE_VAR:
-                dead.op = MirOp::POP;
-                dead.operand = 0;
-                break;
-
-            case MirOp::DUP_STORE_SLOT:
-            case MirOp::DUP_STORE:
                 mCtx.dropped[at] = true;
                 break;
 

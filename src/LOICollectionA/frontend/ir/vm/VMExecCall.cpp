@@ -31,13 +31,15 @@ namespace LOICollection::frontend::ir {
 
     void VM::execMethodDispatch(ExecArgs& s) {
         const auto& instr = s.instr;
-        const BytecodeChunk& cur = s.cur;
-        const BytecodeChunk& chunk = s.chunk;
+        const MirChunk& cur = s.cur;
+        const MirChunk& chunk = s.chunk;
+        Frame& frame = s.frame;
+
         switch (instr.op) {
-            case OpCode::CALL_METHOD: {
+            case MirOp::CALL_METHOD: {
                 const auto& meta = chunk.methods[instr.operand];
 
-                auto receiver = this->pop();
+                const ValueNode::ValueType& receiver = this->regOf(frame, instr.src1 + instr.imm);
                 if (!std::holds_alternative<ObjectRef>(receiver)) {
                     this->diagnostics.addError(this->currentLoc, "Method call target is not an object");
                     break;
@@ -50,21 +52,22 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
+                auto args = this->collectArgs(frame, instr.src1, meta.argCount);
+
                 Frame callee(*chunk.methodBodies[meta.bodyIndex]);
                 callee.hasThis = true;
                 callee.thisObj = receiver;
+                callee.returnReg = instr.dst;
 
                 if (!this->pushFrame(std::move(callee)))
                     break;
 
-                Frame& top = this->frames.back();
-                for (int i = 0; i < meta.argCount; ++i)
-                    this->localPool[top.localsBase + meta.argCount - 1 - i] = this->pop();
+                this->placeArgs(std::move(args), 0);
             } break;
-            case OpCode::CALL_METHOD_VIRTUAL: {
+            case MirOp::CALL_METHOD_VIRTUAL: {
                 const auto& meta = cur.virtualCalls[instr.operand];
 
-                auto receiver = this->pop();
+                const ValueNode::ValueType& receiver = this->regOf(frame, instr.src1 + instr.imm);
                 if (!std::holds_alternative<ObjectRef>(receiver)) {
                     this->diagnostics.addError(this->currentLoc, "Method call target is not an object");
                     break;
@@ -95,21 +98,22 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
+                auto args = this->collectArgs(frame, instr.src1, method.argCount);
+
                 Frame callee(*chunk.methodBodies[method.bodyIndex]);
                 callee.hasThis = true;
                 callee.thisObj = receiver;
+                callee.returnReg = instr.dst;
 
                 if (!this->pushFrame(std::move(callee)))
                     break;
 
-                Frame& top = this->frames.back();
-                for (int i = 0; i < method.argCount; ++i)
-                    this->localPool[top.localsBase + method.argCount - 1 - i] = this->pop();
+                this->placeArgs(std::move(args), 0);
             } break;
-            case OpCode::CALL_METHOD_BY_NAME: {
+            case MirOp::CALL_METHOD_BY_NAME: {
                 const auto& meta = cur.byNameCalls[instr.operand];
 
-                auto receiver = this->pop();
+                const ValueNode::ValueType& receiver = this->regOf(frame, instr.src1 + instr.imm);
                 if (!std::holds_alternative<ObjectRef>(receiver)) {
                     this->diagnostics.addError(this->currentLoc, "Method call target is not an object");
                     break;
@@ -139,32 +143,30 @@ namespace LOICollection::frontend::ir {
 
                 const auto& method = chunk.methods[cls.methods[ordinal]];
 
+                auto args = this->collectArgs(frame, instr.src1, method.argCount);
+
                 Frame callee(*chunk.methodBodies[method.bodyIndex]);
                 callee.hasThis = true;
                 callee.thisObj = receiver;
+                callee.returnReg = instr.dst;
 
                 if (!this->pushFrame(std::move(callee)))
                     break;
 
-                Frame& top = this->frames.back();
-                for (int i = 0; i < method.argCount; ++i)
-                    this->localPool[top.localsBase + method.argCount - 1 - i] = this->pop();
+                this->placeArgs(std::move(args), 0);
             } break;
-            case OpCode::CALL_SUPER_CTOR: {
+            case MirOp::CALL_SUPER_CTOR: {
                 const auto& meta = cur.superCalls[instr.operand];
 
-                auto receiver = this->pop();
+                const ValueNode::ValueType& receiver = this->regOf(frame, instr.src1 + instr.imm);
                 if (!std::holds_alternative<ObjectRef>(receiver)) {
                     this->diagnostics.addError(this->currentLoc, "Super constructor call target is not an object");
                     break;
                 }
 
                 if (meta.constructorIndex < 0) {
-                    if (meta.argCount != 0) {
+                    if (meta.argCount != 0)
                         this->diagnostics.addError(this->currentLoc, "Base class has no constructor");
-                    } else {
-                        this->push(std::string(""));
-                    }
                     break;
                 }
 
@@ -176,16 +178,17 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
+                auto args = this->collectArgs(frame, instr.src1, ctor.argCount);
+
                 Frame callee(*chunk.methodBodies[ctor.bodyIndex]);
                 callee.hasThis = true;
                 callee.thisObj = receiver;
+                callee.returnReg = instr.dst;
 
                 if (!this->pushFrame(std::move(callee)))
                     break;
 
-                Frame& top = this->frames.back();
-                for (int i = 0; i < ctor.argCount; ++i)
-                    this->localPool[top.localsBase + ctor.argCount - 1 - i] = this->pop();
+                this->placeArgs(std::move(args), 0);
             } break;
             default: break;
         }
@@ -193,10 +196,11 @@ namespace LOICollection::frontend::ir {
 
     void VM::execNativeCall(ExecArgs& s) {
         const auto& instr = s.instr;
-        const BytecodeChunk& chunk = s.chunk;
-        const auto& placeholders = s.placeholders;
+        const MirChunk& chunk = s.chunk;
+        Frame& frame = s.frame;
+
         switch (instr.op) {
-            case OpCode::CALL_NATIVE_METHOD: {
+            case MirOp::CALL_NATIVE_METHOD: {
                 if (const auto violation = this->mBudget->accountNativeCall();
                     violation != sandbox::SandboxBudget::Violation::None) {
                     this->failBudget(violation, "Native call budget exhausted");
@@ -204,14 +208,11 @@ namespace LOICollection::frontend::ir {
                 }
 
                 const auto& meta = chunk.nativeCalls[instr.operand];
+                auto args = this->collectArgs(frame, instr.src1, meta.argCount);
 
                 if (meta.isStatic) {
-                    std::vector<ValueNode::ValueType> args(meta.argCount);
-                    for (int i = 0; i < meta.argCount; ++i)
-                        args[meta.argCount - 1 - i] = this->pop();
-
                     auto result = ClassCall::getInstance().callStaticMethodCached(
-                        meta.className, meta.name, args, placeholders,
+                        meta.className, meta.name, args, s.placeholders,
                         this->mNativeStaticMethodSlots[instr.operand], this->diagnostics, this->currentLoc
                     );
 
@@ -222,21 +223,17 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
 
-                    this->push(result.value());
+                    this->setReg(frame, instr.dst, result.value());
                     break;
                 }
 
-                auto receiver = this->pop();
+                auto receiver = this->regOf(frame, instr.src1 + instr.imm);
                 if (!std::holds_alternative<ObjectRef>(receiver)) {
                     std::string valueClassName = valueClassNameOf(receiver);
                     if (valueClassName.empty()) {
                         this->diagnostics.addError(this->currentLoc, "Native method call target is not an object");
                         break;
                     }
-
-                    std::vector<ValueNode::ValueType> args(meta.argCount);
-                    for (int i = 0; i < meta.argCount; ++i)
-                        args[meta.argCount - 1 - i] = this->pop();
 
                     auto result = ClassCall::getInstance().callValueMethodCached(
                         valueClassName, meta.name, receiver, args,
@@ -250,18 +247,14 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
 
-                    this->push(result.value());
+                    this->setReg(frame, instr.dst, result.value());
                     break;
                 }
 
                 auto obj = std::get<ObjectRef>(receiver);
 
-                std::vector<ValueNode::ValueType> args(meta.argCount);
-                for (int i = 0; i < meta.argCount; ++i)
-                    args[meta.argCount - 1 - i] = this->pop();
-
                 auto result = ClassCall::getInstance().callMethodCached(
-                    obj->className, meta.name, args, obj, placeholders,
+                    obj->className, meta.name, args, obj, s.placeholders,
                     this->mNativeMethodSlots[instr.operand], this->diagnostics, this->currentLoc
                 );
 
@@ -272,7 +265,7 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
-                this->push(result.value());
+                this->setReg(frame, instr.dst, result.value());
             } break;
             default: break;
         }
@@ -280,33 +273,36 @@ namespace LOICollection::frontend::ir {
 
     void VM::execFunctionCall(ExecArgs& s) {
         const auto& instr = s.instr;
-        const BytecodeChunk& chunk = s.chunk;
+        const MirChunk& chunk = s.chunk;
+        Frame& frame = s.frame;
+
         switch (instr.op) {
-            case OpCode::CALL_FUNC: {
+            case MirOp::CALL_FUNC: {
                 const auto& meta = chunk.methods[instr.operand];
+
+                auto args = this->collectArgs(frame, instr.src1, meta.argCount);
 
                 Frame callee(*chunk.methodBodies[meta.bodyIndex]);
                 callee.hasThis = false;
+                callee.returnReg = instr.dst;
 
                 if (!this->pushFrame(std::move(callee)))
                     break;
 
-                Frame& top = this->frames.back();
-                for (int i = 0; i < meta.argCount; ++i)
-                    this->localPool[top.localsBase + meta.argCount - 1 - i] = this->pop();
+                this->placeArgs(std::move(args), 0);
             } break;
-            case OpCode::CALL_LAMBDA: {
-                auto funcValue = this->pop();
+            case MirOp::CALL_LAMBDA: {
+                const ValueNode::ValueType& funcValue = this->regOf(frame, instr.src2);
                 if (!std::holds_alternative<FunctionRefPtr>(funcValue)) {
                     this->diagnostics.addError(this->currentLoc, "Attempted to call a non-function value");
                     break;
                 }
 
                 auto func = std::get<FunctionRefPtr>(funcValue);
-                if (instr.operand != func->argCount) {
+                if (instr.imm != func->argCount) {
                     this->diagnostics.addError(this->currentLoc,
                         "Function expects " + std::to_string(func->argCount) +
-                        " argument(s), got " + std::to_string(instr.operand));
+                        " argument(s), got " + std::to_string(instr.imm));
                     break;
                 }
 
@@ -317,8 +313,19 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
+                const size_t paramBase = func->captures.size();
+                if (paramBase + static_cast<size_t>(func->argCount) >
+                    func->owner->methodBodies[func->bodyIndex]->slotCount) {
+                    this->diagnostics.addError(this->currentLoc, "Lambda frame is too small for its parameters");
+                    break;
+                }
+
+                auto args = this->collectArgs(frame, instr.src1, func->argCount);
+
                 Frame callee(*func->owner->methodBodies[func->bodyIndex]);
                 callee.hasThis = func->hasThis;
+                callee.returnReg = instr.dst;
+
                 if (func->hasThis) {
                     auto self = func->thisObj.lock();
                     if (!self) {
@@ -329,20 +336,13 @@ namespace LOICollection::frontend::ir {
                     callee.thisObj = self;
                 }
 
-                const size_t paramBase = func->captures.size();
-                if (paramBase + static_cast<size_t>(func->argCount) > callee.localsSize) {
-                    this->diagnostics.addError(this->currentLoc, "Lambda frame is too small for its parameters");
-                    break;
-                }
-
                 if (!this->pushFrame(std::move(callee)))
                     break;
 
-                Frame& top = this->frames.back();
-                std::copy_n(func->captures.begin(), paramBase, this->localPool.begin() + top.localsBase);
-
-                for (int i = 0; i < func->argCount; ++i)
-                    this->localPool[top.localsBase + paramBase + func->argCount - 1 - i] = this->pop();
+                const size_t base = this->frames.back().localsBase;
+                std::copy_n(func->captures.begin(), paramBase, this->localPool.begin() + base);
+                for (size_t i = 0; i < args.size(); ++i)
+                    this->localPool[base + paramBase + i] = std::move(args[i]);
             } break;
             default: break;
         }
@@ -350,10 +350,11 @@ namespace LOICollection::frontend::ir {
 
     void VM::execHostCall(ExecArgs& s) {
         const auto& instr = s.instr;
-        const BytecodeChunk& cur = s.cur;
-        const auto& placeholders = s.placeholders;
+        const MirChunk& cur = s.cur;
+        Frame& frame = s.frame;
+
         switch (instr.op) {
-            case OpCode::CALL: {
+            case MirOp::CALL: {
                 if (const auto violation = this->mBudget->accountNativeCall();
                     violation != sandbox::SandboxBudget::Violation::None) {
                     this->failBudget(violation, "Native call budget exhausted");
@@ -363,28 +364,26 @@ namespace LOICollection::frontend::ir {
                 const auto& meta = cur.functions[instr.operand];
 
                 CallbackTypeValues args;
-                args.reserve(meta.argCount);
-                for (int i = 0; i < meta.argCount; ++i)
-                    args.push_back(this->pop());
-
-                std::ranges::reverse(args);
+                args.reserve(static_cast<size_t>(instr.imm));
+                for (int i = 0; i < instr.imm; ++i)
+                    args.push_back(this->regOf(frame, instr.src1 + i));
 
                 auto ns = meta.name.substr(0, meta.name.find("::"));
                 auto func = meta.name.substr(meta.name.find("::") + 2);
                 auto result = FunctionCall::getInstance().callFunctionCached(
-                    ns, func, args, placeholders,
+                    ns, func, args, s.placeholders,
                     this->mFunctionCallSlots[instr.operand], this->diagnostics, this->currentLoc
                 );
 
                 if (!result.has_value()) {
                     this->diagnostics.addError(this->currentLoc, result.error().message());
-                    this->push(ValueNode::ValueType{});
+                    this->setReg(frame, instr.dst, ValueNode::ValueType{});
                     break;
                 }
 
-                this->push(result.value());
+                this->setReg(frame, instr.dst, result.value());
             } break;
-            case OpCode::CALL_MACRO: {
+            case MirOp::CALL_MACRO: {
                 if (const auto violation = this->mBudget->accountNativeCall();
                     violation != sandbox::SandboxBudget::Violation::None) {
                     this->failBudget(violation, "Native call budget exhausted");
@@ -394,23 +393,21 @@ namespace LOICollection::frontend::ir {
                 const auto& meta = cur.macros[instr.operand];
 
                 CallbackTypeValues args;
-                args.reserve(meta.argCount);
-                for (int i = 0; i < meta.argCount; ++i)
-                    args.push_back(this->pop());
+                args.reserve(static_cast<size_t>(instr.imm));
+                for (int i = 0; i < instr.imm; ++i)
+                    args.push_back(this->regOf(frame, instr.src1 + i));
 
-                std::ranges::reverse(args);
-                    
                 auto result = MacroCall::getInstance().callMacro(
-                    meta.name, args, placeholders, this->diagnostics, this->currentLoc
+                    meta.name, args, s.placeholders, this->diagnostics, this->currentLoc
                 );
 
                 if (!result.has_value()) {
                     this->diagnostics.addError(this->currentLoc, result.error().message());
-                    this->push(ValueNode::ValueType{});
+                    this->setReg(frame, instr.dst, ValueNode::ValueType{});
                     break;
                 }
 
-                this->push(result.value());
+                this->setReg(frame, instr.dst, result.value());
             } break;
             default: break;
         }

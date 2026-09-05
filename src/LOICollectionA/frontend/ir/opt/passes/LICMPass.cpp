@@ -1,11 +1,55 @@
 #include <algorithm>
+#include <unordered_set>
 
 #include "LOICollectionA/frontend/ir/opt/analysis/OpTraits.h"
-#include "LOICollectionA/frontend/ir/opt/analysis/StackEffect.h"
 
 #include "LOICollectionA/frontend/ir/opt/passes/LICMPass.h"
 
 namespace LOICollection::frontend::ir::opt {
+    namespace {
+        bool isPureBinary(MirOp op) {
+            switch (op) {
+                case MirOp::ADD: case MirOp::SUB: case MirOp::MUL: case MirOp::DIV:
+                case MirOp::MOD: case MirOp::POW:
+                case MirOp::ADD_I: case MirOp::SUB_I: case MirOp::MUL_I: case MirOp::MOD_I:
+                case MirOp::CMP_EQ: case MirOp::CMP_NE: case MirOp::CMP_GT: case MirOp::CMP_LT:
+                case MirOp::CMP_GE: case MirOp::CMP_LE:
+                case MirOp::CMP_EQ_I: case MirOp::CMP_NE_I: case MirOp::CMP_GT_I: case MirOp::CMP_LT_I:
+                case MirOp::CMP_GE_I: case MirOp::CMP_LE_I:
+                case MirOp::LOGIC_AND: case MirOp::LOGIC_OR:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        bool isPureUnary(MirOp op) {
+            switch (op) {
+                case MirOp::NEG:
+                case MirOp::NEG_I:
+                case MirOp::NOT:
+                case MirOp::INSTANCEOF:
+                case MirOp::LOAD_LEN:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        bool isInvariant(const MirInstr& instr, const std::unordered_set<int>& invariantRegs) {
+            if (instr.op == MirOp::LOAD_CONST)
+                return true;
+
+            if (isPureBinary(instr.op))
+                return invariantRegs.count(instr.src1) > 0 && invariantRegs.count(instr.src2) > 0;
+
+            if (isPureUnary(instr.op))
+                return invariantRegs.count(instr.src1) > 0;
+
+            return false;
+        }
+    }
+
     size_t LICMPass::run() {
         size_t hoisted = 0;
 
@@ -23,66 +67,6 @@ namespace LOICollection::frontend::ir::opt {
         }
 
         return hoisted;
-    }
-
-    std::vector<bool> LICMPass::writtenSlots(const ControlFlowGraph& cfg, const NaturalLoop& loop) const {
-        const int slots = mChunk.slotCount > 0 ? mChunk.slotCount : 0;
-
-        std::vector<bool> written(slots, false);
-
-        for (const int block : loop.blocks) {
-            const auto& info = cfg.blocks()[block];
-
-            for (int i = info.begin; i < info.end; ++i) {
-                const MirInstr& instr = mChunk.code[i];
-
-                if (instr.op != MirOp::STORE_SLOT && instr.op != MirOp::DUP_STORE_SLOT)
-                    continue;
-
-                if (instr.operand >= 0 && instr.operand < slots)
-                    written[instr.operand] = true;
-            }
-        }
-
-        return written;
-    }
-
-    bool LICMPass::isHoistable(const MirInstr& instr, const std::vector<bool>& written) const {
-        switch (instr.op) {
-            case MirOp::PUSH_INT:
-            case MirOp::PUSH_FLOAT:
-            case MirOp::PUSH_STR:
-            case MirOp::PUSH_BOOL:
-            case MirOp::PUSH_NONE:
-            case MirOp::ADD:
-            case MirOp::SUB:
-            case MirOp::MUL:
-            case MirOp::DIV:
-            case MirOp::MOD:
-            case MirOp::POW:
-            case MirOp::CMP_EQ:
-            case MirOp::CMP_NE:
-            case MirOp::CMP_GT:
-            case MirOp::CMP_LT:
-            case MirOp::CMP_GE:
-            case MirOp::CMP_LE:
-            case MirOp::LOGIC_AND:
-            case MirOp::LOGIC_OR:
-            case MirOp::NEG:
-            case MirOp::NOT:
-            case MirOp::UNWRAP:
-            case MirOp::TYPE_OF:
-            case MirOp::HAS_VALUE:
-            case MirOp::IS_NONE:
-                return true;
-
-            case MirOp::LOAD_SLOT:
-                return instr.operand >= 0 && instr.operand < static_cast<int>(written.size()) &&
-                    !written[instr.operand];
-
-            default:
-                return false;
-        }
     }
 
     size_t LICMPass::hoist(const ControlFlowGraph& cfg, const NaturalLoop& loop) {
@@ -111,43 +95,31 @@ namespace LOICollection::frontend::ir::opt {
                     return 0;
         }
 
-        const std::vector<bool> written = this->writtenSlots(cfg, loop);
         const auto& header = cfg.blocks()[loop.header];
 
         std::vector<MirInstr> invariant;
-        int depth = 0;
-        int net = 0;
+        std::unordered_set<int> invariantRegs;
 
         for (int i = header.begin; i < header.end; ++i) {
-            StackEffect effect;
-            if (!stackEffectOf(mChunk.code[i], mChunk, effect))
-                break;
-            if (!this->isHoistable(mChunk.code[i], written))
-                break;
-            if (depth < effect.reach())
+            const MirInstr& instr = mChunk.code[i];
+
+            if (!isInvariant(instr, invariantRegs))
                 break;
 
-            invariant.push_back(mChunk.code[i]);
-            depth += effect.net();
-            net += effect.net();
+            invariant.push_back(instr);
+            if (instr.dst >= 0)
+                invariantRegs.insert(instr.dst);
         }
 
-        if (invariant.empty() || net != 1)
+        if (invariant.empty())
             return 0;
 
         const int insertAt = mChunk.code[entry.end - 1].op == MirOp::JMP ? entry.end - 1 : entry.end;
 
-        const int exitBegin = cfg.blocks()[exitBlock].begin;
-
         std::vector<Edit> edits;
-
-        edits.push_back({ insertAt, false, -1, invariant });
-
-        edits.push_back({ header.begin, true, 0, { MirInstr{ MirOp::DUP, 0, invariant.front().loc } } });
-        for (int k = 1; k < static_cast<int>(invariant.size()); ++k)
-            edits.push_back({ header.begin + k, true, -1, {} });
-
-        edits.push_back({ exitBegin, false, 0, { MirInstr{ MirOp::POP, 0, {} } } });
+        edits.push_back({ insertAt, false, invariant });
+        for (int k = 0; k < static_cast<int>(invariant.size()); ++k)
+            edits.push_back({ header.begin + k, true, {} });
 
         apply(mChunk.code, edits);
 
@@ -176,9 +148,6 @@ namespace LOICollection::frontend::ir::opt {
                     origin.push_back(-1);
                 }
 
-                if (edits[e].retarget >= 0 && owner < 0)
-                    owner = static_cast<int>(e);
-
                 if (edits[e].erase)
                     erased = true;
             }
@@ -186,18 +155,10 @@ namespace LOICollection::frontend::ir::opt {
             if (i == code.size())
                 break;
 
-            const bool redirected = owner >= 0 &&
-                edits[owner].retarget < static_cast<int>(placed[owner].size());
-
-            if (redirected)
-                oldToNew[i] = placed[owner][edits[owner].retarget];
-
             if (erased)
                 continue;
 
-            if (!redirected)
-                oldToNew[i] = static_cast<int>(rewritten.size());
-
+            oldToNew[i] = static_cast<int>(rewritten.size());
             origin.push_back(static_cast<int>(i));
             rewritten.push_back(code[i]);
         }
@@ -206,16 +167,14 @@ namespace LOICollection::frontend::ir::opt {
             if (origin[n] < 0 || !isJump(rewritten[n].op))
                 continue;
 
-            const int oldTarget = std::clamp(origin[n] + 1 + rewritten[n].operand, 0, last);
+            const int oldTarget = origin[n] + 1 + rewritten[n].operand;
 
             int newTarget = oldToNew[oldTarget];
-            if (newTarget < 0) {
-                int j = oldTarget;
-                while (j <= last && oldToNew[j] < 0)
-                    ++j;
+            for (int j = oldTarget; j <= last && newTarget < 0; ++j)
+                newTarget = oldToNew[j];
 
-                newTarget = j > last ? static_cast<int>(rewritten.size()) : oldToNew[j];
-            }
+            if (newTarget < 0)
+                newTarget = static_cast<int>(rewritten.size());
 
             rewritten[n].operand = newTarget - static_cast<int>(n) - 1;
         }

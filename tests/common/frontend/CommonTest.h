@@ -10,12 +10,11 @@
 #include "LOICollectionA/frontend/Parser.h"
 #include "LOICollectionA/frontend/SemanticAnalyzer.h"
 #include "LOICollectionA/frontend/ir/Compiler.h"
-#include "LOICollectionA/frontend/ir/MirLowering.h"
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 #include "LOICollectionA/frontend/ir/VM.h"
 
 namespace LOICollection::frontend {
-    inline std::shared_ptr<ir::BytecodeChunk> compile(const std::string& input, DiagnosticEngine& diagnostics) {
+    inline std::shared_ptr<ir::MirChunk> compile(const std::string& input, DiagnosticEngine& diagnostics) {
         Lexer lexer(input, diagnostics);
         Parser parser(lexer, diagnostics);
 
@@ -43,7 +42,7 @@ namespace LOICollection::frontend {
         ir::Optimizer optimizer;
         optimizer.optimize(*mir);
 
-        return std::make_shared<ir::BytecodeChunk>(ir::MirLowering::lower(*mir));
+        return mir;
     }
 
     inline std::string eval(const std::string& input, const Context& ctx = {}) {
@@ -79,8 +78,7 @@ namespace LOICollection::frontend {
         ir::Optimizer optimizer;
         [[maybe_unused]] auto optimizeStats = optimizer.optimize(*mir);
 
-        auto bytecode = std::make_shared<ir::BytecodeChunk>(ir::MirLowering::lower(*mir));
-        auto result = vm.run(bytecode, ctx);
+        auto result = vm.run(mir, ctx);
         if (diagnostics.hasErrors())
             throw std::runtime_error(diagnostics.getErrorMessage());
 

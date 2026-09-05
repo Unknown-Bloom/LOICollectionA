@@ -18,7 +18,7 @@
 
 namespace LOICollection::frontend::ir {
 
-    int VM::resolveFieldSlot(Object& obj, const std::string& name, const Instruction& instr) {
+    int VM::resolveFieldSlot(Object& obj, const std::string& name, const MirInstr& instr) {
         if (!obj.layout)
             obj.adoptLayout();
 
@@ -35,11 +35,12 @@ namespace LOICollection::frontend::ir {
 
     void VM::execFieldAccess(ExecArgs& s) {
         const auto& instr = s.instr;
-        const BytecodeChunk& cur = s.cur;
+        const MirChunk& cur = s.cur;
+        Frame& frame = s.frame;
         switch (instr.op) {
-            case OpCode::LOAD_FIELD: {
+            case MirOp::LOAD_FIELD: {
                 const auto& name = std::get<std::string>(cur.constants[instr.operand]);
-                auto objValue = this->pop();
+                const ValueNode::ValueType& objValue = this->regOf(frame, instr.src1);
 
                 if (std::holds_alternative<ArrayRef>(objValue)) {
                     this->diagnostics.addError(this->currentLoc, "Array has no field: " + name);
@@ -63,12 +64,11 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
-                this->push(*field);
+                this->setReg(frame, instr.dst, *field);
             } break;
-            case OpCode::STORE_FIELD: {
+            case MirOp::STORE_FIELD: {
                 const auto& name = std::get<std::string>(cur.constants[instr.operand]);
-                auto objValue = this->pop();
-                auto val = this->pop();
+                const ValueNode::ValueType& objValue = this->regOf(frame, instr.src1);
 
                 if (!std::holds_alternative<ObjectRef>(objValue)) {
                     this->diagnostics.addError(this->currentLoc, "Cannot store field '" + name + "' on a non-object value");
@@ -76,10 +76,11 @@ namespace LOICollection::frontend::ir {
                 }
 
                 auto obj = std::get<ObjectRef>(objValue);
-                obj->fieldAtOrSpill(this->resolveFieldSlot(*obj, name, instr), name) = std::move(val);
+                obj->fieldAtOrSpill(this->resolveFieldSlot(*obj, name, instr), name) =
+                    this->regOf(frame, instr.src2);
             } break;
-            case OpCode::LOAD_FIELD_SLOT: {
-                auto objValue = this->pop();
+            case MirOp::LOAD_FIELD_SLOT: {
+                const ValueNode::ValueType& objValue = this->regOf(frame, instr.src1);
 
                 if (!std::holds_alternative<ObjectRef>(objValue)) {
                     this->diagnostics.addError(this->currentLoc, "Cannot load a field from a non-object value");
@@ -95,11 +96,10 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
-                this->push(obj->slots[static_cast<size_t>(instr.operand)]);
+                this->setReg(frame, instr.dst, obj->slots[static_cast<size_t>(instr.operand)]);
             } break;
-            case OpCode::STORE_FIELD_SLOT: {
-                auto objValue = this->pop();
-                auto val = this->pop();
+            case MirOp::STORE_FIELD_SLOT: {
+                const ValueNode::ValueType& objValue = this->regOf(frame, instr.src1);
 
                 if (!std::holds_alternative<ObjectRef>(objValue)) {
                     this->diagnostics.addError(this->currentLoc, "Cannot store a field on a non-object value");
@@ -115,22 +115,17 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
-                obj->slots[static_cast<size_t>(instr.operand)] = std::move(val);
+                obj->slots[static_cast<size_t>(instr.operand)] = this->regOf(frame, instr.src2);
             } break;
-            case OpCode::BIND_THIS: {
-                if (instr.operand <= 0 || this->stack.empty())
-                    break;
+            case MirOp::BIND_THIS: {
+                const ValueNode::ValueType& selfValue = this->regOf(frame, instr.src2);
+                const ValueNode::ValueType& slot = this->regOf(frame, instr.src1);
 
-                const size_t depth = static_cast<size_t>(instr.operand);
-                if (depth >= this->stack.size())
-                    break;
-
-                const auto* self = std::get_if<ObjectRef>(&this->stack.back());
+                const auto* self = std::get_if<ObjectRef>(&selfValue);
                 if (!self || !*self)
                     break;
 
-                auto& slot = this->stack[this->stack.size() - 1 - depth];
-                auto* func = std::get_if<FunctionRefPtr>(&slot);
+                const auto* func = std::get_if<FunctionRefPtr>(&slot);
                 if (!func || !*func)
                     break;
 
@@ -142,16 +137,18 @@ namespace LOICollection::frontend::ir {
                         captured = std::monostate{};
                 }
             } break;
-            case OpCode::LOAD_LEN: {
-                auto iterable = this->pop();
+            case MirOp::LOAD_LEN: {
+                const ValueNode::ValueType& iterable = this->regOf(frame, instr.src1);
 
                 if (std::holds_alternative<ArrayRef>(iterable)) {
-                    this->push(static_cast<int>(std::get<ArrayRef>(iterable)->elements.size()));
+                    this->setReg(frame, instr.dst,
+                        static_cast<int>(std::get<ArrayRef>(iterable)->elements.size()));
                     break;
                 }
 
                 if (std::holds_alternative<std::string>(iterable)) {
-                    this->push(static_cast<int>(codepointCount(std::get<std::string>(iterable))));
+                    this->setReg(frame, instr.dst,
+                        static_cast<int>(codepointCount(std::get<std::string>(iterable))));
                     break;
                 }
 
@@ -163,10 +160,11 @@ namespace LOICollection::frontend::ir {
 
     void VM::execArray(ExecArgs& s) {
         const auto& instr = s.instr;
+        Frame& frame = s.frame;
         switch (instr.op) {
-            case OpCode::MAKE_ARRAY: {
-                int count = instr.operand;
-                if (count < 0 || count > static_cast<int>(this->stack.size())) {
+            case MirOp::MAKE_ARRAY: {
+                const int count = instr.operand;
+                if (count < 0) {
                     this->diagnostics.addError(this->currentLoc, "Invalid array literal size");
                     break;
                 }
@@ -179,14 +177,14 @@ namespace LOICollection::frontend::ir {
 
                 auto arr = std::make_shared<ArrayValue>();
                 arr->elements.resize(count);
-                for (int i = count - 1; i >= 0; --i)
-                    arr->elements[i] = this->pop();
+                for (int i = 0; i < count; ++i)
+                    arr->elements[i] = this->regOf(frame, instr.src1 + i);
 
-                this->push(arr);
+                this->setReg(frame, instr.dst, arr);
             } break;
-            case OpCode::LOAD_INDEX: {
-                auto indexValue = this->pop();
-                auto targetValue = this->pop();
+            case MirOp::LOAD_INDEX: {
+                const ValueNode::ValueType& indexValue = this->regOf(frame, instr.src2);
+                const ValueNode::ValueType& targetValue = this->regOf(frame, instr.src1);
 
                 if (!std::holds_alternative<int>(indexValue)) {
                     this->diagnostics.addError(this->currentLoc, "Index must be an int");
@@ -207,7 +205,7 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
 
-                    this->push(std::move(*character));
+                    this->setReg(frame, instr.dst, std::move(*character));
                     break;
                 }
 
@@ -222,17 +220,17 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
-                this->push(arr->elements[index]);
+                this->setReg(frame, instr.dst, arr->elements[index]);
             } break;
-            case OpCode::STORE_INDEX: {
-                auto indexValue = this->pop();
-                auto targetValue = this->pop();
-                auto value = this->pop();
+            case MirOp::STORE_INDEX: {
+                const ValueNode::ValueType& targetValue = this->regOf(frame, instr.src1);
 
                 if (!std::holds_alternative<ArrayRef>(targetValue)) {
                     this->diagnostics.addError(this->currentLoc, "Cannot index a non-array value");
                     break;
                 }
+
+                const ValueNode::ValueType& indexValue = this->regOf(frame, instr.src2);
                 if (!std::holds_alternative<int>(indexValue)) {
                     this->diagnostics.addError(this->currentLoc, "Array index must be an int");
                     break;
@@ -245,7 +243,8 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
-                if (auto* nested = std::get_if<ArrayRef>(&value); nested && nested->get() == arr.get()) {
+                const ValueNode::ValueType& value = this->regOf(frame, instr.src3);
+                if (const auto* nested = std::get_if<ArrayRef>(&value); nested && nested->get() == arr.get()) {
                     this->diagnostics.addError(this->currentLoc,
                         "Circular reference: an array cannot contain itself");
                     break;
@@ -269,10 +268,10 @@ namespace LOICollection::frontend::ir {
     void VM::execClosure(ExecArgs& s) {
         const auto& instr = s.instr;
         Frame& frame = s.frame;
-        const BytecodeChunk& cur = s.cur;
+        const MirChunk& cur = s.cur;
         const auto& owner = s.owner;
         switch (instr.op) {
-            case OpCode::MAKE_LAMBDA: {
+            case MirOp::MAKE_LAMBDA: {
                 const auto& meta = cur.lambdas[instr.operand];
 
                 auto func = std::make_shared<FunctionRef>();
@@ -282,23 +281,24 @@ namespace LOICollection::frontend::ir {
                 func->hasThis = frame.hasThis;
                 if (frame.hasThis)
                     func->thisObj = std::get<ObjectRef>(frame.thisObj);
+
                 const size_t captureCount =
-                    std::min(static_cast<size_t>(meta.captureCount), frame.localsSize);
+                    std::min(static_cast<size_t>(instr.imm), frame.localsSize);
                 func->captures.assign(
                     this->localPool.begin() + frame.localsBase,
                     this->localPool.begin() + frame.localsBase + captureCount
                 );
                 func->globals = this->globals;
 
-                this->push(func);
+                this->setReg(frame, instr.dst, func);
             } break;
-            case OpCode::LOAD_THIS: {
+            case MirOp::LOAD_THIS: {
                 if (!frame.hasThis) {
                     this->diagnostics.addError(this->currentLoc, "'this' is not available in the current context");
                     break;
                 }
 
-                this->push(frame.thisObj);
+                this->setReg(frame, instr.dst, frame.thisObj);
             } break;
             default: break;
         }
@@ -306,15 +306,16 @@ namespace LOICollection::frontend::ir {
 
     void VM::execInstanceof(ExecArgs& s) {
         const auto& instr = s.instr;
-        const BytecodeChunk& cur = s.cur;
-        const BytecodeChunk& chunk = s.chunk;
+        const MirChunk& cur = s.cur;
+        const MirChunk& chunk = s.chunk;
+        Frame& frame = s.frame;
         switch (instr.op) {
-            case OpCode::INSTANCEOF: {
+            case MirOp::INSTANCEOF: {
                 const auto& name = std::get<std::string>(cur.constants[instr.operand]);
-                auto value = this->pop();
+                const ValueNode::ValueType& value = this->regOf(frame, instr.src1);
 
                 if (!std::holds_alternative<ObjectRef>(value)) {
-                    this->push(false);
+                    this->setReg(frame, instr.dst, false);
                     break;
                 }
 
@@ -334,7 +335,7 @@ namespace LOICollection::frontend::ir {
                         result = this->isDerived(chunk, obj->classIndex, targetIdx);
                 }
 
-                this->push(result);
+                this->setReg(frame, instr.dst, result);
             } break;
             default: break;
         }
@@ -342,10 +343,10 @@ namespace LOICollection::frontend::ir {
 
     void VM::execObjectCreate(ExecArgs& s) {
         const auto& instr = s.instr;
-        const BytecodeChunk& chunk = s.chunk;
-        const auto& placeholders = s.placeholders;
+        const MirChunk& chunk = s.chunk;
+        Frame& frame = s.frame;
         switch (instr.op) {
-            case OpCode::NEW: {
+            case MirOp::NEW: {
                 if (const auto violation = this->mBudget->accountObject();
                     violation != sandbox::SandboxBudget::Violation::None) {
                     this->failBudget(violation, "Object count budget exhausted");
@@ -365,26 +366,31 @@ namespace LOICollection::frontend::ir {
                         obj->slots[i] = VM::cloneValue(cls.defaults[i]);
                 }
 
+                this->setReg(frame, instr.dst, obj);
+
                 if (cls.constructorIndex != -1) {
                     const auto& ctor = chunk.methods[cls.constructorIndex];
+
+                    // Collect before pushing: `pushFrame` may reallocate `frames`
+                    // and invalidate every reference into it, including `frame`.
+                    auto args = this->collectArgs(frame, instr.src1, ctor.argCount);
 
                     Frame callee(*chunk.methodBodies[ctor.bodyIndex]);
                     callee.hasThis = true;
                     callee.thisObj = obj;
                     callee.hasPending = true;
                     callee.pendingPush = obj;
+                    callee.returnReg = instr.dst;
 
                     if (!this->pushFrame(std::move(callee)))
                         break;
 
-                    Frame& top = this->frames.back();
-                    for (int i = 0; i < ctor.argCount; ++i)
-                        this->localPool[top.localsBase + ctor.argCount - 1 - i] = this->pop();
-                } else {
-                    this->push(obj);
+                    const size_t base = this->frames.back().localsBase;
+                    for (size_t i = 0; i < args.size(); ++i)
+                        this->localPool[base + i] = std::move(args[i]);
                 }
             } break;
-            case OpCode::NEW_NATIVE: {
+            case MirOp::NEW_NATIVE: {
                 if (const auto violation = this->mBudget->accountObject();
                     violation != sandbox::SandboxBudget::Violation::None) {
                     this->failBudget(violation, "Object count budget exhausted");
@@ -393,12 +399,8 @@ namespace LOICollection::frontend::ir {
 
                 const auto& meta = chunk.nativeCalls[instr.operand];
 
-                std::vector<ValueNode::ValueType> args(meta.argCount);
-                for (int i = 0; i < meta.argCount; ++i)
-                    args[meta.argCount - 1 - i] = this->pop();
-
                 auto result = ClassCall::getInstance().createCached(
-                    meta.className, args, placeholders,
+                    meta.className, this->collectArgs(frame, instr.src1, meta.argCount), s.placeholders,
                     this->mNativeConstructorSlots[instr.operand], this->diagnostics, this->currentLoc
                 );
 
@@ -408,7 +410,7 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
-                this->push(result.value());
+                this->setReg(frame, instr.dst, result.value());
             } break;
             default: break;
         }

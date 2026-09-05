@@ -23,10 +23,8 @@
 
 #include "LOICollectionA/frontend/ir/VM.h"
 #include "LOICollectionA/frontend/ir/Compiler.h"
-#include "LOICollectionA/frontend/ir/MirLowering.h"
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 #include "LOICollectionA/frontend/ir/Abi.h"
-#include "LOICollectionA/frontend/ir/BytecodeSerializer.h"
 
 #include "LOICollectionA/utils/core/Sha256.h"
 
@@ -63,35 +61,6 @@ namespace {
         return true;
     }
 
-    void warnRejectedPackage(
-        const std::string& id,
-        const std::string& blob,
-        const LOICollection::frontend::ir::BytecodeSerializer::Header& expected
-    ) {
-        using LOICollection::frontend::ir::BytecodeSerializer;
-        using LOICollection::utils::Sha256;
-
-        auto logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
-
-        auto stored = BytecodeSerializer::peekHeader(blob);
-        if (!stored) {
-            logger->warn("script '{}' has an unreadable bytecode package — recompiling", id);
-            return;
-        }
-
-        if (stored->scriptId != expected.scriptId)
-            logger->warn(
-                "script '{}' rejected a package built for script '{}' — recompiling", id, stored->scriptId
-            );
-        else if (stored->abiFingerprint != expected.abiFingerprint)
-            logger->warn(
-                "script '{}' rejected a package with a different ABI (package {}, plugin {}) — recompiling",
-                id, Sha256::toHex(stored->abiFingerprint), Sha256::toHex(expected.abiFingerprint)
-            );
-        else
-            logger->warn("script '{}' has a stale or corrupt bytecode package — recompiling", id);
-    }
-
     template <typename Registry>
     void releaseHandles(Registry& registry) {
         for (auto& [_, handles] : registry)
@@ -104,7 +73,7 @@ namespace {
 
 namespace LOICollection::form {
     struct GUIManager::Impl {
-        std::unordered_map<std::string, std::shared_ptr<frontend::ir::BytecodeChunk>> cache;
+        std::unordered_map<std::string, std::shared_ptr<frontend::ir::MirChunk>> cache;
 
         std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<CustomFormClass::CustomFormHandle>>> forms;
         std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<MessageBoxClass::MessageBoxHandle>>> boxs;
@@ -144,60 +113,29 @@ namespace LOICollection::form {
     ll::Expected<void> GUIManager::load(const std::string& id, const std::string& path) {
         frontend::DiagnosticEngine diagnostics;
 
-        frontend::ir::BytecodeSerializer::Header header;
-        header.scriptId = id;
-        header.abiFingerprint = frontend::ir::abiFingerprint();
-
-        std::optional<frontend::ScriptLoader::Result> loaded;
-
         const bool hasSource = this->readFile(path).has_value();
+        if (!hasSource)
+            return ll::makeStringError("load: Script '" + id + "' has no readable source");
 
-        if (hasSource) {
-            const std::string rootDir = std::filesystem::path(path).parent_path().string();
-            auto result = frontend::ScriptLoader::load(
-                path, rootDir,
-                [this](const std::string& file) -> std::optional<std::string> {
-                    auto data = this->readFile(file);
-                    if (!data.has_value())
-                        return std::nullopt;
+        const std::string rootDir = std::filesystem::path(path).parent_path().string();
+        auto result = frontend::ScriptLoader::load(
+            path, rootDir,
+            [this](const std::string& file) -> std::optional<std::string> {
+                auto data = this->readFile(file);
+                if (!data.has_value())
+                    return std::nullopt;
 
-                    return data.value();
-                },
-                diagnostics
-            );
-            if (!result)
-                return ll::makeStringError(diagnostics.getErrorMessage());
-
-            loaded = std::move(result);
-            header.sourceHash = loaded->hashes.back();
-            header.importHashes.assign(loaded->hashes.begin(), loaded->hashes.end() - 1);
-        }
-
-        const std::string packagePath = path + ".lcp";
-        if (auto blob = this->readFile(packagePath); blob.has_value()) {
-            std::string bodyChecksum;
-
-            if (auto chunk = frontend::ir::BytecodeSerializer::deserialize(blob.value(), header, &bodyChecksum)) {
-                if (auto debug = this->readFile(packagePath + ".dbg"); debug.has_value())
-                    frontend::ir::BytecodeSerializer::attachDebugInfo(*chunk, debug.value(), bodyChecksum);
-
-                this->mImpl->cache.insert_or_assign(id, std::make_shared<frontend::ir::BytecodeChunk>(std::move(*chunk)));
-                warnIfMissingPermission(id);
-                return {};
-            } else {
-                warnRejectedPackage(id, blob.value(), header);
-            }
-        }
-
-        if (!loaded)
-            return ll::makeStringError(
-                "load: Script '" + id + "' has no readable source and no valid bytecode package"
-            );
+                return data.value();
+            },
+            diagnostics
+        );
+        if (!result)
+            return ll::makeStringError(diagnostics.getErrorMessage());
 
         frontend::ir::Compiler mCompiler(diagnostics);
 
         frontend::SemanticAnalyzer analyzer(diagnostics);
-        analyzer.analyze(*loaded->program);
+        analyzer.analyze(*result->program);
 
         if (diagnostics.hasErrors())
             return ll::makeStringError(diagnostics.getErrorMessage());
@@ -205,31 +143,14 @@ namespace LOICollection::form {
         if (diagnostics.hasWarnings())
             return ll::makeStringError(diagnostics.getWarningMessage());
 
-        auto mir = std::make_shared<frontend::ir::MirChunk>(mCompiler.compile(*loaded->program));
+        auto mir = std::make_shared<frontend::ir::MirChunk>(mCompiler.compile(*result->program));
         if (diagnostics.hasErrors())
             return ll::makeStringError(diagnostics.getErrorMessage());
 
         frontend::ir::Optimizer optimizer;
         optimizer.optimize(*mir);
 
-        auto bytecode = std::make_shared<frontend::ir::BytecodeChunk>(
-            frontend::ir::MirLowering::lower(*mir));
-
-        std::string bodyChecksum;
-
-        if (auto blob = frontend::ir::BytecodeSerializer::serialize(*bytecode, header, &bodyChecksum)) {
-            std::ofstream out(packagePath, std::ios::binary | std::ios::trunc);
-            if (out)
-                out.write(blob->data(), static_cast<std::streamsize>(blob->size()));
-
-            if (auto debug = frontend::ir::BytecodeSerializer::serializeDebugInfo(*bytecode, bodyChecksum)) {
-                std::ofstream debugOut(packagePath + ".dbg", std::ios::binary | std::ios::trunc);
-                if (debugOut)
-                    debugOut.write(debug->data(), static_cast<std::streamsize>(debug->size()));
-            }
-        }
-
-        this->mImpl->cache.insert_or_assign(id, bytecode);
+        this->mImpl->cache.insert_or_assign(id, mir);
         warnIfMissingPermission(id);
 
         return {};

@@ -1,8 +1,5 @@
 #pragma once
 
-#include <string>
-#include <unordered_map>
-#include <variant>
 #include <vector>
 
 #include "LOICollectionA/frontend/ir/Mir.h"
@@ -10,14 +7,11 @@
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 
 namespace LOICollection::frontend::ir::opt {
-    struct TrackedValue {
-        ValueNode::ValueType value;
-        int producer = -1;
-        bool removable = false;
-    };
-
-    using StackEntry = std::variant<TrackedValue, std::monostate>;
-
+    // Scratch state shared by the optimizer passes while transforming a chunk.
+    // The passes build `foldedCode` from the original `code`, recording how
+    // each emitted instruction maps back to its source (`newToOld`/`oldToNew`)
+    // and which emitted instructions are dead (`dropped`). DeadCodePass
+    // compacts the result and remaps jump offsets.
     class OptContext {
     public:
         explicit OptContext(size_t codeSize)
@@ -28,9 +22,6 @@ namespace LOICollection::frontend::ir::opt {
         std::vector<int> newToOld;
         std::vector<int> oldToNew;
         std::vector<bool> dropped;
-        std::vector<StackEntry> stack{ std::monostate{} };
-        std::unordered_map<int, ValueNode::ValueType> slotValues;
-        std::unordered_map<std::string, ValueNode::ValueType> nameValues;
         Optimizer::Stats stats;
 
         int emit(const MirInstr& instr) {
@@ -40,17 +31,5 @@ namespace LOICollection::frontend::ir::opt {
         }
 
         void drop(int producer) { dropped[producer] = true; }
-
-        void resetStack() { stack.assign(1, std::monostate{}); }
-
-        void clearTracked() {
-            slotValues.clear();
-            nameValues.clear();
-        }
-
-        void pinTop() {
-            if (auto* known = std::get_if<TrackedValue>(&stack.back()))
-                known->removable = false;
-        }
     };
 }
