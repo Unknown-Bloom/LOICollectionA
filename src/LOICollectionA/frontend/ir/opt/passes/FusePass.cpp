@@ -5,36 +5,39 @@
 
 namespace LOICollection::frontend::ir::opt {
     namespace {
-        bool isFusableBinary(OpCode op) {
-            switch (op) {
-                case OpCode::ADD_I:
-                case OpCode::SUB_I:
-                case OpCode::MUL_I:
-                case OpCode::MOD_I:
-                case OpCode::CMP_EQ_I:
-                case OpCode::CMP_NE_I:
-                case OpCode::CMP_GT_I:
-                case OpCode::CMP_LT_I:
-                case OpCode::CMP_GE_I:
-                case OpCode::CMP_LE_I:
+        bool isFusableBinary(const MirInstr& instr) {
+            if (instr.type.kind != TypeKind::Int)
+                return false;
+
+            switch (instr.op) {
+                case MirOp::ADD:
+                case MirOp::SUB:
+                case MirOp::MUL:
+                case MirOp::MOD:
+                case MirOp::CMP_EQ:
+                case MirOp::CMP_NE:
+                case MirOp::CMP_GT:
+                case MirOp::CMP_LT:
+                case MirOp::CMP_GE:
+                case MirOp::CMP_LE:
                     return true;
                 default:
                     return false;
             }
         }
 
-        OpCode fusedOp(OpCode op) {
+        MirOp fusedOp(MirOp op) {
             switch (op) {
-                case OpCode::ADD_I: return OpCode::ADD_SS;
-                case OpCode::SUB_I: return OpCode::SUB_SS;
-                case OpCode::MUL_I: return OpCode::MUL_SS;
-                case OpCode::MOD_I: return OpCode::MOD_SS;
-                case OpCode::CMP_EQ_I: return OpCode::CMP_EQ_SS;
-                case OpCode::CMP_NE_I: return OpCode::CMP_NE_SS;
-                case OpCode::CMP_GT_I: return OpCode::CMP_GT_SS;
-                case OpCode::CMP_LT_I: return OpCode::CMP_LT_SS;
-                case OpCode::CMP_GE_I: return OpCode::CMP_GE_SS;
-                case OpCode::CMP_LE_I: return OpCode::CMP_LE_SS;
+                case MirOp::ADD: return MirOp::ADD_SS;
+                case MirOp::SUB: return MirOp::SUB_SS;
+                case MirOp::MUL: return MirOp::MUL_SS;
+                case MirOp::MOD: return MirOp::MOD_SS;
+                case MirOp::CMP_EQ: return MirOp::CMP_EQ_SS;
+                case MirOp::CMP_NE: return MirOp::CMP_NE_SS;
+                case MirOp::CMP_GT: return MirOp::CMP_GT_SS;
+                case MirOp::CMP_LT: return MirOp::CMP_LT_SS;
+                case MirOp::CMP_GE: return MirOp::CMP_GE_SS;
+                case MirOp::CMP_LE: return MirOp::CMP_LE_SS;
                 default: return op;
             }
         }
@@ -47,24 +50,24 @@ namespace LOICollection::frontend::ir::opt {
     size_t FusePass::run() {
         const JumpTargetAnalysis jumps{ mChunk.code };
 
-        std::vector<Instruction> out;
+        std::vector<MirInstr> out;
         std::vector<int> origin;
         out.reserve(mChunk.code.size());
         origin.reserve(mChunk.code.size());
 
         for (size_t i = 0; i < mChunk.code.size(); ++i) {
             if (i + 2 < mChunk.code.size()) {
-                const Instruction& a = mChunk.code[i];
-                const Instruction& b = mChunk.code[i + 1];
-                const Instruction& c = mChunk.code[i + 2];
+                const MirInstr& a = mChunk.code[i];
+                const MirInstr& b = mChunk.code[i + 1];
+                const MirInstr& c = mChunk.code[i + 2];
 
-                if (a.op == OpCode::LOAD_SLOT && b.op == OpCode::LOAD_SLOT &&
-                    isFusableBinary(c.op) &&
+                if (a.op == MirOp::LOAD_SLOT && b.op == MirOp::LOAD_SLOT &&
+                    isFusableBinary(c) &&
                     !jumps.isTarget(static_cast<int>(i + 1)) &&
                     !jumps.isTarget(static_cast<int>(i + 2)) &&
                     packable(a.operand) && packable(b.operand)) {
                     origin.push_back(static_cast<int>(i));
-                    out.push_back({ fusedOp(c.op), (a.operand << 16) | b.operand, c.loc });
+                    out.push_back({ fusedOp(c.op), (a.operand << 16) | b.operand, c.loc, c.type });
                     i += 2;
                     continue;
                 }

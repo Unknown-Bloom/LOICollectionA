@@ -23,6 +23,7 @@
 
 #include "LOICollectionA/frontend/ir/VM.h"
 #include "LOICollectionA/frontend/ir/Compiler.h"
+#include "LOICollectionA/frontend/ir/MirLowering.h"
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 #include "LOICollectionA/frontend/ir/Abi.h"
 #include "LOICollectionA/frontend/ir/BytecodeSerializer.h"
@@ -204,12 +205,15 @@ namespace LOICollection::form {
         if (diagnostics.hasWarnings())
             return ll::makeStringError(diagnostics.getWarningMessage());
 
-        auto bytecode = std::make_shared<frontend::ir::BytecodeChunk>(mCompiler.compile(*loaded->program));
+        auto mir = std::make_shared<frontend::ir::MirChunk>(mCompiler.compile(*loaded->program));
         if (diagnostics.hasErrors())
             return ll::makeStringError(diagnostics.getErrorMessage());
 
         frontend::ir::Optimizer optimizer;
-        optimizer.optimize(*bytecode);
+        optimizer.optimize(*mir);
+
+        auto bytecode = std::make_shared<frontend::ir::BytecodeChunk>(
+            frontend::ir::MirLowering::lower(*mir));
 
         std::string bodyChecksum;
 

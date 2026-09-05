@@ -22,7 +22,7 @@ namespace LOICollection::frontend::ir {
     public:
         LOICOLLECTION_A_API   Compiler(DiagnosticEngine& diag);
 
-        LOICOLLECTION_A_NDAPI BytecodeChunk compile(ASTNode& root);
+        LOICOLLECTION_A_NDAPI MirChunk compile(ASTNode& root);
 
     private:
         MirChunk chunk;

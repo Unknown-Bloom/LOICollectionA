@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <variant>
 
-#include "LOICollectionA/frontend/ir/ByteCode.h"
+#include "LOICollectionA/frontend/ir/Mir.h"
 
 #include "LOICollectionA/frontend/ir/opt/OptContext.h"
 #include "LOICollectionA/frontend/ir/opt/analysis/JumpTargetAnalysis.h"
@@ -12,7 +12,7 @@
 namespace LOICollection::frontend::ir::opt {
     class DeadStorePass {
     public:
-        DeadStorePass(BytecodeChunk& chunk, OptContext& ctx, const JumpTargetAnalysis& jumps)
+        DeadStorePass(MirChunk& chunk, OptContext& ctx, const JumpTargetAnalysis& jumps)
         : mChunk(chunk),
           mCtx(ctx),
           mJumps(jumps) {}
@@ -26,7 +26,7 @@ namespace LOICollection::frontend::ir::opt {
 
         void killStore(int at);
 
-        BytecodeChunk& mChunk;
+        MirChunk& mChunk;
         OptContext& mCtx;
         const JumpTargetAnalysis& mJumps;
         std::unordered_map<VariableKey, int> mPending;

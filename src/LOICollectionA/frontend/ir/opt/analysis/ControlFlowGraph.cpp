@@ -6,12 +6,12 @@
 
 namespace LOICollection::frontend::ir::opt {
     namespace {
-        int jumpTarget(const Instruction& instr, int at) {
+        int jumpTarget(const MirInstr& instr, int at) {
             return at + 1 + instr.operand;
         }
     }
 
-    std::vector<int> ControlFlowGraph::leaders(const std::vector<Instruction>& code) {
+    std::vector<int> ControlFlowGraph::leaders(const std::vector<MirInstr>& code) {
         const int size = static_cast<int>(code.size());
 
         std::vector<bool> isLeader(size + 1, false);
@@ -39,7 +39,7 @@ namespace LOICollection::frontend::ir::opt {
         return out;
     }
 
-    ControlFlowGraph::ControlFlowGraph(const std::vector<Instruction>& code) {
+    ControlFlowGraph::ControlFlowGraph(const std::vector<MirInstr>& code) {
         mBlockOfIndex.assign(code.size() + 1, 0);
 
         const std::vector<int> starts = leaders(code);
@@ -69,7 +69,7 @@ namespace LOICollection::frontend::ir::opt {
         return mBlockOfIndex[index];
     }
 
-    void ControlFlowGraph::link(const std::vector<Instruction>& code) {
+    void ControlFlowGraph::link(const std::vector<MirInstr>& code) {
         for (size_t b = 0; b < mBlocks.size(); ++b) {
             Block& block = mBlocks[b];
 
@@ -77,7 +77,7 @@ namespace LOICollection::frontend::ir::opt {
                 continue;
 
             const int last = block.end - 1;
-            const Instruction& term = code[last];
+            const MirInstr& term = code[last];
 
             auto addEdge = [&](int target) {
                 const int successor = this->blockOf(target);
@@ -97,7 +97,7 @@ namespace LOICollection::frontend::ir::opt {
                 else
                     addEdge(last + 1);
 
-                if (term.op != OpCode::JMP)
+                if (term.op != MirOp::JMP)
                     addEdge(last + 1);
             } else if (!isTerminator(term.op)) {
                 addEdge(last + 1);

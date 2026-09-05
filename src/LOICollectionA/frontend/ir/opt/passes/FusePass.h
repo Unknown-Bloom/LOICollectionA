@@ -2,16 +2,16 @@
 
 #include <cstddef>
 
-#include "LOICollectionA/frontend/ir/ByteCode.h"
+#include "LOICollectionA/frontend/ir/Mir.h"
 
 namespace LOICollection::frontend::ir::opt {
     class FusePass {
     public:
-        explicit FusePass(BytecodeChunk& chunk) : mChunk(chunk) {}
+        explicit FusePass(MirChunk& chunk) : mChunk(chunk) {}
 
         size_t run();
 
     private:
-        BytecodeChunk& mChunk;
+        MirChunk& mChunk;
     };
 }

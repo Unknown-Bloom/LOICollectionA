@@ -16,6 +16,16 @@ namespace LOICollection::frontend::ir {
                 case MirOp::CMP_GE: return isInt ? OpCode::CMP_GE_I : OpCode::CMP_GE;
                 case MirOp::CMP_LE: return isInt ? OpCode::CMP_LE_I : OpCode::CMP_LE;
                 case MirOp::NEG: return isInt ? OpCode::NEG_I : OpCode::NEG;
+                case MirOp::ADD_SS: return OpCode::ADD_SS;
+                case MirOp::SUB_SS: return OpCode::SUB_SS;
+                case MirOp::MUL_SS: return OpCode::MUL_SS;
+                case MirOp::MOD_SS: return OpCode::MOD_SS;
+                case MirOp::CMP_EQ_SS: return OpCode::CMP_EQ_SS;
+                case MirOp::CMP_NE_SS: return OpCode::CMP_NE_SS;
+                case MirOp::CMP_GT_SS: return OpCode::CMP_GT_SS;
+                case MirOp::CMP_LT_SS: return OpCode::CMP_LT_SS;
+                case MirOp::CMP_GE_SS: return OpCode::CMP_GE_SS;
+                case MirOp::CMP_LE_SS: return OpCode::CMP_LE_SS;
                 case MirOp::PUSH_INT: return OpCode::PUSH_INT;
                 case MirOp::PUSH_FLOAT: return OpCode::PUSH_FLOAT;
                 case MirOp::PUSH_STR: return OpCode::PUSH_STR;
@@ -34,6 +44,9 @@ namespace LOICollection::frontend::ir {
                 case MirOp::STORE_VAR: return OpCode::STORE_VAR;
                 case MirOp::LOAD_SLOT: return OpCode::LOAD_SLOT;
                 case MirOp::STORE_SLOT: return OpCode::STORE_SLOT;
+                case MirOp::DUP_STORE: return OpCode::DUP_STORE;
+                case MirOp::DUP_STORE_SLOT: return OpCode::DUP_STORE_SLOT;
+                case MirOp::DUP_IS_NONE: return OpCode::DUP_IS_NONE;
                 case MirOp::DIV: return OpCode::DIV;
                 case MirOp::POW: return OpCode::POW;
                 case MirOp::LOGIC_AND: return OpCode::LOGIC_AND;

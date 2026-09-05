@@ -33,7 +33,7 @@ namespace LOICollection::frontend::ir::opt {
         }
     }
 
-    bool identityEligible(OpCode op, const StackEntry& kept, const StackEntry& identity) {
+    bool identityEligible(MirOp op, const StackEntry& kept, const StackEntry& identity) {
         if (!isKnown(kept) || !isKnown(identity) || !knownValue(identity).removable)
             return false;
 
@@ -47,21 +47,18 @@ namespace LOICollection::frontend::ir::opt {
         bool identityFloatOne = std::holds_alternative<float>(identityValue) && std::get<float>(identityValue) == 1.0f;
 
         switch (op) {
-            case OpCode::ADD: 
+            case MirOp::ADD: 
                 return keptIsInt && identityIntZero;
-            case OpCode::SUB: 
+            case MirOp::SUB: 
                 return keptIsInt && identityIntZero;
-            case OpCode::MUL: 
+            case MirOp::MUL: 
                 return (keptIsInt && identityIntOne) || (keptIsFloat && (identityIntOne || identityFloatOne));
-            case OpCode::ADD_I:
                 return keptIsInt && identityIntZero;
-            case OpCode::SUB_I:
                 return keptIsInt && identityIntZero;
-            case OpCode::MUL_I:
                 return keptIsInt && identityIntOne;
-            case OpCode::DIV: 
+            case MirOp::DIV: 
                 return keptIsFloat && (identityIntOne || identityFloatOne);
-            case OpCode::POW: 
+            case MirOp::POW: 
                 return keptIsFloat && (identityIntOne || identityFloatOne);
             default:
                 return false;
@@ -145,7 +142,7 @@ namespace LOICollection::frontend::ir::opt {
         return false;
     }
 
-    int addConstant(BytecodeChunk& chunk, const ValueNode::ValueType& value) {
+    int addConstant(MirChunk& chunk, const ValueNode::ValueType& value) {
         if (isScalarValue(value)) {
             for (size_t i = 0; i < chunk.constants.size(); ++i) {
                 if (sameScalar(chunk.constants[i], value))
@@ -158,20 +155,20 @@ namespace LOICollection::frontend::ir::opt {
     }
 
     void emitPush(
-        BytecodeChunk& chunk,
-        std::vector<Instruction>& out,
+        MirChunk& chunk,
+        std::vector<MirInstr>& out,
         const ValueNode::ValueType& value,
         const SourceLocation& loc
     ) {
-        OpCode op = OpCode::PUSH_INT;
+        MirOp op = MirOp::PUSH_INT;
 
         switch (value.index()) {
-            case 0: op = OpCode::PUSH_INT; break;
-            case 1: op = OpCode::PUSH_FLOAT; break;
-            case 2: op = OpCode::PUSH_STR; break;
-            case 3: op = OpCode::PUSH_BOOL; break;
-            case 7: op = OpCode::PUSH_NONE; break;
-            default: op = OpCode::PUSH_INT; break;
+            case 0: op = MirOp::PUSH_INT; break;
+            case 1: op = MirOp::PUSH_FLOAT; break;
+            case 2: op = MirOp::PUSH_STR; break;
+            case 3: op = MirOp::PUSH_BOOL; break;
+            case 7: op = MirOp::PUSH_NONE; break;
+            default: op = MirOp::PUSH_INT; break;
         }
 
         out.push_back({ op, addConstant(chunk, value), loc });

@@ -16,6 +16,7 @@ namespace LOICollection::frontend::ir {
 
         LOAD_VAR, STORE_VAR,
         LOAD_SLOT, STORE_SLOT,
+        DUP_STORE, DUP_STORE_SLOT, DUP_IS_NONE,
 
         ADD, SUB, MUL, DIV, MOD, POW,
 
@@ -24,6 +25,9 @@ namespace LOICollection::frontend::ir {
         LOGIC_AND, LOGIC_OR,
 
         NEG, NOT,
+
+        ADD_SS, SUB_SS, MUL_SS, MOD_SS,
+        CMP_EQ_SS, CMP_NE_SS, CMP_GT_SS, CMP_LT_SS, CMP_GE_SS, CMP_LE_SS,
 
         CALL,
         CALL_MACRO,
@@ -58,9 +62,9 @@ namespace LOICollection::frontend::ir {
 
     struct MirInstr {
         MirOp op;
-        TypeInfo type;
-        int operand;
+        int operand = 0;
         SourceLocation loc{};
+        TypeInfo type{};
     };
 
     struct MirChunk {
@@ -81,7 +85,7 @@ namespace LOICollection::frontend::ir {
         int slotCount = 0;
 
         size_t emit(MirOp op, int operand = 0, const SourceLocation& loc = {}, const TypeInfo& type = {}) {
-            this->code.push_back({ op, type, operand, loc });
+            this->code.push_back({ op, operand, loc, type });
             return this->code.size() - 1;
         }
 

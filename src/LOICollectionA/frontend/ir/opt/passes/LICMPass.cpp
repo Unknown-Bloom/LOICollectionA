@@ -34,9 +34,9 @@ namespace LOICollection::frontend::ir::opt {
             const auto& info = cfg.blocks()[block];
 
             for (int i = info.begin; i < info.end; ++i) {
-                const Instruction& instr = mChunk.code[i];
+                const MirInstr& instr = mChunk.code[i];
 
-                if (instr.op != OpCode::STORE_SLOT && instr.op != OpCode::DUP_STORE_SLOT)
+                if (instr.op != MirOp::STORE_SLOT && instr.op != MirOp::DUP_STORE_SLOT)
                     continue;
 
                 if (instr.operand >= 0 && instr.operand < slots)
@@ -47,47 +47,36 @@ namespace LOICollection::frontend::ir::opt {
         return written;
     }
 
-    bool LICMPass::isHoistable(const Instruction& instr, const std::vector<bool>& written) const {
+    bool LICMPass::isHoistable(const MirInstr& instr, const std::vector<bool>& written) const {
         switch (instr.op) {
-            case OpCode::PUSH_INT:
-            case OpCode::PUSH_FLOAT:
-            case OpCode::PUSH_STR:
-            case OpCode::PUSH_BOOL:
-            case OpCode::PUSH_NONE:
-            case OpCode::ADD:
-            case OpCode::SUB:
-            case OpCode::MUL:
-            case OpCode::DIV:
-            case OpCode::MOD:
-            case OpCode::POW:
-            case OpCode::CMP_EQ:
-            case OpCode::CMP_NE:
-            case OpCode::CMP_GT:
-            case OpCode::CMP_LT:
-            case OpCode::CMP_GE:
-            case OpCode::CMP_LE:
-            case OpCode::LOGIC_AND:
-            case OpCode::LOGIC_OR:
-            case OpCode::NEG:
-            case OpCode::NOT:
-            case OpCode::UNWRAP:
-            case OpCode::TYPE_OF:
-            case OpCode::HAS_VALUE:
-            case OpCode::IS_NONE:
-            case OpCode::ADD_I:
-            case OpCode::SUB_I:
-            case OpCode::MUL_I:
-            case OpCode::MOD_I:
-            case OpCode::CMP_EQ_I:
-            case OpCode::CMP_NE_I:
-            case OpCode::CMP_GT_I:
-            case OpCode::CMP_LT_I:
-            case OpCode::CMP_GE_I:
-            case OpCode::CMP_LE_I:
-            case OpCode::NEG_I:
+            case MirOp::PUSH_INT:
+            case MirOp::PUSH_FLOAT:
+            case MirOp::PUSH_STR:
+            case MirOp::PUSH_BOOL:
+            case MirOp::PUSH_NONE:
+            case MirOp::ADD:
+            case MirOp::SUB:
+            case MirOp::MUL:
+            case MirOp::DIV:
+            case MirOp::MOD:
+            case MirOp::POW:
+            case MirOp::CMP_EQ:
+            case MirOp::CMP_NE:
+            case MirOp::CMP_GT:
+            case MirOp::CMP_LT:
+            case MirOp::CMP_GE:
+            case MirOp::CMP_LE:
+            case MirOp::LOGIC_AND:
+            case MirOp::LOGIC_OR:
+            case MirOp::NEG:
+            case MirOp::NOT:
+            case MirOp::UNWRAP:
+            case MirOp::TYPE_OF:
+            case MirOp::HAS_VALUE:
+            case MirOp::IS_NONE:
                 return true;
 
-            case OpCode::LOAD_SLOT:
+            case MirOp::LOAD_SLOT:
                 return instr.operand >= 0 && instr.operand < static_cast<int>(written.size()) &&
                     !written[instr.operand];
 
@@ -125,7 +114,7 @@ namespace LOICollection::frontend::ir::opt {
         const std::vector<bool> written = this->writtenSlots(cfg, loop);
         const auto& header = cfg.blocks()[loop.header];
 
-        std::vector<Instruction> invariant;
+        std::vector<MirInstr> invariant;
         int depth = 0;
         int net = 0;
 
@@ -146,7 +135,7 @@ namespace LOICollection::frontend::ir::opt {
         if (invariant.empty() || net != 1)
             return 0;
 
-        const int insertAt = mChunk.code[entry.end - 1].op == OpCode::JMP ? entry.end - 1 : entry.end;
+        const int insertAt = mChunk.code[entry.end - 1].op == MirOp::JMP ? entry.end - 1 : entry.end;
 
         const int exitBegin = cfg.blocks()[exitBlock].begin;
 
@@ -154,21 +143,21 @@ namespace LOICollection::frontend::ir::opt {
 
         edits.push_back({ insertAt, false, -1, invariant });
 
-        edits.push_back({ header.begin, true, 0, { Instruction{ OpCode::DUP, 0, invariant.front().loc } } });
+        edits.push_back({ header.begin, true, 0, { MirInstr{ MirOp::DUP, 0, invariant.front().loc } } });
         for (int k = 1; k < static_cast<int>(invariant.size()); ++k)
             edits.push_back({ header.begin + k, true, -1, {} });
 
-        edits.push_back({ exitBegin, false, 0, { Instruction{ OpCode::POP, 0, {} } } });
+        edits.push_back({ exitBegin, false, 0, { MirInstr{ MirOp::POP, 0, {} } } });
 
         apply(mChunk.code, edits);
 
         return 1;
     }
 
-    void LICMPass::apply(std::vector<Instruction>& code, const std::vector<Edit>& edits) {
+    void LICMPass::apply(std::vector<MirInstr>& code, const std::vector<Edit>& edits) {
         const int last = static_cast<int>(code.size()) - 1;
 
-        std::vector<Instruction> rewritten;
+        std::vector<MirInstr> rewritten;
         std::vector<int> oldToNew(code.size(), -1);
         std::vector<int> origin;
         std::vector<std::vector<int>> placed(edits.size());
@@ -181,7 +170,7 @@ namespace LOICollection::frontend::ir::opt {
                 if (edits[e].at != static_cast<int>(i))
                     continue;
 
-                for (const Instruction& instr : edits[e].insert) {
+                for (const MirInstr& instr : edits[e].insert) {
                     placed[e].push_back(static_cast<int>(rewritten.size()));
                     rewritten.push_back(instr);
                     origin.push_back(-1);

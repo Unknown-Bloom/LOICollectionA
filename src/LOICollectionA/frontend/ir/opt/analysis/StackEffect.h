@@ -1,6 +1,6 @@
 #pragma once
 
-#include "LOICollectionA/frontend/ir/ByteCode.h"
+#include "LOICollectionA/frontend/ir/Mir.h"
 
 namespace LOICollection::frontend::ir::opt {
     struct StackEffect {
@@ -13,5 +13,5 @@ namespace LOICollection::frontend::ir::opt {
         int reach() const { return pops + peeks; }
     };
 
-    bool stackEffectOf(const Instruction& instr, const BytecodeChunk& chunk, StackEffect& out);
+    bool stackEffectOf(const MirInstr& instr, const MirChunk& chunk, StackEffect& out);
 }

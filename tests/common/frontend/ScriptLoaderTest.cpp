@@ -10,6 +10,7 @@
 #include "LOICollectionA/frontend/ScriptLoader.h"
 #include "LOICollectionA/frontend/SemanticAnalyzer.h"
 #include "LOICollectionA/frontend/ir/Compiler.h"
+#include "LOICollectionA/frontend/ir/MirLowering.h"
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 #include "LOICollectionA/frontend/ir/VM.h"
 #include "LOICollectionA/utils/core/Sha256.h"
@@ -40,12 +41,14 @@ namespace {
             throw std::runtime_error(diagnostics.getErrorMessage());
 
         ir::Compiler compiler(diagnostics);
-        auto bytecode = std::make_shared<ir::BytecodeChunk>(compiler.compile(*loaded->program));
+        auto mir = std::make_shared<ir::MirChunk>(compiler.compile(*loaded->program));
         if (diagnostics.hasErrors())
             throw std::runtime_error(diagnostics.getErrorMessage());
 
         ir::Optimizer optimizer;
-        optimizer.optimize(*bytecode);
+        optimizer.optimize(*mir);
+
+        auto bytecode = std::make_shared<ir::BytecodeChunk>(ir::MirLowering::lower(*mir));
 
         ir::VM vm(diagnostics);
         auto result = vm.run(bytecode, {});

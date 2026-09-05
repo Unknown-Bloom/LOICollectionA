@@ -4,11 +4,11 @@
 
 namespace LOICollection::frontend::ir::opt {
     namespace {
-        bool capturesLocals(OpCode op) {
-            return op == OpCode::MAKE_LAMBDA;
+        bool capturesLocals(MirOp op) {
+            return op == MirOp::MAKE_LAMBDA;
         }
 
-        bool closesBlock(OpCode op) {
+        bool closesBlock(MirOp op) {
             return isJump(op) || isTerminator(op) || canWriteVariables(op) || capturesLocals(op);
         }
     }
@@ -25,24 +25,24 @@ namespace LOICollection::frontend::ir::opt {
                 continue;
             }
 
-            const Instruction instr = mCtx.foldedCode[j];
+            const MirInstr instr = mCtx.foldedCode[j];
 
             switch (instr.op) {
-                case OpCode::LOAD_SLOT:
+                case MirOp::LOAD_SLOT:
                     mPending.erase(VariableKey{ instr.operand });
                     break;
 
-                case OpCode::LOAD_VAR:
+                case MirOp::LOAD_VAR:
                     mPending.erase(VariableKey{ std::get<std::string>(mChunk.constants[instr.operand]) });
                     break;
 
-                case OpCode::STORE_SLOT:
-                case OpCode::DUP_STORE_SLOT:
+                case MirOp::STORE_SLOT:
+                case MirOp::DUP_STORE_SLOT:
                     this->recordStore(VariableKey{ instr.operand }, static_cast<int>(j), instr.operand);
                     break;
 
-                case OpCode::STORE_VAR:
-                case OpCode::DUP_STORE:
+                case MirOp::STORE_VAR:
+                case MirOp::DUP_STORE:
                     this->recordStore(
                         VariableKey{ std::get<std::string>(mChunk.constants[instr.operand]) },
                         static_cast<int>(j),
@@ -75,17 +75,17 @@ namespace LOICollection::frontend::ir::opt {
     }
 
     void DeadStorePass::killStore(int at) {
-        Instruction& dead = mCtx.foldedCode[at];
+        MirInstr& dead = mCtx.foldedCode[at];
 
         switch (dead.op) {
-            case OpCode::STORE_SLOT:
-            case OpCode::STORE_VAR:
-                dead.op = OpCode::POP;
+            case MirOp::STORE_SLOT:
+            case MirOp::STORE_VAR:
+                dead.op = MirOp::POP;
                 dead.operand = 0;
                 break;
 
-            case OpCode::DUP_STORE_SLOT:
-            case OpCode::DUP_STORE:
+            case MirOp::DUP_STORE_SLOT:
+            case MirOp::DUP_STORE:
                 mCtx.dropped[at] = true;
                 break;
 

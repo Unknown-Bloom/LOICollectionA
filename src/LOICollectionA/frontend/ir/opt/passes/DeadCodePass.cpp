@@ -9,7 +9,7 @@ namespace LOICollection::frontend::ir::opt {
         class JumpChains {
         public:
             JumpChains(
-                const std::vector<Instruction>& folded,
+                const std::vector<MirInstr>& folded,
                 const std::vector<int>& newToOld,
                 const std::vector<int>& oldToNew
             )
@@ -32,7 +32,7 @@ namespace LOICollection::frontend::ir::opt {
                 int target = targetOf(j);
                 int guard = 0;
     
-                while (target >= 0 && target < static_cast<int>(mFolded.size()) && mFolded[target].op == OpCode::JMP) {
+                while (target >= 0 && target < static_cast<int>(mFolded.size()) && mFolded[target].op == MirOp::JMP) {
                     if (++guard > static_cast<int>(mFolded.size()))
                         break;
     
@@ -47,13 +47,13 @@ namespace LOICollection::frontend::ir::opt {
             }
     
         private:
-            const std::vector<Instruction>& mFolded;
+            const std::vector<MirInstr>& mFolded;
             const std::vector<int>& mNewToOld;
             const std::vector<int>& mOldToNew;
         };
     
         void compact(OptContext& ctx) {
-            std::vector<Instruction> compactCode;
+            std::vector<MirInstr> compactCode;
             std::vector<int> compactNewToOld;
             std::vector<int> compactOldToNew(ctx.oldToNew.size(), -1);
     
@@ -71,7 +71,7 @@ namespace LOICollection::frontend::ir::opt {
             ctx.oldToNew = std::move(compactOldToNew);
         }
     
-        std::vector<bool> markReachable(const std::vector<Instruction>& folded, const JumpChains& chains) {
+        std::vector<bool> markReachable(const std::vector<MirInstr>& folded, const JumpChains& chains) {
             std::vector<bool> reachable(folded.size(), false);
             std::vector<int> queue;
     
@@ -100,7 +100,7 @@ namespace LOICollection::frontend::ir::opt {
         }
     
         void remapJumps(
-            std::vector<Instruction>& finalCode,
+            std::vector<MirInstr>& finalCode,
             const std::vector<int>& finalToFolded,
             const std::vector<int>& foldedToFinal,
             const JumpChains& chains,
@@ -121,7 +121,7 @@ namespace LOICollection::frontend::ir::opt {
         }
     }
 
-    void DeadCodePass::run(BytecodeChunk& chunk, OptContext& ctx, bool eliminate) {
+    void DeadCodePass::run(MirChunk& chunk, OptContext& ctx, bool eliminate) {
         compact(ctx);
 
         const JumpChains chains{ ctx.foldedCode, ctx.newToOld, ctx.oldToNew };
@@ -129,7 +129,7 @@ namespace LOICollection::frontend::ir::opt {
             ? markReachable(ctx.foldedCode, chains)
             : std::vector<bool>(ctx.foldedCode.size(), true);
 
-        std::vector<Instruction> finalCode;
+        std::vector<MirInstr> finalCode;
         std::vector<int> finalToFolded;
         std::vector<int> foldedToFinal(ctx.foldedCode.size(), -1);
 

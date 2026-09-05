@@ -29,7 +29,7 @@ namespace LOICollection::frontend::ir {
 
     Compiler::Compiler(DiagnosticEngine& diag) : current(std::ref(chunk)), diagnostics(diag) {}
 
-    BytecodeChunk Compiler::compile(ASTNode& root) {
+    MirChunk Compiler::compile(ASTNode& root) {
         this->pushScope(false, 0);
 
         if (root.getType() == ASTNode::Type::Program) {
@@ -104,7 +104,7 @@ namespace LOICollection::frontend::ir {
 
         this->chunk.slotCount = this->closeScope();
 
-        return MirLowering::lower(chunk);
+        return std::move(chunk);
     }
 
     void Compiler::visit(ValueNode& node) {

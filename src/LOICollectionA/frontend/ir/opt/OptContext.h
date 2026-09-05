@@ -5,7 +5,7 @@
 #include <variant>
 #include <vector>
 
-#include "LOICollectionA/frontend/ir/ByteCode.h"
+#include "LOICollectionA/frontend/ir/Mir.h"
 
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 
@@ -24,7 +24,7 @@ namespace LOICollection::frontend::ir::opt {
         : oldToNew(codeSize, -1),
           dropped(codeSize, false) {}
 
-        std::vector<Instruction> foldedCode;
+        std::vector<MirInstr> foldedCode;
         std::vector<int> newToOld;
         std::vector<int> oldToNew;
         std::vector<bool> dropped;
@@ -33,7 +33,7 @@ namespace LOICollection::frontend::ir::opt {
         std::unordered_map<std::string, ValueNode::ValueType> nameValues;
         Optimizer::Stats stats;
 
-        int emit(const Instruction& instr) {
+        int emit(const MirInstr& instr) {
             int at = static_cast<int>(foldedCode.size());
             foldedCode.push_back(instr);
             return at;

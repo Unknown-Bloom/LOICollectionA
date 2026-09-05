@@ -19,6 +19,7 @@
 #include "LOICollectionA/frontend/Callback.h"
 #include "LOICollectionA/frontend/SemanticAnalyzer.h"
 #include "LOICollectionA/frontend/ir/Compiler.h"
+#include "LOICollectionA/frontend/ir/MirLowering.h"
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 #include "LOICollectionA/frontend/ir/VM.h"
 
@@ -145,14 +146,17 @@ namespace LOICollection::LOICollectionAPI {
             return str;
         }
 
-        auto bytecode = std::make_shared<frontend::ir::BytecodeChunk>(mCompiler.compile(*mAst));
+        auto mir = std::make_shared<frontend::ir::MirChunk>(mCompiler.compile(*mAst));
         if (diagnostics.hasErrors()) {
             this->mImpl->logger->error("CallbackUtils: {}", diagnostics.getErrorMessage());
             return str;
         }
 
         frontend::ir::Optimizer optimizer;
-        optimizer.optimize(*bytecode);
+        optimizer.optimize(*mir);
+
+        auto bytecode = std::make_shared<frontend::ir::BytecodeChunk>(
+            frontend::ir::MirLowering::lower(*mir));
 
         auto result = mVM.run(bytecode, { std::ref(player) });
         if (diagnostics.hasErrors()) {
@@ -208,14 +212,17 @@ namespace LOICollection::LOICollectionAPI {
             return str;
         }
 
-        auto bytecode = std::make_shared<frontend::ir::BytecodeChunk>(mCompiler.compile(*mAst));
+        auto mir = std::make_shared<frontend::ir::MirChunk>(mCompiler.compile(*mAst));
         if (diagnostics.hasErrors()) {
             this->mImpl->logger->error("CallbackUtils: {}", diagnostics.getErrorMessage());
             return str;
         }
 
         frontend::ir::Optimizer optimizer;
-        optimizer.optimize(*bytecode);
+        optimizer.optimize(*mir);
+
+        auto bytecode = std::make_shared<frontend::ir::BytecodeChunk>(
+            frontend::ir::MirLowering::lower(*mir));
 
         auto result = mVM.run(bytecode, {});
         if (diagnostics.hasErrors()) {

@@ -4,8 +4,8 @@
 #include <variant>
 #include <vector>
 
-#include "LOICollectionA/frontend/ir/ByteCode.h"
-#include "LOICollectionA/frontend/ir/OpCode.h"
+#include "LOICollectionA/frontend/ir/Mir.h"
+#include "LOICollectionA/frontend/ir/Mir.h"
 
 #include "LOICollectionA/frontend/ir/opt/OptContext.h"
 
@@ -28,15 +28,15 @@ namespace LOICollection::frontend::ir::opt {
 
     bool sameScalar(const ValueNode::ValueType& a, const ValueNode::ValueType& b);
 
-    bool identityEligible(OpCode op, const StackEntry& kept, const StackEntry& identity);
+    bool identityEligible(MirOp op, const StackEntry& kept, const StackEntry& identity);
 
     bool foldPureMath(const std::string& name, const std::vector<ValueNode::ValueType>& args, ValueNode::ValueType& out);
 
-    int addConstant(BytecodeChunk& chunk, const ValueNode::ValueType& value);
+    int addConstant(MirChunk& chunk, const ValueNode::ValueType& value);
 
     void emitPush(
-        BytecodeChunk& chunk,
-        std::vector<Instruction>& out,
+        MirChunk& chunk,
+        std::vector<MirInstr>& out,
         const ValueNode::ValueType& value,
         const SourceLocation& loc = {}
     );

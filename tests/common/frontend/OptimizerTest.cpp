@@ -8,6 +8,7 @@
 #include "LOICollectionA/frontend/SemanticAnalyzer.h"
 
 #include "LOICollectionA/frontend/ir/Compiler.h"
+#include "LOICollectionA/frontend/ir/MirLowering.h"
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 #include "LOICollectionA/frontend/ir/VM.h"
 
@@ -34,11 +35,13 @@ using namespace LOICollection::frontend::ir;
             }
 
             Compiler compiler(out.diagnostics);
-            out.chunk = std::make_shared<BytecodeChunk>(compiler.compile(*ast));
+            auto mir = std::make_shared<MirChunk>(compiler.compile(*ast));
 
             Optimizer optimizer;
             optimizer.setEnabledPasses(mask);
-            out.stats = optimizer.optimize(*out.chunk);
+            out.stats = optimizer.optimize(*mir);
+
+            out.chunk = std::make_shared<BytecodeChunk>(MirLowering::lower(*mir));
 
             return out;
         }
@@ -76,6 +79,24 @@ using namespace LOICollection::frontend::ir;
                     return true;
 
             return false;
+        }
+
+        // MIR-layer helpers: MirOp carries no _I / _SS variants, so matching is exact.
+        bool containsOpMir(const MirChunk& chunk, MirOp op) {
+            for (const auto& instr : chunk.code)
+                if (instr.op == op)
+                    return true;
+
+            return false;
+        }
+
+        int countOpMir(const MirChunk& chunk, MirOp op) {
+            int total = 0;
+            for (const auto& instr : chunk.code)
+                if (instr.op == op)
+                    ++total;
+
+            return total;
         }
 }
 
@@ -243,18 +264,18 @@ TEST(OptimizerTest, NestedConstantArrayIsClonedDeeply) {
 }
 
 TEST(OptimizerTest, FoldsTypeIntrospectionOpcodes) {
-    ir::BytecodeChunk chunk;
+    ir::MirChunk chunk;
     chunk.constants.push_back(42);
     chunk.constants.push_back(std::monostate{});
 
     chunk.code = {
-        { OpCode::PUSH_INT, 0 },
-        { OpCode::TYPE_OF, 0 },
-        { OpCode::PUSH_NONE, 1 },
-        { OpCode::HAS_VALUE, 0 },
-        { OpCode::PUSH_INT, 0 },
-        { OpCode::UNWRAP, 0 },
-        { OpCode::HALT, 0 }
+        { MirOp::PUSH_INT, 0 },
+        { MirOp::TYPE_OF, 0 },
+        { MirOp::PUSH_NONE, 1 },
+        { MirOp::HAS_VALUE, 0 },
+        { MirOp::PUSH_INT, 0 },
+        { MirOp::UNWRAP, 0 },
+        { MirOp::HALT, 0 }
     };
 
     Optimizer optimizer;
@@ -263,10 +284,10 @@ TEST(OptimizerTest, FoldsTypeIntrospectionOpcodes) {
     EXPECT_GE(stats.folded, 3u);
 
     ASSERT_EQ(chunk.code.size(), 4u);
-    EXPECT_EQ(chunk.code[0].op, OpCode::PUSH_STR);
-    EXPECT_EQ(chunk.code[1].op, OpCode::PUSH_BOOL);
-    EXPECT_EQ(chunk.code[2].op, OpCode::PUSH_INT);
-    EXPECT_EQ(chunk.code[3].op, OpCode::HALT);
+    EXPECT_EQ(chunk.code[0].op, MirOp::PUSH_STR);
+    EXPECT_EQ(chunk.code[1].op, MirOp::PUSH_BOOL);
+    EXPECT_EQ(chunk.code[2].op, MirOp::PUSH_INT);
+    EXPECT_EQ(chunk.code[3].op, MirOp::HALT);
 
     EXPECT_EQ(std::get<std::string>(chunk.constants[chunk.code[0].operand]), "int");
     EXPECT_EQ(std::get<bool>(chunk.constants[chunk.code[1].operand]), false);
@@ -274,13 +295,13 @@ TEST(OptimizerTest, FoldsTypeIntrospectionOpcodes) {
 }
 
 TEST(OptimizerTest, DoesNotFoldUnwrapOfEmptyOptional) {
-    ir::BytecodeChunk chunk;
+    ir::MirChunk chunk;
     chunk.constants.push_back(std::monostate{});
 
     chunk.code = {
-        { OpCode::PUSH_NONE, 0 },
-        { OpCode::UNWRAP, 0 },
-        { OpCode::HALT, 0 }
+        { MirOp::PUSH_NONE, 0 },
+        { MirOp::UNWRAP, 0 },
+        { MirOp::HALT, 0 }
     };
 
     Optimizer optimizer;
@@ -288,11 +309,11 @@ TEST(OptimizerTest, DoesNotFoldUnwrapOfEmptyOptional) {
 
     EXPECT_EQ(stats.folded, 0u);
     ASSERT_EQ(chunk.code.size(), 3u);
-    EXPECT_EQ(chunk.code[1].op, OpCode::UNWRAP);
+    EXPECT_EQ(chunk.code[1].op, MirOp::UNWRAP);
 
     DiagnosticEngine diag;
     VM vm(diag);
-    [[maybe_unused]] auto result = vm.run(std::make_shared<BytecodeChunk>(std::move(chunk)), {});
+    [[maybe_unused]] auto result = vm.run(std::make_shared<BytecodeChunk>(MirLowering::lower(chunk)), {});
     EXPECT_TRUE(diag.hasErrors());
     EXPECT_NE(diag.getErrorMessage().find("Optional value is empty"), std::string::npos);
 }
@@ -430,56 +451,56 @@ TEST(OptimizerTest, PropagationInvalidatedAtBranchMerge) {
 }
 
 TEST(OptimizerTest, PropagationInvalidatedByCalls) {
-    ir::BytecodeChunk chunk;
+    ir::MirChunk chunk;
     chunk.constants.push_back(3);
     chunk.constants.push_back(std::string("x"));
     chunk.constants.push_back(std::string("hook"));
 
     chunk.code = {
-        { OpCode::PUSH_INT, 0 },
-        { OpCode::STORE_VAR, 1 },
-        { OpCode::CALL, 2 },
-        { OpCode::LOAD_VAR, 1 },
-        { OpCode::HALT, 0 }
+        { MirOp::PUSH_INT, 0 },
+        { MirOp::STORE_VAR, 1 },
+        { MirOp::CALL, 2 },
+        { MirOp::LOAD_VAR, 1 },
+        { MirOp::HALT, 0 }
     };
 
     Optimizer optimizer;
     optimizer.optimize(chunk);
 
-    EXPECT_TRUE(containsOp(chunk, OpCode::LOAD_VAR));
+    EXPECT_TRUE(containsOpMir(chunk, MirOp::LOAD_VAR));
     EXPECT_EQ(chunk.code.size(), 5u);
 }
 
     namespace {
-        std::size_t optimizeInvalidationProbe(OpCode op) {
-            ir::BytecodeChunk chunk;
+        std::size_t optimizeInvalidationProbe(MirOp op) {
+            ir::MirChunk chunk;
             chunk.constants.push_back(3);
             chunk.constants.push_back(std::string("x"));
             chunk.constants.push_back(std::string("hook"));
 
             chunk.code = {
-                { OpCode::PUSH_INT, 0 },
-                { OpCode::STORE_VAR, 1 },
+                { MirOp::PUSH_INT, 0 },
+                { MirOp::STORE_VAR, 1 },
                 { op, 2 },
-                { OpCode::LOAD_VAR, 1 },
-                { OpCode::HALT, 0 }
+                { MirOp::LOAD_VAR, 1 },
+                { MirOp::HALT, 0 }
             };
 
             Optimizer optimizer;
             optimizer.optimize(chunk);
 
-            EXPECT_TRUE(containsOp(chunk, OpCode::LOAD_VAR));
+            EXPECT_TRUE(containsOpMir(chunk, MirOp::LOAD_VAR));
 
             return chunk.code.size();
         }
 }
 
 TEST(OptimizerTest, PropagationInvalidatedByByNameMethodCalls) {
-    EXPECT_EQ(optimizeInvalidationProbe(OpCode::CALL_METHOD_BY_NAME), 5u);
+    EXPECT_EQ(optimizeInvalidationProbe(MirOp::CALL_METHOD_BY_NAME), 5u);
 }
 
 TEST(OptimizerTest, PropagationInvalidatedByNativeMethodCalls) {
-    EXPECT_EQ(optimizeInvalidationProbe(OpCode::CALL_NATIVE_METHOD), 5u);
+    EXPECT_EQ(optimizeInvalidationProbe(MirOp::CALL_NATIVE_METHOD), 5u);
 }
 
 TEST(OptimizerTest, FusesNotIntoBranchOpcode) {
@@ -528,20 +549,20 @@ TEST(OptimizerTest, FixedPointExposesPropagationAfterBranchRemoval) {
 }
 
 TEST(OptimizerTest, EliminatesAlgebraicIdentities) {
-    ir::BytecodeChunk chunk;
+    ir::MirChunk chunk;
     chunk.constants.push_back(42);
     chunk.constants.push_back(0);
     chunk.constants.push_back(1);
 
     chunk.code = {
-        { OpCode::PUSH_INT, 0 },
-        { OpCode::DUP, 0 },
-        { OpCode::PUSH_INT, 1 },
-        { OpCode::ADD, 0 },
-        { OpCode::PUSH_INT, 2 },
-        { OpCode::MUL, 0 },
-        { OpCode::POP, 0 },
-        { OpCode::HALT, 0 }
+        { MirOp::PUSH_INT, 0 },
+        { MirOp::DUP, 0 },
+        { MirOp::PUSH_INT, 1 },
+        { MirOp::ADD, 0 },
+        { MirOp::PUSH_INT, 2 },
+        { MirOp::MUL, 0 },
+        { MirOp::POP, 0 },
+        { MirOp::HALT, 0 }
     };
 
     Optimizer optimizer;
@@ -550,33 +571,33 @@ TEST(OptimizerTest, EliminatesAlgebraicIdentities) {
     EXPECT_EQ(stats.folded, 2u);
 
     ASSERT_EQ(chunk.code.size(), 4u);
-    EXPECT_EQ(chunk.code[0].op, OpCode::PUSH_INT);
-    EXPECT_EQ(chunk.code[1].op, OpCode::DUP);
-    EXPECT_EQ(chunk.code[2].op, OpCode::POP);
-    EXPECT_EQ(chunk.code[3].op, OpCode::HALT);
+    EXPECT_EQ(chunk.code[0].op, MirOp::PUSH_INT);
+    EXPECT_EQ(chunk.code[1].op, MirOp::DUP);
+    EXPECT_EQ(chunk.code[2].op, MirOp::POP);
+    EXPECT_EQ(chunk.code[3].op, MirOp::HALT);
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(std::move(chunk)), {})), "42");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(MirLowering::lower(chunk)), {})), "42");
     EXPECT_FALSE(diag.hasErrors());
 }
 
 TEST(OptimizerTest, EliminatesFloatMulDivPowIdentities) {
-    ir::BytecodeChunk chunk;
+    ir::MirChunk chunk;
     chunk.constants.push_back(2.5f);
     chunk.constants.push_back(1);
 
     chunk.code = {
-        { OpCode::PUSH_FLOAT, 0 },
-        { OpCode::DUP, 0 },
-        { OpCode::PUSH_INT, 1 },
-        { OpCode::MUL, 0 },
-        { OpCode::PUSH_INT, 1 },
-        { OpCode::DIV, 0 },
-        { OpCode::PUSH_INT, 1 },
-        { OpCode::POW, 0 },
-        { OpCode::POP, 0 },
-        { OpCode::HALT, 0 }
+        { MirOp::PUSH_FLOAT, 0 },
+        { MirOp::DUP, 0 },
+        { MirOp::PUSH_INT, 1 },
+        { MirOp::MUL, 0 },
+        { MirOp::PUSH_INT, 1 },
+        { MirOp::DIV, 0 },
+        { MirOp::PUSH_INT, 1 },
+        { MirOp::POW, 0 },
+        { MirOp::POP, 0 },
+        { MirOp::HALT, 0 }
     };
 
     Optimizer optimizer;
@@ -585,40 +606,40 @@ TEST(OptimizerTest, EliminatesFloatMulDivPowIdentities) {
     EXPECT_EQ(stats.folded, 3u);
 
     ASSERT_EQ(chunk.code.size(), 4u);
-    EXPECT_EQ(chunk.code[0].op, OpCode::PUSH_FLOAT);
-    EXPECT_EQ(chunk.code[1].op, OpCode::DUP);
-    EXPECT_EQ(chunk.code[2].op, OpCode::POP);
-    EXPECT_EQ(chunk.code[3].op, OpCode::HALT);
+    EXPECT_EQ(chunk.code[0].op, MirOp::PUSH_FLOAT);
+    EXPECT_EQ(chunk.code[1].op, MirOp::DUP);
+    EXPECT_EQ(chunk.code[2].op, MirOp::POP);
+    EXPECT_EQ(chunk.code[3].op, MirOp::HALT);
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(std::move(chunk)), {})), "2.5");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(MirLowering::lower(chunk)), {})), "2.5");
     EXPECT_FALSE(diag.hasErrors());
 }
 
 TEST(OptimizerTest, FloatAddZeroIsNotIdentityFolded) {
-    ir::BytecodeChunk chunk;
+    ir::MirChunk chunk;
     chunk.constants.push_back(-0.0f);
     chunk.constants.push_back(0.0f);
 
     chunk.code = {
-        { OpCode::PUSH_FLOAT, 0 },
-        { OpCode::DUP, 0 },
-        { OpCode::PUSH_FLOAT, 1 },
-        { OpCode::ADD, 0 },
-        { OpCode::POP, 0 },
-        { OpCode::HALT, 0 }
+        { MirOp::PUSH_FLOAT, 0 },
+        { MirOp::DUP, 0 },
+        { MirOp::PUSH_FLOAT, 1 },
+        { MirOp::ADD, 0 },
+        { MirOp::POP, 0 },
+        { MirOp::HALT, 0 }
     };
 
     Optimizer optimizer;
     auto stats = optimizer.optimize(chunk);
 
     EXPECT_EQ(stats.folded, 0u);
-    EXPECT_TRUE(containsOp(chunk, OpCode::ADD));
+    EXPECT_TRUE(containsOpMir(chunk, MirOp::ADD));
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(std::move(chunk)), {})), "-0");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(MirLowering::lower(chunk)), {})), "-0");
     EXPECT_FALSE(diag.hasErrors());
 }
 
@@ -648,16 +669,16 @@ TEST(OptimizerTest, FoldsFloatAddZeroWithCorrectSignedZero) {
 }
 
 TEST(OptimizerTest, FoldsIsNoneOpcode) {
-    ir::BytecodeChunk chunk;
+    ir::MirChunk chunk;
     chunk.constants.push_back(std::monostate{});
     chunk.constants.push_back(42);
 
     chunk.code = {
-        { OpCode::PUSH_NONE, 0 },
-        { OpCode::IS_NONE, 0 },
-        { OpCode::PUSH_INT, 1 },
-        { OpCode::IS_NONE, 0 },
-        { OpCode::HALT, 0 }
+        { MirOp::PUSH_NONE, 0 },
+        { MirOp::IS_NONE, 0 },
+        { MirOp::PUSH_INT, 1 },
+        { MirOp::IS_NONE, 0 },
+        { MirOp::HALT, 0 }
     };
 
     Optimizer optimizer;
@@ -666,43 +687,43 @@ TEST(OptimizerTest, FoldsIsNoneOpcode) {
     EXPECT_EQ(stats.folded, 2u);
 
     ASSERT_EQ(chunk.code.size(), 3u);
-    EXPECT_EQ(chunk.code[0].op, OpCode::PUSH_BOOL);
-    EXPECT_EQ(chunk.code[1].op, OpCode::PUSH_BOOL);
-    EXPECT_EQ(chunk.code[2].op, OpCode::HALT);
+    EXPECT_EQ(chunk.code[0].op, MirOp::PUSH_BOOL);
+    EXPECT_EQ(chunk.code[1].op, MirOp::PUSH_BOOL);
+    EXPECT_EQ(chunk.code[2].op, MirOp::HALT);
     EXPECT_EQ(std::get<bool>(chunk.constants[chunk.code[0].operand]), true);
     EXPECT_EQ(std::get<bool>(chunk.constants[chunk.code[1].operand]), false);
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(std::move(chunk)), {})), "false");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(MirLowering::lower(chunk)), {})), "false");
     EXPECT_FALSE(diag.hasErrors());
 }
 
 TEST(OptimizerTest, ReusesScalarConstantsWhenFolding) {
-    ir::BytecodeChunk chunk;
+    ir::MirChunk chunk;
     chunk.constants.push_back(5);
     chunk.constants.push_back(0);
 
     chunk.code = {
-        { OpCode::PUSH_INT, 0 },
-        { OpCode::PUSH_INT, 1 },
-        { OpCode::ADD, 0 },
-        { OpCode::HALT, 0 }
+        { MirOp::PUSH_INT, 0 },
+        { MirOp::PUSH_INT, 1 },
+        { MirOp::ADD, 0 },
+        { MirOp::HALT, 0 }
     };
 
     Optimizer optimizer;
     optimizer.optimize(chunk);
 
     ASSERT_EQ(chunk.code.size(), 2u);
-    EXPECT_EQ(chunk.code[0].op, OpCode::PUSH_INT);
-    EXPECT_EQ(chunk.code[1].op, OpCode::HALT);
+    EXPECT_EQ(chunk.code[0].op, MirOp::PUSH_INT);
+    EXPECT_EQ(chunk.code[1].op, MirOp::HALT);
     EXPECT_EQ(chunk.code[0].operand, 0);
     EXPECT_EQ(chunk.constants.size(), 2u);
     EXPECT_EQ(std::get<int>(chunk.constants[chunk.code[0].operand]), 5);
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(std::move(chunk)), {})), "5");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(MirLowering::lower(chunk)), {})), "5");
     EXPECT_FALSE(diag.hasErrors());
 }
 
@@ -798,74 +819,74 @@ TEST(OptimizerTest, RemovesStoreOverwrittenBeforeAnyRead) {
 }
 
 TEST(OptimizerTest, RemovesDeadSlotStoreInStraightLineCode) {
-    ir::BytecodeChunk chunk;
+    ir::MirChunk chunk;
     chunk.slotCount = 1;
     chunk.constants.push_back(1);
     chunk.constants.push_back(2);
 
     chunk.code = {
-        { OpCode::PUSH_INT, 0 },
-        { OpCode::STORE_SLOT, 0 },
-        { OpCode::PUSH_INT, 1 },
-        { OpCode::STORE_SLOT, 0 },
-        { OpCode::LOAD_SLOT, 0 },
-        { OpCode::HALT, 0 }
+        { MirOp::PUSH_INT, 0 },
+        { MirOp::STORE_SLOT, 0 },
+        { MirOp::PUSH_INT, 1 },
+        { MirOp::STORE_SLOT, 0 },
+        { MirOp::LOAD_SLOT, 0 },
+        { MirOp::HALT, 0 }
     };
 
     Optimizer optimizer;
     optimizer.optimize(chunk);
 
-    EXPECT_EQ(countOp(chunk, OpCode::STORE_SLOT), 1);
-    EXPECT_EQ(countOp(chunk, OpCode::POP), 0);
+    EXPECT_EQ(countOpMir(chunk, MirOp::STORE_SLOT), 1);
+    EXPECT_EQ(countOpMir(chunk, MirOp::POP), 0);
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(std::move(chunk)), {})), "2");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<BytecodeChunk>(MirLowering::lower(chunk)), {})), "2");
     EXPECT_FALSE(diag.hasErrors());
 }
 
 TEST(OptimizerTest, KeepsSlotStoreThatAReadObserves) {
-    ir::BytecodeChunk chunk;
+    ir::MirChunk chunk;
     chunk.slotCount = 2;
 
     chunk.code = {
-        { OpCode::LOAD_SLOT, 1 },
-        { OpCode::STORE_SLOT, 0 },
-        { OpCode::LOAD_SLOT, 0 },
-        { OpCode::POP, 0 },
-        { OpCode::LOAD_SLOT, 1 },
-        { OpCode::STORE_SLOT, 0 },
-        { OpCode::LOAD_SLOT, 0 },
-        { OpCode::HALT, 0 }
+        { MirOp::LOAD_SLOT, 1 },
+        { MirOp::STORE_SLOT, 0 },
+        { MirOp::LOAD_SLOT, 0 },
+        { MirOp::POP, 0 },
+        { MirOp::LOAD_SLOT, 1 },
+        { MirOp::STORE_SLOT, 0 },
+        { MirOp::LOAD_SLOT, 0 },
+        { MirOp::HALT, 0 }
     };
 
     Optimizer optimizer;
     optimizer.optimize(chunk);
 
-    EXPECT_EQ(countOp(chunk, OpCode::STORE_SLOT), 2);
+    EXPECT_EQ(countOpMir(chunk, MirOp::STORE_SLOT), 2);
 }
 
 TEST(OptimizerTest, KeepsStoreThatPrecedesACall) {
-    ir::BytecodeChunk chunk;
+    ir::MirChunk chunk;
     chunk.slotCount = 1;
     chunk.constants.push_back(1);
     chunk.constants.push_back(2);
     chunk.constants.push_back(std::string("hook"));
 
     chunk.code = {
-        { OpCode::PUSH_INT, 0 },
-        { OpCode::STORE_SLOT, 0 },
-        { OpCode::CALL, 2 },
-        { OpCode::PUSH_INT, 1 },
-        { OpCode::STORE_SLOT, 0 },
-        { OpCode::LOAD_SLOT, 0 },
-        { OpCode::HALT, 0 }
+        { MirOp::PUSH_INT, 0 },
+        { MirOp::STORE_SLOT, 0 },
+        { MirOp::CALL, 2 },
+        { MirOp::PUSH_INT, 1 },
+        { MirOp::STORE_SLOT, 0 },
+        { MirOp::LOAD_SLOT, 0 },
+        { MirOp::HALT, 0 }
     };
 
     Optimizer optimizer;
     optimizer.optimize(chunk);
 
-    EXPECT_EQ(countOp(chunk, OpCode::STORE_SLOT), 2);
+    EXPECT_EQ(countOpMir(chunk, MirOp::STORE_SLOT), 2);
 }
 
 TEST(OptimizerTest, PassMaskTurnsOffDeadStoreElimination) {

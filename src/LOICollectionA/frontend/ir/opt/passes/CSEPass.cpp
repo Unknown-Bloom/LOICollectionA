@@ -23,127 +23,105 @@ namespace LOICollection::frontend::ir::opt {
             std::vector<int> readSlots;
         };
 
-        bool isBarrier(OpCode op) {
+        bool isBarrier(MirOp op) {
             return canWriteVariables(op)
-                || op == OpCode::LOAD_FIELD
-                || op == OpCode::LOAD_INDEX
-                || op == OpCode::STORE_INDEX
-                || op == OpCode::MAKE_ARRAY
-                || op == OpCode::MAKE_LAMBDA;
+                || op == MirOp::LOAD_FIELD
+                || op == MirOp::LOAD_INDEX
+                || op == MirOp::STORE_INDEX
+                || op == MirOp::MAKE_ARRAY
+                || op == MirOp::MAKE_LAMBDA;
         }
 
-        bool isPureBinary(OpCode op) {
+        bool isPureBinary(MirOp op) {
             switch (op) {
-                case OpCode::ADD:
-                case OpCode::SUB:
-                case OpCode::MUL:
-                case OpCode::DIV:
-                case OpCode::MOD:
-                case OpCode::POW:
-                case OpCode::CMP_EQ:
-                case OpCode::CMP_NE:
-                case OpCode::CMP_GT:
-                case OpCode::CMP_LT:
-                case OpCode::CMP_GE:
-                case OpCode::CMP_LE:
-                case OpCode::ADD_I:
-                case OpCode::SUB_I:
-                case OpCode::MUL_I:
-                case OpCode::MOD_I:
-                case OpCode::CMP_EQ_I:
-                case OpCode::CMP_NE_I:
-                case OpCode::CMP_GT_I:
-                case OpCode::CMP_LT_I:
-                case OpCode::CMP_GE_I:
-                case OpCode::CMP_LE_I:
+                case MirOp::ADD:
+                case MirOp::SUB:
+                case MirOp::MUL:
+                case MirOp::DIV:
+                case MirOp::MOD:
+                case MirOp::POW:
+                case MirOp::CMP_EQ:
+                case MirOp::CMP_NE:
+                case MirOp::CMP_GT:
+                case MirOp::CMP_LT:
+                case MirOp::CMP_GE:
+                case MirOp::CMP_LE:
                     return true;
                 default:
                     return false;
             }
         }
 
-        bool isPureUnary(OpCode op) {
+        bool isPureUnary(MirOp op) {
             switch (op) {
-                case OpCode::NEG:
-                case OpCode::NEG_I:
-                case OpCode::NOT:
-                case OpCode::INSTANCEOF:
-                case OpCode::LOAD_LEN:
-                case OpCode::DUP_IS_NONE:
+                case MirOp::NEG:
+                case MirOp::NOT:
+                case MirOp::INSTANCEOF:
+                case MirOp::LOAD_LEN:
+                case MirOp::DUP_IS_NONE:
                     return true;
                 default:
                     return false;
             }
         }
 
-        bool isLeaf(OpCode op) {
+        bool isLeaf(MirOp op) {
             switch (op) {
-                case OpCode::LOAD_SLOT:
-                case OpCode::LOAD_VAR:
-                case OpCode::LOAD_THIS:
-                case OpCode::PUSH_INT:
-                case OpCode::PUSH_FLOAT:
-                case OpCode::PUSH_STR:
-                case OpCode::PUSH_BOOL:
-                case OpCode::PUSH_NONE:
+                case MirOp::LOAD_SLOT:
+                case MirOp::LOAD_VAR:
+                case MirOp::LOAD_THIS:
+                case MirOp::PUSH_INT:
+                case MirOp::PUSH_FLOAT:
+                case MirOp::PUSH_STR:
+                case MirOp::PUSH_BOOL:
+                case MirOp::PUSH_NONE:
                     return true;
                 default:
                     return false;
             }
         }
 
-        std::string opName(OpCode op) {
+        std::string opName(MirOp op) {
             switch (op) {
-                case OpCode::ADD: return "ADD";
-                case OpCode::SUB: return "SUB";
-                case OpCode::MUL: return "MUL";
-                case OpCode::DIV: return "DIV";
-                case OpCode::MOD: return "MOD";
-                case OpCode::POW: return "POW";
-                case OpCode::CMP_EQ: return "EQ";
-                case OpCode::CMP_NE: return "NE";
-                case OpCode::CMP_GT: return "GT";
-                case OpCode::CMP_LT: return "LT";
-                case OpCode::CMP_GE: return "GE";
-                case OpCode::CMP_LE: return "LE";
-                case OpCode::NEG: return "NEG";
-                case OpCode::NOT: return "NOT";
-                case OpCode::ADD_I: return "ADDI";
-                case OpCode::SUB_I: return "SUBI";
-                case OpCode::MUL_I: return "MULI";
-                case OpCode::MOD_I: return "MODI";
-                case OpCode::CMP_EQ_I: return "EQI";
-                case OpCode::CMP_NE_I: return "NEI";
-                case OpCode::CMP_GT_I: return "GTI";
-                case OpCode::CMP_LT_I: return "LTI";
-                case OpCode::CMP_GE_I: return "GEI";
-                case OpCode::CMP_LE_I: return "LEI";
-                case OpCode::NEG_I: return "NEGI";
-                case OpCode::INSTANCEOF: return "INST";
-                case OpCode::LOAD_LEN: return "LEN";
-                case OpCode::DUP_IS_NONE: return "ISNONE";
+                case MirOp::ADD: return "ADD";
+                case MirOp::SUB: return "SUB";
+                case MirOp::MUL: return "MUL";
+                case MirOp::DIV: return "DIV";
+                case MirOp::MOD: return "MOD";
+                case MirOp::POW: return "POW";
+                case MirOp::CMP_EQ: return "EQ";
+                case MirOp::CMP_NE: return "NE";
+                case MirOp::CMP_GT: return "GT";
+                case MirOp::CMP_LT: return "LT";
+                case MirOp::CMP_GE: return "GE";
+                case MirOp::CMP_LE: return "LE";
+                case MirOp::NEG: return "NEG";
+                case MirOp::NOT: return "NOT";
+                case MirOp::INSTANCEOF: return "INST";
+                case MirOp::LOAD_LEN: return "LEN";
+                case MirOp::DUP_IS_NONE: return "ISNONE";
                 default: return "?";
             }
         }
 
-        std::string constKey(OpCode op, int operand) {
+        std::string constKey(MirOp op, int operand) {
             switch (op) {
-                case OpCode::PUSH_INT: return "I:" + std::to_string(operand);
-                case OpCode::PUSH_FLOAT: return "F:" + std::to_string(operand);
-                case OpCode::PUSH_STR: return "S:" + std::to_string(operand);
-                case OpCode::PUSH_BOOL: return "B:" + std::to_string(operand);
-                case OpCode::PUSH_NONE: return "N";
+                case MirOp::PUSH_INT: return "I:" + std::to_string(operand);
+                case MirOp::PUSH_FLOAT: return "F:" + std::to_string(operand);
+                case MirOp::PUSH_STR: return "S:" + std::to_string(operand);
+                case MirOp::PUSH_BOOL: return "B:" + std::to_string(operand);
+                case MirOp::PUSH_NONE: return "N";
                 default: return "?";
             }
         }
 
-        void apply(std::vector<Instruction>& code, std::vector<CSEPass::Edit>& edits) {
+        void apply(std::vector<MirInstr>& code, std::vector<CSEPass::Edit>& edits) {
             std::sort(edits.begin(), edits.end(),
                 [](const CSEPass::Edit& a, const CSEPass::Edit& b) { return a.at < b.at; });
 
             const int n = static_cast<int>(code.size());
 
-            std::vector<Instruction> rewritten;
+            std::vector<MirInstr> rewritten;
             rewritten.reserve(code.size());
 
             std::vector<int> oldToNew(n, -1);
@@ -156,7 +134,7 @@ namespace LOICollection::frontend::ir::opt {
 
                 for (size_t e = 0; e < edits.size(); ++e) {
                     if (edits[e].at == pos) {
-                        for (const Instruction& ins : edits[e].insert) {
+                        for (const MirInstr& ins : edits[e].insert) {
                             placed[e].push_back(static_cast<int>(rewritten.size()));
                             rewritten.push_back(ins);
                             origin.push_back(-1);
@@ -208,7 +186,7 @@ namespace LOICollection::frontend::ir::opt {
         ControlFlowGraph cfg{ mChunk.code };
 
         int nextSlot = mChunk.slotCount;
-        std::vector<Instruction> out;
+        std::vector<MirInstr> out;
         out.reserve(mChunk.code.size());
         std::vector<Edit> edits;
         size_t eliminated = 0;
@@ -241,18 +219,18 @@ namespace LOICollection::frontend::ir::opt {
             };
 
             for (int i = block.begin; i < block.end; ++i) {
-                const Instruction& ins = mChunk.code[i];
-                const OpCode op = ins.op;
+                const MirInstr& ins = mChunk.code[i];
+                const MirOp op = ins.op;
                 const SourceLocation loc = ins.loc;
 
                 if (isLeaf(op)) {
                     std::string key;
                     std::vector<int> rs;
 
-                    if (op == OpCode::LOAD_SLOT || op == OpCode::LOAD_VAR) {
-                        key = (op == OpCode::LOAD_SLOT ? "L" : "V") + std::to_string(ins.operand);
+                    if (op == MirOp::LOAD_SLOT || op == MirOp::LOAD_VAR) {
+                        key = (op == MirOp::LOAD_SLOT ? "L" : "V") + std::to_string(ins.operand);
                         rs.push_back(ins.operand);
-                    } else if (op == OpCode::LOAD_THIS) {
+                    } else if (op == MirOp::LOAD_THIS) {
                         key = "THIS";
                     } else {
                         key = constKey(op, ins.operand);
@@ -264,21 +242,21 @@ namespace LOICollection::frontend::ir::opt {
                     continue;
                 }
 
-                if (op == OpCode::DUP) {
+                if (op == MirOp::DUP) {
                     if (!vstack.empty())
                         vstack.push_back(vstack.back());
                     out.push_back(ins);
                     continue;
                 }
 
-                if (op == OpCode::POP) {
+                if (op == MirOp::POP) {
                     if (!vstack.empty())
                         vstack.pop_back();
                     out.push_back(ins);
                     continue;
                 }
 
-                if (op == OpCode::STORE_SLOT || op == OpCode::STORE_VAR) {
+                if (op == MirOp::STORE_SLOT || op == MirOp::STORE_VAR) {
                     out.push_back(ins);
                     pop();
                     invalidate(ins.operand);
@@ -303,7 +281,7 @@ namespace LOICollection::frontend::ir::opt {
                     auto it = avail.find(key);
                     if (it != avail.end() && it->second.spilled && left.atom && right.atom) {
                         edits.push_back({ curStart, static_cast<int>(out.size()) + 1,
-                            { Instruction{ OpCode::LOAD_SLOT, it->second.slot, loc } } });
+                            { MirInstr{ MirOp::LOAD_SLOT, it->second.slot, loc } } });
                         out.push_back(ins);
                         ++eliminated;
                         vstack.push_back(Val{ key, curStart, rs, true });
@@ -313,9 +291,9 @@ namespace LOICollection::frontend::ir::opt {
                             it->second.slot = s;
                             it->second.spilled = true;
                             edits.push_back({ it->second.firstOpPos + 1, -1,
-                                { Instruction{ OpCode::DUP_STORE_SLOT, s, mChunk.code[it->second.firstOpPos].loc } } });
+                                { MirInstr{ MirOp::DUP_STORE_SLOT, s, mChunk.code[it->second.firstOpPos].loc } } });
                             edits.push_back({ curStart, static_cast<int>(out.size()) + 1,
-                                { Instruction{ OpCode::LOAD_SLOT, s, loc } } });
+                                { MirInstr{ MirOp::LOAD_SLOT, s, loc } } });
                             out.push_back(ins);
                             ++eliminated;
                             vstack.push_back(Val{ key, curStart, rs, true });
@@ -344,7 +322,7 @@ namespace LOICollection::frontend::ir::opt {
                     auto it = avail.find(key);
                     if (it != avail.end() && it->second.spilled && arg.atom) {
                         edits.push_back({ curStart, static_cast<int>(out.size()) + 1,
-                            { Instruction{ OpCode::LOAD_SLOT, it->second.slot, loc } } });
+                            { MirInstr{ MirOp::LOAD_SLOT, it->second.slot, loc } } });
                         out.push_back(ins);
                         ++eliminated;
                         vstack.push_back(Val{ key, curStart, arg.readSlots, true });
@@ -353,9 +331,9 @@ namespace LOICollection::frontend::ir::opt {
                         it->second.slot = s;
                         it->second.spilled = true;
                         edits.push_back({ it->second.firstOpPos + 1, -1,
-                            { Instruction{ OpCode::DUP_STORE_SLOT, s, mChunk.code[it->second.firstOpPos].loc } } });
+                            { MirInstr{ MirOp::DUP_STORE_SLOT, s, mChunk.code[it->second.firstOpPos].loc } } });
                         edits.push_back({ curStart, static_cast<int>(out.size()) + 1,
-                            { Instruction{ OpCode::LOAD_SLOT, s, loc } } });
+                            { MirInstr{ MirOp::LOAD_SLOT, s, loc } } });
                         out.push_back(ins);
                         ++eliminated;
                         vstack.push_back(Val{ key, curStart, arg.readSlots, true });

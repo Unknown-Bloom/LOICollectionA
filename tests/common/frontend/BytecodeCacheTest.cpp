@@ -12,6 +12,7 @@
 #include "LOICollectionA/frontend/ir/Abi.h"
 #include "LOICollectionA/frontend/ir/BytecodeSerializer.h"
 #include "LOICollectionA/frontend/ir/Compiler.h"
+#include "LOICollectionA/frontend/ir/MirLowering.h"
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 #include "LOICollectionA/frontend/ir/VM.h"
 #include "LOICollectionA/utils/core/Sha256.h"
@@ -36,14 +37,14 @@ namespace {
         if (diagnostics.hasErrors())
             throw std::runtime_error(diagnostics.getErrorMessage());
 
-        auto bytecode = std::make_shared<BytecodeChunk>(Compiler(diagnostics).compile(*ast));
+        auto mir = std::make_shared<MirChunk>(Compiler(diagnostics).compile(*ast));
         if (diagnostics.hasErrors())
             throw std::runtime_error(diagnostics.getErrorMessage());
 
         Optimizer optimizer;
-        optimizer.optimize(*bytecode);
+        optimizer.optimize(*mir);
 
-        return bytecode;
+        return std::make_shared<BytecodeChunk>(MirLowering::lower(*mir));
     }
 
     std::string runChunk(const std::shared_ptr<BytecodeChunk>& chunk) {
