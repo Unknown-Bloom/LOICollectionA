@@ -9,13 +9,6 @@
 #include "LOICollectionA/frontend/ir/opt/analysis/JumpTargetAnalysis.h"
 
 namespace LOICollection::frontend::ir::opt {
-    // Constant folding on the register-based MIR.
-    //
-    // Each instruction names its inputs (`src1`/`src2`/`src3`) and output
-    // (`dst`) explicitly, so we track a per-register map of known constant
-    // values instead of a value stack. Tracking is dropped at jump targets and
-    // after any instruction that may write variables (calls, field stores,
-    // object construction), because those can invalidate locally cached values.
     class ConstantFoldPass {
     public:
         ConstantFoldPass(MirChunk& chunk, OptContext& ctx, const JumpTargetAnalysis& jumps)

@@ -18,17 +18,6 @@
 #include "LOICollectionA/frontend/ir/Mir.h"
 
 namespace LOICollection::frontend::ir {
-    // Three-address register compiler.
-    //
-    // Every expression result lands in a virtual register; `compileValue`
-    // returns the register holding the value. Registers are bump-allocated
-    // from the enclosing scope, which means a slot index doubles as a
-    // register number and the VM's `localPool` is the register file.
-    //
-    // `dstHint` lets a caller request that an expression be materialised
-    // directly into a specific register (argument window slots, phi merge
-    // registers). It is advisory: `finishHint` repairs the placement with a
-    // MOVE when the expression could not honour it.
     class Compiler : public ASTVisitor {
     public:
         LOICOLLECTION_A_API   Compiler(DiagnosticEngine& diag);
@@ -121,7 +110,6 @@ namespace LOICollection::frontend::ir {
         void compileFunctionBody(FunctionDefNode& node);
         void compileSequence(SequenceNode& node);
 
-        // Register allocation.
         int allocReg() { return this->scopes.back().next++; }
 
         int reserveRegs(int count) {

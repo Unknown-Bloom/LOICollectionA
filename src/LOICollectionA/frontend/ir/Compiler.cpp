@@ -29,8 +29,6 @@ namespace LOICollection::frontend::ir {
     Compiler::Compiler(DiagnosticEngine& diag) : current(std::ref(chunk)), diagnostics(diag) {}
 
     MirChunk Compiler::compile(ASTNode& root) {
-        // Register 0 holds the value HALT returns; user slots start at 1 so
-        // that the final MOVE can never clobber a variable.
         this->pushScope(false, 1);
 
         int lastValueReg = -1;
@@ -1158,8 +1156,6 @@ namespace LOICollection::frontend::ir {
             for (int i = 0; i < argCount; ++i)
                 this->compileArg(base + i, *node.args[i], node.loc);
 
-            // Historically BIND_THIS read the value on top of the operand stack,
-            // which at this point was the last argument rather than the receiver.
             if (bindsReceiver && argCount > 0) {
                 for (int i = 0; i < argCount; ++i) {
                     if (node.args[i]->getType() != ASTNode::Type::Lambda)

@@ -9,11 +9,6 @@
 #include "LOICollectionA/frontend/AST.h"
 
 namespace LOICollection::frontend::ir {
-    // ------------------------------------------------------------------
-    // Metadata tables. These used to live in ByteCode.h; the bytecode layer
-    // was removed when the VM started executing the three-address MIR
-    // directly, so the metadata now lives next to MirChunk.
-    // ------------------------------------------------------------------
     struct FuncMeta {
         std::string name;
 
@@ -82,28 +77,13 @@ namespace LOICollection::frontend::ir {
         bool isStatic = false;
     };
 
-    // ------------------------------------------------------------------
-    // Three-address MIR.
-    //
-    // Every value lives in a virtual register (a slot in the frame's
-    // register file, aliased by `localPool` in the VM). There is no operand
-    // stack: instructions read theirinputs from registers and write their
-    // result to a destination register.
-    //
-    // Operand conventions:
-    //   operand - primary immediate: jump target, metadata table index,
-    //             slot index, or constant-table index.
-    //   dst     - destination register (-1 when the instruction produces none).
-    //   src1/2/3- source registers (-1 when unused).
-    //   imm     - secondary immediate: argument count, capture count, etc.
-    // ------------------------------------------------------------------
     enum class MirOp : uint8_t {
-        LOAD_CONST,          // dst = constants[operand]
-        LOAD_VAR,            // dst = var(name at constants[operand])
-        LOAD_SLOT,           // dst = regFile[operand] (copy local into a temp register)
-        STORE_VAR,           // var(name at constants[operand]) = src1
-        STORE_SLOT,          // regFile[operand] = src1
-        MOVE,               // dst = src1
+        LOAD_CONST,
+        LOAD_VAR,
+        LOAD_SLOT,
+        STORE_VAR,
+        STORE_SLOT,
+        MOVE,
 
         ADD, SUB, MUL, DIV, MOD, POW,
         ADD_I, SUB_I, MUL_I, MOD_I,
@@ -119,47 +99,43 @@ namespace LOICollection::frontend::ir {
         LOAD_FIELD, LOAD_FIELD_SLOT,
         STORE_FIELD, STORE_FIELD_SLOT,
 
-        MAKE_ARRAY,          // dst = array[regFile[src1 .. src1+operand)]
-        LOAD_INDEX,          // dst = regFile[src1][regFile[src2]]
-        STORE_INDEX,         // regFile[src1][regFile[src2]] = regFile[src3]
+        MAKE_ARRAY,
+        LOAD_INDEX,
+        STORE_INDEX,
 
         LOAD_THIS,
-        MAKE_LAMBDA,         // dst = lambda(meta=operand, captures regFile[src1 .. +imm])
+        MAKE_LAMBDA,
 
-        INSTANCEOF,          // dst = regFile[src1] isa constants[operand]
+        INSTANCEOF,
 
-        NEW,                 // dst = new class[operand](regFile[src1 .. +imm])
-        NEW_NATIVE,          // dst = new native[operand](regFile[src1 .. +imm])
+        NEW,
+        NEW_NATIVE,
 
-        // Calls. Arguments are laid out in a consecutive register window
-        // starting at `src1`; `imm` is the argument count (receiver excluded).
-        // Opcodes whose receiver is an object read it at `src1 + imm`.
-        // CALL_LAMBDA additionally reads the callee value from `src2`.
         CALL, CALL_MACRO,
         CALL_METHOD, CALL_METHOD_VIRTUAL, CALL_METHOD_BY_NAME,
         CALL_FUNC, CALL_NATIVE_METHOD, CALL_LAMBDA, CALL_SUPER_CTOR,
 
-        RETURN,              // return regFile[src1] (empty string when src1 < 0)
+        RETURN,
 
-        JMP_IF_FALSE,        // operand = relative offset, src1 = condition
+        JMP_IF_FALSE,
         JMP_IF_TRUE,
         JMP,
-        HALT,                // returns regFile[0]
+        HALT,
 
-        BIND_THIS,           // bind the object in src2 as `this` of the lambda in src1; dst = src1
-        LOAD_LEN,            // dst = len(regFile[src1])
+        BIND_THIS,
+        LOAD_LEN,
 
         COUNT
     };
 
     struct MirInstr {
         MirOp op{};
-        int operand = 0;     // primary immediate (see conventions above)
-        int dst = -1;        // destination register
-        int src1 = -1;       // source register 1
-        int src2 = -1;       // source register 2
-        int src3 = -1;       // source register 3 (STORE_INDEX)
-        int imm = 0;         // secondary immediate (arg count / capture count)
+        int operand = 0;
+        int dst = -1;
+        int src1 = -1;
+        int src2 = -1;
+        int src3 = -1;
+        int imm = 0;
         TypeInfo type{};
         SourceLocation loc{};
     };

@@ -16,11 +16,6 @@
 #include "LOICollectionA/frontend/sandbox/SandboxReport.h"
 
 namespace LOICollection::frontend::ir {
-    // Register machine executing the three-address MIR directly.
-    //
-    // There is no operand stack: `localPool` is a flat register file and each
-    // frame owns a window of it. Register indices emitted by the compiler are
-    // frame-relative, so every access goes through `regOf(frame, index)`.
     class VM {
     public:
         LOICOLLECTION_A_NDAPI VM(DiagnosticEngine& diag) : VM(diag, std::make_shared<GlobalsTable>()) {}
@@ -118,9 +113,6 @@ namespace LOICollection::frontend::ir {
 
         [[nodiscard]] std::vector<ValueNode::ValueType> collectArgs(const Frame& frame, int base, int count);
 
-        // Lays `args` out in the top frame starting at register `offset`.
-        // Arguments must be collected *before* the callee frame is pushed:
-        // `pushFrame` may reallocate `frames` and invalidate caller references.
         void placeArgs(std::vector<ValueNode::ValueType>&& args, size_t offset);
 
         void storeVariable(

@@ -371,8 +371,6 @@ namespace LOICollection::frontend::ir {
                 if (cls.constructorIndex != -1) {
                     const auto& ctor = chunk.methods[cls.constructorIndex];
 
-                    // Collect before pushing: `pushFrame` may reallocate `frames`
-                    // and invalidate every reference into it, including `frame`.
                     auto args = this->collectArgs(frame, instr.src1, ctor.argCount);
 
                     Frame callee(*chunk.methodBodies[ctor.bodyIndex]);

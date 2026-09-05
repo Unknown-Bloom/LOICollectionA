@@ -116,7 +116,6 @@ namespace LOICollection::frontend::ir::opt {
                 const MirInstr& ins = mChunk.code[i];
                 const MirOp op = ins.op;
 
-                // Any value previously held in `dst` is now stale.
                 if (ins.dst >= 0) {
                     for (auto it = keyReg.begin(); it != keyReg.end();) {
                         if (it->second == ins.dst)
