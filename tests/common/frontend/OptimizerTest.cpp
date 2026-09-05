@@ -45,36 +45,17 @@ namespace {
         return out;
     }
 
-    MirOp intVariant(MirOp op) {
-        switch (op) {
-            case MirOp::ADD: return MirOp::ADD_I;
-            case MirOp::SUB: return MirOp::SUB_I;
-            case MirOp::MUL: return MirOp::MUL_I;
-            case MirOp::MOD: return MirOp::MOD_I;
-            case MirOp::CMP_EQ: return MirOp::CMP_EQ_I;
-            case MirOp::CMP_NE: return MirOp::CMP_NE_I;
-            case MirOp::CMP_GT: return MirOp::CMP_GT_I;
-            case MirOp::CMP_LT: return MirOp::CMP_LT_I;
-            case MirOp::CMP_GE: return MirOp::CMP_GE_I;
-            case MirOp::CMP_LE: return MirOp::CMP_LE_I;
-            case MirOp::NEG: return MirOp::NEG_I;
-            default: return op;
-        }
-    }
-
     bool containsOp(const MirChunk& chunk, MirOp op) {
-        const MirOp iv = intVariant(op);
         for (const auto& instr : chunk.code)
-            if (instr.op == op || (iv != op && instr.op == iv))
+            if (instr.op == op)
                 return true;
         return false;
     }
 
     int countOp(const MirChunk& chunk, MirOp op) {
-        const MirOp iv = intVariant(op);
         int total = 0;
         for (const auto& instr : chunk.code)
-            if (instr.op == op || (iv != op && instr.op == iv))
+            if (instr.op == op)
                 ++total;
         return total;
     }
@@ -289,7 +270,7 @@ TEST(OptimizerTest, FoldsTypeIntrospectionOpcodes) {
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(chunk), {})), "42");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(std::move(chunk)), {})), "42");
     EXPECT_FALSE(diag.hasErrors());
 }
 
@@ -312,7 +293,7 @@ TEST(OptimizerTest, DoesNotFoldUnwrapOfEmptyOptional) {
 
     DiagnosticEngine diag;
     VM vm(diag);
-    [[maybe_unused]] auto result = vm.run(std::make_shared<MirChunk>(chunk), {});
+    [[maybe_unused]] auto result = vm.run(std::make_shared<MirChunk>(std::move(chunk)), {});
     EXPECT_TRUE(diag.hasErrors());
     EXPECT_NE(diag.getErrorMessage().find("Optional value is empty"), std::string::npos);
 }
@@ -556,7 +537,7 @@ TEST(OptimizerTest, EliminatesAlgebraicIdentities) {
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(chunk), {})), "42");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(std::move(chunk)), {})), "42");
     EXPECT_FALSE(diag.hasErrors());
 }
 
@@ -586,7 +567,7 @@ TEST(OptimizerTest, EliminatesFloatMulDivPowIdentities) {
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(chunk), {})), "2.5");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(std::move(chunk)), {})), "2.5");
     EXPECT_FALSE(diag.hasErrors());
 }
 
@@ -611,7 +592,7 @@ TEST(OptimizerTest, FloatAddZeroIsNotIdentityFolded) {
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(chunk), {})), "-0");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(std::move(chunk)), {})), "-0");
     EXPECT_FALSE(diag.hasErrors());
 }
 
@@ -681,7 +662,7 @@ TEST(OptimizerTest, ReusesScalarConstantsWhenFolding) {
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(chunk), {})), "5");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(std::move(chunk)), {})), "5");
     EXPECT_FALSE(diag.hasErrors());
 }
 
@@ -786,7 +767,7 @@ TEST(OptimizerTest, RemovesDeadSlotStoreInStraightLineCode) {
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(chunk), {})), "2");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(std::move(chunk)), {})), "2");
     EXPECT_FALSE(diag.hasErrors());
 }
 
