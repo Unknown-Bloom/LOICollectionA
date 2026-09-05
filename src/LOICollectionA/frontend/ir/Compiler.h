@@ -146,6 +146,8 @@ namespace LOICollection::frontend::ir {
         int declareSlot(const std::string& name);
         [[nodiscard]] std::optional<int> resolveSlot(const std::string& name) const;
 
+        void predeclareLocals(ASTNode& body);
+
         void emitLoad(const std::string& name, const SourceLocation& loc);
         void emitStore(const std::string& name, const SourceLocation& loc);
 

@@ -948,8 +948,10 @@ namespace LOICollection::frontend::ir {
         for (const auto& param : node.decl.params)
             this->declareSlot(param.name);
 
-        if (node.decl.body)
+        if (node.decl.body) {
+            this->predeclareLocals(*node.decl.body);
             node.decl.body->accept(*this);
+        }
 
         this->current.get().emit(MirOp::POP);
 
@@ -1020,8 +1022,10 @@ namespace LOICollection::frontend::ir {
         for (const auto& param : node.decl.params)
             this->declareSlot(param.name);
 
-        if (node.decl.body)
+        if (node.decl.body) {
+            this->predeclareLocals(*node.decl.body);
             node.decl.body->accept(*this);
+        }
 
         this->current.get().emit(MirOp::POP);
 
@@ -1106,6 +1110,30 @@ namespace LOICollection::frontend::ir {
             ++scope.next;
 
         return it->second;
+    }
+
+    void Compiler::predeclareLocals(ASTNode& body) {
+        auto* seq = dynamic_cast<SequenceNode*>(&body);
+        if (!seq)
+            return;
+
+        for (auto& part : seq->parts) {
+            if (!part || part->getType() != ASTNode::Type::Assignment)
+                continue;
+
+            auto& assign = static_cast<AssignmentNode&>(*part);
+            if (!assign.isDeclaration || !assign.target)
+                continue;
+
+            if (assign.target->getType() != ASTNode::Type::Variable)
+                continue;
+
+            auto& var = static_cast<VariableNode&>(*assign.target);
+            if (var.isStaticField)
+                continue;
+
+            this->declareSlot(qualifiedName(var));
+        }
     }
 
     std::optional<int> Compiler::resolveSlot(const std::string& name) const {
