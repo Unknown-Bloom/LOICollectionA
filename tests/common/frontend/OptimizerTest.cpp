@@ -16,9 +16,6 @@ using namespace LOICollection::frontend;
 using namespace LOICollection::frontend::ir;
 
 namespace {
-    // The bytecode layer was removed; the VM now executes the three-address MIR
-    // directly, so the optimizer works on `MirChunk` and the helpers below match
-    // `MirOp` (which still carries integer-monomorphic variants such as ADD_I).
     struct CompiledProgram {
         std::shared_ptr<MirChunk> chunk;
         DiagnosticEngine diagnostics;
@@ -48,9 +45,6 @@ namespace {
         return out;
     }
 
-    // MirOp carries no _SS variants, but integer-monomorphic opcodes (ADD_I, ...)
-    // still exist. Match a generic opcode against both its generic and _I form,
-    // mirroring the old `canonicalOp` normalization.
     MirOp intVariant(MirOp op) {
         switch (op) {
             case MirOp::ADD: return MirOp::ADD_I;
@@ -101,8 +95,6 @@ namespace {
         return total;
     }
 
-    // Exact (no variant) helpers, used for hand-constructed chunks where the
-    // precise opcode is known.
     bool containsOpMir(const MirChunk& chunk, MirOp op) {
         for (const auto& instr : chunk.code)
             if (instr.op == op)
@@ -513,10 +505,6 @@ TEST(OptimizerTest, PropagationInvalidatedByNativeMethodCalls) {
 }
 
 TEST(OptimizerTest, NegatedWhileConditionPreservesNot) {
-    // FusePass (which fused `NOT` into the branch opcode) was removed together
-    // with the bytecode layer; the VM still executes `NOT` + `JMP_IF_FALSE`
-    // correctly, so a negated loop condition must keep producing the right
-    // result and the `NOT` opcode must survive optimization.
     auto program = compileAndOptimize("let i = 0; while (!(i >= 2)) [ i = i + 1; ]; i");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
