@@ -315,7 +315,7 @@ namespace LOICollection::frontend::ir {
 
                 const size_t paramBase = func->captures.size();
                 if (paramBase + static_cast<size_t>(func->argCount) >
-                    func->owner->methodBodies[func->bodyIndex]->slotCount) {
+                    static_cast<size_t>(func->owner->methodBodies[func->bodyIndex]->slotCount)) {
                     this->diagnostics.addError(this->currentLoc, "Lambda frame is too small for its parameters");
                     break;
                 }

@@ -31,22 +31,22 @@ namespace LOICollection::frontend::ir::opt {
 
         Step fold(int oldIdx);
 
-        Step foldBinary(const MirInstr& instr, int oldIdx);
-        Step foldUnary(const MirInstr& instr, int oldIdx);
-        Step foldComparison(const MirInstr& instr, int oldIdx);
+        Step foldBinary(const MirInstr& instr);
+        Step foldUnary(const MirInstr& instr);
+        Step foldComparison(const MirInstr& instr);
         Step foldOptional(const MirInstr& instr);
         Step foldLoadSlot(const MirInstr& instr);
         Step foldStoreSlot(const MirInstr& instr);
         Step foldLoadVar(const MirInstr& instr);
         Step foldStoreVar(const MirInstr& instr);
-        Step foldMakeArray(const MirInstr& instr, int oldIdx);
-        Step foldLoadIndex(const MirInstr& instr, int oldIdx);
+        Step foldMakeArray(const MirInstr& instr);
+        Step foldLoadIndex(const MirInstr& instr);
         Step foldStoreIndex(const MirInstr& instr);
-        Step foldCall(const MirInstr& instr, int oldIdx);
-        Step foldNativeMethod(const MirInstr& instr, int oldIdx);
-        Step foldBranch(const MirInstr& instr, int oldIdx);
+        Step foldCall(const MirInstr& instr);
+        Step foldNativeMethod(const MirInstr& instr);
+        Step foldBranch(const MirInstr& instr);
 
-        Step emitConst(const ValueNode::ValueType& value, const SourceLocation& loc);
+        Step emitConst(int dst, const ValueNode::ValueType& value, const SourceLocation& loc);
         Step emitMove(int dst, int src, const SourceLocation& loc);
         Step emitOriginal(const MirInstr& instr);
         Step emitOriginalAfterForget(const MirInstr& instr);

@@ -7,31 +7,6 @@
 
 namespace LOICollection::frontend::ir::opt {
     namespace {
-        bool isPureBinary(MirOp op) {
-            switch (op) {
-                case MirOp::ADD: case MirOp::SUB: case MirOp::MUL: case MirOp::DIV:
-                case MirOp::MOD: case MirOp::POW:
-                case MirOp::CMP_EQ: case MirOp::CMP_NE: case MirOp::CMP_GT: case MirOp::CMP_LT:
-                case MirOp::CMP_GE: case MirOp::CMP_LE:
-                case MirOp::LOGIC_AND: case MirOp::LOGIC_OR:
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
-        bool isPureUnary(MirOp op) {
-            switch (op) {
-                case MirOp::NEG:
-                case MirOp::NOT:
-                case MirOp::INSTANCEOF:
-                case MirOp::LOAD_LEN:
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
         bool isInvariant(const MirInstr& instr, const std::unordered_set<int>& invariantRegs) {
             if (instr.op == MirOp::LOAD_CONST)
                 return true;
@@ -131,7 +106,6 @@ namespace LOICollection::frontend::ir::opt {
         std::vector<std::vector<int>> placed(edits.size());
 
         for (size_t i = 0; i <= code.size(); ++i) {
-            int owner = -1;
             bool erased = false;
 
             for (size_t e = 0; e < edits.size(); ++e) {
