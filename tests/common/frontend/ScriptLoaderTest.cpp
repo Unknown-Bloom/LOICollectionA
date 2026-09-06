@@ -134,6 +134,34 @@ TEST(ScriptLoaderTest, RejectsConflictingDefinitions) {
     EXPECT_NE(diagnostics.getErrorMessage().find("conflicts with"), std::string::npos);
 }
 
+TEST(ScriptLoaderTest, AllowsOverloadedFunctions) {
+    FileMap files = {
+        {"/main.lcui",
+         "func id(x: int) -> int {\n    return x;\n}\n"
+         "func id(x: string) -> string {\n    return x;\n}"},
+    };
+
+    DiagnosticEngine diagnostics;
+    auto loaded = ScriptLoader::load("/main.lcui", "/", readerFor(files), diagnostics);
+
+    ASSERT_TRUE(loaded.has_value());
+    EXPECT_FALSE(diagnostics.hasErrors());
+}
+
+TEST(ScriptLoaderTest, RejectsDuplicateFunctionSignatures) {
+    FileMap files = {
+        {"/main.lcui", "import \"a.lcui\";\nimport \"b.lcui\";"},
+        {"/a.lcui", "func dup(x: int) -> int {\n    return 1;\n}"},
+        {"/b.lcui", "func dup(x: int) -> int {\n    return 2;\n}"},
+    };
+
+    DiagnosticEngine diagnostics;
+    auto loaded = ScriptLoader::load("/main.lcui", "/", readerFor(files), diagnostics);
+
+    EXPECT_FALSE(loaded.has_value());
+    EXPECT_NE(diagnostics.getErrorMessage().find("conflicts with"), std::string::npos);
+}
+
 TEST(ScriptLoaderTest, MissingImportFileReportsError) {
     FileMap files = {
         {"/main.lcui", "import \"gone.lcui\";"},

@@ -335,6 +335,21 @@ namespace LOICollection::frontend::ir {
             ? std::make_shared<GlobalsTable>(*snapshot)
             : std::make_shared<GlobalsTable>());
 
+        struct FrameLimitGuard {
+            std::shared_ptr<sandbox::SandboxBudget> budget;
+            ~FrameLimitGuard() { if (budget) --budget->activeFrames; }
+        } frameGuard;
+
+        if (tlsBudget) {
+            if (tlsBudget->activeFrames >= tlsBudget->maxFrames) {
+                diagnostics.addError({}, "Call stack depth limit exceeded");
+                return ValueNode::ValueType{};
+            }
+
+            ++tlsBudget->activeFrames;
+            frameGuard.budget = tlsBudget;
+        }
+
         vm.frames.clear();
 
         Frame callee(*func->owner->methodBodies[func->bodyIndex]);

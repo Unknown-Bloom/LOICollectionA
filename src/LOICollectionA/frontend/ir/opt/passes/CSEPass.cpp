@@ -139,7 +139,7 @@ namespace LOICollection::frontend::ir::opt {
                     } else {
                         auto a = regKey.find(ins.src1);
                         if (a != regKey.end())
-                            key = opName(op) + "(" + a->second + ")";
+                            key = opName(op) + "#" + std::to_string(ins.operand) + "(" + a->second + ")";
                     }
 
                     int existing = -1;

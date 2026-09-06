@@ -251,6 +251,13 @@ namespace LOICollection::frontend {
     }
 
     std::unique_ptr<ExprNode> Parser::parsePowerExpression() {
+        DepthGuard guard(parseDepth);
+
+        if (parseDepth > kMaxParseDepth) {
+            diagnostics.addError(currentToken.loc, "Expression nesting exceeds the maximum supported depth");
+            return nullptr;
+        }
+
         auto left = parseUnaryExpression();
         if (!left)
             return nullptr;
@@ -272,6 +279,13 @@ namespace LOICollection::frontend {
     }
 
     std::unique_ptr<ExprNode> Parser::parseUnaryExpression() {
+        DepthGuard guard(parseDepth);
+
+        if (parseDepth > kMaxParseDepth) {
+            diagnostics.addError(currentToken.loc, "Expression nesting exceeds the maximum supported depth");
+            return nullptr;
+        }
+
         if (currentToken.type == TokenType::TOKEN_INCREMENT || currentToken.type == TokenType::TOKEN_DECREMENT) {
             SourceLocation loc = currentToken.loc;
             std::string op = currentToken.type == TokenType::TOKEN_INCREMENT ? "+" : "-";
@@ -434,6 +448,13 @@ namespace LOICollection::frontend {
     }
 
     std::unique_ptr<ExprNode> Parser::parsePrimary() {
+        DepthGuard guard(parseDepth);
+
+        if (parseDepth > kMaxParseDepth) {
+            diagnostics.addError(currentToken.loc, "Expression nesting exceeds the maximum supported depth");
+            return nullptr;
+        }
+
         switch (currentToken.type) {
             case TokenType::TOKEN_IF:
                 return parseIfStatement();
@@ -603,7 +624,7 @@ namespace LOICollection::frontend {
                 return std::make_unique<ValueNode>(loc, std::monostate{});
             default:
                 diagnostics.addError(currentToken.loc, "Unexpected value type: " + currentToken.value);
-                return std::make_unique<ValueNode>(loc, 0);
+                return nullptr;
         }
     }
 

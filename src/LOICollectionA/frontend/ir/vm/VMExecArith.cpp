@@ -336,7 +336,13 @@ namespace LOICollection::frontend::ir {
         const auto* li = std::get_if<int>(&lv);
         const auto* ri = std::get_if<int>(&rv);
 
-        if (li && ri) {
+        const bool integralFastPath =
+            instr.op == MirOp::ADD ||
+            instr.op == MirOp::SUB ||
+            instr.op == MirOp::MUL ||
+            instr.op == MirOp::MOD;
+
+        if (li && ri && integralFastPath) {
             const int l = *li;
             const int r = *ri;
 

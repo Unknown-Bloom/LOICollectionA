@@ -24,6 +24,7 @@
 #include "LOICollectionA/frontend/ir/VM.h"
 #include "LOICollectionA/frontend/ir/Compiler.h"
 #include "LOICollectionA/frontend/ir/Optimizer.h"
+#include "LOICollectionA/frontend/ir/MirSerializer.h"
 #include "LOICollectionA/frontend/ir/Abi.h"
 
 #include "LOICollectionA/utils/core/Sha256.h"
@@ -110,47 +111,98 @@ namespace LOICollection::form {
         return content;
     }
 
+    ll::Expected<void> GUIManager::writeFile(const std::string& path, const std::string& content) {
+        std::ofstream file(path, std::ios::binary);
+        if (!file)
+            return ll::makeErrorCodeError(std::make_error_code(std::errc::io_error));
+
+        if (!file.write(content.data(), static_cast<std::streamsize>(content.size())))
+            return ll::makeErrorCodeError(std::make_error_code(std::errc::io_error));
+
+        return {};
+    }
+
     ll::Expected<void> GUIManager::load(const std::string& id, const std::string& path) {
         frontend::DiagnosticEngine diagnostics;
 
-        const bool hasSource = this->readFile(path).has_value();
+        using Serializer = frontend::ir::MirSerializer;
+
+        Serializer::Header header;
+        header.scriptId = id;
+        header.abiFingerprint = frontend::ir::abiFingerprint();
+
+        std::shared_ptr<frontend::ir::MirChunk> compiled;
+        bool hasSource = false;
+
+        if (auto content = this->readFile(path); content.has_value()) {
+            const std::string rootDir = std::filesystem::path(path).parent_path().string();
+            auto result = frontend::ScriptLoader::load(
+                path, rootDir,
+                [this](const std::string& file) -> std::optional<std::string> {
+                    auto data = this->readFile(file);
+                    if (!data.has_value())
+                        return std::nullopt;
+
+                    return data.value();
+                },
+                diagnostics
+            );
+            if (!result)
+                return ll::makeStringError(diagnostics.getErrorMessage());
+
+            frontend::SemanticAnalyzer analyzer(diagnostics);
+            analyzer.analyze(*result->program);
+
+            if (diagnostics.hasErrors())
+                return ll::makeStringError(diagnostics.getErrorMessage());
+
+            if (diagnostics.hasWarnings())
+                return ll::makeStringError(diagnostics.getWarningMessage());
+
+            frontend::ir::Compiler mCompiler(diagnostics);
+            compiled = std::make_shared<frontend::ir::MirChunk>(mCompiler.compile(*result->program));
+            if (diagnostics.hasErrors())
+                return ll::makeStringError(diagnostics.getErrorMessage());
+
+            header.sourceHash = result->hashes.back();
+            header.importHashes.assign(result->hashes.begin(), result->hashes.end() - 1);
+            hasSource = true;
+        }
+
+        const std::string packagePath = path + ".lcp";
+
+        if (auto blob = this->readFile(packagePath); blob.has_value()) {
+            std::string bodyChecksum;
+
+            if (auto chunk = Serializer::deserialize(blob.value(), header, &bodyChecksum)) {
+                if (auto debug = this->readFile(packagePath + ".dbg"); debug.has_value())
+                    Serializer::attachDebugInfo(*chunk, debug.value(), bodyChecksum);
+
+                this->mImpl->cache.insert_or_assign(id, std::make_shared<frontend::ir::MirChunk>(std::move(*chunk)));
+                warnIfMissingPermission(id);
+                return {};
+            }
+        }
+
         if (!hasSource)
-            return ll::makeStringError("load: Script '" + id + "' has no readable source");
-
-        const std::string rootDir = std::filesystem::path(path).parent_path().string();
-        auto result = frontend::ScriptLoader::load(
-            path, rootDir,
-            [this](const std::string& file) -> std::optional<std::string> {
-                auto data = this->readFile(file);
-                if (!data.has_value())
-                    return std::nullopt;
-
-                return data.value();
-            },
-            diagnostics
-        );
-        if (!result)
-            return ll::makeStringError(diagnostics.getErrorMessage());
-
-        frontend::ir::Compiler mCompiler(diagnostics);
-
-        frontend::SemanticAnalyzer analyzer(diagnostics);
-        analyzer.analyze(*result->program);
-
-        if (diagnostics.hasErrors())
-            return ll::makeStringError(diagnostics.getErrorMessage());
-
-        if (diagnostics.hasWarnings())
-            return ll::makeStringError(diagnostics.getWarningMessage());
-
-        auto mir = std::make_shared<frontend::ir::MirChunk>(mCompiler.compile(*result->program));
-        if (diagnostics.hasErrors())
-            return ll::makeStringError(diagnostics.getErrorMessage());
+            return ll::makeStringError(
+                "load: Script '" + id + "' has no readable source and no valid bytecode package");
 
         frontend::ir::Optimizer optimizer;
-        optimizer.optimize(*mir);
+        optimizer.optimize(*compiled);
 
-        this->mImpl->cache.insert_or_assign(id, mir);
+        if (diagnostics.hasErrors())
+            return ll::makeStringError(diagnostics.getErrorMessage());
+
+        std::string bodyChecksum;
+        auto blob = Serializer::serialize(*compiled, header, &bodyChecksum);
+        if (blob) {
+            this->writeFile(packagePath, *blob);
+            if (auto debug = Serializer::serializeDebugInfo(*compiled, bodyChecksum))
+                this->writeFile(packagePath + ".dbg", *debug);
+        }
+
+        this->mImpl->cache.insert_or_assign(id, compiled);
         warnIfMissingPermission(id);
 
         return {};

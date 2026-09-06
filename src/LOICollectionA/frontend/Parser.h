@@ -19,6 +19,16 @@ namespace LOICollection::frontend {
         DiagnosticEngine& diagnostics;
 
         size_t declarativeDepth = 0;
+        size_t parseDepth = 0;
+
+        static constexpr size_t kMaxParseDepth = 1024;
+
+        struct DepthGuard {
+            size_t& depth;
+
+            explicit DepthGuard(size_t& d) : depth(d) { ++depth; }
+            ~DepthGuard() { --depth; }
+        };
 
     public:
         LOICOLLECTION_A_API   Parser(Lexer& l, DiagnosticEngine& diag);

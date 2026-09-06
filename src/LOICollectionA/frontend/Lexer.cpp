@@ -107,7 +107,11 @@ namespace LOICollection::frontend {
             if (std::isdigit(static_cast<unsigned char>(currentChar))) return parseNumber();
             if (std::strchr("=><!&|-", currentChar)) return parseOperator();
 
-            return parseIdentifier();
+            if (std::isalnum(static_cast<unsigned char>(currentChar)) || currentChar == '_')
+                return parseIdentifier();
+
+            diagnostics.addError({line, column, position}, "Unexpected character");
+            return makeToken(TokenType::TOKEN_OP);
         }
         
         return { TokenType::TOKEN_EOF, "", {line, column, position} };
