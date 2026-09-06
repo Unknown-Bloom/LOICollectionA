@@ -169,7 +169,7 @@ namespace LOICollection::form {
             hasSource = true;
         }
 
-        const std::string packagePath = path + ".lcub";
+        const std::string packagePath = path + ".lcp";
 
         if (auto blob = this->readFile(packagePath); blob.has_value()) {
             std::string bodyChecksum;
