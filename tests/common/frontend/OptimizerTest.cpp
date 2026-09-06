@@ -747,16 +747,16 @@ TEST(OptimizerTest, RemovesStoreOverwrittenBeforeAnyRead) {
 
 TEST(OptimizerTest, RemovesDeadSlotStoreInStraightLineCode) {
     ir::MirChunk chunk;
-    chunk.slotCount = 1;
+    chunk.slotCount = 4;
     chunk.constants.push_back(1);
     chunk.constants.push_back(2);
 
     chunk.code = {
-        { MirOp::LOAD_CONST, 0, 0 },
-        { MirOp::STORE_SLOT, 0, -1, 0 },
-        { MirOp::LOAD_CONST, 1, 1 },
+        { MirOp::LOAD_CONST, 0, 1 },
         { MirOp::STORE_SLOT, 0, -1, 1 },
-        { MirOp::LOAD_SLOT, 0, 2, 0 },
+        { MirOp::LOAD_CONST, 1, 2 },
+        { MirOp::STORE_SLOT, 0, -1, 2 },
+        { MirOp::LOAD_SLOT, 0, 3, -1 },
         { MirOp::HALT, 0 }
     };
 
