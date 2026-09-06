@@ -52,6 +52,12 @@ namespace LOICollection::frontend::ir::opt {
             return false;
         }
 
+        bool isImmutable(const ValueNode::ValueType& v) {
+            return !std::holds_alternative<ArrayRef>(v)
+                && !std::holds_alternative<ObjectRef>(v)
+                && !std::holds_alternative<FunctionRefPtr>(v);
+        }
+
         bool isZero(const ValueNode::ValueType& v) {
             if (auto i = std::get_if<int>(&v)) return *i == 0;
             if (auto f = std::get_if<float>(&v)) return *f == 0.0f;
@@ -107,7 +113,7 @@ namespace LOICollection::frontend::ir::opt {
         switch (instr.op) {
             case MirOp::LOAD_CONST: {
                 const int at = mCtx.emit(instr);
-                mRegValues[instr.dst] = { mChunk.constants[instr.operand], at, true };
+                mRegValues[instr.dst] = { mChunk.constants[instr.operand], at, isImmutable(mChunk.constants[instr.operand]) };
                 return { at };
             }
 
@@ -292,7 +298,7 @@ namespace LOICollection::frontend::ir::opt {
     }
 
     ConstantFoldPass::Step ConstantFoldPass::foldLoadSlot(const MirInstr& instr) {
-        if (auto it = mSlotValues.find(instr.operand); it != mSlotValues.end()) {
+        if (auto it = mSlotValues.find(instr.operand); it != mSlotValues.end() && it->second.removable) {
             ++mCtx.stats.folded;
             const Step step = emitConst(instr.dst, it->second.value, instr.loc);
             mRegValues[instr.dst] = it->second;
@@ -318,7 +324,7 @@ namespace LOICollection::frontend::ir::opt {
     ConstantFoldPass::Step ConstantFoldPass::foldLoadVar(const MirInstr& instr) {
         const std::string& name = std::get<std::string>(mChunk.constants[instr.operand]);
 
-        if (auto it = mNameValues.find(name); it != mNameValues.end()) {
+        if (auto it = mNameValues.find(name); it != mNameValues.end() && it->second.removable) {
             ++mCtx.stats.folded;
             const Step step = emitConst(instr.dst, it->second.value, instr.loc);
             mRegValues[instr.dst] = it->second;
@@ -582,6 +588,7 @@ namespace LOICollection::frontend::ir::opt {
             return { mCtx.emit({ MirOp::JMP, instr.operand, -1, -1, -1, -1, 0, {}, instr.loc }) };
         }
 
+        ++mCtx.stats.folded;
         ++mCtx.stats.removed;
         return {};
     }
@@ -590,7 +597,7 @@ namespace LOICollection::frontend::ir::opt {
         const int at = emitLoadConst(mChunk, mCtx.foldedCode, value, loc);
         if (dst >= 0)
             mCtx.foldedCode[at].dst = dst;
-        mRegValues[dst] = { value, at, true };
+        mRegValues[dst] = { value, at, isImmutable(value) };
         return { at };
     }
 
