@@ -81,6 +81,43 @@ namespace {
 
         return header;
     }
+
+    std::unique_ptr<MirChunk> nestedChunk(int depth) {
+        auto root = std::make_unique<MirChunk>();
+        root->slotCount = 0;
+
+        MirChunk* tail = root.get();
+        for (int i = 0; i < depth; ++i) {
+            tail->methodBodies.push_back(std::make_unique<MirChunk>());
+            tail = tail->methodBodies.back().get();
+        }
+
+        return root;
+    }
+
+    int nestingDepth(const MirChunk& chunk) {
+        int depth = 0;
+
+        const MirChunk* cursor = &chunk;
+        while (!cursor->methodBodies.empty()) {
+            cursor = cursor->methodBodies.front().get();
+            ++depth;
+        }
+
+        return depth;
+    }
+
+    ValueNode::ValueType nestedArray(int depth) {
+        ValueNode::ValueType value = std::make_shared<ArrayValue>();
+
+        for (int i = 0; i < depth; ++i) {
+            auto outer = std::make_shared<ArrayValue>();
+            outer->elements.push_back(value);
+            value = std::move(outer);
+        }
+
+        return value;
+    }
 }
 
 TEST(MirSerializerTest, RoundTripPreservesBehavior) {
@@ -229,4 +266,45 @@ TEST(MirSerializerTest, DebugInfoRejectsMismatchedChecksum) {
 
     const std::string wrongChecksum(32, 'B');
     EXPECT_FALSE(MirSerializer::attachDebugInfo(*restored, debugBlob.value(), wrongChecksum));
+}
+
+TEST(MirSerializerTest, AcceptsNestedMethodBodies) {
+    auto chunk = nestedChunk(8);
+
+    auto blob = MirSerializer::serialize(*chunk, headerFor(kSource));
+    ASSERT_TRUE(blob.has_value());
+
+    auto restored = MirSerializer::deserialize(blob.value(), headerFor(kSource));
+    ASSERT_TRUE(restored.has_value());
+
+    EXPECT_EQ(nestingDepth(*restored), 8);
+}
+
+TEST(MirSerializerTest, RejectsExcessiveNesting) {
+    auto chunk = nestedChunk(4096);
+
+    auto blob = MirSerializer::serialize(*chunk, headerFor(kSource));
+    ASSERT_TRUE(blob.has_value());
+
+    EXPECT_FALSE(MirSerializer::deserialize(blob.value(), headerFor(kSource)).has_value());
+}
+
+TEST(MirSerializerTest, RejectsExcessiveConstantNesting) {
+    MirChunk chunk;
+    chunk.slotCount = 0;
+    chunk.constants.push_back(nestedArray(4096));
+
+    auto blob = MirSerializer::serialize(chunk, headerFor(kSource));
+    ASSERT_TRUE(blob.has_value());
+
+    EXPECT_FALSE(MirSerializer::deserialize(blob.value(), headerFor(kSource)).has_value());
+
+    MirChunk usable;
+    usable.slotCount = 0;
+    usable.constants.push_back(nestedArray(8));
+
+    auto usableBlob = MirSerializer::serialize(usable, headerFor(kSource));
+    ASSERT_TRUE(usableBlob.has_value());
+
+    EXPECT_TRUE(MirSerializer::deserialize(usableBlob.value(), headerFor(kSource)).has_value());
 }

@@ -44,6 +44,13 @@ namespace LOICollection::frontend {
     }
 
     std::unique_ptr<TypeExpr> Parser::parseTypeExpr() {
+        DepthGuard guard(parseDepth);
+
+        if (parseDepth > kMaxParseDepth) {
+            diagnostics.addError(currentToken.loc, "Type nesting exceeds the maximum supported depth");
+            return nullptr;
+        }
+
         if (currentToken.type != TokenType::TOKEN_IDENT) {
             diagnostics.addError(currentToken.loc, "Expected type name");
             return nullptr;

@@ -19,6 +19,7 @@ namespace LOICollection::frontend::sandbox {
         std::size_t nativeCallCount = 0;
         std::size_t objectCount = 0;
         std::size_t allocatedBytes = 0;
+        std::size_t activeFrames = 0;
 
         void reset() {
             startTime = std::chrono::steady_clock::now();
@@ -26,6 +27,7 @@ namespace LOICollection::frontend::sandbox {
             nativeCallCount = 0;
             objectCount = 0;
             allocatedBytes = 0;
+            activeFrames = 0;
         }
 
         enum class Violation {
@@ -37,6 +39,7 @@ namespace LOICollection::frontend::sandbox {
             ArrayElementLimit,
             StringByteLimit,
             TotalByteLimit,
+            FrameLimit,
         };
 
         Violation tickInstruction() {

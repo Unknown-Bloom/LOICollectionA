@@ -337,6 +337,9 @@ namespace LOICollection::frontend {
 
         int bracketDepth = 0;
         while (currentToken.type != TokenType::TOKEN_EOF) {
+            if (currentToken.type == TokenType::TOKEN_RBRACE)
+                break;
+
             if (currentToken.type == TokenType::TOKEN_LBRCKET) {
                 bracketDepth++;
             } else if (currentToken.type == TokenType::TOKEN_RBRCKET && bracketDepth > 0) {
@@ -344,9 +347,6 @@ namespace LOICollection::frontend {
             }
 
             if (bracketDepth == 0) {
-                if (currentToken.type == TokenType::TOKEN_RBRACE)
-                    break;
-
                 if (currentToken.type == TokenType::TOKEN_RBRCKET &&
                     stopToken != TokenType::TOKEN_RBRCKET)
                     break;
@@ -496,6 +496,13 @@ namespace LOICollection::frontend {
     }
 
     std::unique_ptr<ASTNode> Parser::parseStatement() {
+        DepthGuard guard(parseDepth);
+
+        if (parseDepth > kMaxParseDepth) {
+            diagnostics.addError(currentToken.loc, "Statement nesting exceeds the maximum supported depth");
+            return nullptr;
+        }
+
         if (currentToken.type == TokenType::TOKEN_FUNC && peek() != TokenType::TOKEN_LPAREN)
             return parseFunctionDefinition();
 

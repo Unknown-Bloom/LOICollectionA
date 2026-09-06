@@ -55,6 +55,43 @@ namespace LOICollection::frontend {
             }
         }
 
+        std::string typeExprName(const TypeExpr& expr) {
+            std::string out = expr.name;
+            if (expr.args.empty())
+                return out;
+
+            out += '<';
+            for (size_t i = 0; i < expr.args.size(); ++i) {
+                if (i != 0)
+                    out += ',';
+
+                out += typeExprName(expr.args[i]);
+            }
+
+            return out + '>';
+        }
+
+        std::string definitionKey(ASTNode& node) {
+            const std::string* name = definitionName(node);
+            if (!name)
+                return {};
+
+            if (node.getType() != ASTNode::Type::FunctionDef)
+                return *name;
+
+            auto& decl = static_cast<FunctionDefNode&>(node).decl;
+
+            std::string key = *name + '(';
+            for (size_t i = 0; i < decl.params.size(); ++i) {
+                if (i != 0)
+                    key += ',';
+
+                key += decl.params[i].hasType ? typeExprName(decl.params[i].typeExpr) : "?";
+            }
+
+            return key + ')';
+        }
+
         std::string displayName(const std::string& path, const std::string& rootDir) {
             std::error_code ec;
             auto relative = std::filesystem::relative(path, rootDir, ec);
@@ -175,17 +212,15 @@ namespace LOICollection::frontend {
                 if (const std::string* name = definitionName(*part)) {
                     SourceLocation loc = definitionLoc(*part);
 
-                    auto existing = definedAt.find(*name);
-                    if (existing != definedAt.end()) {
+                    auto [slot, inserted] = definedAt.emplace(definitionKey(*part), std::make_pair(path, loc.line));
+                    if (!inserted) {
                         diagnostics.addError(loc,
                             "Definition '" + *name + "' from '" + displayName(path, root) +
                             "' (line " + std::to_string(loc.line) +
-                            ") conflicts with the one in '" + displayName(existing->second.first, root) +
-                            "' (line " + std::to_string(existing->second.second) + ")");
+                            ") conflicts with the one in '" + displayName(slot->second.first, root) +
+                            "' (line " + std::to_string(slot->second.second) + ")");
                         return std::nullopt;
                     }
-
-                    definedAt.emplace(*name, std::make_pair(path, loc.line));
                 }
 
                 nodes.push_back(std::move(part));

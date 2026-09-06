@@ -86,6 +86,7 @@ namespace LOICollection::frontend::ir {
         constexpr uint8_t CONST_ARRAY = 5;
 
         constexpr size_t kDigestSize = 32;
+        constexpr size_t kMaxDepth = 64;
 
         constexpr uint8_t TYPEKIND_UNKNOWN = 0;
         constexpr uint8_t TYPEKIND_INT = 1;
@@ -115,7 +116,10 @@ namespace LOICollection::frontend::ir {
                 writeTypeInfo(writer, *type.optionalInner);
         }
 
-        bool readTypeInfo(Reader& reader, TypeInfo& type) {
+        bool readTypeInfo(Reader& reader, TypeInfo& type, size_t depth = 0) {
+            if (depth > kMaxDepth)
+                return false;
+
             uint8_t kind = 0;
             if (!reader.u8(kind) || kind > TYPEKIND_NONE)
                 return false;
@@ -132,7 +136,7 @@ namespace LOICollection::frontend::ir {
             type.variantOptions.reserve(optionCount);
             for (uint32_t i = 0; i < optionCount; ++i) {
                 TypeInfo option;
-                if (!readTypeInfo(reader, option))
+                if (!readTypeInfo(reader, option, depth + 1))
                     return false;
 
                 type.variantOptions.push_back(std::move(option));
@@ -144,7 +148,7 @@ namespace LOICollection::frontend::ir {
 
             if (hasInner != 0) {
                 type.optionalInner = std::make_shared<TypeInfo>();
-                if (!readTypeInfo(reader, *type.optionalInner))
+                if (!readTypeInfo(reader, *type.optionalInner, depth + 1))
                     return false;
             } else {
                 type.optionalInner.reset();
@@ -172,7 +176,11 @@ namespace LOICollection::frontend::ir {
                     writer.u8(std::get<bool>(value) ? 1 : 0);
                     return true;
                 case 6: {
-                    const auto& elements = std::get<ArrayRef>(value)->elements;
+                    const auto& array = std::get<ArrayRef>(value);
+                    if (!array)
+                        return false;
+
+                    const auto& elements = array->elements;
                     if (elements.size() > 0xFFFFFFFFull)
                         return false;
 
@@ -192,7 +200,10 @@ namespace LOICollection::frontend::ir {
             }
         }
 
-        bool readValue(Reader& reader, ValueNode::ValueType& value) {
+        bool readValue(Reader& reader, ValueNode::ValueType& value, size_t depth = 0) {
+            if (depth > kMaxDepth)
+                return false;
+
             uint8_t tag = 0;
             if (!reader.u8(tag))
                 return false;
@@ -238,7 +249,7 @@ namespace LOICollection::frontend::ir {
                     elements->elements.reserve(count);
                     for (uint32_t i = 0; i < count; ++i) {
                         ValueNode::ValueType element;
-                        if (!readValue(reader, element)) return false;
+                        if (!readValue(reader, element, depth + 1)) return false;
 
                         elements->elements.push_back(std::move(element));
                     }
@@ -279,7 +290,7 @@ namespace LOICollection::frontend::ir {
 
         bool writeChunk(Writer& writer, const MirChunk& chunk);
 
-        bool readChunk(Reader& reader, MirChunk& chunk);
+        bool readChunk(Reader& reader, MirChunk& chunk, size_t depth = 0);
 
         void writeInstruction(Writer& writer, const MirInstr& instr) {
             writer.u8(static_cast<uint8_t>(instr.op));
@@ -330,7 +341,10 @@ namespace LOICollection::frontend::ir {
                 writeDebugInfo(writer, *body);
         }
 
-        bool readDebugInfo(Reader& reader, MirChunk& chunk) {
+        bool readDebugInfo(Reader& reader, MirChunk& chunk, size_t depth = 0) {
+            if (depth > kMaxDepth)
+                return false;
+
             for (auto& instr : chunk.code) {
                 uint64_t line = 0;
                 uint64_t column = 0;
@@ -343,7 +357,7 @@ namespace LOICollection::frontend::ir {
             }
 
             for (auto& body : chunk.methodBodies)
-                if (!readDebugInfo(reader, *body))
+                if (!readDebugInfo(reader, *body, depth + 1))
                     return false;
 
             return true;
@@ -584,13 +598,16 @@ namespace LOICollection::frontend::ir {
 
             writer.u32(static_cast<uint32_t>(chunk.methodBodies.size()));
             for (const auto& body : chunk.methodBodies)
-                if (!writeChunk(writer, *body))
+                if (!body || !writeChunk(writer, *body))
                     return false;
 
             return true;
         }
 
-        bool readChunk(Reader& reader, MirChunk& chunk) {
+        bool readChunk(Reader& reader, MirChunk& chunk, size_t depth) {
+            if (depth > kMaxDepth)
+                return false;
+
             if (!(readVector<MirInstr>(reader, chunk.code, [](Reader& r, MirInstr& instr) -> bool {
                 return readInstruction(r, instr);
             })
@@ -635,7 +652,7 @@ namespace LOICollection::frontend::ir {
             chunk.methodBodies.clear();
             for (uint32_t i = 0; i < bodyCount; ++i) {
                 auto body = std::make_unique<MirChunk>();
-                if (!readChunk(reader, *body))
+                if (!readChunk(reader, *body, depth + 1))
                     return false;
 
                 chunk.methodBodies.push_back(std::move(body));

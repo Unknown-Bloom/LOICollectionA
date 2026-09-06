@@ -204,3 +204,37 @@ TEST(ParserEvalTest, TranspileEdgeCases) {
     EXPECT_EQ(eval("$a;"), "a;");
     EXPECT_EQ(eval("1 + $x}"), "1x}");
 }
+
+TEST(ParserEvalTest, UnterminatedArrayInBlockReportsError) {
+    EXPECT_THROW(eval("func f() -> int {\n    let a = 1;\n[\n}\nf();\n"), std::runtime_error);
+    EXPECT_THROW(eval("func f() -> int {\n    let a = 1;\n[\n    let b = 2;\n}\nf();\n"), std::runtime_error);
+}
+
+TEST(ParserEvalTest, UnbalancedBracketDoesNotSwallowBlockEnd) {
+    EXPECT_THROW(eval("func f() -> int {\n    let a = arr[0;\n    return a;\n}\nf();\n"), std::runtime_error);
+    EXPECT_THROW(eval("func f() -> int {\n    let a = 1;\n]\n}\nf();\n"), std::runtime_error);
+}
+
+TEST(ParserEvalTest, ExcessiveExpressionNestingIsRejected) {
+    EXPECT_THROW(eval(std::string(2048, '(') + "1" + std::string(2048, ')')), std::runtime_error);
+    EXPECT_THROW(eval(std::string(2048, '[') + "1" + std::string(2048, ']')), std::runtime_error);
+    EXPECT_THROW(eval(std::string(1024, '!') + "true"), std::runtime_error);
+    EXPECT_THROW(eval("2" + std::string(1024, '^') + "2;"), std::runtime_error);
+}
+
+TEST(ParserEvalTest, ExcessiveTypeNestingIsRejected) {
+    std::string nested;
+    for (int i = 0; i < 1024; ++i)
+        nested += "a<";
+
+    nested += "int";
+    for (int i = 0; i < 1024; ++i)
+        nested += '>';
+
+    EXPECT_THROW(eval("using X = " + nested + ";"), std::runtime_error);
+}
+
+TEST(ParserEvalTest, NestingWithinBudgetIsAccepted) {
+    EXPECT_EQ(eval(std::string(64, '(') + "1" + std::string(64, ')')), "1");
+    EXPECT_EQ(eval(std::string(64, '!') + "true"), "true");
+}

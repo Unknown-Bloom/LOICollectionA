@@ -285,3 +285,26 @@ TEST(LexerTest, PeekDoesNotAdvance) {
     auto real2 = lexer.getNextToken();
     EXPECT_EQ(real2.type, TokenType::TOKEN_INT);
 }
+
+TEST(LexerTest, UnexpectedCharactersAlwaysAdvance) {
+    for (const std::string src : {
+            std::string("`"),
+            std::string("@"),
+            std::string("#"),
+            std::string("~"),
+            std::string("\x80\x81\xff"),
+            std::string("let a = `;"),
+            std::string("func f() { ` }"),
+            std::string("class C { ` }"),
+         }) {
+        DiagnosticEngine diagnostics;
+        Lexer lexer(src, diagnostics);
+
+        int count = 0;
+        while (lexer.getNextToken().type != TokenType::TOKEN_EOF && count < 1000000)
+            ++count;
+
+        EXPECT_LT(count, 1000000) << "lexer did not terminate on input: " << src;
+        EXPECT_TRUE(diagnostics.hasErrors());
+    }
+}
