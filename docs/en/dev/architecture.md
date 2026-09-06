@@ -1,7 +1,7 @@
 # Architecture Overview
 
 > [!NOTE]
-> The following content is taken from the code structure of LOICollectionA 1.15.x and may differ in later versions.
+> The following content is taken from the code structure of LOICollectionA 1.17.0 and may differ in later versions.
 
 LOICollectionA is a C++ plugin (NativeMod) based on [LeviLamina](https://github.com/LiteLDev/LeviLamina), with an overall **microkernel architecture**: the core only handles configuration loading, service registration, and module scheduling, while all features are implemented independently as **modules**, which can be toggled on demand in the configuration file.
 

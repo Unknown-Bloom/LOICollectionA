@@ -1,7 +1,7 @@
 # LOICollectionAPI 扩展指南
 
 > [!NOTE]
-> 以下内容取自 LOICollectionA 1.15.x 的代码结构，对于后续版本可能会有所不同。
+> 以下内容取自 LOICollectionA 1.17.0 的代码结构，对于后续版本可能会有所不同。
 
 本文介绍如何用 C++ 扩展 LOICollectionAPI——即向 LCUI 脚本与字符串模板（`{变量}` 语法）注册自定义的变量、函数与类。
 

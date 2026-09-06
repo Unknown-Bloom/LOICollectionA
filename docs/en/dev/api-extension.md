@@ -1,7 +1,7 @@
 # LOICollectionAPI Extension Guide
 
 > [!NOTE]
-> The following content is derived from the code structure of LOICollectionA 1.15.x and may differ in later versions.
+> The following content is derived from the code structure of LOICollectionA 1.17.0 and may differ in later versions.
 
 This article explains how to extend LOICollectionAPI with C++ — that is, registering custom variables, functions, and classes for LCUI scripts and string templates (the `{variable}` syntax).
 

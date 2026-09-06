@@ -1,7 +1,7 @@
 # Native UI
 
 > [!NOTE]
-> The following content is taken from the native UI structure of LOICollectionA 1.15.0 and may differ in later versions.
+> The following content is taken from the native UI structure of LOICollectionA 1.17.0 and may differ in later versions.
 
 ## Overview
 

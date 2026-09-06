@@ -20,7 +20,7 @@ lip install github.com/loitietu/LOICollectionA
 - To install a specific version, run the following command
 
 ```bash
-lip install github.com/loitietu/LOICollectionA@v1.15.0
+lip install github.com/loitietu/LOICollectionA@v1.17.0
 ```
 
 - To update the version, run the following command

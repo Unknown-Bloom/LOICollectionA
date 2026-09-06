@@ -1,7 +1,7 @@
 # 原生 UI（Native UI）
 
 > [!NOTE]
-> 以下内容取自 LOICollectionA 1.15.0 的原生 UI 结构，对于后续版本可能会有所不同。
+> 以下内容取自 LOICollectionA 1.17.0 的原生 UI 结构，对于后续版本可能会有所不同。
 
 ## 概述
 

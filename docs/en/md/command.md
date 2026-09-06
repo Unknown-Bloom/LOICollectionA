@@ -541,4 +541,4 @@ And the plugins provide the following commands for simple interaction:
   - Reload (recompile) the player data statistics GUI (permission level: GameDirectors).
 
 > [!NOTE]
-> All of the above is the command list for LOICollectionA version 1.15.0; the command list in later versions may differ.
+> All of the above is the command list for LOICollectionA version 1.17.0; the command list in later versions may differ.

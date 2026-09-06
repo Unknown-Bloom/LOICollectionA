@@ -20,7 +20,7 @@ lip install github.com/loitietu/LOICollectionA
 - 对于安装指定版本的可以执行以下命令
 
 ```bash
-lip install github.com/loitietu/LOICollectionA@v1.15.0
+lip install github.com/loitietu/LOICollectionA@v1.17.0
 ```
 
 - 对于进行版本更新的可以执行以下命令

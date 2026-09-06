@@ -1,7 +1,7 @@
 # 架构概览
 
 > [!NOTE]
-> 以下内容取自 LOICollectionA 1.15.x 的代码结构，对于后续版本可能会有所不同。
+> 以下内容取自 LOICollectionA 1.17.0 的代码结构，对于后续版本可能会有所不同。
 
 LOICollectionA 是一个基于 [LeviLamina](https://github.com/LiteLDev/LeviLamina) 的 C++ 插件（NativeMod），整体采用**微内核架构**：核心只负责配置加载、服务注册与模块调度，所有功能以 **模块（Module）** 为单位独立实现，可在配置文件中按需开关。
 

@@ -1,7 +1,7 @@
 # LCUI Script Syntax
 
 > [!NOTE]
-> The following content is taken from the `.lcui` script language implementation of LOICollectionA 1.15.0 and may differ in later versions.
+> The following content is taken from the `.lcui` script language implementation of LOICollectionA 1.17.0 and may differ in later versions.
 
 ## Overview
 
@@ -180,14 +180,26 @@ d = 4;
 
 ## Variables and Types
 
-### Dynamic Variables
+### Variable Declarations (let / const)
 
-Assigning a value directly creates a variable; without a type annotation it is dynamically typed and can be assigned values of other types at any time:
+Every variable binding must be declared explicitly with `let` (mutable) or `const` (immutable); the keyword-less implicit creation via a bare assignment is no longer supported:
 
 ```lcui
-a = 1;
+let a = 1;          // mutable variable, dynamically typed
+let count: int = 1; // mutable variable with a type annotation
+const pi = 3.14;    // immutable constant, cannot be reassigned after initialization
+```
+
+A `let` variable can be reassigned at any time and its type may still change dynamically; reassigning a `const` constant raises an error. This rule only constrains local and global variable bindings — function parameters, class fields, and `optional`/`variant` members keep their original structural declaration syntax.
+
+### Dynamic Variables
+
+A `let` declaration without a type annotation is dynamically typed and can be assigned values of other types at any time:
+
+```lcui
+let a = 1;
 a = "test";     // Valid: dynamically typed
-b = [1, 2, 3];
+let b = [1, 2, 3];
 ```
 
 ### Type Annotations

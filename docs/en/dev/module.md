@@ -1,7 +1,7 @@
 # Module Development Guide
 
 > [!NOTE]
-> The following content uses `BlacklistPlugin` (the blacklist module) as an example, taken from the code structure of LOICollectionA 1.15.x; it may differ in later versions.
+> The following content uses `BlacklistPlugin` (the blacklist module) as an example, taken from the code structure of LOICollectionA 1.17.0; it may differ in later versions.
 
 This article explains how to develop a C++ module for LOICollectionA. Before getting started, please read [Architecture Overview](./architecture.md) to learn about the module framework and the service container.
 

@@ -1,7 +1,7 @@
 # LOICollectionAPI
 
 > [!NOTE]
-> The following content is taken from the `LOICollectionAPI` structure of LOICollectionA 1.15.0; the `LOICollectionAPI` structure may differ in later versions.
+> The following content is taken from the `LOICollectionAPI` structure of LOICollectionA 1.17.0; the `LOICollectionAPI` structure may differ in later versions.
 
 ## Default Variables
 

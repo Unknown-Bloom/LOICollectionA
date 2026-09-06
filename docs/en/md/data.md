@@ -270,7 +270,7 @@ When you upgrade the plugin version, newly added configuration items are automat
 ```
 
 > [!NOTE]
-> The above content is taken from the configuration file structure of LOICollectionA 1.15.0. The configuration file structure of later versions may differ.
+> The above content is taken from the configuration file structure of LOICollectionA 1.17.0. The configuration file structure of later versions may differ.
 
 ## Module Data Files
 
