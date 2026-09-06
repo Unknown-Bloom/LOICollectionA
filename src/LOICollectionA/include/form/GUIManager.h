@@ -98,6 +98,7 @@ namespace LOICollection::form {
         GUIManager();
 
         ll::Expected<std::string> readFile(const std::string& path);
+        ll::Expected<void> writeFile(const std::string& path, const std::string& content);
 
         struct Impl;
         std::unique_ptr<Impl> mImpl;
