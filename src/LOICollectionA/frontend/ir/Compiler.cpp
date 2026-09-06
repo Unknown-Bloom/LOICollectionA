@@ -899,7 +899,10 @@ namespace LOICollection::frontend::ir {
             if (hint >= 0 && i + 1 == node.parts.size())
                 this->dstHint = hint;
 
-            node.parts[i]->accept(*this);
+            ASTNode& part = *node.parts[i];
+            part.accept(*this);
+            this->lastPartWasDeclaration = part.getType() == ASTNode::Type::Assignment &&
+                static_cast<AssignmentNode&>(part).isDeclaration;
         }
 
         this->lastResultReg = this->finishHint(hint, this->lastResultReg, {});

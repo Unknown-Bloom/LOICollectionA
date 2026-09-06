@@ -65,6 +65,7 @@ namespace LOICollection::frontend::ir {
 
         int lastResultReg = -1;
         int dstHint = -1;
+        bool lastPartWasDeclaration = false;
 
         void visit(ValueNode& node) override;
         void visit(VariableNode& node) override;
