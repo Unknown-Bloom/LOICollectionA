@@ -6,6 +6,7 @@
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 #include "LOICollectionA/base/Macro.h"
 #include "LOICollectionA/base/ScopeGuard.h"
@@ -14,19 +15,19 @@
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
 #include "LOICollectionA/frontend/Iteration.h"
 
-#include "LOICollectionA/frontend/ir/ByteCode.h"
+#include "LOICollectionA/frontend/ir/Mir.h"
 
 namespace LOICollection::frontend::ir {
     class Compiler : public ASTVisitor {
     public:
         LOICOLLECTION_A_API   Compiler(DiagnosticEngine& diag);
 
-        LOICOLLECTION_A_NDAPI BytecodeChunk compile(ASTNode& root);
+        LOICOLLECTION_A_NDAPI MirChunk compile(ASTNode& root);
 
     private:
-        BytecodeChunk chunk;
+        MirChunk chunk;
         
-        std::reference_wrapper<BytecodeChunk> current;
+        std::reference_wrapper<MirChunk> current;
 
         DiagnosticEngine& diagnostics;
 
@@ -61,6 +62,9 @@ namespace LOICollection::frontend::ir {
         size_t methodCount = 0;
         size_t forInCounter = 0;
         size_t declarativeCounter = 0;
+
+        int lastResultReg = -1;
+        int dstHint = -1;
 
         void visit(ValueNode& node) override;
         void visit(VariableNode& node) override;
@@ -105,15 +109,47 @@ namespace LOICollection::frontend::ir {
         void registerFunctionMeta(FunctionDefNode& node);
         void compileFunctionBody(FunctionDefNode& node);
         void compileSequence(SequenceNode& node);
-        void compileValue(ExprNode& node, const SourceLocation& loc);
+
+        int allocReg() { return this->scopes.back().next++; }
+
+        int reserveRegs(int count) {
+            const int base = this->scopes.back().next;
+            this->scopes.back().next += count;
+            return base;
+        }
+
+        int takeDst() {
+            return this->dstHint >= 0 ? std::exchange(this->dstHint, -1) : this->allocReg();
+        }
+
+        [[nodiscard]] int compilePart(ASTNode& node);
+
+        int compileValue(ExprNode& node, const SourceLocation& loc);
+        int compileNone(const SourceLocation& loc);
+        int compileInto(int hint, ASTNode& node, const SourceLocation& loc);
+        int compileArg(int hint, ExprNode& node, const SourceLocation& loc);
+        int finishHint(int hint, int reg, const SourceLocation& loc);
+
+        [[nodiscard]] std::optional<int> tryEmitLeaf(ASTNode& node, int dst, const SourceLocation& loc);
+
+        int emitBoolConst(bool value, const SourceLocation& loc);
+
+        int emitBinary(
+            MirOp op,
+            int lhs, int rhs,
+            const SourceLocation& loc, const TypeInfo& type = {}
+        );
 
         [[nodiscard]] ClassLookup classLookup() const;
 
         void compileForInCounter(ForInNode& node, size_t uid);
         void compileForInIterable(ForInNode& node, size_t uid, const IterableProtocol& protocol);
-        void emitIterableLength(const IterableProtocol& protocol, int seqSlot, const SourceLocation& loc);
-        void emitIterableElement(const IterableProtocol& protocol, int seqSlot, int idxSlot, const SourceLocation& loc);
-        void emitArithmeticOp(const std::string& op, const TypeInfo& leftType, const TypeInfo& rightType, const SourceLocation& loc);
+        int emitIterableLength(const IterableProtocol& protocol, int seqSlot, const SourceLocation& loc);
+        int emitIterableElement(const IterableProtocol& protocol, int seqSlot, int idxSlot, const SourceLocation& loc);
+        int emitArithmeticOp(
+            const std::string& op, const TypeInfo& leftType, const TypeInfo& rightType,
+            int lhs, int rhs, const SourceLocation& loc
+        );
 
         void desugarDeclarativeStatements(std::unique_ptr<ASTNode>& node, const std::string& receiver);
         void compileDeclarativeBlock(BlockNode& block, const std::string& receiverName);
@@ -145,11 +181,14 @@ namespace LOICollection::frontend::ir {
         int declareSlot(const std::string& name);
         [[nodiscard]] std::optional<int> resolveSlot(const std::string& name) const;
 
-        void emitLoad(const std::string& name, const SourceLocation& loc);
-        void emitStore(const std::string& name, const SourceLocation& loc);
+        void predeclareLocals(ASTNode& body);
 
-        void emitLoadField(const MemberAccessNode& node);
-        void emitStoreField(const MemberAccessNode& node);
-        void emitFieldAccess(OpCode slotOp, OpCode namedOp, const MemberAccessNode& node);
+        int emitLoad(const std::string& name, const SourceLocation& loc);
+        int emitLoadInto(int dst, const std::string& name, const SourceLocation& loc);
+        void emitStore(const std::string& name, int srcReg, const SourceLocation& loc);
+
+        int emitLoadField(const MemberAccessNode& node);
+        void emitLoadFieldInto(int dst, int objReg, const MemberAccessNode& node);
+        void emitStoreField(int objReg, int valReg, const MemberAccessNode& node);
     };
 }

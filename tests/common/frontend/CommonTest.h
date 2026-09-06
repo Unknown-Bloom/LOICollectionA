@@ -14,7 +14,7 @@
 #include "LOICollectionA/frontend/ir/VM.h"
 
 namespace LOICollection::frontend {
-    inline std::shared_ptr<ir::BytecodeChunk> compile(const std::string& input, DiagnosticEngine& diagnostics) {
+    inline std::shared_ptr<ir::MirChunk> compile(const std::string& input, DiagnosticEngine& diagnostics) {
         Lexer lexer(input, diagnostics);
         Parser parser(lexer, diagnostics);
 
@@ -35,14 +35,14 @@ namespace LOICollection::frontend {
         }
 
         ir::Compiler compiler(diagnostics);
-        auto bytecode = std::make_shared<ir::BytecodeChunk>(compiler.compile(*ast));
+        auto mir = std::make_shared<ir::MirChunk>(compiler.compile(*ast));
         if (diagnostics.hasErrors())
             return nullptr;
 
         ir::Optimizer optimizer;
-        optimizer.optimize(*bytecode);
+        optimizer.optimize(*mir);
 
-        return bytecode;
+        return mir;
     }
 
     inline std::string eval(const std::string& input, const Context& ctx = {}) {
@@ -71,14 +71,14 @@ namespace LOICollection::frontend {
         ir::Compiler compiler(diagnostics);
         ir::VM vm(diagnostics);
 
-        auto bytecode = std::make_shared<ir::BytecodeChunk>(compiler.compile(*ast));
+        auto mir = std::make_shared<ir::MirChunk>(compiler.compile(*ast));
         if (diagnostics.hasErrors())
             throw std::runtime_error(diagnostics.getErrorMessage());
 
         ir::Optimizer optimizer;
-        [[maybe_unused]] auto optimizeStats = optimizer.optimize(*bytecode);
+        [[maybe_unused]] auto optimizeStats = optimizer.optimize(*mir);
 
-        auto result = vm.run(bytecode, ctx);
+        auto result = vm.run(mir, ctx);
         if (diagnostics.hasErrors())
             throw std::runtime_error(diagnostics.getErrorMessage());
 

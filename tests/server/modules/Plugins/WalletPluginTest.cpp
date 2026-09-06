@@ -418,7 +418,6 @@ TEST_F(WalletPluginTest, LedgerHistoryVisibility) {
 
     EXPECT_TRUE(WalletPlugin::getShared()->forTransfer(*sp, sp->getUuid().asString(), sp->getRealName(), 100).has_value());
 
-    // The query path must only surface rows where the player is a participant.
     auto ids = storage->find("WalletLedger", {
         { "from_uuid", sp->getUuid().asString() },
         { "to_uuid", sp->getUuid().asString() }
@@ -446,12 +445,10 @@ TEST_F(WalletPluginTest, TransferLimitBelowMinimum) {
 
     ScoreboardUtils::setScore(*sp, base.TargetScoreboard, 100);
 
-    // Below the configured minimum is rejected with a dedicated error code.
     auto low = WalletPlugin::getShared()->forTransfer(*sp, "nonexistent_target", "test_name", 3);
     ASSERT_FALSE(low.has_value());
     EXPECT_EQ(low.error().as<ll::ErrorCodeError>().ec, WalletPlugin::makeErrorCode(WalletPluginErrorCode::BelowMinimum));
 
-    // Exactly at the minimum threshold is accepted.
     auto ok = WalletPlugin::getShared()->forTransfer(*sp, "nonexistent_target", "test_name", 5);
     EXPECT_TRUE(ok.has_value());
 
@@ -481,11 +478,9 @@ TEST_F(WalletPluginTest, TransferLimitDailyBudget) {
 
     ScoreboardUtils::setScore(*sp, base.TargetScoreboard, 500);
 
-    // First transfer fits within the 300/day budget.
     auto first = WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 200);
     EXPECT_TRUE(first.has_value());
 
-    // Spending a further 200 would bring the day's total to 400 > 300, rejected.
     auto second = WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 200);
     ASSERT_FALSE(second.has_value());
     EXPECT_EQ(second.error().as<ll::ErrorCodeError>().ec, WalletPlugin::makeErrorCode(WalletPluginErrorCode::DailyLimitExceeded));
@@ -518,11 +513,9 @@ TEST_F(WalletPluginTest, TransferLimitCooldown) {
 
     ScoreboardUtils::setScore(*sp2.getPlayer(), base.TargetScoreboard, 100);
 
-    // First transfer succeeds and stamps the cooldown timestamp.
     auto first = WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 100);
     EXPECT_TRUE(first.has_value());
 
-    // An immediate second transfer is blocked by the active cooldown.
     auto second = WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 100);
     ASSERT_FALSE(second.has_value());
     EXPECT_EQ(second.error().as<ll::ErrorCodeError>().ec, WalletPlugin::makeErrorCode(WalletPluginErrorCode::CooldownActive));
@@ -553,12 +546,10 @@ TEST_F(WalletPluginTest, TransferLargeRequiresConfirmation) {
 
     ScoreboardUtils::setScore(*sp, base.TargetScoreboard, 2000);
 
-    // Unconfirmed large transfer is rejected with ConfirmRequired.
     auto blocked = WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 1500);
     ASSERT_FALSE(blocked.has_value());
     EXPECT_EQ(blocked.error().as<ll::ErrorCodeError>().ec, WalletPlugin::makeErrorCode(WalletPluginErrorCode::ConfirmRequired));
 
-    // Confirmed large transfer is accepted.
     auto confirm = WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 1500, true);
     EXPECT_TRUE(confirm.has_value());
     EXPECT_TRUE(confirm.value());
@@ -585,7 +576,6 @@ TEST_F(WalletPluginTest, BankDepositAndWithdraw) {
 
     ScoreboardUtils::setScore(*sp, config.TargetScoreboard, 500);
 
-    // Deposit 100: score drops, principal recorded, ledger row written.
     EXPECT_TRUE(WalletPlugin::getShared()->bankDeposit(*sp, 100).has_value());
     EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), 400);
     EXPECT_EQ(WalletPlugin::getShared()->getBankPrincipal(sp->getUuid().asString()).value(), 100);
@@ -595,7 +585,6 @@ TEST_F(WalletPluginTest, BankDepositAndWithdraw) {
     ASSERT_FALSE(ids.value().empty());
     EXPECT_EQ(storage->get("WalletLedger", ids.value().at(0)).value()["type"], "bank_deposit");
 
-    // Withdraw immediately: interest is 0, principal fully returned.
     EXPECT_TRUE(WalletPlugin::getShared()->bankWithdraw(*sp).has_value());
     EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), 500);
     EXPECT_EQ(WalletPlugin::getShared()->getBankPrincipal(sp->getUuid().asString()).value(), 0);
@@ -656,14 +645,12 @@ TEST_F(WalletPluginTest, BankInterestDegradesWhenPoolEmpty) {
         ScoreboardUtils::create(base.TargetScoreboard);
     }
 
-    // Fee pool starts empty (cleared in TearDown).
     EXPECT_EQ(WalletPlugin::getShared()->getFeePool().value(), 0);
 
     ScoreboardUtils::setScore(*sp, base.TargetScoreboard, 1000);
     EXPECT_TRUE(WalletPlugin::getShared()->bankDeposit(*sp, 1000).has_value());
     EXPECT_EQ(ScoreboardUtils::getScore(*sp, base.TargetScoreboard), 0);
 
-    // Withdraw: interest limited by the empty pool -> 0, principal still fully returned.
     EXPECT_TRUE(WalletPlugin::getShared()->bankWithdraw(*sp).has_value());
     EXPECT_EQ(ScoreboardUtils::getScore(*sp, base.TargetScoreboard), 1000);
 
@@ -683,18 +670,15 @@ TEST_F(WalletPluginTest, BankInterestCalculation) {
 
     std::string uuid = sp->getUuid().asString();
 
-    // No bank account -> no principal, no interest.
     EXPECT_EQ(WalletPlugin::getShared()->getBankInterest(uuid).value(), 0);
 
     long long now = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::system_clock::now().time_since_epoch()
     ).count();
 
-    // Deposited just now -> 0 full days elapsed -> 0 interest.
     EXPECT_TRUE(storage->set("WalletBank", uuid, { { "principal", "1000" }, { "deposit_at", std::to_string(now) } }).has_value());
     EXPECT_EQ(WalletPlugin::getShared()->getBankInterest(uuid).value(), 0);
 
-    // 3 full days at the daily rate -> floor(principal * rate * days).
     long long threeDaysAgo = now - 3LL * 86400LL * 1000000000LL;
     EXPECT_TRUE(storage->set("WalletBank", uuid, { { "principal", "1000" }, { "deposit_at", std::to_string(threeDaysAgo) } }).has_value());
     long long expected = static_cast<long long>(std::floor(
@@ -717,7 +701,6 @@ TEST_F(WalletPluginTest, WealthRankingOrder) {
         ScoreboardUtils::create(config.TargetScoreboard);
     }
 
-    // test_player is online: its real scoreboard must override the stored snapshot.
     ScoreboardUtils::setScore(*sp, config.TargetScoreboard, 50);
 
     std::string uuidA = sp->getUuid().asString();
@@ -730,7 +713,6 @@ TEST_F(WalletPluginTest, WealthRankingOrder) {
 
     EXPECT_TRUE(WalletPlugin::getShared()->rebuildWealthRanking().has_value());
 
-    // Offline players use the snapshot; online test_player uses the real balance (50, not 999).
     auto ranking = WalletPlugin::getShared()->getWealthRanking(10);
     ASSERT_TRUE(ranking.has_value());
     ASSERT_EQ(ranking.value().size(), 3u);
@@ -777,13 +759,10 @@ TEST_F(WalletPluginTest, RedenvelopeTargetedRejectsOutsider) {
     MockExecutor executor;
     EXPECT_TRUE(WalletPlugin::getShared()->setExecutor(executor).has_value());
 
-    // Target only sp2 by its online name.
     EXPECT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "test_key", 100, 5, { sp2.getPlayer()->getRealName() }).has_value());
 
-    // sp2 is in the recipient list and can grab.
     EXPECT_TRUE(WalletPlugin::getShared()->tryGrabRedEnvelope(*sp2.getPlayer(), "test_key").has_value());
 
-    // sp3 is not in the list and is rejected with the dedicated error code.
     auto outsider = WalletPlugin::getShared()->tryGrabRedEnvelope(*sp3.getPlayer(), "test_key");
     ASSERT_FALSE(outsider.has_value());
     EXPECT_EQ(outsider.error().as<ll::ErrorCodeError>().ec, WalletPlugin::makeErrorCode(WalletPluginErrorCode::NotInTargetList));
@@ -818,7 +797,6 @@ TEST_F(WalletPluginTest, RedenvelopeTargetedOfflineByName) {
     MockExecutor executor;
     EXPECT_TRUE(WalletPlugin::getShared()->setExecutor(executor).has_value());
 
-    // Seed the Wallet table so the offline name resolves to a uuid.
     EXPECT_TRUE(storage->set("Wallet", "00000000-0000-0000-0000-00000000ffff", { { "name", "OfflineBob" } }).has_value());
 
     EXPECT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "test_key", 100, 5, { "OfflineBob" }).has_value());
@@ -854,12 +832,10 @@ TEST_F(WalletPluginTest, RedenvelopeCountLimit) {
     MockExecutor executor;
     EXPECT_TRUE(WalletPlugin::getShared()->setExecutor(executor).has_value());
 
-    // Exceeding the configured share limit is rejected with a dedicated error code.
     auto over = WalletPlugin::getShared()->redenvelope(*sp, "test_key", 100, 5);
     ASSERT_FALSE(over.has_value());
     EXPECT_EQ(over.error().as<ll::ErrorCodeError>().ec, WalletPlugin::makeErrorCode(WalletPluginErrorCode::RedEnvelopeCountExceeded));
 
-    // Within the limit is accepted.
     EXPECT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "test_key", 100, 3).has_value());
 
     WalletPlugin::getShared()->setOptionsForTest(GetWalletConfig());
@@ -897,7 +873,6 @@ TEST_F(WalletPluginTest, EnvelopeStatsDetails) {
 
     std::string id = ids.value().at(0);
 
-    // No grabs yet -> no stats rows.
     auto empty = WalletPlugin::getShared()->getEnvelopeStats(id);
     ASSERT_TRUE(empty.has_value());
     EXPECT_TRUE(empty.value().empty());

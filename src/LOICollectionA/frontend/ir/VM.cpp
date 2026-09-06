@@ -37,7 +37,7 @@ namespace LOICollection::frontend::ir {
         };
     }
 
-    bool VM::isDerived(const BytecodeChunk& chunk, int derivedClassIndex, int baseClassIndex) const {
+    bool VM::isDerived(const MirChunk& chunk, int derivedClassIndex, int baseClassIndex) const {
         if (derivedClassIndex == baseClassIndex) return true;
         if (derivedClassIndex < 0 || derivedClassIndex >= static_cast<int>(chunk.classes.size())) return false;
 
@@ -48,7 +48,7 @@ namespace LOICollection::frontend::ir {
         });
     }
 
-    const FieldLayoutPtr& VM::classLayout(const BytecodeChunk& chunk, int classIndex) {
+    const FieldLayoutPtr& VM::classLayout(const MirChunk& chunk, int classIndex) {
         auto it = this->mClassLayouts.find(classIndex);
         if (it != this->mClassLayouts.end())
             return it->second;
@@ -59,8 +59,50 @@ namespace LOICollection::frontend::ir {
             .first->second;
     }
 
+    ValueNode::ValueType& VM::regOf(Frame& frame, int index) {
+        if (index >= 0 && static_cast<size_t>(index) < frame.localsSize)
+            return this->localPool[frame.localsBase + static_cast<size_t>(index)];
+
+        this->diagnostics.addError(this->currentLoc, "Register index out of range");
+        return this->deadReg;
+    }
+
+    const ValueNode::ValueType& VM::regOf(const Frame& frame, int index) {
+        if (index >= 0 && static_cast<size_t>(index) < frame.localsSize)
+            return this->localPool[frame.localsBase + static_cast<size_t>(index)];
+
+        this->diagnostics.addError(this->currentLoc, "Register index out of range");
+        return this->deadReg;
+    }
+
+    void VM::setReg(Frame& frame, int index, ValueNode::ValueType value) {
+        if (index < 0)
+            return;
+
+        this->regOf(frame, index) = std::move(value);
+    }
+
+    std::vector<ValueNode::ValueType> VM::collectArgs(const Frame& frame, int base, int count) {
+        std::vector<ValueNode::ValueType> args;
+        if (count <= 0)
+            return args;
+
+        args.reserve(static_cast<size_t>(count));
+
+        for (int i = 0; i < count; ++i)
+            args.push_back(this->regOf(frame, base + i));
+
+        return args;
+    }
+
+    void VM::placeArgs(std::vector<ValueNode::ValueType>&& args, size_t offset) {
+        const size_t base = this->frames.back().localsBase + offset;
+        for (size_t i = 0; i < args.size(); ++i)
+            this->localPool[base + i] = std::move(args[i]);
+    }
+
     ValueNode::ValueType VM::run(
-        const std::shared_ptr<const BytecodeChunk>& chunk,
+        const std::shared_ptr<const MirChunk>& chunk,
         const Context& ctx
     ) {
         if (!chunk) {
@@ -68,7 +110,6 @@ namespace LOICollection::frontend::ir {
             return ValueNode::ValueType{};
         }
 
-        this->stack.clear();
         this->frames.clear();
         this->localPool.clear();
         this->globals->clear();
@@ -108,7 +149,7 @@ namespace LOICollection::frontend::ir {
     }
 
     ValueNode::ValueType VM::execute(
-        const std::shared_ptr<const BytecodeChunk>& owner,
+        const std::shared_ptr<const MirChunk>& owner,
         const CallbackTypePlaces& placeholders
     ) {
         if (!owner) {
@@ -116,10 +157,9 @@ namespace LOICollection::frontend::ir {
             return ValueNode::ValueType{};
         }
 
-        const BytecodeChunk& chunk = *owner;
+        const MirChunk& chunk = *owner;
 
         BudgetScope budgetScope(this->mBudget);
-
 
         while (true) {
             if (this->diagnostics.hasErrors())
@@ -134,7 +174,7 @@ namespace LOICollection::frontend::ir {
             }
 
             Frame& frame = this->frames.back();
-            const BytecodeChunk& cur = frame.chunk.get();
+            const MirChunk& cur = frame.chunk.get();
 
             if (frame.ip >= cur.code.size()) {
                 this->diagnostics.addError(this->currentLoc, "Invalid instruction pointer");
@@ -145,30 +185,30 @@ namespace LOICollection::frontend::ir {
             this->currentLoc = instr.loc;
             ExecArgs s{ owner, chunk, cur, frame, instr, placeholders };
             switch (instr.op) {
-                case OpCode::PUSH_INT: case OpCode::PUSH_FLOAT: case OpCode::PUSH_BOOL: case OpCode::PUSH_NONE: case OpCode::PUSH_STR: this->execPushConst(s); break;
-                case OpCode::POP: case OpCode::DUP: case OpCode::DUP2: case OpCode::ROT3: case OpCode::SWAP2: this->execStackManip(s); break;
-                case OpCode::IS_NONE: case OpCode::UNWRAP: case OpCode::TYPE_OF: case OpCode::HAS_VALUE: case OpCode::DUP_IS_NONE: this->execOptional(s); break;
-                case OpCode::LOAD_SLOT: case OpCode::STORE_SLOT: case OpCode::DUP_STORE_SLOT: this->execLocalSlot(s); break;
-                case OpCode::LOAD_VAR: case OpCode::STORE_VAR: case OpCode::DUP_STORE: this->execVariable(s); break;
-                case OpCode::LOAD_FIELD: case OpCode::STORE_FIELD: case OpCode::LOAD_FIELD_SLOT: case OpCode::STORE_FIELD_SLOT: case OpCode::BIND_THIS: case OpCode::LOAD_LEN: this->execFieldAccess(s); break;
-                case OpCode::MAKE_ARRAY: case OpCode::LOAD_INDEX: case OpCode::STORE_INDEX: this->execArray(s); break;
-                case OpCode::MAKE_LAMBDA: case OpCode::LOAD_THIS: this->execClosure(s); break;
-                case OpCode::INSTANCEOF: this->execInstanceof(s); break;
-                case OpCode::NEW: case OpCode::NEW_NATIVE: this->execObjectCreate(s); break;
-                case OpCode::CALL_METHOD: case OpCode::CALL_METHOD_VIRTUAL: case OpCode::CALL_METHOD_BY_NAME: case OpCode::CALL_SUPER_CTOR: this->execMethodDispatch(s); break;
-                case OpCode::CALL_NATIVE_METHOD: this->execNativeCall(s); break;
-                case OpCode::CALL_FUNC: case OpCode::CALL_LAMBDA: this->execFunctionCall(s); break;
-                case OpCode::ADD: case OpCode::SUB: case OpCode::MUL: case OpCode::DIV: case OpCode::MOD: case OpCode::POW:
-                case OpCode::ADD_I: case OpCode::SUB_I: case OpCode::MUL_I: case OpCode::MOD_I:
+                case MirOp::LOAD_CONST: this->execLoadConst(s); break;
+                case MirOp::MOVE: this->execMove(s); break;
+                case MirOp::UNWRAP: case MirOp::TYPE_OF: case MirOp::HAS_VALUE: case MirOp::IS_NONE: this->execOptional(s); break;
+                case MirOp::LOAD_SLOT: case MirOp::STORE_SLOT: this->execLocalSlot(s); break;
+                case MirOp::LOAD_VAR: case MirOp::STORE_VAR: this->execVariable(s); break;
+                case MirOp::LOAD_FIELD: case MirOp::STORE_FIELD: case MirOp::LOAD_FIELD_SLOT: case MirOp::STORE_FIELD_SLOT: case MirOp::BIND_THIS: case MirOp::LOAD_LEN: this->execFieldAccess(s); break;
+                case MirOp::MAKE_ARRAY: case MirOp::LOAD_INDEX: case MirOp::STORE_INDEX: this->execArray(s); break;
+                case MirOp::MAKE_LAMBDA: case MirOp::LOAD_THIS: this->execClosure(s); break;
+                case MirOp::INSTANCEOF: this->execInstanceof(s); break;
+                case MirOp::NEW: case MirOp::NEW_NATIVE: this->execObjectCreate(s); break;
+                case MirOp::CALL_METHOD: case MirOp::CALL_METHOD_VIRTUAL: case MirOp::CALL_METHOD_BY_NAME: case MirOp::CALL_SUPER_CTOR: this->execMethodDispatch(s); break;
+                case MirOp::CALL_NATIVE_METHOD: this->execNativeCall(s); break;
+                case MirOp::CALL_FUNC: case MirOp::CALL_LAMBDA: this->execFunctionCall(s); break;
+                case MirOp::ADD: case MirOp::SUB: case MirOp::MUL: case MirOp::DIV: case MirOp::MOD: case MirOp::POW:
                     this->execArithmetic(s); break;
-                case OpCode::CMP_EQ: case OpCode::CMP_NE: case OpCode::CMP_GT: case OpCode::CMP_LT: case OpCode::CMP_GE: case OpCode::CMP_LE:
-                case OpCode::CMP_EQ_I: case OpCode::CMP_NE_I: case OpCode::CMP_GT_I: case OpCode::CMP_LT_I: case OpCode::CMP_GE_I: case OpCode::CMP_LE_I:
+                case MirOp::CMP_EQ: case MirOp::CMP_NE: case MirOp::CMP_GT: case MirOp::CMP_LT: case MirOp::CMP_GE: case MirOp::CMP_LE:
                     this->execComparison(s); break;
-                case OpCode::LOGIC_AND: case OpCode::LOGIC_OR: case OpCode::NEG: case OpCode::NOT: case OpCode::NEG_I: this->execLogic(s); break;
-                case OpCode::CALL: case OpCode::CALL_MACRO: this->execHostCall(s); break;
-                case OpCode::JMP_IF_FALSE: case OpCode::JMP_IF_TRUE: case OpCode::JMP: this->execBranch(s); break;
-                case OpCode::RETURN: {
-                    auto result = this->pop();
+                case MirOp::LOGIC_AND: case MirOp::LOGIC_OR: case MirOp::NEG: case MirOp::NOT: this->execLogic(s); break;
+                case MirOp::CALL: case MirOp::CALL_MACRO: this->execHostCall(s); break;
+                case MirOp::JMP_IF_FALSE: case MirOp::JMP_IF_TRUE: case MirOp::JMP: this->execBranch(s); break;
+                case MirOp::RETURN: {
+                    auto result = instr.src1 >= 0
+                        ? this->regOf(frame, instr.src1)
+                        : ValueNode::ValueType(std::string(""));
 
                     Frame finished = std::move(this->frames.back());
                     this->frames.pop_back();
@@ -178,19 +218,15 @@ namespace LOICollection::frontend::ir {
                         return result;
 
                     if (finished.hasPending)
-                        this->push(finished.pendingPush);
-                    else
-                        this->push(result);
+                        result = std::move(finished.pendingPush);
+
+                    if (finished.returnReg >= 0)
+                        this->regOf(this->frames.back(), finished.returnReg) = std::move(result);
 
                     break;
-            }
-                case OpCode::HALT: {
-                    if (this->stack.empty()) {
-                        return std::string("");
-                    }
-
-                    return this->stack.back();
-            }
+                }
+                case MirOp::HALT:
+                    return this->regOf(this->frames.back(), 0);
                 default:
                     this->diagnostics.addError(this->currentLoc, "Unknown opcode");
                     break;
@@ -203,21 +239,50 @@ namespace LOICollection::frontend::ir {
         this->diagnostics.addError(this->currentLoc, message);
     }
 
+    void VM::execLoadConst(ExecArgs& s) {
+        const auto& instr = s.instr;
+        const MirChunk& cur = s.cur;
+        Frame& frame = s.frame;
+
+        const auto& value = cur.constants[instr.operand];
+
+        if (const auto* text = std::get_if<std::string>(&value)) {
+            if (const auto violation = this->mBudget->accountString(text->size());
+                violation != sandbox::SandboxBudget::Violation::None) {
+                this->failBudget(violation, "String size budget exhausted");
+                return;
+            }
+
+            this->setReg(frame, instr.dst, *text);
+            return;
+        }
+
+        this->setReg(frame, instr.dst, VM::cloneValue(value));
+    }
+
+    void VM::execMove(ExecArgs& s) {
+        const auto& instr = s.instr;
+
+        if (instr.dst == instr.src1)
+            return;
+
+        auto value = this->regOf(s.frame, instr.src1);
+        this->setReg(s.frame, instr.dst, std::move(value));
+    }
+
     void VM::execBranch(ExecArgs& s) {
         const auto& instr = s.instr;
         Frame& frame = s.frame;
         switch (instr.op) {
-            case OpCode::JMP_IF_FALSE: {
-                auto cond = this->pop();
-                if (!VM::valueToBool(cond))
+            case MirOp::JMP_IF_FALSE: {
+                if (!VM::valueToBool(this->regOf(frame, instr.src1)))
                     frame.ip += instr.operand;
             } break;
-            case OpCode::JMP_IF_TRUE: {
-                auto cond = this->pop();
-                if (VM::valueToBool(cond))
+            case MirOp::JMP_IF_TRUE: {
+                if (VM::valueToBool(this->regOf(frame, instr.src1)))
                     frame.ip += instr.operand;
             } break;
-            case OpCode::JMP: {
+            case MirOp::JMP: {
                 frame.ip += instr.operand;
             } break;
             default: break;
@@ -270,11 +335,11 @@ namespace LOICollection::frontend::ir {
             ? std::make_shared<GlobalsTable>(*snapshot)
             : std::make_shared<GlobalsTable>());
 
-        vm.stack.clear();
         vm.frames.clear();
 
         Frame callee(*func->owner->methodBodies[func->bodyIndex]);
         callee.hasThis = func->hasThis;
+        callee.returnReg = -1;
         if (func->hasThis) {
             auto self = func->thisObj.lock();
             if (!self) {

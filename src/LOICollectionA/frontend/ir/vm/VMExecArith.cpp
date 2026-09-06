@@ -14,82 +14,53 @@
 #include "LOICollectionA/frontend/Callback.h"
 #include "LOICollectionA/frontend/Unicode.h"
 
-#include "LOICollectionA/frontend/ir/OpCode.h"
-
 #include "LOICollectionA/utils/core/MathUtils.h"
 
 #include "LOICollectionA/frontend/ir/VM.h"
 
 namespace LOICollection::frontend::ir {
 
-    static OpCode genericOp(OpCode op) {
+    static std::string_view opToken(MirOp op) {
         switch (op) {
-            case OpCode::ADD_I: return OpCode::ADD;
-            case OpCode::SUB_I: return OpCode::SUB;
-            case OpCode::MUL_I: return OpCode::MUL;
-            case OpCode::MOD_I: return OpCode::MOD;
-            case OpCode::CMP_EQ_I: return OpCode::CMP_EQ;
-            case OpCode::CMP_NE_I: return OpCode::CMP_NE;
-            case OpCode::CMP_GT_I: return OpCode::CMP_GT;
-            case OpCode::CMP_LT_I: return OpCode::CMP_LT;
-            case OpCode::CMP_GE_I: return OpCode::CMP_GE;
-            case OpCode::CMP_LE_I: return OpCode::CMP_LE;
-            case OpCode::NEG_I: return OpCode::NEG;
-            default: return op;
-        }
-    }
-
-    static std::string_view opToken(OpCode op) {
-        op = genericOp(op);
-        switch (op) {
-            case OpCode::ADD: return "+";
-            case OpCode::SUB: return "-";
-            case OpCode::MUL: return "*";
-            case OpCode::DIV: return "/";
-            case OpCode::MOD: return "%";
-            case OpCode::POW: return "^";
-            case OpCode::CMP_EQ: return "==";
-            case OpCode::CMP_NE: return "!=";
-            case OpCode::CMP_GT: return ">";
-            case OpCode::CMP_LT: return "<";
-            case OpCode::CMP_GE: return ">=";
-            case OpCode::CMP_LE: return "<=";
-            case OpCode::NEG: return "-";
-            case OpCode::NOT: return "!";
+            case MirOp::ADD: return "+";
+            case MirOp::SUB: return "-";
+            case MirOp::MUL: return "*";
+            case MirOp::DIV: return "/";
+            case MirOp::MOD: return "%";
+            case MirOp::POW: return "^";
+            case MirOp::CMP_EQ: return "==";
+            case MirOp::CMP_NE: return "!=";
+            case MirOp::CMP_GT: return ">";
+            case MirOp::CMP_LT: return "<";
+            case MirOp::CMP_GE: return ">=";
+            case MirOp::CMP_LE: return "<=";
+            case MirOp::NEG: return "-";
+            case MirOp::NOT: return "!";
             default: return "?";
         }
     }
 
-    std::optional<int> topInt(std::vector<ValueNode::ValueType>& stack, size_t back) {
-        if (stack.size() <= back)
-            return std::nullopt;
-        if (auto p = std::get_if<int>(&stack[stack.size() - 1 - back]))
-            return *p;
+    static std::optional<MirOp> arithmeticOp(std::string_view op) {
+        if (op == "+") return MirOp::ADD;
+        if (op == "-") return MirOp::SUB;
+        if (op == "*") return MirOp::MUL;
+        if (op == "/") return MirOp::DIV;
+        if (op == "%") return MirOp::MOD;
+        if (op == "^") return MirOp::POW;
         return std::nullopt;
     }
 
-    static std::optional<OpCode> arithmeticOp(std::string_view op) {
-        if (op == "+") return OpCode::ADD;
-        if (op == "-") return OpCode::SUB;
-        if (op == "*") return OpCode::MUL;
-        if (op == "/") return OpCode::DIV;
-        if (op == "%") return OpCode::MOD;
-        if (op == "^") return OpCode::POW;
+    static std::optional<MirOp> comparisonOp(std::string_view op) {
+        if (op == "==") return MirOp::CMP_EQ;
+        if (op == "!=") return MirOp::CMP_NE;
+        if (op == ">") return MirOp::CMP_GT;
+        if (op == "<") return MirOp::CMP_LT;
+        if (op == ">=") return MirOp::CMP_GE;
+        if (op == "<=") return MirOp::CMP_LE;
         return std::nullopt;
     }
 
-    static std::optional<OpCode> comparisonOp(std::string_view op) {
-        if (op == "==") return OpCode::CMP_EQ;
-        if (op == "!=") return OpCode::CMP_NE;
-        if (op == ">") return OpCode::CMP_GT;
-        if (op == "<") return OpCode::CMP_LT;
-        if (op == ">=") return OpCode::CMP_GE;
-        if (op == "<=") return OpCode::CMP_LE;
-        return std::nullopt;
-    }
-
-    ValueNode::ValueType VM::applyArithmetic(const ValueNode::ValueType& left, const ValueNode::ValueType& right, OpCode op, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
-        op = genericOp(op);
+    ValueNode::ValueType VM::applyArithmetic(const ValueNode::ValueType& left, const ValueNode::ValueType& right, MirOp op, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
         const std::string_view token = opToken(op);
 
         if (auto leftObj = std::get_if<ObjectRef>(&left)) {
@@ -139,7 +110,7 @@ namespace LOICollection::frontend::ir {
                 auto dr = static_cast<double>(r);
 
                 switch (op) {
-                    case OpCode::ADD:
+                    case MirOp::ADD:
                         if constexpr (std::is_integral_v<T> && std::is_integral_v<U>) {
                             long long result = static_cast<long long>(l) + static_cast<long long>(r);
                             if (result < std::numeric_limits<int>::min() || result > std::numeric_limits<int>::max()) {
@@ -149,7 +120,7 @@ namespace LOICollection::frontend::ir {
                             return static_cast<int>(result);
                         }
                         return static_cast<float>(dl + dr);
-                    case OpCode::SUB:
+                    case MirOp::SUB:
                         if constexpr (std::is_integral_v<T> && std::is_integral_v<U>) {
                             long long result = static_cast<long long>(l) - static_cast<long long>(r);
                             if (result < std::numeric_limits<int>::min() || result > std::numeric_limits<int>::max()) {
@@ -159,7 +130,7 @@ namespace LOICollection::frontend::ir {
                             return static_cast<int>(result);
                         }
                         return static_cast<float>(dl - dr);
-                    case OpCode::MUL:
+                    case MirOp::MUL:
                         if constexpr (std::is_integral_v<T> && std::is_integral_v<U>) {
                             long long result = static_cast<long long>(l) * static_cast<long long>(r);
                             if (result < std::numeric_limits<int>::min() || result > std::numeric_limits<int>::max()) {
@@ -169,9 +140,9 @@ namespace LOICollection::frontend::ir {
                             return static_cast<int>(result);
                         }
                         return static_cast<float>(dl * dr);
-                    case OpCode::DIV: return static_cast<float>(dl / dr);
-                    case OpCode::POW: return static_cast<float>(MathUtils::pow(dl, dr));
-                    case OpCode::MOD:
+                    case MirOp::DIV: return static_cast<float>(dl / dr);
+                    case MirOp::POW: return static_cast<float>(MathUtils::pow(dl, dr));
+                    case MirOp::MOD:
                         if constexpr (std::is_integral_v<T> && std::is_integral_v<U>) {
                             auto divisor = static_cast<long long>(r);
                             if (divisor == 0) {
@@ -188,7 +159,7 @@ namespace LOICollection::frontend::ir {
                         return 0;
                 }
             } else {
-                if (op == OpCode::ADD) return VM::valueToString(l) + VM::valueToString(r);
+                if (op == MirOp::ADD) return VM::valueToString(l) + VM::valueToString(r);
 
                 diagnostics.addError(loc, "Type mismatch in arithmetic");
                 return 0;
@@ -204,14 +175,13 @@ namespace LOICollection::frontend::ir {
         return 0;
     }
 
-    ValueNode::ValueType VM::applyUnary(const ValueNode::ValueType& operand, OpCode op, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
-        op = genericOp(op);
+    ValueNode::ValueType VM::applyUnary(const ValueNode::ValueType& operand, MirOp op, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
         return std::visit([&diagnostics, &loc, op](auto&& arg) -> ValueNode::ValueType {
             using T = std::decay_t<decltype(arg)>;
 
             if constexpr (std::is_arithmetic_v<T>) {
                 switch (op) {
-                    case OpCode::NEG:
+                    case MirOp::NEG:
                         if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>) {
                             if (arg == std::numeric_limits<int>::min()) {
                                 diagnostics.addError(loc, "Integer overflow in unary negation");
@@ -219,13 +189,13 @@ namespace LOICollection::frontend::ir {
                             }
                         }
                         return -arg;
-                    case OpCode::NOT:
+                    case MirOp::NOT:
                         return !VM::valueToBool(arg);
                     default: break;
                 }
             }
 
-            if (op == OpCode::NOT) return !VM::valueToBool(arg);
+            if (op == MirOp::NOT) return !VM::valueToBool(arg);
 
             diagnostics.addError(loc, "Unknown unary op: " + std::string(opToken(op)));
             return 0;
@@ -242,15 +212,14 @@ namespace LOICollection::frontend::ir {
                 return 0;
             }, operand);
 
-        if (op == "-") return applyUnary(operand, OpCode::NEG, diagnostics, loc);
-        if (op == "!") return applyUnary(operand, OpCode::NOT, diagnostics, loc);
+        if (op == "-") return applyUnary(operand, MirOp::NEG, diagnostics, loc);
+        if (op == "!") return applyUnary(operand, MirOp::NOT, diagnostics, loc);
 
         diagnostics.addError(loc, "Unknown unary op: " + op);
         return 0;
     }
 
-    bool VM::applyComparison(const ValueNode::ValueType& left, const ValueNode::ValueType& right, OpCode op, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
-        op = genericOp(op);
+    bool VM::applyComparison(const ValueNode::ValueType& left, const ValueNode::ValueType& right, MirOp op, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
         const std::string_view token = opToken(op);
 
         if (auto leftObj = std::get_if<ObjectRef>(&left)) {
@@ -293,8 +262,8 @@ namespace LOICollection::frontend::ir {
 
             if constexpr (std::is_same_v<T, std::monostate> || std::is_same_v<U, std::monostate>) {
                 if constexpr (std::is_same_v<T, std::monostate> && std::is_same_v<U, std::monostate>) {
-                    if (op == OpCode::CMP_EQ) return true;
-                    if (op == OpCode::CMP_NE) return false;
+                    if (op == MirOp::CMP_EQ) return true;
+                    if (op == MirOp::CMP_NE) return false;
                 }
 
                 diagnostics.addError(loc, "Cannot compare an empty optional value");
@@ -303,12 +272,12 @@ namespace LOICollection::frontend::ir {
                 auto cmp = static_cast<double>(l) <=> static_cast<double>(r);
 
                 switch (op) {
-                    case OpCode::CMP_EQ: return cmp == 0;
-                    case OpCode::CMP_NE: return cmp != 0;
-                    case OpCode::CMP_GT: return cmp > 0;
-                    case OpCode::CMP_LT: return cmp < 0;
-                    case OpCode::CMP_GE: return cmp >= 0;
-                    case OpCode::CMP_LE: return cmp <= 0;
+                    case MirOp::CMP_EQ: return cmp == 0;
+                    case MirOp::CMP_NE: return cmp != 0;
+                    case MirOp::CMP_GT: return cmp > 0;
+                    case MirOp::CMP_LT: return cmp < 0;
+                    case MirOp::CMP_GE: return cmp >= 0;
+                    case MirOp::CMP_LE: return cmp <= 0;
                     default: break;
                 }
 
@@ -320,8 +289,8 @@ namespace LOICollection::frontend::ir {
                 (std::is_same_v<T, ArrayRef> && std::is_same_v<U, ArrayRef>)
             ) {
                 switch (op) {
-                    case OpCode::CMP_EQ: return l == r;
-                    case OpCode::CMP_NE: return l != r;
+                    case MirOp::CMP_EQ: return l == r;
+                    case MirOp::CMP_NE: return l != r;
                     default: break;
                 }
 
@@ -331,12 +300,12 @@ namespace LOICollection::frontend::ir {
                 auto cmp = l <=> r;
 
                 switch (op) {
-                    case OpCode::CMP_EQ: return cmp == 0;
-                    case OpCode::CMP_NE: return cmp != 0;
-                    case OpCode::CMP_GT: return cmp > 0;
-                    case OpCode::CMP_LT: return cmp < 0;
-                    case OpCode::CMP_GE: return cmp >= 0;
-                    case OpCode::CMP_LE: return cmp <= 0;
+                    case MirOp::CMP_EQ: return cmp == 0;
+                    case MirOp::CMP_NE: return cmp != 0;
+                    case MirOp::CMP_GT: return cmp > 0;
+                    case MirOp::CMP_LT: return cmp < 0;
+                    case MirOp::CMP_GE: return cmp >= 0;
+                    case MirOp::CMP_LE: return cmp <= 0;
                     default: break;
                 }
 
@@ -359,216 +328,128 @@ namespace LOICollection::frontend::ir {
 
     void VM::execArithmetic(ExecArgs& s) {
         const auto& instr = s.instr;
-        switch (instr.op) {
-            case OpCode::ADD_I: case OpCode::SUB_I: case OpCode::MUL_I: case OpCode::MOD_I: {
-                if (this->stack.size() < 2 || !std::holds_alternative<int>(this->stack.back()) ||
-                    !std::holds_alternative<int>(this->stack[this->stack.size() - 2])) {
-                    auto rr = this->pop();
-                    auto ll = this->pop();
-                    this->push(VM::applyArithmetic(ll, rr, genericOp(instr.op), this->diagnostics, this->currentLoc));
-                    break;
-                }
+        Frame& frame = s.frame;
 
-                const int r = std::get<int>(this->stack.back());
-                this->stack.pop_back();
-                const int l = std::get<int>(this->stack.back());
-                this->stack.pop_back();
+        const ValueNode::ValueType& lv = this->regOf(frame, instr.src1);
+        const ValueNode::ValueType& rv = this->regOf(frame, instr.src2);
 
-                if (instr.op == OpCode::MOD_I) {
-                    if (r == 0) {
-                        this->diagnostics.addError(this->currentLoc, "Modulo by zero");
-                        this->push(0);
-                        break;
-                    }
-                    this->push(l % r);
-                    break;
-                }
+        const auto* li = std::get_if<int>(&lv);
+        const auto* ri = std::get_if<int>(&rv);
 
-                long long res = 0;
-                switch (instr.op) {
-                    case OpCode::ADD_I: res = static_cast<long long>(l) + r; break;
-                    case OpCode::SUB_I: res = static_cast<long long>(l) - r; break;
-                    case OpCode::MUL_I: res = static_cast<long long>(l) * r; break;
-                    default: break;
-                }
+        if (li && ri) {
+            const int l = *li;
+            const int r = *ri;
 
-                if (res < std::numeric_limits<int>::min() || res > std::numeric_limits<int>::max()) {
-                    this->diagnostics.addError(this->currentLoc,
-                        instr.op == OpCode::ADD_I ? "Integer overflow in addition"
-                        : instr.op == OpCode::SUB_I ? "Integer overflow in subtraction"
-                        : "Integer overflow in multiplication");
-                    this->push(0);
-                    break;
+            if (instr.op == MirOp::MOD) {
+                if (r == 0) {
+                    this->diagnostics.addError(this->currentLoc, "Modulo by zero");
+                    this->setReg(frame, instr.dst, 0);
+                    return;
                 }
+                this->setReg(frame, instr.dst, l % r);
+                return;
+            }
 
-                this->push(static_cast<int>(res));
-            } break;
-            case OpCode::ADD: case OpCode::SUB: case OpCode::MUL: case OpCode::MOD: {
-                auto r = topInt(this->stack, 0);
-                auto l = topInt(this->stack, 1);
-                if (l && r) {
-                    this->stack.pop_back();
-                    this->stack.pop_back();
-                    long long res = 0;
-                    switch (instr.op) {
-                        case OpCode::ADD: res = static_cast<long long>(*l) + *r; break;
-                        case OpCode::SUB: res = static_cast<long long>(*l) - *r; break;
-                        case OpCode::MUL: res = static_cast<long long>(*l) * *r; break;
-                        case OpCode::MOD:
-                            if (*r == 0) {
-                                this->diagnostics.addError(this->currentLoc, "Modulo by zero");
-                                this->push(0);
-                                break;
-                            }
-                            res = static_cast<long long>(*l) % *r;
-                            break;
-                        default: break;
-                    }
-                    if (instr.op != OpCode::MOD) {
-                        if (res < std::numeric_limits<int>::min() || res > std::numeric_limits<int>::max()) {
-                            this->diagnostics.addError(this->currentLoc,
-                                instr.op == OpCode::ADD ? "Integer overflow in addition"
-                                : instr.op == OpCode::SUB ? "Integer overflow in subtraction"
-                                : "Integer overflow in multiplication");
-                            this->push(0);
-                            break;
-                        }
-                    }
-                    this->push(static_cast<int>(res));
-                    break;
-                }
-                auto rr = this->pop();
-                auto ll = this->pop();
-                auto result = VM::applyArithmetic(ll, rr, instr.op, this->diagnostics, this->currentLoc);
-                if (std::holds_alternative<std::string>(result)) {
-                    if (const auto violation = this->mBudget->accountString(std::get<std::string>(result).size());
-                        violation != sandbox::SandboxBudget::Violation::None) {
-                        this->failBudget(violation, "String size budget exhausted");
-                        break;
-                    }
-                }
-                this->push(std::move(result));
-            } break;
-            case OpCode::DIV: case OpCode::POW: {
-                auto rr = this->pop();
-                auto ll = this->pop();
-                this->push(VM::applyArithmetic(ll, rr, instr.op, this->diagnostics, this->currentLoc));
-            } break;
-            default: break;
+            long long res = 0;
+            switch (instr.op) {
+                case MirOp::ADD: res = static_cast<long long>(l) + r; break;
+                case MirOp::SUB: res = static_cast<long long>(l) - r; break;
+                case MirOp::MUL: res = static_cast<long long>(l) * r; break;
+                default: break;
+            }
+
+            if (res < std::numeric_limits<int>::min() || res > std::numeric_limits<int>::max()) {
+                this->diagnostics.addError(this->currentLoc,
+                    instr.op == MirOp::ADD ? "Integer overflow in addition"
+                    : instr.op == MirOp::SUB ? "Integer overflow in subtraction"
+                    : "Integer overflow in multiplication");
+                this->setReg(frame, instr.dst, 0);
+                return;
+            }
+
+            this->setReg(frame, instr.dst, static_cast<int>(res));
+            return;
         }
+
+        auto result = VM::applyArithmetic(lv, rv, instr.op, this->diagnostics, this->currentLoc);
+        if (auto* text = std::get_if<std::string>(&result)) {
+            if (const auto violation = this->mBudget->accountString(text->size());
+                violation != sandbox::SandboxBudget::Violation::None) {
+                this->failBudget(violation, "String size budget exhausted");
+                return;
+            }
+        }
+
+        this->setReg(frame, instr.dst, std::move(result));
     }
 
     void VM::execComparison(ExecArgs& s) {
         const auto& instr = s.instr;
+        Frame& frame = s.frame;
 
-        switch (instr.op) {
-            case OpCode::CMP_EQ_I: case OpCode::CMP_NE_I: case OpCode::CMP_GT_I:
-            case OpCode::CMP_LT_I: case OpCode::CMP_GE_I: case OpCode::CMP_LE_I: {
-                if (this->stack.size() < 2 || !std::holds_alternative<int>(this->stack.back()) ||
-                    !std::holds_alternative<int>(this->stack[this->stack.size() - 2])) {
-                    auto rr = this->pop();
-                    auto ll = this->pop();
-                    this->push(VM::applyComparison(ll, rr, genericOp(instr.op), this->diagnostics, this->currentLoc));
-                    return;
-                }
+        const ValueNode::ValueType& lv = this->regOf(frame, instr.src1);
+        const ValueNode::ValueType& rv = this->regOf(frame, instr.src2);
 
-                const int r = std::get<int>(this->stack.back());
-                this->stack.pop_back();
-                const int l = std::get<int>(this->stack.back());
-                this->stack.pop_back();
+        const auto* li = std::get_if<int>(&lv);
+        const auto* ri = std::get_if<int>(&rv);
 
-                bool b = false;
-                switch (instr.op) {
-                    case OpCode::CMP_EQ_I: b = l == r; break;
-                    case OpCode::CMP_NE_I: b = l != r; break;
-                    case OpCode::CMP_GT_I: b = l > r; break;
-                    case OpCode::CMP_LT_I: b = l < r; break;
-                    case OpCode::CMP_GE_I: b = l >= r; break;
-                    case OpCode::CMP_LE_I: b = l <= r; break;
-                    default: break;
-                }
+        bool fast = false;
+        if (li && ri) {
+            const int l = *li;
+            const int r = *ri;
 
-                this->push(b);
-                return;
-            }
-            default: break;
-        }
-
-        auto r = topInt(this->stack, 0);
-        auto l = topInt(this->stack, 1);
-        if (l && r) {
-            this->stack.pop_back();
-            this->stack.pop_back();
-            bool b = false;
             switch (instr.op) {
-                case OpCode::CMP_EQ: b = *l == *r; break;
-                case OpCode::CMP_NE: b = *l != *r; break;
-                case OpCode::CMP_GT: b = *l > *r; break;
-                case OpCode::CMP_LT: b = *l < *r; break;
-                case OpCode::CMP_GE: b = *l >= *r; break;
-                case OpCode::CMP_LE: b = *l <= *r; break;
-                default:
-                    this->stack.push_back(*l);
-                    this->stack.push_back(*r);
-                    this->push(VM::applyComparison(ValueNode::ValueType(*l), ValueNode::ValueType(*r), instr.op, this->diagnostics, this->currentLoc));
-                    return;
+                case MirOp::CMP_EQ: fast = l == r; break;
+                case MirOp::CMP_NE: fast = l != r; break;
+                case MirOp::CMP_GT: fast = l > r; break;
+                case MirOp::CMP_LT: fast = l < r; break;
+                case MirOp::CMP_GE: fast = l >= r; break;
+                case MirOp::CMP_LE: fast = l <= r; break;
+                default: break;
             }
-            this->push(b);
+
+            this->setReg(frame, instr.dst, fast);
             return;
         }
-        auto rr = this->pop();
-        auto ll = this->pop();
-        this->push(VM::applyComparison(ll, rr, instr.op, this->diagnostics, this->currentLoc));
+
+        this->setReg(frame, instr.dst,
+            VM::applyComparison(lv, rv, instr.op, this->diagnostics, this->currentLoc));
     }
 
     void VM::execLogic(ExecArgs& s) {
         const auto& instr = s.instr;
+        Frame& frame = s.frame;
+
         switch (instr.op) {
-            case OpCode::LOGIC_AND: {
-                auto r = this->pop();
-                auto l = this->pop();
-
-                this->push(VM::valueToBool(l) && VM::valueToBool(r));
+            case MirOp::LOGIC_AND: {
+                this->setReg(frame, instr.dst,
+                    VM::valueToBool(this->regOf(frame, instr.src1)) &&
+                    VM::valueToBool(this->regOf(frame, instr.src2)));
             } break;
-            case OpCode::LOGIC_OR: {
-                auto r = this->pop();
-                auto l = this->pop();
-
-                this->push(VM::valueToBool(l) || VM::valueToBool(r));
+            case MirOp::LOGIC_OR: {
+                this->setReg(frame, instr.dst,
+                    VM::valueToBool(this->regOf(frame, instr.src1)) ||
+                    VM::valueToBool(this->regOf(frame, instr.src2)));
             } break;
-            case OpCode::NEG_I: {
-                if (this->stack.empty() || !std::holds_alternative<int>(this->stack.back())) {
-                    auto v = this->pop();
-                    this->push(VM::applyUnary(v, OpCode::NEG, this->diagnostics, this->currentLoc));
-                    break;
-                }
+            case MirOp::NEG: {
+                const ValueNode::ValueType& v = this->regOf(frame, instr.src1);
 
-                const int v = std::get<int>(this->stack.back());
-                if (v == std::numeric_limits<int>::min()) {
-                    this->diagnostics.addError(this->currentLoc, "Integer overflow in unary negation");
-                    this->stack.back() = 0;
-                    break;
-                }
-                this->stack.back() = -v;
-            } break;
-            case OpCode::NEG: {
-                if (!this->stack.empty() && std::holds_alternative<int>(this->stack.back())) {
-                    const int v = std::get<int>(this->stack.back());
-                    if (v == std::numeric_limits<int>::min()) {
+                if (auto* iv = std::get_if<int>(&v)) {
+                    if (*iv == std::numeric_limits<int>::min()) {
                         this->diagnostics.addError(this->currentLoc, "Integer overflow in unary negation");
-                        this->stack.back() = 0;
+                        this->setReg(frame, instr.dst, 0);
                         break;
                     }
-                    this->stack.back() = -v;
+
+                    this->setReg(frame, instr.dst, -*iv);
                     break;
                 }
-                auto v = this->pop();
-                this->push(VM::applyUnary(v, instr.op, this->diagnostics, this->currentLoc));
-            } break;
-            case OpCode::NOT: {
-                auto v = this->pop();
 
-                this->push(!VM::valueToBool(v));
+                this->setReg(frame, instr.dst,
+                    VM::applyUnary(v, MirOp::NEG, this->diagnostics, this->currentLoc));
+            } break;
+            case MirOp::NOT: {
+                this->setReg(frame, instr.dst, !VM::valueToBool(this->regOf(frame, instr.src1)));
             } break;
             default: break;
         }

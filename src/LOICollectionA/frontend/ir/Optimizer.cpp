@@ -9,7 +9,7 @@
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 
 namespace LOICollection::frontend::ir {
-    Optimizer::Stats Optimizer::optimize(BytecodeChunk& chunk) {
+    Optimizer::Stats Optimizer::optimize(MirChunk& chunk) {
         Stats total;
 
         Stats mainStats = this->optimizeChunk(chunk);
@@ -25,7 +25,7 @@ namespace LOICollection::frontend::ir {
         return total;
     }
 
-    Optimizer::Stats Optimizer::optimizeChunk(BytecodeChunk& chunk) {
+    Optimizer::Stats Optimizer::optimizeChunk(MirChunk& chunk) {
         Stats total;
 
         for (int pass = 0; pass < 16; ++pass) {
@@ -54,7 +54,7 @@ namespace LOICollection::frontend::ir {
         return total;
     }
 
-    Optimizer::Stats Optimizer::optimizeChunkOnce(BytecodeChunk& chunk) {
+    Optimizer::Stats Optimizer::optimizeChunkOnce(MirChunk& chunk) {
         if (chunk.code.empty())
             return {};
 

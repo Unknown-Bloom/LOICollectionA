@@ -2,7 +2,7 @@
 
 #include <cstddef>
 
-#include "LOICollectionA/frontend/ir/ByteCode.h"
+#include "LOICollectionA/frontend/ir/Mir.h"
 
 #include "LOICollectionA/base/Macro.h"
 
@@ -29,7 +29,7 @@ namespace LOICollection::frontend::ir {
             size_t removed = 0;
         };
 
-        LOICOLLECTION_A_API Stats optimize(BytecodeChunk& chunk);
+        LOICOLLECTION_A_API Stats optimize(MirChunk& chunk);
 
         void setEnabledPasses(unsigned mask) { mEnabledPasses = mask; }
 
@@ -38,8 +38,8 @@ namespace LOICollection::frontend::ir {
     private:
         bool enabled(Pass pass) const { return (mEnabledPasses & static_cast<unsigned>(pass)) != 0u; }
 
-        Stats optimizeChunk(BytecodeChunk& chunk);
-        Stats optimizeChunkOnce(BytecodeChunk& chunk);
+        Stats optimizeChunk(MirChunk& chunk);
+        Stats optimizeChunkOnce(MirChunk& chunk);
 
         unsigned mEnabledPasses = allPasses;
     };

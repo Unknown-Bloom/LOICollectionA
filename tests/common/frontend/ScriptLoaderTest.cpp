@@ -40,15 +40,15 @@ namespace {
             throw std::runtime_error(diagnostics.getErrorMessage());
 
         ir::Compiler compiler(diagnostics);
-        auto bytecode = std::make_shared<ir::BytecodeChunk>(compiler.compile(*loaded->program));
+        auto mir = std::make_shared<ir::MirChunk>(compiler.compile(*loaded->program));
         if (diagnostics.hasErrors())
             throw std::runtime_error(diagnostics.getErrorMessage());
 
         ir::Optimizer optimizer;
-        optimizer.optimize(*bytecode);
+        optimizer.optimize(*mir);
 
         ir::VM vm(diagnostics);
-        auto result = vm.run(bytecode, {});
+        auto result = vm.run(mir, {});
         if (diagnostics.hasErrors())
             throw std::runtime_error(diagnostics.getErrorMessage());
 

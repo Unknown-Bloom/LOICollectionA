@@ -11,7 +11,7 @@
 #include "LOICollectionA/frontend/Callback.h"
 #include "LOICollectionA/frontend/Context.h"
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
-#include "LOICollectionA/frontend/ir/ByteCode.h"
+#include "LOICollectionA/frontend/ir/Mir.h"
 #include "LOICollectionA/frontend/sandbox/SandboxBudget.h"
 #include "LOICollectionA/frontend/sandbox/SandboxReport.h"
 
@@ -25,7 +25,7 @@ namespace LOICollection::frontend::ir {
               globals(std::move(globalsTable)) {}
 
         LOICOLLECTION_A_NDAPI ValueNode::ValueType run(
-            const std::shared_ptr<const BytecodeChunk>& chunk,
+            const std::shared_ptr<const MirChunk>& chunk,
             const Context& ctx
         );
 
@@ -42,12 +42,12 @@ namespace LOICollection::frontend::ir {
 
         LOICOLLECTION_A_NDAPI static std::string valueToString(const ValueNode::ValueType& val);
         LOICOLLECTION_A_NDAPI static std::string typeNameOf(const ValueNode::ValueType& val);
-        LOICOLLECTION_A_NDAPI static ValueNode::ValueType applyArithmetic(const ValueNode::ValueType& left, const ValueNode::ValueType& right, OpCode op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
+        LOICOLLECTION_A_NDAPI static ValueNode::ValueType applyArithmetic(const ValueNode::ValueType& left, const ValueNode::ValueType& right, MirOp op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
         LOICOLLECTION_A_NDAPI static ValueNode::ValueType applyArithmetic(const ValueNode::ValueType& left, const ValueNode::ValueType& right, const std::string& op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
-        LOICOLLECTION_A_NDAPI static ValueNode::ValueType applyUnary(const ValueNode::ValueType& operand, OpCode op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
+        LOICOLLECTION_A_NDAPI static ValueNode::ValueType applyUnary(const ValueNode::ValueType& operand, MirOp op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
         LOICOLLECTION_A_NDAPI static ValueNode::ValueType applyUnary(const ValueNode::ValueType& operand, const std::string& op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
         LOICOLLECTION_A_NDAPI static bool valueToBool(const ValueNode::ValueType& val);
-        LOICOLLECTION_A_NDAPI static bool applyComparison(const ValueNode::ValueType& left, const ValueNode::ValueType& right, OpCode op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
+        LOICOLLECTION_A_NDAPI static bool applyComparison(const ValueNode::ValueType& left, const ValueNode::ValueType& right, MirOp op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
         LOICOLLECTION_A_NDAPI static bool applyComparison(const ValueNode::ValueType& left, const ValueNode::ValueType& right, const std::string& op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
 
     private:
@@ -58,7 +58,7 @@ namespace LOICollection::frontend::ir {
         };
 
         struct Frame {
-            std::reference_wrapper<const BytecodeChunk> chunk;
+            std::reference_wrapper<const MirChunk> chunk;
 
             size_t ip = 0;
             size_t localsBase = 0;
@@ -70,7 +70,9 @@ namespace LOICollection::frontend::ir {
             ValueNode::ValueType pendingPush;
             bool hasPending = false;
 
-            explicit Frame(const BytecodeChunk& chunkRef)
+            int returnReg = -1;
+
+            explicit Frame(const MirChunk& chunkRef)
                 : chunk(chunkRef), localsSize(chunkRef.slotCount) {}
         };
 
@@ -81,8 +83,9 @@ namespace LOICollection::frontend::ir {
         std::shared_ptr<sandbox::SandboxBudget> mBudget = std::make_shared<sandbox::SandboxBudget>();
 
         std::vector<Frame> frames;
-        std::vector<ValueNode::ValueType> stack;
         std::vector<ValueNode::ValueType> localPool;
+
+        ValueNode::ValueType deadReg;
 
         std::shared_ptr<GlobalsTable> globals;
 
@@ -92,23 +95,28 @@ namespace LOICollection::frontend::ir {
         std::unordered_map<int, NativeValueMethodCacheSlot> mNativeValueMethodSlots;
         std::unordered_map<int, NativeConstructorCacheSlot> mNativeConstructorSlots;
         std::unordered_map<int, FieldLayoutPtr> mClassLayouts;
-        std::unordered_map<const Instruction*, FieldCacheSlot> mFieldSlots;
+        std::unordered_map<const MirInstr*, FieldCacheSlot> mFieldSlots;
 
-        [[nodiscard]] const FieldLayoutPtr& classLayout(const BytecodeChunk& chunk, int classIndex);
+        [[nodiscard]] const FieldLayoutPtr& classLayout(const MirChunk& chunk, int classIndex);
 
-        [[nodiscard]] int resolveFieldSlot(Object& obj, const std::string& name, const Instruction& instr);
+        [[nodiscard]] int resolveFieldSlot(Object& obj, const std::string& name, const MirInstr& instr);
 
         ValueNode::ValueType execute(
-            const std::shared_ptr<const BytecodeChunk>& owner,
+            const std::shared_ptr<const MirChunk>& owner,
             const CallbackTypePlaces& placeholders
         );
 
-        void push(const ValueNode::ValueType& v);
-        void push(ValueNode::ValueType&& v);
-        ValueNode::ValueType pop();
+        [[nodiscard]] ValueNode::ValueType& regOf(Frame& frame, int index);
+        [[nodiscard]] const ValueNode::ValueType& regOf(const Frame& frame, int index);
+
+        void setReg(Frame& frame, int index, ValueNode::ValueType value);
+
+        [[nodiscard]] std::vector<ValueNode::ValueType> collectArgs(const Frame& frame, int base, int count);
+
+        void placeArgs(std::vector<ValueNode::ValueType>&& args, size_t offset);
 
         void storeVariable(
-            const BytecodeChunk& chunk,
+            const MirChunk& chunk,
             Frame& frame,
             const std::string& name,
             const ValueNode::ValueType& val
@@ -116,23 +124,23 @@ namespace LOICollection::frontend::ir {
 
         bool pushFrame(Frame&& frame);
 
-        [[nodiscard]] bool isDerived(const BytecodeChunk& chunk, int derivedClassIndex, int baseClassIndex) const;
+        [[nodiscard]] bool isDerived(const MirChunk& chunk, int derivedClassIndex, int baseClassIndex) const;
 
         [[nodiscard]] static ValueNode::ValueType cloneValue(const ValueNode::ValueType& val);
 
         struct ExecArgs {
-            const std::shared_ptr<const BytecodeChunk>& owner;
-            const BytecodeChunk& chunk;
-            const BytecodeChunk& cur;
+            const std::shared_ptr<const MirChunk>& owner;
+            const MirChunk& chunk;
+            const MirChunk& cur;
             Frame& frame;
-            const Instruction& instr;
+            const MirInstr& instr;
             const CallbackTypePlaces& placeholders;
         };
 
         void failBudget(sandbox::SandboxBudget::Violation violation, const std::string& message);
 
-        void execPushConst(ExecArgs& s);
-        void execStackManip(ExecArgs& s);
+        void execLoadConst(ExecArgs& s);
+        void execMove(ExecArgs& s);
         void execOptional(ExecArgs& s);
         void execLocalSlot(ExecArgs& s);
         void execVariable(ExecArgs& s);

@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "LOICollectionA/frontend/ir/ByteCode.h"
+#include "LOICollectionA/frontend/ir/Mir.h"
 #include "LOICollectionA/frontend/Callback.h"
 
 #include "LOICollectionA/frontend/ir/Compiler.h"
@@ -28,8 +28,10 @@ namespace LOICollection::frontend::ir {
 
     Compiler::Compiler(DiagnosticEngine& diag) : current(std::ref(chunk)), diagnostics(diag) {}
 
-    BytecodeChunk Compiler::compile(ASTNode& root) {
-        this->pushScope(false, 0);
+    MirChunk Compiler::compile(ASTNode& root) {
+        this->pushScope(false, 1);
+
+        int lastValueReg = -1;
 
         if (root.getType() == ASTNode::Type::Program) {
             auto& program = static_cast<ProgramNode&>(root);
@@ -68,20 +70,8 @@ namespace LOICollection::frontend::ir {
                 }
             }
 
-            size_t lastValuePart = SIZE_MAX;
-            for (size_t i = 0; i < program.parts.size(); ++i) {
-                auto type = program.parts[i]->getType();
-                if (type != ASTNode::Type::Class &&
-                    type != ASTNode::Type::FunctionDef &&
-                    type != ASTNode::Type::Using &&
-                    type != ASTNode::Type::Trait &&
-                    type != ASTNode::Type::Impl) {
-                    lastValuePart = i;
-                }
-            }
-
-            for (size_t i = 0; i < program.parts.size(); ++i) {
-                auto type = program.parts[i]->getType();
+            for (auto& part : program.parts) {
+                auto type = part->getType();
                 if (type == ASTNode::Type::Class ||
                     type == ASTNode::Type::FunctionDef ||
                     type == ASTNode::Type::Using ||
@@ -90,83 +80,426 @@ namespace LOICollection::frontend::ir {
                     continue;
                 }
 
-                program.parts[i]->accept(*this);
-
-                if (i != lastValuePart)
-                    this->current.get().emit(OpCode::POP);
+                int reg = this->compilePart(*part);
+                if (reg >= 0)
+                    lastValueReg = reg;
             }
         } else {
-            root.accept(*this);
+            lastValueReg = this->compilePart(root);
         }
 
-        this->current.get().emit(OpCode::HALT);
+        if (lastValueReg >= 0) {
+            this->current.get().emit(MirOp::MOVE, 0, 0, lastValueReg, -1);
+        } else {
+            this->current.get().emit(
+                MirOp::LOAD_CONST, this->addConstant(std::string("")), 0, -1, -1);
+        }
+
+        this->current.get().emit(MirOp::HALT);
 
         this->chunk.slotCount = this->closeScope();
 
         return std::move(chunk);
     }
 
-    void Compiler::visit(ValueNode& node) {
-        auto val = node.value;
+    int Compiler::compilePart(ASTNode& node) {
+        node.accept(*this);
+        int reg = this->lastResultReg;
+        this->lastResultReg = -1;
+        return reg;
+    }
 
-        int idx = this->addConstant(val);
-        switch (val.index()) {
-            case 0: current.get().emit(OpCode::PUSH_INT, idx, node.loc); break;
-            case 1: current.get().emit(OpCode::PUSH_FLOAT, idx, node.loc); break;
-            case 2: current.get().emit(OpCode::PUSH_STR, idx, node.loc); break;
-            case 3: current.get().emit(OpCode::PUSH_BOOL, idx, node.loc); break;
-            case 7: current.get().emit(OpCode::PUSH_NONE, idx, node.loc); break;
+    int Compiler::compileValue(ExprNode& node, const SourceLocation& loc) {
+        const int hint = std::exchange(this->dstHint, -1);
+
+        node.accept(*this);
+        int reg = this->lastResultReg;
+        this->lastResultReg = -1;
+
+        if (reg >= 0 && node.type.kind == TypeKind::Optional && !node.preserveOptional) {
+            const int dst = this->allocReg();
+            this->current.get().emit(MirOp::UNWRAP, 0, dst, reg, -1, loc, node.type);
+            reg = dst;
+        }
+
+        return this->finishHint(hint, reg, loc);
+    }
+
+    int Compiler::compileNone(const SourceLocation& loc) {
+        const int dst = this->takeDst();
+        const int idx = this->addConstant(std::string(""));
+        this->current.get().emit(MirOp::LOAD_CONST, idx, dst, -1, -1, loc);
+        return dst;
+    }
+
+    int Compiler::compileInto(int hint, ASTNode& node, const SourceLocation& loc) {
+        if (hint < 0)
+            return this->compilePart(node);
+
+        if (auto leaf = this->tryEmitLeaf(node, hint, loc))
+            return *leaf;
+
+        this->dstHint = hint;
+        node.accept(*this);
+        int reg = this->lastResultReg;
+        this->lastResultReg = -1;
+
+        return this->finishHint(hint, reg, loc);
+    }
+
+    int Compiler::compileArg(int hint, ExprNode& node, const SourceLocation& loc) {
+        if (hint >= 0) {
+            if (auto leaf = this->tryEmitLeaf(node, hint, loc))
+                return *leaf;
+
+            this->dstHint = hint;
+        }
+
+        return this->compileValue(node, loc);
+    }
+
+    int Compiler::finishHint(int hint, int reg, const SourceLocation& loc) {
+        if (reg < 0) {
+            reg = hint >= 0 ? hint : this->allocReg();
+            this->current.get().emit(
+                MirOp::LOAD_CONST, this->addConstant(std::string("")), reg, -1, -1, loc);
+            return reg;
+        }
+
+        if (hint >= 0 && reg != hint) {
+            this->current.get().emit(MirOp::MOVE, 0, hint, reg, -1, loc);
+            return hint;
+        }
+
+        return reg;
+    }
+
+    std::optional<int> Compiler::tryEmitLeaf(ASTNode& node, int dst, const SourceLocation& loc) {
+        switch (node.getType()) {
+            case ASTNode::Type::Value: {
+                auto& value = static_cast<ValueNode&>(node);
+                const int idx = this->addConstant(value.value);
+
+                switch (value.value.index()) {
+                    case 0: case 1: case 2: case 3: case 7:
+                        break;
+                    default:
+                        this->diagnostics.addError(loc, "Unsupported constant value type");
+                        return std::nullopt;
+                }
+
+                this->current.get().emit(MirOp::LOAD_CONST, idx, dst, -1, -1, loc);
+                return dst;
+            }
+            case ASTNode::Type::Variable: {
+                auto& var = static_cast<VariableNode&>(node);
+                if (auto slot = this->resolveSlot(qualifiedName(var))) {
+                    this->current.get().emit(MirOp::LOAD_SLOT, *slot, dst, -1, -1, loc);
+                    return dst;
+                }
+
+                this->current.get().emit(
+                    MirOp::LOAD_VAR, this->addConstant(qualifiedName(var)), dst, -1, -1, loc);
+                return dst;
+            }
+            case ASTNode::Type::This:
+                this->current.get().emit(MirOp::LOAD_THIS, 0, dst, -1, -1, loc);
+                return dst;
             default:
-                this->diagnostics.addError(node.loc, "Unsupported constant value type");
+                return std::nullopt;
+        }
+    }
+
+    int Compiler::emitBinary(
+        MirOp op,
+        int lhs, int rhs, const SourceLocation& loc, const TypeInfo& type
+    ) {
+        const int dst = this->allocReg();
+        this->current.get().emit(op, 0, dst, lhs, rhs, loc, type);
+        return dst;
+    }
+
+    int Compiler::emitBoolConst(bool value, const SourceLocation& loc) {
+        const int dst = this->takeDst();
+        this->current.get().emit(MirOp::LOAD_CONST, this->addConstant(value), dst, -1, -1, loc);
+        return dst;
+    }
+
+    void Compiler::pushScope(bool hasThis, int base, bool inherits) {
+        Scope scope;
+        scope.base = base;
+        scope.next = base;
+        scope.hasThis = hasThis || (!this->scopes.empty() && this->scopes.back().hasThis);
+        scope.inherits = inherits;
+        this->scopes.push_back(std::move(scope));
+    }
+
+    int Compiler::closeScope() {
+        const int slotCount = this->scopes.back().next;
+        this->scopes.pop_back();
+        return slotCount;
+    }
+
+    int Compiler::declareSlot(const std::string& name) {
+        Scope& scope = this->scopes.back();
+        auto [it, inserted] = scope.slots.emplace(name, scope.next);
+        if (inserted)
+            ++scope.next;
+
+        return it->second;
+    }
+
+    void Compiler::predeclareLocals(ASTNode& body) {
+        auto* seq = dynamic_cast<SequenceNode*>(&body);
+        if (!seq)
+            return;
+
+        for (auto& part : seq->parts) {
+            if (!part || part->getType() != ASTNode::Type::Assignment)
+                continue;
+
+            auto& assign = static_cast<AssignmentNode&>(*part);
+            if (!assign.isDeclaration || !assign.target)
+                continue;
+
+            if (assign.target->getType() != ASTNode::Type::Variable)
+                continue;
+
+            auto& var = static_cast<VariableNode&>(*assign.target);
+            if (var.isStaticField)
+                continue;
+
+            this->declareSlot(qualifiedName(var));
+        }
+    }
+
+    std::optional<int> Compiler::resolveSlot(const std::string& name) const {
+        for (auto scope = this->scopes.rbegin(); scope != this->scopes.rend(); ++scope) {
+            if (auto it = scope->slots.find(name); it != scope->slots.end())
+                return it->second;
+
+            if (!scope->inherits)
                 break;
         }
+
+        return std::nullopt;
+    }
+
+    int Compiler::emitLoad(const std::string& name, const SourceLocation& loc) {
+        if (auto slot = this->resolveSlot(name))
+            return *slot;
+
+        const int dst = this->takeDst();
+        this->current.get().emit(MirOp::LOAD_VAR, this->addConstant(name), dst, -1, -1, loc);
+        return dst;
+    }
+
+    int Compiler::emitLoadInto(int dst, const std::string& name, const SourceLocation& loc) {
+        if (auto slot = this->resolveSlot(name)) {
+            this->current.get().emit(MirOp::LOAD_SLOT, *slot, dst, -1, -1, loc);
+            return dst;
+        }
+
+        this->current.get().emit(MirOp::LOAD_VAR, this->addConstant(name), dst, -1, -1, loc);
+        return dst;
+    }
+
+    void Compiler::emitStore(const std::string& name, int srcReg, const SourceLocation& loc) {
+        if (auto slot = this->resolveSlot(name)) {
+            this->current.get().emit(MirOp::STORE_SLOT, *slot, -1, srcReg, -1, loc);
+            return;
+        }
+
+        this->current.get().emit(MirOp::STORE_VAR, this->addConstant(name), -1, srcReg, -1, loc);
+    }
+
+    int Compiler::fieldSlotOf(const TypeInfo& owner, const std::string& memberName) const {
+        if (owner.kind != TypeKind::Object)
+            return -1;
+
+        auto classIt = this->classIndices.find(owner.className);
+        if (classIt != this->classIndices.end()) {
+            const auto& names = this->chunk.classes[static_cast<size_t>(classIt->second)].fieldNames;
+
+            auto it = std::ranges::find(names, memberName);
+            return it == names.end() ? -1 : static_cast<int>(std::distance(names.begin(), it));
+        }
+
+        const auto fields = ClassCall::getInstance().getFields(owner.className);
+
+        auto it = std::ranges::find(fields, memberName);
+        return it == fields.end() ? -1 : static_cast<int>(std::distance(fields.begin(), it));
+    }
+
+    int Compiler::emitLoadField(const MemberAccessNode& node) {
+        const int objReg = this->compileValue(*node.target, node.loc);
+        const int dst = this->allocReg();
+        this->emitLoadFieldInto(dst, objReg, node);
+        return dst;
+    }
+
+    void Compiler::emitLoadFieldInto(int dst, int objReg, const MemberAccessNode& node) {
+        const int slot = this->fieldSlotOf(node.target->type, node.memberName);
+        if (slot >= 0) {
+            this->current.get().emit(MirOp::LOAD_FIELD_SLOT, slot, dst, objReg, -1, node.loc);
+            return;
+        }
+
+        this->current.get().emit(
+            MirOp::LOAD_FIELD, this->addConstant(node.memberName), dst, objReg, -1, node.loc);
+    }
+
+    void Compiler::emitStoreField(int objReg, int valReg, const MemberAccessNode& node) {
+        const int slot = this->fieldSlotOf(node.target->type, node.memberName);
+        if (slot >= 0) {
+            this->current.get().emit(MirOp::STORE_FIELD_SLOT, slot, -1, objReg, valReg, node.loc);
+            return;
+        }
+
+        this->current.get().emit(
+            MirOp::STORE_FIELD, this->addConstant(node.memberName), -1, objReg, valReg, node.loc);
+    }
+
+    ClassLookup Compiler::classLookup() const {
+        return [this](const std::string& name) -> ClassNode* {
+            auto it = this->classNodes.find(name);
+
+            return it == this->classNodes.end() ? nullptr : &it->second.get();
+        };
+    }
+
+    std::optional<ValueNode::ValueType> Compiler::constantValue(ExprNode& node) const {
+        if (node.getType() == ASTNode::Type::Value)
+            return static_cast<ValueNode&>(node).value;
+
+        if (node.getType() == ASTNode::Type::Array) {
+            auto& array = static_cast<ArrayNode&>(node);
+            auto result = std::make_shared<ArrayValue>();
+            result->elements.reserve(array.elements.size());
+
+            for (auto& element : array.elements) {
+                auto value = this->constantValue(*element);
+                if (!value.has_value())
+                    return std::nullopt;
+
+                result->elements.push_back(*value);
+            }
+
+            return result;
+        }
+
+        return std::nullopt;
+    }
+
+    int Compiler::addNativeCall(const std::string& className, const std::string& name, int argCount, bool isStatic) {
+        for (size_t i = 0; i < this->chunk.nativeCalls.size(); ++i) {
+            const auto& meta = this->chunk.nativeCalls[i];
+            if (meta.className == className && meta.name == name && meta.argCount == argCount && meta.isStatic == isStatic)
+                return static_cast<int>(i);
+        }
+
+        this->chunk.nativeCalls.push_back({ className, name, argCount, isStatic });
+        return static_cast<int>(this->chunk.nativeCalls.size() - 1);
+    }
+
+    int Compiler::addConstant(const ValueNode::ValueType& val) {
+        this->current.get().constants.push_back(val);
+        return static_cast<int>(this->current.get().constants.size() - 1);
+    }
+
+    int Compiler::addFunction(const std::string& name, int argCount) {
+        this->current.get().functions.push_back({name, argCount});
+        return static_cast<int>(this->current.get().functions.size() - 1);
+    }
+
+    int Compiler::addMacro(const std::string& name, int argCount) {
+        this->current.get().macros.push_back({name, argCount});
+        return static_cast<int>(this->current.get().macros.size() - 1);
+    }
+
+    int Compiler::addLambda(int bodyIndex, int argCount, int captureCount) {
+        this->current.get().lambdas.push_back({bodyIndex, argCount, captureCount});
+        return static_cast<int>(this->current.get().lambdas.size() - 1);
+    }
+
+    int Compiler::addVirtualCall(int classIndex, int ordinal, int argCount) {
+        this->current.get().virtualCalls.push_back({classIndex, ordinal, argCount});
+        return static_cast<int>(this->current.get().virtualCalls.size() - 1);
+    }
+
+    int Compiler::addByNameCall(const std::string& methodName, int argCount) {
+        this->current.get().byNameCalls.push_back({methodName, argCount});
+        return static_cast<int>(this->current.get().byNameCalls.size() - 1);
+    }
+
+    int Compiler::addSuperCall(int constructorIndex, int argCount) {
+        this->current.get().superCalls.push_back({constructorIndex, argCount});
+        return static_cast<int>(this->current.get().superCalls.size() - 1);
+    }
+
+    void Compiler::visit(ValueNode& node) {
+        const int idx = this->addConstant(node.value);
+
+        switch (node.value.index()) {
+            case 0: case 1: case 2: case 3: case 7:
+                break;
+            default:
+                this->diagnostics.addError(node.loc, "Unsupported constant value type");
+                return;
+        }
+
+        this->lastResultReg = this->tryEmitLeaf(node, this->takeDst(), node.loc).value_or(-1);
     }
 
     void Compiler::visit(VariableNode& node) {
-        this->emitLoad(qualifiedName(node), node.loc);
+        int reg = this->emitLoad(qualifiedName(node), node.loc);
 
-        if (node.type.kind == TypeKind::Optional && !node.preserveOptional)
-            this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+        if (node.type.kind == TypeKind::Optional && !node.preserveOptional) {
+            const int dst = this->allocReg();
+            this->current.get().emit(MirOp::UNWRAP, 0, dst, reg, -1, node.loc, node.type);
+            reg = dst;
+        }
+
+        this->lastResultReg = reg;
     }
 
     void Compiler::visit(AssignmentNode& node) {
-        if (node.value) {
-            this->compileValue(*node.value, node.loc);
-        } else {
-            int emptyIdx = this->addConstant(std::string(""));
-            this->current.get().emit(OpCode::PUSH_STR, emptyIdx, node.loc);
-        }
-
-        this->current.get().emit(OpCode::DUP, 0, node.loc);
+        int valReg = node.value
+            ? this->compileValue(*node.value, node.loc)
+            : this->compileNone(node.loc);
 
         switch (node.target->getType()) {
             case ASTNode::Type::Variable: {
                 auto& var = static_cast<VariableNode&>(*node.target);
-                this->emitStore(qualifiedName(var), node.loc);
+                this->emitStore(qualifiedName(var), valReg, node.loc);
                 break;
             }
             case ASTNode::Type::MemberAccess: {
                 auto& member = static_cast<MemberAccessNode&>(*node.target);
                 if (member.isStaticAccess) {
-                    this->emitStore(qualifiedName(member), node.loc);
+                    this->emitStore(qualifiedName(member), valReg, node.loc);
                     break;
                 }
 
-                this->compileValue(*member.target, node.loc);
-                this->emitStoreField(member);
+                const int objReg = this->compileValue(*member.target, node.loc);
+                this->emitStoreField(objReg, valReg, member);
                 break;
             }
             case ASTNode::Type::Index: {
                 auto& indexNode = static_cast<IndexAccessNode&>(*node.target);
-                indexNode.target->accept(*this);
-                indexNode.index->accept(*this);
-                this->current.get().emit(OpCode::STORE_INDEX, 0, node.loc);
+
+                const int objReg = this->finishHint(-1, this->compilePart(*indexNode.target), node.loc);
+                const int idxReg = this->finishHint(-1, this->compilePart(*indexNode.index), node.loc);
+
+                this->current.get().emit(MirOp::STORE_INDEX, 0, -1, objReg, idxReg, valReg, node.loc);
                 break;
             }
             default:
                 this->diagnostics.addError(node.loc, "Invalid assignment target");
                 break;
         }
+
+        this->lastResultReg = valReg;
     }
 
     void Compiler::visit(CompoundAssignNode& node) {
@@ -175,15 +508,16 @@ namespace LOICollection::frontend::ir {
                 auto& var = static_cast<VariableNode&>(*node.target);
                 const std::string name = qualifiedName(var);
 
-                this->emitLoad(name, node.loc);
-                if (var.type.kind == TypeKind::Optional && !var.preserveOptional)
-                    this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+                int lhs = this->emitLoad(name, node.loc);
+                if (var.type.kind == TypeKind::Optional && !var.preserveOptional) {
+                    const int unwrapped = this->allocReg();
+                    this->current.get().emit(MirOp::UNWRAP, 0, unwrapped, lhs, -1, node.loc, var.type);
+                    lhs = unwrapped;
+                }
 
-                this->compileValue(*node.value, node.loc);
-                this->emitArithmeticOp(node.op, var.type, node.value->type, node.loc);
-
-                this->current.get().emit(OpCode::DUP, 0, node.loc);
-                this->emitStore(name, node.loc);
+                const int rhs = this->compileValue(*node.value, node.loc);
+                this->lastResultReg = this->emitArithmeticOp(node.op, var.type, node.value->type, lhs, rhs, node.loc);
+                this->emitStore(name, this->lastResultReg, node.loc);
                 break;
             }
             case ASTNode::Type::MemberAccess: {
@@ -191,48 +525,52 @@ namespace LOICollection::frontend::ir {
                 if (member.isStaticAccess) {
                     const std::string name = qualifiedName(member);
 
-                    this->emitLoad(name, node.loc);
-                    if (member.type.kind == TypeKind::Optional && !member.preserveOptional)
-                        this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+                    int lhs = this->emitLoad(name, node.loc);
+                    if (member.type.kind == TypeKind::Optional && !member.preserveOptional) {
+                        const int unwrapped = this->allocReg();
+                        this->current.get().emit(MirOp::UNWRAP, 0, unwrapped, lhs, -1, node.loc, member.type);
+                        lhs = unwrapped;
+                    }
 
-                    this->compileValue(*node.value, node.loc);
-                    this->emitArithmeticOp(node.op, member.type, node.value->type, node.loc);
-
-                    this->current.get().emit(OpCode::DUP, 0, node.loc);
-                    this->emitStore(name, node.loc);
+                    const int rhs = this->compileValue(*node.value, node.loc);
+                    this->lastResultReg = this->emitArithmeticOp(node.op, member.type, node.value->type, lhs, rhs, node.loc);
+                    this->emitStore(name, this->lastResultReg, node.loc);
                     break;
                 }
 
-                this->compileValue(*member.target, node.loc);
-                this->current.get().emit(OpCode::DUP, 0, node.loc);
+                const int objReg = this->compileValue(*member.target, node.loc);
 
-                this->emitFieldAccess(OpCode::LOAD_FIELD_SLOT, OpCode::LOAD_FIELD, member);
-                if (member.type.kind == TypeKind::Optional && !member.preserveOptional)
-                    this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+                int lhs = this->allocReg();
+                this->emitLoadFieldInto(lhs, objReg, member);
+                if (member.type.kind == TypeKind::Optional && !member.preserveOptional) {
+                    const int unwrapped = this->allocReg();
+                    this->current.get().emit(MirOp::UNWRAP, 0, unwrapped, lhs, -1, node.loc, member.type);
+                    lhs = unwrapped;
+                }
 
-                this->compileValue(*node.value, node.loc);
-                this->emitArithmeticOp(node.op, member.type, node.value->type, node.loc);
-
-                this->current.get().emit(OpCode::DUP, 0, node.loc);
-                this->current.get().emit(OpCode::ROT3, 0, node.loc);
-                this->emitFieldAccess(OpCode::STORE_FIELD_SLOT, OpCode::STORE_FIELD, member);
+                const int rhs = this->compileValue(*node.value, node.loc);
+                this->lastResultReg = this->emitArithmeticOp(node.op, member.type, node.value->type, lhs, rhs, node.loc);
+                this->emitStoreField(objReg, this->lastResultReg, member);
                 break;
             }
             case ASTNode::Type::Index: {
                 auto& indexNode = static_cast<IndexAccessNode&>(*node.target);
 
-                this->compileValue(*indexNode.target, node.loc);
-                this->compileValue(*indexNode.index, node.loc);
+                const int objReg = this->compileValue(*indexNode.target, node.loc);
+                const int idxReg = this->compileValue(*indexNode.index, node.loc);
 
-                this->current.get().emit(OpCode::DUP2, 0, node.loc);
-                this->current.get().emit(OpCode::LOAD_INDEX, 0, node.loc);
+                int lhs = this->allocReg();
+                this->current.get().emit(MirOp::LOAD_INDEX, 0, lhs, objReg, idxReg, node.loc);
+                if (indexNode.type.kind == TypeKind::Optional && !indexNode.preserveOptional) {
+                    const int unwrapped = this->allocReg();
+                    this->current.get().emit(MirOp::UNWRAP, 0, unwrapped, lhs, -1, node.loc, indexNode.type);
+                    lhs = unwrapped;
+                }
 
-                this->compileValue(*node.value, node.loc);
-                this->emitArithmeticOp(node.op, indexNode.type, node.value->type, node.loc);
-
-                this->current.get().emit(OpCode::DUP, 0, node.loc);
-                this->current.get().emit(OpCode::SWAP2, 0, node.loc);
-                this->current.get().emit(OpCode::STORE_INDEX, 0, node.loc);
+                const int rhs = this->compileValue(*node.value, node.loc);
+                this->lastResultReg = this->emitArithmeticOp(node.op, indexNode.type, node.value->type, lhs, rhs, node.loc);
+                this->current.get().emit(
+                    MirOp::STORE_INDEX, 0, -1, objReg, idxReg, this->lastResultReg, node.loc);
                 break;
             }
             default:
@@ -242,23 +580,24 @@ namespace LOICollection::frontend::ir {
     }
 
     void Compiler::visit(CoalesceNode& node) {
-        this->compileValue(*node.left, node.loc);
+        const int dst = this->allocReg();
+        this->compileArg(dst, *node.left, node.loc);
 
-        this->current.get().emit(OpCode::DUP, 0, node.loc);
-        this->current.get().emit(OpCode::IS_NONE, 0, node.loc);
+        const int cond = this->allocReg();
+        this->current.get().emit(MirOp::IS_NONE, 0, cond, dst, -1, node.loc);
 
-        size_t jmpSkipIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+        const size_t jmpSkipIdx = this->current.get().emit(
+            MirOp::JMP_IF_FALSE, 0, -1, cond, -1, node.loc);
 
-        this->current.get().emit(OpCode::POP, 0, node.loc);
-        this->compileValue(*node.right, node.loc);
+        this->compileArg(dst, *node.right, node.loc);
 
-        size_t jmpEndIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        const size_t jmpEndIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
 
-        int skipTarget = static_cast<int>(this->current.get().currentIP());
-        this->current.get().patchJump(jmpSkipIdx, skipTarget - static_cast<int>(jmpSkipIdx) - 1);
-
-        int endPos = static_cast<int>(this->current.get().currentIP());
+        const int endPos = static_cast<int>(this->current.get().currentIP());
+        this->current.get().patchJump(jmpSkipIdx, endPos - static_cast<int>(jmpSkipIdx) - 1);
         this->current.get().patchJump(jmpEndIdx, endPos - static_cast<int>(jmpEndIdx) - 1);
+
+        this->lastResultReg = dst;
     }
 
     void Compiler::visit(RangeNode& node) {
@@ -282,60 +621,65 @@ namespace LOICollection::frontend::ir {
             this->compileForInIterable(node, uid, *protocol);
     }
 
-    void Compiler::emitArithmeticOp(const std::string& op, const TypeInfo& leftType, const TypeInfo& rightType, const SourceLocation& loc) {
-        const bool intOp = (op == "+" || op == "-" || op == "*" || op == "%") &&
-            leftType.kind == TypeKind::Int && rightType.kind == TypeKind::Int;
+    int Compiler::emitArithmeticOp(
+        const std::string& op, const TypeInfo& leftType, const TypeInfo& rightType,
+        int lhs, int rhs, const SourceLocation& loc
+    ) {
+        const bool isInt = leftType.kind == TypeKind::Int && rightType.kind == TypeKind::Int;
+        const TypeInfo resultType = isInt ? leftType : TypeInfo{};
 
-        if (op == "+") this->current.get().emit(intOp ? OpCode::ADD_I : OpCode::ADD, 0, loc);
-        else if (op == "-") this->current.get().emit(intOp ? OpCode::SUB_I : OpCode::SUB, 0, loc);
-        else if (op == "*") this->current.get().emit(intOp ? OpCode::MUL_I : OpCode::MUL, 0, loc);
-        else if (op == "/") this->current.get().emit(OpCode::DIV, 0, loc);
-        else if (op == "%") this->current.get().emit(intOp ? OpCode::MOD_I : OpCode::MOD, 0, loc);
-        else
-            this->diagnostics.addError(loc, "Unknown compound assignment op: " + op);
+        if (op == "+") return this->emitBinary(MirOp::ADD, lhs, rhs, loc, resultType);
+        if (op == "-") return this->emitBinary(MirOp::SUB, lhs, rhs, loc, resultType);
+        if (op == "*") return this->emitBinary(MirOp::MUL, lhs, rhs, loc, resultType);
+        if (op == "/") return this->emitBinary(MirOp::DIV, lhs, rhs, loc);
+        if (op == "%") return this->emitBinary(MirOp::MOD, lhs, rhs, loc, resultType);
+
+        this->diagnostics.addError(loc, "Unknown compound assignment op: " + op);
+        return lhs;
     }
 
     void Compiler::visit(IfNode& node) {
-        this->compileValue(*node.condition, node.loc);
+        const int cond = this->compileValue(*node.condition, node.loc);
 
-        size_t jmpFalseIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+        const size_t jmpFalseIdx = this->current.get().emit(
+            MirOp::JMP_IF_FALSE, 0, -1, cond, -1, node.loc);
 
-        node.trueBranch->accept(*this);
+        const int dst = this->allocReg();
+        this->compileInto(dst, *node.trueBranch, node.loc);
 
-        size_t jmpEndIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        const size_t jmpEndIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
 
-        int falseStart = static_cast<int>(this->current.get().currentIP());
+        const int falseStart = static_cast<int>(this->current.get().currentIP());
         this->current.get().patchJump(jmpFalseIdx, falseStart - static_cast<int>(jmpFalseIdx) - 1);
 
-        if (node.falseBranch) {
-            node.falseBranch->accept(*this);
-        } else {
-            int emptyIdx = this->addConstant(std::string(""));
-            this->current.get().emit(OpCode::PUSH_STR, emptyIdx, node.loc);
-        }
+        if (node.falseBranch)
+            this->compileInto(dst, *node.falseBranch, node.loc);
+        else
+            this->finishHint(dst, -1, node.loc);
 
-        int endPos = static_cast<int>(this->current.get().currentIP());
+        const int endPos = static_cast<int>(this->current.get().currentIP());
         this->current.get().patchJump(jmpEndIdx, endPos - static_cast<int>(jmpEndIdx) - 1);
+
+        this->lastResultReg = dst;
     }
 
     void Compiler::visit(WhileNode& node) {
-        size_t loopStart = this->current.get().currentIP();
+        const size_t loopStart = this->current.get().currentIP();
 
-        this->compileValue(*node.condition, node.loc);
+        const int cond = this->compileValue(*node.condition, node.loc);
 
-        size_t jmpFalseIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+        const size_t jmpFalseIdx = this->current.get().emit(
+            MirOp::JMP_IF_FALSE, 0, -1, cond, -1, node.loc);
 
         this->loopStack.push_back(LoopContext{});
         this->loopStack.back().continueTarget = loopStart;
 
         node.body->accept(*this);
 
-        this->current.get().emit(OpCode::POP, 0, node.loc);
-
-        size_t jmpBackIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        const size_t jmpBackIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
         this->current.get().patchJump(jmpBackIdx, static_cast<int>(loopStart) - static_cast<int>(jmpBackIdx) - 1);
 
-        size_t exitPos = this->current.get().currentIP();
+        const size_t exitPos = this->current.get().currentIP();
         this->current.get().patchJump(jmpFalseIdx, static_cast<int>(exitPos) - static_cast<int>(jmpFalseIdx) - 1);
 
         for (size_t idx : this->loopStack.back().breakJumps)
@@ -345,42 +689,35 @@ namespace LOICollection::frontend::ir {
 
         this->loopStack.pop_back();
 
-        int emptyIdx = this->addConstant(std::string(""));
-        this->current.get().emit(OpCode::PUSH_STR, emptyIdx, node.loc);
+        this->lastResultReg = this->finishHint(-1, -1, node.loc);
     }
 
     void Compiler::visit(ForNode& node) {
-        if (node.init) {
+        if (node.init)
             this->compileValue(*node.init, node.loc);
-            this->current.get().emit(OpCode::POP, 0, node.loc);
-        }
 
-        size_t loopStart = this->current.get().currentIP();
+        const size_t loopStart = this->current.get().currentIP();
 
         size_t jmpFalseIdx = static_cast<size_t>(-1);
         if (node.condition) {
-            this->compileValue(*node.condition, node.loc);
-            jmpFalseIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+            const int cond = this->compileValue(*node.condition, node.loc);
+            jmpFalseIdx = this->current.get().emit(MirOp::JMP_IF_FALSE, 0, -1, cond, -1, node.loc);
         }
 
         this->loopStack.push_back(LoopContext{});
 
         node.body->accept(*this);
 
-        this->current.get().emit(OpCode::POP, 0, node.loc);
-
-        size_t continuePos = this->current.get().currentIP();
+        const size_t continuePos = this->current.get().currentIP();
         this->loopStack.back().continueTarget = continuePos;
 
-        if (node.step) {
+        if (node.step)
             this->compileValue(*node.step, node.loc);
-            this->current.get().emit(OpCode::POP, 0, node.loc);
-        }
 
-        size_t jmpBackIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        const size_t jmpBackIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
         this->current.get().patchJump(jmpBackIdx, static_cast<int>(loopStart) - static_cast<int>(jmpBackIdx) - 1);
 
-        size_t exitPos = this->current.get().currentIP();
+        const size_t exitPos = this->current.get().currentIP();
         if (jmpFalseIdx != static_cast<size_t>(-1))
             this->current.get().patchJump(jmpFalseIdx, static_cast<int>(exitPos) - static_cast<int>(jmpFalseIdx) - 1);
 
@@ -391,8 +728,7 @@ namespace LOICollection::frontend::ir {
 
         this->loopStack.pop_back();
 
-        int emptyIdx = this->addConstant(std::string(""));
-        this->current.get().emit(OpCode::PUSH_STR, emptyIdx, node.loc);
+        this->lastResultReg = this->finishHint(-1, -1, node.loc);
     }
 
     void Compiler::visit(BreakNode& node) {
@@ -401,7 +737,7 @@ namespace LOICollection::frontend::ir {
             return;
         }
 
-        size_t idx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        size_t idx = this->current.get().emit(MirOp::JMP, 0, node.loc);
         this->loopStack.back().breakJumps.push_back(idx);
     }
 
@@ -411,151 +747,159 @@ namespace LOICollection::frontend::ir {
             return;
         }
 
-        size_t idx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        size_t idx = this->current.get().emit(MirOp::JMP, 0, node.loc);
         this->loopStack.back().continueJumps.push_back(idx);
     }
 
     void Compiler::visit(CompareNode& node) {
-        this->compileValue(*node.left, node.loc);
-        this->compileValue(*node.right, node.loc);
+        const int lhs = this->compileValue(*node.left, node.loc);
+        const int rhs = this->compileValue(*node.right, node.loc);
 
-        const bool intOp = node.left->type.kind == TypeKind::Int && node.right->type.kind == TypeKind::Int;
+        const bool isInt = node.left->type.kind == TypeKind::Int && node.right->type.kind == TypeKind::Int;
+        const TypeInfo resultType = isInt ? node.left->type : TypeInfo{};
 
-        if (node.op == "==") this->current.get().emit(intOp ? OpCode::CMP_EQ_I : OpCode::CMP_EQ, 0, node.loc);
-        else if (node.op == "!=") this->current.get().emit(intOp ? OpCode::CMP_NE_I : OpCode::CMP_NE, 0, node.loc);
-        else if (node.op == ">") this->current.get().emit(intOp ? OpCode::CMP_GT_I : OpCode::CMP_GT, 0, node.loc);
-        else if (node.op == "<") this->current.get().emit(intOp ? OpCode::CMP_LT_I : OpCode::CMP_LT, 0, node.loc);
-        else if (node.op == ">=") this->current.get().emit(intOp ? OpCode::CMP_GE_I : OpCode::CMP_GE, 0, node.loc);
-        else if (node.op == "<=") this->current.get().emit(intOp ? OpCode::CMP_LE_I : OpCode::CMP_LE, 0, node.loc);
-        else
-            this->diagnostics.addError(node.loc, "Unknown compare op: " + node.op);
+        if (node.op == "==") this->lastResultReg = this->emitBinary(MirOp::CMP_EQ, lhs, rhs, node.loc, resultType);
+        else if (node.op == "!=") this->lastResultReg = this->emitBinary(MirOp::CMP_NE, lhs, rhs, node.loc, resultType);
+        else if (node.op == ">") this->lastResultReg = this->emitBinary(MirOp::CMP_GT, lhs, rhs, node.loc, resultType);
+        else if (node.op == "<") this->lastResultReg = this->emitBinary(MirOp::CMP_LT, lhs, rhs, node.loc, resultType);
+        else if (node.op == ">=") this->lastResultReg = this->emitBinary(MirOp::CMP_GE, lhs, rhs, node.loc, resultType);
+        else if (node.op == "<=") this->lastResultReg = this->emitBinary(MirOp::CMP_LE, lhs, rhs, node.loc, resultType);
+        else this->diagnostics.addError(node.loc, "Unknown compare op: " + node.op);
     }
 
     void Compiler::visit(LogicalNode& node) {
-        bool isAnd = (node.op == "&&");
+        const bool isAnd = (node.op == "&&");
 
         if (node.left->getType() == ASTNode::Type::Value) {
             auto& leftVal = static_cast<const ValueNode&>(*node.left).value;
             if (std::holds_alternative<bool>(leftVal)) {
                 bool leftBool = std::get<bool>(leftVal);
+
                 if (isAnd) {
                     if (leftBool) {
-                        int idxTrue = this->addConstant(true);
-                        this->current.get().emit(OpCode::PUSH_BOOL, idxTrue, node.loc);
-
-                        this->compileValue(*node.right, node.loc);
-
-                        this->current.get().emit(OpCode::LOGIC_AND, 0, node.loc);
+                        const int lhs = this->emitBoolConst(true, node.loc);
+                        const int rhs = this->compileValue(*node.right, node.loc);
+                        this->lastResultReg = this->emitBinary(
+                            MirOp::LOGIC_AND, lhs, rhs, node.loc);
                     } else {
-                        int idxFalse = this->addConstant(false);
-                        this->current.get().emit(OpCode::PUSH_BOOL, idxFalse, node.loc);
+                        this->lastResultReg = this->emitBoolConst(false, node.loc);
                     }
                 } else {
                     if (leftBool) {
-                        int idxTrue = this->addConstant(true);
-                        this->current.get().emit(OpCode::PUSH_BOOL, idxTrue, node.loc);
+                        this->lastResultReg = this->emitBoolConst(true, node.loc);
                     } else {
-                        int idxFalse = this->addConstant(false);
-                        this->current.get().emit(OpCode::PUSH_BOOL, idxFalse, node.loc);
-
-                        this->compileValue(*node.right, node.loc);
-                        
-                        this->current.get().emit(OpCode::LOGIC_OR, 0, node.loc);
+                        const int lhs = this->emitBoolConst(false, node.loc);
+                        const int rhs = this->compileValue(*node.right, node.loc);
+                        this->lastResultReg = this->emitBinary(
+                            MirOp::LOGIC_OR, lhs, rhs, node.loc);
                     }
                 }
                 return;
             }
         }
 
-        this->compileValue(*node.left, node.loc);
-        this->current.get().emit(OpCode::DUP, 0, node.loc);
+        const int dst = this->allocReg();
+        const int lhs = this->compileValue(*node.left, node.loc);
 
-        size_t jumpToShort = this->current.get().emit(isAnd ? OpCode::JMP_IF_FALSE : OpCode::JMP_IF_TRUE, 0, node.loc);
+        const size_t jumpToShort = this->current.get().emit(
+            isAnd ? MirOp::JMP_IF_FALSE : MirOp::JMP_IF_TRUE, 0, -1, lhs, -1, node.loc);
 
-        this->compileValue(*node.right, node.loc);
-        this->current.get().emit(isAnd ? OpCode::LOGIC_AND : OpCode::LOGIC_OR, 0, node.loc);
+        const int rhs = this->compileValue(*node.right, node.loc);
+        this->current.get().emit(isAnd ? MirOp::LOGIC_AND : MirOp::LOGIC_OR, 0, dst, lhs, rhs, node.loc);
 
-        size_t jumpToEnd = this->current.get().emit(OpCode::JMP, 0, node.loc);
+        const size_t jumpToEnd = this->current.get().emit(MirOp::JMP, 0, node.loc);
 
-        int shortStart = static_cast<int>(this->current.get().currentIP());
-
-        int shortIdx = this->addConstant(isAnd ? false : true);
-        this->current.get().emit(OpCode::POP, 0, node.loc);
-        this->current.get().emit(OpCode::PUSH_BOOL, shortIdx, node.loc);
-
+        const int shortStart = static_cast<int>(this->current.get().currentIP());
         this->current.get().patchJump(jumpToShort, shortStart - static_cast<int>(jumpToShort) - 1);
 
-        int endPos = static_cast<int>(this->current.get().currentIP());
+        this->current.get().emit(
+            MirOp::LOAD_CONST, this->addConstant(isAnd ? false : true), dst, -1, -1, node.loc);
+
+        const int endPos = static_cast<int>(this->current.get().currentIP());
         this->current.get().patchJump(jumpToEnd, endPos - static_cast<int>(jumpToEnd) - 1);
+
+        this->lastResultReg = dst;
     }
 
     void Compiler::visit(FunctionNode& node) {
-        for (auto& arg : node.args)
-            this->compileValue(*arg, node.loc);
+        const int argCount = static_cast<int>(node.args.size());
+        const int base = this->reserveRegs(argCount);
 
-        int argCount = static_cast<int>(node.args.size());
-        int metaIdx = this->addFunction(node.namespaces + "::" + node.name, argCount);
-        this->current.get().emit(OpCode::CALL, metaIdx, node.loc);
+        for (int i = 0; i < argCount; ++i)
+            this->compileArg(base + i, *node.args[i], node.loc);
+
+        const int metaIdx = this->addFunction(node.namespaces + "::" + node.name, argCount);
+        const int dst = this->allocReg();
+
+        this->current.get().emitCall(MirOp::CALL, metaIdx, dst, base, -1, argCount, node.loc);
+        this->lastResultReg = dst;
     }
 
     void Compiler::visit(MacroNode& node) {
-        for (auto& arg : node.args)
-            this->compileValue(*arg, node.loc);
+        const int argCount = static_cast<int>(node.args.size());
+        const int base = this->reserveRegs(argCount);
 
-        int argCount = static_cast<int>(node.args.size());
-        int metaIdx = addMacro(node.name, argCount);
-        this->current.get().emit(OpCode::CALL_MACRO, metaIdx, node.loc);
+        for (int i = 0; i < argCount; ++i)
+            this->compileArg(base + i, *node.args[i], node.loc);
+
+        const int metaIdx = this->addMacro(node.name, argCount);
+        const int dst = this->allocReg();
+
+        this->current.get().emitCall(MirOp::CALL_MACRO, metaIdx, dst, base, -1, argCount, node.loc);
+        this->lastResultReg = dst;
     }
 
     void Compiler::visit(ArithmeticNode& node) {
-        this->compileValue(*node.left, node.loc);
-        this->compileValue(*node.right, node.loc);
+        const int lhs = this->compileValue(*node.left, node.loc);
+        const int rhs = this->compileValue(*node.right, node.loc);
 
-        const bool intOp = (node.op == "+" || node.op == "-" || node.op == "*" || node.op == "%") &&
-            node.left->type.kind == TypeKind::Int && node.right->type.kind == TypeKind::Int;
+        const bool isInt = node.type.kind == TypeKind::Int;
 
-        if (node.op == "+") this->current.get().emit(intOp ? OpCode::ADD_I : OpCode::ADD, 0, node.loc);
-        else if (node.op == "-") this->current.get().emit(intOp ? OpCode::SUB_I : OpCode::SUB, 0, node.loc);
-        else if (node.op == "*") this->current.get().emit(intOp ? OpCode::MUL_I : OpCode::MUL, 0, node.loc);
-        else if (node.op == "/") this->current.get().emit(OpCode::DIV, 0, node.loc);
-        else if (node.op == "%") this->current.get().emit(intOp ? OpCode::MOD_I : OpCode::MOD, 0, node.loc);
-        else if (node.op == "^") this->current.get().emit(OpCode::POW, 0, node.loc);
-        else
-            this->diagnostics.addError(node.loc, "Unknown arithmetic op: " + node.op);
+        if (node.op == "+") this->lastResultReg = this->emitBinary(MirOp::ADD, lhs, rhs, node.loc, node.type);
+        else if (node.op == "-") this->lastResultReg = this->emitBinary(MirOp::SUB, lhs, rhs, node.loc, node.type);
+        else if (node.op == "*") this->lastResultReg = this->emitBinary(MirOp::MUL, lhs, rhs, node.loc, node.type);
+        else if (node.op == "/") this->lastResultReg = this->emitBinary(MirOp::DIV, lhs, rhs, node.loc);
+        else if (node.op == "%") this->lastResultReg = this->emitBinary(MirOp::MOD, lhs, rhs, node.loc, node.type);
+        else if (node.op == "^") this->lastResultReg = this->emitBinary(MirOp::POW, lhs, rhs, node.loc);
+        else this->diagnostics.addError(node.loc, "Unknown arithmetic op: " + node.op);
     }
 
     void Compiler::visit(UnaryNode& node) {
-        this->compileValue(*node.operand, node.loc);
+        const int src = this->compileValue(*node.operand, node.loc);
 
-        if (node.op == "-")
-            this->current.get().emit(
-                node.operand->type.kind == TypeKind::Int ? OpCode::NEG_I : OpCode::NEG, 0, node.loc);
-        else if (node.op == "!") this->current.get().emit(OpCode::NOT, 0, node.loc);
-        else if (node.op == "+") {}
-        else
+        if (node.op == "-") {
+            const int dst = this->allocReg();
+            this->current.get().emit(MirOp::NEG, 0, dst, src, -1, node.loc, node.type);
+            this->lastResultReg = dst;
+        } else if (node.op == "!") {
+            const int dst = this->allocReg();
+            this->current.get().emit(MirOp::NOT, 0, dst, src, -1, node.loc);
+            this->lastResultReg = dst;
+        } else if (node.op == "+") {
+            this->lastResultReg = src;
+        } else {
             this->diagnostics.addError(node.loc, "Unknown unary op: " + node.op);
+        }
     }
 
     void Compiler::compileSequence(SequenceNode& node) {
-        if (node.parts.empty()) {
-            int idx = this->addConstant(std::string(""));
-            this->current.get().emit(OpCode::PUSH_STR, idx);
+        const int hint = std::exchange(this->dstHint, -1);
 
+        if (node.parts.empty()) {
+            this->lastResultReg = this->finishHint(hint, -1, {});
             return;
         }
 
         for (size_t i = 0; i < node.parts.size(); ++i) {
+            this->lastResultReg = -1;
+
+            if (hint >= 0 && i + 1 == node.parts.size())
+                this->dstHint = hint;
+
             node.parts[i]->accept(*this);
-
-            bool producesValue = node.parts[i]->getType() != ASTNode::Type::Class
-                && node.parts[i]->getType() != ASTNode::Type::Return
-                && node.parts[i]->getType() != ASTNode::Type::Using
-                && node.parts[i]->getType() != ASTNode::Type::Import
-                && node.parts[i]->getType() != ASTNode::Type::Component;
-
-            if (i != node.parts.size() - 1 && producesValue)
-                this->current.get().emit(OpCode::POP);
         }
+
+        this->lastResultReg = this->finishHint(hint, this->lastResultReg, {});
     }
 
     void Compiler::visit(UsingNode&) {}
@@ -578,37 +922,36 @@ namespace LOICollection::frontend::ir {
     }
 
     void Compiler::visit(ReturnNode& node) {
-        if (node.value) {
-            node.value->accept(*this);
-        } else {
-            int idx = this->addConstant(std::string(""));
-            this->current.get().emit(OpCode::PUSH_STR, idx);
-        }
+        const int reg = node.value ? this->compilePart(*node.value) : -1;
 
-        this->current.get().emit(OpCode::RETURN);
+        this->current.get().emit(MirOp::RETURN, 0, -1, reg, -1, node.loc);
+        this->lastResultReg = -1;
     }
 
     void Compiler::visit(NewNode& node) {
-        for (auto& arg : node.args)
-            this->compileValue(*arg, node.loc);
+        const int argCount = static_cast<int>(node.args.size());
+        const int base = this->reserveRegs(argCount);
 
+        for (int i = 0; i < argCount; ++i)
+            this->compileArg(base + i, *node.args[i], node.loc);
+
+        int dst = -1;
         auto it = this->classIndices.find(node.className);
         if (it == this->classIndices.end()) {
-            if (ClassCall::getInstance().isRegistered(node.className)) {
-                int argCount = static_cast<int>(node.args.size());
-                int metaIdx = this->addNativeCall(node.className, "", argCount);
-
-                this->current.get().emit(OpCode::NEW_NATIVE, metaIdx, node.loc);
-                if (node.declarativeBlock)
-                    this->compileDeclarativeBlock(*node.declarativeBlock, node.receiverName);
+            if (!ClassCall::getInstance().isRegistered(node.className)) {
+                this->diagnostics.addError(node.loc, "Unknown class: " + node.className);
                 return;
             }
 
-            this->diagnostics.addError(node.loc, "Unknown class: " + node.className);
-            return;
+            const int metaIdx = this->addNativeCall(node.className, "", argCount);
+            dst = this->allocReg();
+            this->current.get().emitCall(MirOp::NEW_NATIVE, metaIdx, dst, base, -1, argCount, node.loc);
+        } else {
+            dst = this->allocReg();
+            this->current.get().emitCall(MirOp::NEW, it->second, dst, base, -1, argCount, node.loc);
         }
 
-        this->current.get().emit(OpCode::NEW, it->second, node.loc);
+        this->lastResultReg = dst;
 
         if (node.declarativeBlock)
             this->compileDeclarativeBlock(*node.declarativeBlock, node.receiverName);
@@ -623,29 +966,31 @@ namespace LOICollection::frontend::ir {
             receiverSlot = this->declareSlot(receiver);
         }
 
+        const int objReg = this->finishHint(-1, this->lastResultReg, {});
+        this->lastResultReg = -1;
+
         if (receiverSlot >= 0)
-            this->current.get().emit(OpCode::STORE_SLOT, receiverSlot);
+            this->current.get().emit(MirOp::STORE_SLOT, receiverSlot, -1, objReg, -1);
         else
-            this->emitStore(receiver, {});
+            this->emitStore(receiver, objReg, {});
 
         for (auto& part : block.parts)
             this->desugarDeclarativeStatements(part, receiver);
 
         for (auto& part : block.parts) {
+            this->lastResultReg = -1;
             part->accept(*this);
-
-            bool producesValue = part->getType() != ASTNode::Type::Class
-                && part->getType() != ASTNode::Type::Return
-                && part->getType() != ASTNode::Type::Using;
-
-            if (producesValue)
-                this->current.get().emit(OpCode::POP);
         }
 
-        if (receiverSlot >= 0)
-            this->current.get().emit(OpCode::LOAD_SLOT, receiverSlot);
-        else
-            this->emitLoad(receiver, {});
+        this->lastResultReg = -1;
+
+        if (receiverSlot >= 0) {
+            const int dst = this->allocReg();
+            this->current.get().emit(MirOp::LOAD_SLOT, receiverSlot, dst, -1, -1);
+            this->lastResultReg = dst;
+        } else {
+            this->lastResultReg = this->emitLoad(receiver, {});
+        }
     }
 
     void Compiler::desugarDeclarativeStatements(std::unique_ptr<ASTNode>& node, const std::string& receiver) {
@@ -706,179 +1051,201 @@ namespace LOICollection::frontend::ir {
 
     void Compiler::visit(MemberAccessNode& node) {
         if (node.isStaticAccess) {
-            this->emitLoad(qualifiedName(node), node.loc);
+            int reg = this->emitLoad(qualifiedName(node), node.loc);
 
-            if (node.type.kind == TypeKind::Optional && !node.preserveOptional)
-                this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+            if (node.type.kind == TypeKind::Optional && !node.preserveOptional) {
+                const int dst = this->allocReg();
+                this->current.get().emit(MirOp::UNWRAP, 0, dst, reg, -1, node.loc, node.type);
+                reg = dst;
+            }
+
+            this->lastResultReg = reg;
             return;
         }
 
         if (node.isSafe) {
-            this->compileValue(*node.target, node.loc);
+            const int objReg = this->compileValue(*node.target, node.loc);
+            const int dst = this->allocReg();
+            const int cond = this->allocReg();
 
-            this->current.get().emit(OpCode::DUP, 0, node.loc);
-            this->current.get().emit(OpCode::IS_NONE, 0, node.loc);
+            this->current.get().emit(MirOp::IS_NONE, 0, cond, objReg, -1, node.loc);
 
-            size_t jmpSkipIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
+            const size_t jmpSkipIdx = this->current.get().emit(
+                MirOp::JMP_IF_FALSE, 0, -1, cond, -1, node.loc);
 
-            this->current.get().emit(OpCode::POP, 0, node.loc);
-            int noneIdx = this->addConstant(std::monostate{});
-            this->current.get().emit(OpCode::PUSH_NONE, noneIdx, node.loc);
+            this->current.get().emit(
+                MirOp::LOAD_CONST, this->addConstant(std::monostate{}), dst, -1, -1, node.loc);
 
-            size_t jmpEndIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
+            const size_t jmpEndIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
 
-            int skipTarget = static_cast<int>(this->current.get().currentIP());
+            const int skipTarget = static_cast<int>(this->current.get().currentIP());
             this->current.get().patchJump(jmpSkipIdx, skipTarget - static_cast<int>(jmpSkipIdx) - 1);
 
             switch (node.memberKind) {
                 case MemberAccessNode::MemberKind::TypeOf:
-                    this->current.get().emit(OpCode::TYPE_OF, 0, node.loc);
+                    this->current.get().emit(MirOp::TYPE_OF, 0, dst, objReg, -1, node.loc);
                     break;
                 case MemberAccessNode::MemberKind::HasValue:
-                    this->current.get().emit(OpCode::HAS_VALUE, 0, node.loc);
+                    this->current.get().emit(MirOp::HAS_VALUE, 0, dst, objReg, -1, node.loc);
                     break;
                 case MemberAccessNode::MemberKind::Value:
-                    
-                    this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+                    this->current.get().emit(MirOp::UNWRAP, 0, dst, objReg, -1, node.loc);
                     break;
-                default: {
-                    this->emitFieldAccess(OpCode::LOAD_FIELD_SLOT, OpCode::LOAD_FIELD, node);
+                default:
+                    this->emitLoadFieldInto(dst, objReg, node);
                     break;
-                }
             }
 
-            int endPos = static_cast<int>(this->current.get().currentIP());
+            const int endPos = static_cast<int>(this->current.get().currentIP());
             this->current.get().patchJump(jmpEndIdx, endPos - static_cast<int>(jmpEndIdx) - 1);
+
+            this->lastResultReg = dst;
             return;
         }
 
         switch (node.memberKind) {
-            case MemberAccessNode::MemberKind::TypeOf:
-                node.target->accept(*this);
-                this->current.get().emit(OpCode::TYPE_OF, 0, node.loc);
+            case MemberAccessNode::MemberKind::TypeOf: {
+                const int objReg = this->finishHint(-1, this->compilePart(*node.target), node.loc);
+                const int dst = this->allocReg();
+                this->current.get().emit(MirOp::TYPE_OF, 0, dst, objReg, -1, node.loc);
+                this->lastResultReg = dst;
                 return;
-            case MemberAccessNode::MemberKind::Value:
-                node.target->accept(*this);
-                if (node.target->type.kind == TypeKind::Optional)
-                    this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
+            }
+            case MemberAccessNode::MemberKind::Value: {
+                const int objReg = this->finishHint(-1, this->compilePart(*node.target), node.loc);
+                if (node.target->type.kind != TypeKind::Optional) {
+                    this->lastResultReg = objReg;
+                    return;
+                }
+
+                const int dst = this->allocReg();
+                this->current.get().emit(MirOp::UNWRAP, 0, dst, objReg, -1, node.loc);
+                this->lastResultReg = dst;
                 return;
-            case MemberAccessNode::MemberKind::HasValue:
-                node.target->accept(*this);
-                this->current.get().emit(OpCode::HAS_VALUE, 0, node.loc);
+            }
+            case MemberAccessNode::MemberKind::HasValue: {
+                const int objReg = this->finishHint(-1, this->compilePart(*node.target), node.loc);
+                const int dst = this->allocReg();
+                this->current.get().emit(MirOp::HAS_VALUE, 0, dst, objReg, -1, node.loc);
+                this->lastResultReg = dst;
                 return;
+            }
             case MemberAccessNode::MemberKind::Normal:
                 break;
         }
 
-        this->emitLoadField(node);
+        int reg = this->emitLoadField(node);
 
-        if (node.type.kind == TypeKind::Optional && !node.preserveOptional)
-            this->current.get().emit(OpCode::UNWRAP, 0, node.loc);
-    }
-
-    void Compiler::visit(ArrayNode& node) {
-        for (auto& element : node.elements)
-            this->compileValue(*element, node.loc);
-
-        this->current.get().emit(OpCode::MAKE_ARRAY, static_cast<int>(node.elements.size()), node.loc);
-    }
-
-    void Compiler::visit(IndexAccessNode& node) {
-        this->compileValue(*node.target, node.loc);
-
-        if (node.isSafe) {
-            this->current.get().emit(OpCode::DUP, 0, node.loc);
-            this->current.get().emit(OpCode::IS_NONE, 0, node.loc);
-
-            size_t jmpSkipIdx = this->current.get().emit(OpCode::JMP_IF_FALSE, 0, node.loc);
-
-            this->current.get().emit(OpCode::POP, 0, node.loc);
-            int noneIdx = this->addConstant(std::monostate{});
-            this->current.get().emit(OpCode::PUSH_NONE, noneIdx, node.loc);
-
-            size_t jmpEndIdx = this->current.get().emit(OpCode::JMP, 0, node.loc);
-
-            int skipTarget = static_cast<int>(this->current.get().currentIP());
-            this->current.get().patchJump(jmpSkipIdx, skipTarget - static_cast<int>(jmpSkipIdx) - 1);
-
-            this->compileValue(*node.index, node.loc);
-            this->current.get().emit(OpCode::LOAD_INDEX, 0, node.loc);
-
-            int endPos = static_cast<int>(this->current.get().currentIP());
-            this->current.get().patchJump(jmpEndIdx, endPos - static_cast<int>(jmpEndIdx) - 1);
-            return;
+        if (node.type.kind == TypeKind::Optional && !node.preserveOptional) {
+            const int dst = this->allocReg();
+            this->current.get().emit(MirOp::UNWRAP, 0, dst, reg, -1, node.loc, node.type);
+            reg = dst;
         }
 
-        this->compileValue(*node.index, node.loc);
-        this->current.get().emit(OpCode::LOAD_INDEX, 0, node.loc);
+        this->lastResultReg = reg;
     }
 
     void Compiler::visit(MethodCallNode& node) {
         const bool bindsReceiver = !this->scopes.back().hasThis;
-
-        std::vector<int> callbackArgs;
-        for (size_t i = 0; i < node.args.size(); ++i) {
-            this->compileValue(*node.args[i], node.loc);
-
-            if (bindsReceiver && node.args[i]->getType() == ASTNode::Type::Lambda)
-                callbackArgs.push_back(static_cast<int>(i));
-        }
+        const int argCount = static_cast<int>(node.args.size());
 
         if (node.dynamicDispatch) {
-            this->compileValue(*node.target, node.loc);
-            for (int arg : callbackArgs)
-                this->current.get().emit(
-                    OpCode::BIND_THIS, static_cast<int>(node.args.size()) - arg, node.loc);
-            int metaIdx = this->addByNameCall(node.methodName, static_cast<int>(node.args.size()));
-            this->current.get().emit(OpCode::CALL_METHOD_BY_NAME, metaIdx, node.loc);
+            const int base = this->reserveRegs(argCount + 1);
+            for (int i = 0; i < argCount; ++i)
+                this->compileArg(base + i, *node.args[i], node.loc);
+
+            if (bindsReceiver && argCount > 0) {
+                for (int i = 0; i < argCount; ++i) {
+                    if (node.args[i]->getType() != ASTNode::Type::Lambda)
+                        continue;
+
+                    this->current.get().emit(
+                        MirOp::BIND_THIS, 0, base + i, base + i, base + argCount - 1, node.loc);
+                }
+            }
+
+            this->compileArg(base + argCount, *node.target, node.loc);
+
+            const int metaIdx = this->addByNameCall(node.methodName, argCount);
+            const int dst = this->allocReg();
+
+            this->current.get().emitCall(
+                MirOp::CALL_METHOD_BY_NAME, metaIdx, dst, base, -1, argCount, node.loc);
+            this->lastResultReg = dst;
             return;
         }
 
         if (node.isStaticCall) {
-            if (ClassCall::getInstance().isRegistered(node.staticClassName)) {
-                int argCount = static_cast<int>(node.args.size());
-                int metaIdx = this->addNativeCall(node.staticClassName, node.methodName, argCount, true);
+            const int base = this->reserveRegs(argCount);
+            for (int i = 0; i < argCount; ++i)
+                this->compileArg(base + i, *node.args[i], node.loc);
 
-                this->current.get().emit(OpCode::CALL_NATIVE_METHOD, metaIdx, node.loc);
+            if (ClassCall::getInstance().isRegistered(node.staticClassName)) {
+                const int metaIdx = this->addNativeCall(node.staticClassName, node.methodName, argCount, true);
+                const int dst = this->allocReg();
+
+                this->current.get().emitCall(
+                    MirOp::CALL_NATIVE_METHOD, metaIdx, dst, base, -1, argCount, node.loc);
+                this->lastResultReg = dst;
                 return;
             }
 
             auto it = this->classStaticMethodIndices.find(node.staticClassName);
             if (it != this->classStaticMethodIndices.end() && node.methodOrdinal >= 0 &&
                 static_cast<size_t>(node.methodOrdinal) < it->second.size()) {
-                this->current.get().emit(OpCode::CALL_FUNC, it->second[node.methodOrdinal], node.loc);
+                const int dst = this->allocReg();
+
+                this->current.get().emitCall(
+                    MirOp::CALL_FUNC, it->second[node.methodOrdinal], dst, base, -1, argCount, node.loc);
+                this->lastResultReg = dst;
             } else {
                 this->diagnostics.addError(node.loc, "Unresolved static method call: " + node.methodName);
             }
             return;
         }
 
-        this->compileValue(*node.target, node.loc);
+        const int base = this->reserveRegs(argCount + 1);
+        for (int i = 0; i < argCount; ++i)
+            this->compileArg(base + i, *node.args[i], node.loc);
 
-        for (int arg : callbackArgs)
-            this->current.get().emit(
-                OpCode::BIND_THIS, static_cast<int>(node.args.size()) - arg, node.loc);
+        const int receiver = this->compileArg(base + argCount, *node.target, node.loc);
+
+        if (bindsReceiver) {
+            for (int i = 0; i < argCount; ++i) {
+                if (node.args[i]->getType() != ASTNode::Type::Lambda)
+                    continue;
+
+                this->current.get().emit(MirOp::BIND_THIS, 0, base + i, base + i, receiver, node.loc);
+            }
+        }
 
         auto it = classMethodIndices.find(node.className);
         if (it != classMethodIndices.end() && node.methodOrdinal >= 0 &&
             static_cast<size_t>(node.methodOrdinal) < it->second.size()) {
-            int argCount = static_cast<int>(node.args.size());
+            const int dst = this->allocReg();
 
             if (node.target->getType() == ASTNode::Type::Super) {
-                this->current.get().emit(OpCode::CALL_METHOD, it->second[node.methodOrdinal], node.loc);
+                this->current.get().emitCall(
+                    MirOp::CALL_METHOD, it->second[node.methodOrdinal], dst, base, -1, argCount, node.loc);
             } else {
                 int classIdx = this->classIndices[node.className];
                 int metaIdx = this->addVirtualCall(classIdx, node.methodOrdinal, argCount);
-                this->current.get().emit(OpCode::CALL_METHOD_VIRTUAL, metaIdx, node.loc);
+
+                this->current.get().emitCall(
+                    MirOp::CALL_METHOD_VIRTUAL, metaIdx, dst, base, -1, argCount, node.loc);
             }
+
+            this->lastResultReg = dst;
             return;
         }
 
         if (ClassCall::getInstance().isRegistered(node.className)) {
-            int argCount = static_cast<int>(node.args.size());
-            int metaIdx = this->addNativeCall(node.className, node.methodName, argCount);
+            const int metaIdx = this->addNativeCall(node.className, node.methodName, argCount);
+            const int dst = this->allocReg();
 
-            this->current.get().emit(OpCode::CALL_NATIVE_METHOD, metaIdx, node.loc);
+            this->current.get().emitCall(
+                MirOp::CALL_NATIVE_METHOD, metaIdx, dst, base, -1, argCount, node.loc);
+            this->lastResultReg = dst;
             return;
         }
 
@@ -886,18 +1253,25 @@ namespace LOICollection::frontend::ir {
     }
 
     void Compiler::visit(ThisNode& node) {
-        this->current.get().emit(OpCode::LOAD_THIS, 0, node.loc);
+        const int dst = this->takeDst();
+        this->current.get().emit(MirOp::LOAD_THIS, 0, dst, -1, -1, node.loc);
+        this->lastResultReg = dst;
     }
 
     void Compiler::visit(SuperNode& node) {
-        this->current.get().emit(OpCode::LOAD_THIS, 0, node.loc);
+        const int dst = this->takeDst();
+        this->current.get().emit(MirOp::LOAD_THIS, 0, dst, -1, -1, node.loc);
+        this->lastResultReg = dst;
     }
 
     void Compiler::visit(SuperCallNode& node) {
-        for (auto& arg : node.args)
-            this->compileValue(*arg, node.loc);
+        const int argCount = static_cast<int>(node.args.size());
+        const int base = this->reserveRegs(argCount + 1);
 
-        this->current.get().emit(OpCode::LOAD_THIS, 0, node.loc);
+        for (int i = 0; i < argCount; ++i)
+            this->compileArg(base + i, *node.args[i], node.loc);
+
+        this->current.get().emit(MirOp::LOAD_THIS, 0, base + argCount, -1, -1, node.loc);
 
         int constructorIndex = -1;
         if (node.constructorIndex >= 0) {
@@ -906,16 +1280,20 @@ namespace LOICollection::frontend::ir {
                 constructorIndex = this->chunk.classes[classIt->second].constructorIndex;
         }
 
-        int argCount = static_cast<int>(node.args.size());
-        int metaIdx = this->addSuperCall(constructorIndex, argCount);
-        this->current.get().emit(OpCode::CALL_SUPER_CTOR, metaIdx, node.loc);
+        const int metaIdx = this->addSuperCall(constructorIndex, argCount);
+
+        this->current.get().emitCall(
+            MirOp::CALL_SUPER_CTOR, metaIdx, -1, base, -1, argCount, node.loc);
+        this->lastResultReg = -1;
     }
 
     void Compiler::visit(InstanceOfNode& node) {
-        this->compileValue(*node.target, node.loc);
+        const int objReg = this->compileValue(*node.target, node.loc);
+        const int nameIdx = this->addConstant(node.className);
+        const int dst = this->allocReg();
 
-        int nameIdx = this->addConstant(node.className);
-        this->current.get().emit(OpCode::INSTANCEOF, nameIdx, node.loc);
+        this->current.get().emit(MirOp::INSTANCEOF, nameIdx, dst, objReg, -1, node.loc);
+        this->lastResultReg = dst;
     }
 
     void Compiler::visit(FunctionDefNode& node) {
@@ -936,11 +1314,11 @@ namespace LOICollection::frontend::ir {
         mm.argCount = static_cast<int>(node.decl.params.size());
 
         int bodyIdx = static_cast<int>(this->chunk.methodBodies.size());
-        auto body = std::make_unique<BytecodeChunk>();
-        BytecodeChunk& bodyChunk = *body;
+        auto body = std::make_unique<MirChunk>();
+        MirChunk& bodyChunk = *body;
         this->chunk.methodBodies.push_back(std::move(body));
 
-        std::reference_wrapper<BytecodeChunk> saved = this->current;
+        std::reference_wrapper<MirChunk> saved = this->current;
         this->current = std::ref(bodyChunk);
         auto loops = this->suspendLoops();
 
@@ -948,14 +1326,13 @@ namespace LOICollection::frontend::ir {
         for (const auto& param : node.decl.params)
             this->declareSlot(param.name);
 
-        if (node.decl.body)
-            node.decl.body->accept(*this);
+        int lastReg = -1;
+        if (node.decl.body) {
+            this->predeclareLocals(*node.decl.body);
+            lastReg = this->compilePart(*node.decl.body);
+        }
 
-        this->current.get().emit(OpCode::POP);
-
-        int emptyIdx = this->addConstant(std::string(""));
-        this->current.get().emit(OpCode::PUSH_STR, emptyIdx);
-        this->current.get().emit(OpCode::RETURN);
+        this->current.get().emit(MirOp::RETURN, 0, -1, lastReg, -1);
 
         this->current = saved;
         bodyChunk.slotCount = this->closeScope();
@@ -966,22 +1343,31 @@ namespace LOICollection::frontend::ir {
     }
 
     void Compiler::visit(FuncCallNode& node) {
-        for (auto& arg : node.args)
-            this->compileValue(*arg, node.loc);
+        const int argCount = static_cast<int>(node.args.size());
 
         if (node.isStaticCall) {
-            if (ClassCall::getInstance().isRegistered(node.staticClassName)) {
-                int argCount = static_cast<int>(node.args.size());
-                int metaIdx = this->addNativeCall(node.staticClassName, node.name, argCount, true);
+            const int base = this->reserveRegs(argCount);
+            for (int i = 0; i < argCount; ++i)
+                this->compileArg(base + i, *node.args[i], node.loc);
 
-                this->current.get().emit(OpCode::CALL_NATIVE_METHOD, metaIdx, node.loc);
+            if (ClassCall::getInstance().isRegistered(node.staticClassName)) {
+                const int metaIdx = this->addNativeCall(node.staticClassName, node.name, argCount, true);
+                const int dst = this->allocReg();
+
+                this->current.get().emitCall(
+                    MirOp::CALL_NATIVE_METHOD, metaIdx, dst, base, -1, argCount, node.loc);
+                this->lastResultReg = dst;
                 return;
             }
 
             auto it = this->classStaticMethodIndices.find(node.staticClassName);
             if (it != this->classStaticMethodIndices.end() && node.methodOrdinal >= 0 &&
                 static_cast<size_t>(node.methodOrdinal) < it->second.size()) {
-                this->current.get().emit(OpCode::CALL_FUNC, it->second[node.methodOrdinal], node.loc);
+                const int dst = this->allocReg();
+
+                this->current.get().emitCall(
+                    MirOp::CALL_FUNC, it->second[node.methodOrdinal], dst, base, -1, argCount, node.loc);
+                this->lastResultReg = dst;
             } else {
                 this->diagnostics.addError(node.loc, "Unresolved static method call: " + node.name);
             }
@@ -989,10 +1375,16 @@ namespace LOICollection::frontend::ir {
         }
 
         if (node.isCallable) {
-            this->emitLoad(node.resolvedName, node.loc);
+            const int base = this->reserveRegs(argCount);
+            for (int i = 0; i < argCount; ++i)
+                this->compileArg(base + i, *node.args[i], node.loc);
 
-            int argCount = static_cast<int>(node.args.size());
-            this->current.get().emit(OpCode::CALL_LAMBDA, argCount, node.loc);
+            const int funcReg = this->emitLoad(node.resolvedName, node.loc);
+            const int dst = this->allocReg();
+
+            this->current.get().emitCall(
+                MirOp::CALL_LAMBDA, argCount, dst, base, funcReg, argCount, node.loc);
+            this->lastResultReg = dst;
             return;
         }
 
@@ -1003,16 +1395,24 @@ namespace LOICollection::frontend::ir {
             return;
         }
 
-        this->current.get().emit(OpCode::CALL_FUNC, it->second[node.functionOrdinal], node.loc);
+        const int base = this->reserveRegs(argCount);
+        for (int i = 0; i < argCount; ++i)
+            this->compileArg(base + i, *node.args[i], node.loc);
+
+        const int dst = this->allocReg();
+
+        this->current.get().emitCall(
+            MirOp::CALL_FUNC, it->second[node.functionOrdinal], dst, base, -1, argCount, node.loc);
+        this->lastResultReg = dst;
     }
 
     void Compiler::visit(LambdaNode& node) {
         int bodyIdx = static_cast<int>(this->chunk.methodBodies.size());
-        auto body = std::make_unique<BytecodeChunk>();
-        BytecodeChunk& bodyChunk = *body;
+        auto body = std::make_unique<MirChunk>();
+        MirChunk& bodyChunk = *body;
         this->chunk.methodBodies.push_back(std::move(body));
 
-        std::reference_wrapper<BytecodeChunk> saved = this->current;
+        std::reference_wrapper<MirChunk> saved = this->current;
         this->current = std::ref(bodyChunk);
         auto loops = this->suspendLoops();
 
@@ -1020,197 +1420,75 @@ namespace LOICollection::frontend::ir {
         for (const auto& param : node.decl.params)
             this->declareSlot(param.name);
 
-        if (node.decl.body)
-            node.decl.body->accept(*this);
+        int lastReg = -1;
+        if (node.decl.body) {
+            this->predeclareLocals(*node.decl.body);
+            lastReg = this->compilePart(*node.decl.body);
+        }
 
-        this->current.get().emit(OpCode::POP);
-
-        int emptyIdx = this->addConstant(std::string(""));
-        this->current.get().emit(OpCode::PUSH_STR, emptyIdx);
-        this->current.get().emit(OpCode::RETURN);
+        this->current.get().emit(MirOp::RETURN, 0, -1, lastReg, -1);
 
         this->current = saved;
 
         const int captureCount = this->scopes.back().base;
         bodyChunk.slotCount = this->closeScope();
 
-        int lambdaIdx = this->addLambda(bodyIdx, static_cast<int>(node.decl.params.size()), captureCount);
-        this->current.get().emit(OpCode::MAKE_LAMBDA, lambdaIdx, node.loc);
+        const int lambdaIdx = this->addLambda(bodyIdx, static_cast<int>(node.decl.params.size()), captureCount);
+        const int dst = this->allocReg();
+
+        this->current.get().emitCall(
+            MirOp::MAKE_LAMBDA, lambdaIdx, dst, -1, -1, captureCount, node.loc);
+        this->lastResultReg = dst;
     }
 
-    int Compiler::addNativeCall(const std::string& className, const std::string& name, int argCount, bool isStatic) {
-        for (size_t i = 0; i < this->chunk.nativeCalls.size(); ++i) {
-            const auto& meta = this->chunk.nativeCalls[i];
-            if (meta.className == className && meta.name == name && meta.argCount == argCount && meta.isStatic == isStatic)
-                return static_cast<int>(i);
-        }
+    void Compiler::visit(ArrayNode& node) {
+        const int count = static_cast<int>(node.elements.size());
+        const int base = this->reserveRegs(count);
 
-        this->chunk.nativeCalls.push_back({ className, name, argCount, isStatic });
-        return static_cast<int>(this->chunk.nativeCalls.size() - 1);
+        for (int i = 0; i < count; ++i)
+            this->compileArg(base + i, *node.elements[i], node.loc);
+
+        const int dst = this->allocReg();
+
+        this->current.get().emitCall(MirOp::MAKE_ARRAY, count, dst, base, -1, count, node.loc);
+        this->lastResultReg = dst;
     }
 
-    int Compiler::addConstant(const ValueNode::ValueType& val) {
-        this->current.get().constants.push_back(val);
-        return static_cast<int>(this->current.get().constants.size() - 1);
-    }
+    void Compiler::visit(IndexAccessNode& node) {
+        const int objReg = this->compileValue(*node.target, node.loc);
 
-    int Compiler::addFunction(const std::string& name, int argCount) {
-        this->current.get().functions.push_back({name, argCount});
-        return static_cast<int>(this->current.get().functions.size() - 1);
-    }
+        if (node.isSafe) {
+            const int dst = this->allocReg();
+            const int cond = this->allocReg();
 
-    int Compiler::addMacro(const std::string& name, int argCount) {
-        this->current.get().macros.push_back({name, argCount});
-        return static_cast<int>(this->current.get().macros.size() - 1);
-    }
+            this->current.get().emit(MirOp::IS_NONE, 0, cond, objReg, -1, node.loc);
 
-    int Compiler::addLambda(int bodyIndex, int argCount, int captureCount) {
-        this->current.get().lambdas.push_back({bodyIndex, argCount, captureCount});
-        return static_cast<int>(this->current.get().lambdas.size() - 1);
-    }
+            const size_t jmpSkipIdx = this->current.get().emit(
+                MirOp::JMP_IF_FALSE, 0, -1, cond, -1, node.loc);
 
-    int Compiler::addVirtualCall(int classIndex, int ordinal, int argCount) {
-        this->current.get().virtualCalls.push_back({classIndex, ordinal, argCount});
-        return static_cast<int>(this->current.get().virtualCalls.size() - 1);
-    }
+            this->current.get().emit(
+                MirOp::LOAD_CONST, this->addConstant(std::monostate{}), dst, -1, -1, node.loc);
 
-    int Compiler::addByNameCall(const std::string& methodName, int argCount) {
-        this->current.get().byNameCalls.push_back({methodName, argCount});
-        return static_cast<int>(this->current.get().byNameCalls.size() - 1);
-    }
+            const size_t jmpEndIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
 
-    int Compiler::addSuperCall(int constructorIndex, int argCount) {
-        this->current.get().superCalls.push_back({constructorIndex, argCount});
-        return static_cast<int>(this->current.get().superCalls.size() - 1);
-    }
+            const int skipTarget = static_cast<int>(this->current.get().currentIP());
+            this->current.get().patchJump(jmpSkipIdx, skipTarget - static_cast<int>(jmpSkipIdx) - 1);
 
-    void Compiler::pushScope(bool hasThis, int base, bool inherits) {
-        Scope scope;
-        scope.base = base;
-        scope.next = base;
-        scope.hasThis = hasThis || (!this->scopes.empty() && this->scopes.back().hasThis);
-        scope.inherits = inherits;
-        this->scopes.push_back(std::move(scope));
-    }
+            const int idxReg = this->compileValue(*node.index, node.loc);
+            this->current.get().emit(MirOp::LOAD_INDEX, 0, dst, objReg, idxReg, node.loc);
 
-    int Compiler::closeScope() {
-        const int slotCount = this->scopes.back().next;
-        this->scopes.pop_back();
-        return slotCount;
-    }
+            const int endPos = static_cast<int>(this->current.get().currentIP());
+            this->current.get().patchJump(jmpEndIdx, endPos - static_cast<int>(jmpEndIdx) - 1);
 
-    int Compiler::declareSlot(const std::string& name) {
-        Scope& scope = this->scopes.back();
-        auto [it, inserted] = scope.slots.emplace(name, scope.next);
-        if (inserted)
-            ++scope.next;
-
-        return it->second;
-    }
-
-    std::optional<int> Compiler::resolveSlot(const std::string& name) const {
-        for (auto scope = this->scopes.rbegin(); scope != this->scopes.rend(); ++scope) {
-            if (auto it = scope->slots.find(name); it != scope->slots.end())
-                return it->second;
-
-            if (!scope->inherits)
-                break;
-        }
-
-        return std::nullopt;
-    }
-
-    void Compiler::emitLoad(const std::string& name, const SourceLocation& loc) {
-        if (auto slot = this->resolveSlot(name)) {
-            this->current.get().emit(OpCode::LOAD_SLOT, *slot, loc);
+            this->lastResultReg = dst;
             return;
         }
 
-        this->current.get().emit(OpCode::LOAD_VAR, this->addConstant(name), loc);
-    }
+        const int idxReg = this->compileValue(*node.index, node.loc);
+        const int dst = this->allocReg();
 
-    void Compiler::emitStore(const std::string& name, const SourceLocation& loc) {
-        if (auto slot = this->resolveSlot(name)) {
-            this->current.get().emit(OpCode::STORE_SLOT, *slot, loc);
-            return;
-        }
-
-        this->current.get().emit(OpCode::STORE_VAR, this->addConstant(name), loc);
-    }
-
-    int Compiler::fieldSlotOf(const TypeInfo& owner, const std::string& memberName) const {
-        if (owner.kind != TypeKind::Object)
-            return -1;
-
-        auto classIt = this->classIndices.find(owner.className);
-        if (classIt != this->classIndices.end()) {
-            const auto& names = this->chunk.classes[static_cast<size_t>(classIt->second)].fieldNames;
-
-            auto it = std::ranges::find(names, memberName);
-            return it == names.end() ? -1 : static_cast<int>(std::distance(names.begin(), it));
-        }
-
-        const auto fields = ClassCall::getInstance().getFields(owner.className);
-
-        auto it = std::ranges::find(fields, memberName);
-        return it == fields.end() ? -1 : static_cast<int>(std::distance(fields.begin(), it));
-    }
-
-    void Compiler::emitFieldAccess(OpCode slotOp, OpCode namedOp, const MemberAccessNode& node) {
-        int slot = this->fieldSlotOf(node.target->type, node.memberName);
-        if (slot >= 0) {
-            this->current.get().emit(slotOp, slot, node.loc);
-            return;
-        }
-
-        this->current.get().emit(namedOp, this->addConstant(node.memberName), node.loc);
-    }
-
-    void Compiler::emitLoadField(const MemberAccessNode& node) {
-        this->compileValue(*node.target, node.loc);
-        this->emitFieldAccess(OpCode::LOAD_FIELD_SLOT, OpCode::LOAD_FIELD, node);
-    }
-
-    void Compiler::emitStoreField(const MemberAccessNode& node) {
-        this->emitFieldAccess(OpCode::STORE_FIELD_SLOT, OpCode::STORE_FIELD, node);
-    }
-
-    ClassLookup Compiler::classLookup() const {
-        return [this](const std::string& name) -> ClassNode* {
-            auto it = this->classNodes.find(name);
-
-            return it == this->classNodes.end() ? nullptr : &it->second.get();
-        };
-    }
-
-    void Compiler::compileValue(ExprNode& node, const SourceLocation& loc) {
-        node.accept(*this);
-
-        if (node.type.kind == TypeKind::Optional && !node.preserveOptional)
-            this->current.get().emit(OpCode::UNWRAP, 0, loc);
-    }
-
-    std::optional<ValueNode::ValueType> Compiler::constantValue(ExprNode& node) const {
-        if (node.getType() == ASTNode::Type::Value)
-            return static_cast<ValueNode&>(node).value;
-
-        if (node.getType() == ASTNode::Type::Array) {
-            auto& array = static_cast<ArrayNode&>(node);
-            auto result = std::make_shared<ArrayValue>();
-            result->elements.reserve(array.elements.size());
-
-            for (auto& element : array.elements) {
-                auto value = this->constantValue(*element);
-                if (!value.has_value())
-                    return std::nullopt;
-
-                result->elements.push_back(*value);
-            }
-
-            return result;
-        }
-
-        return std::nullopt;
+        this->current.get().emit(MirOp::LOAD_INDEX, 0, dst, objReg, idxReg, node.loc);
+        this->lastResultReg = dst;
     }
 
 }
