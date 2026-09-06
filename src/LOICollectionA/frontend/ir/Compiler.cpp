@@ -286,8 +286,11 @@ namespace LOICollection::frontend::ir {
     }
 
     int Compiler::emitLoad(const std::string& name, const SourceLocation& loc) {
-        if (auto slot = this->resolveSlot(name))
-            return *slot;
+        if (auto slot = this->resolveSlot(name)) {
+            const int dst = this->takeDst();
+            this->current.get().emit(MirOp::LOAD_SLOT, *slot, dst, -1, -1, loc);
+            return dst;
+        }
 
         const int dst = this->takeDst();
         this->current.get().emit(MirOp::LOAD_VAR, this->addConstant(name), dst, -1, -1, loc);
@@ -1330,6 +1333,8 @@ namespace LOICollection::frontend::ir {
         if (node.decl.body) {
             this->predeclareLocals(*node.decl.body);
             lastReg = this->compilePart(*node.decl.body);
+            if (this->lastPartWasDeclaration)
+                lastReg = -1;
         }
 
         this->current.get().emit(MirOp::RETURN, 0, -1, lastReg, -1);
@@ -1424,6 +1429,8 @@ namespace LOICollection::frontend::ir {
         if (node.decl.body) {
             this->predeclareLocals(*node.decl.body);
             lastReg = this->compilePart(*node.decl.body);
+            if (this->lastPartWasDeclaration)
+                lastReg = -1;
         }
 
         this->current.get().emit(MirOp::RETURN, 0, -1, lastReg, -1);
