@@ -559,6 +559,88 @@ Construction rules:
 
 Object `==`/`!=` is also a reference comparison.
 
+### Traits and Impls
+
+A `trait` declares a set of method contracts, and `impl` supplies the implementation for a class, so a capability can be attached to a class without going through inheritance:
+
+```lcui
+trait Printable {
+    func describe() -> string;
+}
+
+class Card {
+    // ...
+}
+
+impl Printable for Card {
+    func describe() -> string {
+        return "card";
+    }
+}
+```
+
+- `impl Trait for Class` implements a trait for a class; every method declared by the trait must be implemented. An unknown trait, an `impl` target that is not a class, or a missing required method raises an error.
+- `impl Class` is an inherent implementation (not bound to a trait) and also merges its methods into the target class.
+- An `impl` block may contain `static` methods and `const` associated constants:
+
+    ```lcui
+    impl Card {
+        const Kind = "card";
+
+        static func create() -> Card {
+            return new Card();
+        }
+    }
+    ```
+
+- The methods and constants of an `impl` are **merged into the target class**; they are called exactly like the class's own methods (`card.describe()`), with no extra dynamic dispatch.
+- Colliding with a method of the same name and arity already defined in the class, or a duplicate associated constant, raises an error.
+- Generic `impl` blocks (such as `impl<T> ...`) are not supported yet.
+- A typical use is the iteration protocol: giving a class `length()` and `element(int)` (either in the class body or in an `impl`) makes it usable with `for-in`; see "for-in Loops".
+
+#### Example: Making a Custom Class Iterable
+
+```lcui
+trait Iterable {
+    func length() -> int;
+    func element(i: int) -> string;
+}
+
+class Deck {
+    cards = [];
+}
+
+impl Iterable for Deck {
+    func length() -> int {
+        return this.cards.length;
+    }
+
+    func element(i: int) -> string {
+        return this.cards[i];
+    }
+}
+
+deck = new Deck();
+for (i, card in deck) [
+    println(i + ": " + card);
+]
+```
+
+`for-in` only checks whether the target provides `length()` and `element(int)`, no matter whether they are declared in the class body or in an `impl` block, so `Deck` becomes iterable without extending any base class.
+
+#### Common Errors
+
+| Error | Reason |
+| --- | --- |
+| `Cannot implement unknown trait 'X'` | The trait is not defined, or is defined after the `impl` |
+| `impl of trait 'X' for 'Y' is missing required method 'Z'` | Not every method required by the trait is implemented |
+| `Method 'Z' is already defined in class 'Y'` | Clashes with a method of the same name and arity in the class |
+| `impl target 'Y' is not a class` | The `impl` target is not a class |
+
+> [!TIP]
+> `impl` merges its methods and constants into the target class during semantic analysis, so there is no trait object and no dynamic dispatch: the capability is attached at compile time and calls cost exactly the same as the class's own methods.
+> Use `extends` inheritance when you need runtime polymorphism, and `impl` when you need to attach a capability to an existing class.
+
 ## Built-in Namespaces and Macros
 
 ### Built-in Namespaces

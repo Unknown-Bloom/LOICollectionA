@@ -767,6 +767,88 @@ dog instanceof Animal;  // true
 
 对象的 `==`/`!=` 同样为引用比较。
 
+### trait 与 impl
+
+`trait` 声明一组方法契约，`impl` 为类提供实现，让"能力"可以脱离继承附加到类上：
+
+```lcui
+trait Printable {
+    func describe() -> string;
+}
+
+class Card {
+    // ...
+}
+
+impl Printable for Card {
+    func describe() -> string {
+        return "card";
+    }
+}
+```
+
+- `impl Trait for Class` 为类实现 trait，必须实现 trait 声明的全部方法；trait 不存在、`impl` 目标不是类、缺少必需方法都会报错。
+- `impl Class` 是固有实现（不绑定 trait），同样把方法合并进目标类。
+- `impl` 块内可以写 `static` 方法与 `const` 关联常量：
+
+    ```lcui
+    impl Card {
+        const Kind = "card";
+
+        static func create() -> Card {
+            return new Card();
+        }
+    }
+    ```
+
+- `impl` 的方法与常量会**合并进目标类**，调用方式与类自身方法完全一致（`card.describe()`），不存在额外的动态分发。
+- 与类中已存在的同名同参方法冲突、关联常量重名都会报错。
+- 泛型 `impl`（如 `impl<T> ...`）尚不支持。
+- 典型用途是可迭代协议：为类提供 `length()` 与 `element(int)`（写在类内或 `impl` 中均可），该类即可被 `for-in` 遍历，详见「for-in 遍历」。
+
+#### 示例：让自定义类可被遍历
+
+```lcui
+trait Iterable {
+    func length() -> int;
+    func element(i: int) -> string;
+}
+
+class Deck {
+    cards = [];
+}
+
+impl Iterable for Deck {
+    func length() -> int {
+        return this.cards.length;
+    }
+
+    func element(i: int) -> string {
+        return this.cards[i];
+    }
+}
+
+deck = new Deck();
+for (i, card in deck) [
+    println(i + ": " + card);
+]
+```
+
+`for-in` 只检查目标是否提供 `length()` 与 `element(int)`，不论它们定义在类体内还是 `impl` 块内，因此 `Deck` 无需继承任何基类即可被遍历。
+
+#### 常见错误
+
+| 错误提示 | 原因 |
+| --- | --- |
+| `Cannot implement unknown trait 'X'` | trait 未定义，或定义在 `impl` 之后 |
+| `impl of trait 'X' for 'Y' is missing required method 'Z'` | 未实现 trait 要求的全部方法 |
+| `Method 'Z' is already defined in class 'Y'` | 与类自身的同名同参方法冲突 |
+| `impl target 'Y' is not a class` | `impl` 的目标不是类 |
+
+> [!TIP]
+> `impl` 在语义分析阶段就把方法与常量合并进目标类，因此不存在 trait 对象，也没有动态分发：能力是编译期附加的，调用开销与类自身方法完全一致。
+> 需要运行时多态时用 `extends` 继承，需要给已有类横向附加能力时用 `impl`。
+
 ## 内置命名空间与宏
 
 ### 内置命名空间
