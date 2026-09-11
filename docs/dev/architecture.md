@@ -111,6 +111,10 @@ src/LOICollectionA/
 ├─ data/                     # 数据层：SQLiteStorage（SQLite 连接池）、JsonStorage
 ├─ frontend/                 # LCUI 脚本引擎：Lexer、Parser、SemanticAnalyzer、
 │   │                        #   AST、Callback（原生绑定注册表）、ir/（编译器、VM）
+│   ├─ sandbox/              # 脚本沙箱：ScriptPermission（权限与执行预算配置）、
+│   │                        #   SandboxBudget（燃料计量）、CapabilityGate、SandboxReport
+│   ├─ lsp/                  # LCUI 语言服务核心：Protocol（JSON-RPC 分帧）、
+│   │                        #   Analysis（诊断与符号）、LanguageServer（分发）
 │   └─ builtin/              # 脚本内置实现：Math/Format/String 函数、
 │                            #   mc/server 命令、ui/（表单与 Observable 原生类）
 ├─ include/                  # 对外公开头文件（安装后随插件分发）

@@ -37,7 +37,8 @@ namespace LOICollection::frontend::ir {
             const FunctionRefPtr& func,
             const CallbackTypeValues& args,
             const CallbackTypePlaces& placeholders,
-            DiagnosticEngine& diagnostics
+            DiagnosticEngine& diagnostics,
+            const sandbox::SandboxBudget* budget = nullptr
         );
 
         LOICOLLECTION_A_NDAPI static std::string valueToString(const ValueNode::ValueType& val);

@@ -215,6 +215,7 @@ namespace LOICollection::form {
 
         frontend::DiagnosticEngine diagnostics;
         frontend::ir::VM mVM(diagnostics);
+        mVM.setBudget(frontend::sandbox::budgetForScript(id));
 
         frontend::Context context;
         context.scriptId = id;
@@ -230,6 +231,7 @@ namespace LOICollection::form {
         frontend::DiagnosticEngine diagnostics;
 
         frontend::ir::VM mVM(diagnostics);
+        mVM.setBudget(frontend::sandbox::budgetForScript(id));
 
         if (this->mImpl->cache.contains(id)) {
             auto cached = this->mImpl->cache.at(id);
@@ -267,6 +269,7 @@ namespace LOICollection::form {
         frontend::DiagnosticEngine diagnostics;
 
         frontend::ir::VM mVM(diagnostics);
+        mVM.setBudget(frontend::sandbox::budgetForScript(id));
 
         if (this->mImpl->cache.contains(id)) {
             auto cached = this->mImpl->cache.at(id);
@@ -307,7 +310,9 @@ namespace LOICollection::form {
             return {};
         }
 
-        auto result = handle.value()->base->show([this, id, handle = handle.value(), player = std::ref(player)](ll::ui::ScreenSession::Result closeResult) mutable -> void {
+        const auto budget = frontend::sandbox::budgetForScript(handle->scriptId);
+
+        auto result = handle.value()->base->show([this, id, handle = handle.value(), player = std::ref(player), budget](ll::ui::ScreenSession::Result closeResult) mutable -> void {
             frontend::DiagnosticEngine diagnostics;
             frontend::CallbackTypeValues values;
 
@@ -319,7 +324,7 @@ namespace LOICollection::form {
             [[maybe_unused]] auto cbResult = frontend::ir::VM::callFunctionRef(
                 handle->show, values,
                 frontend::Context::withScriptId(frontend::Context{ player }.params, handle->scriptId),
-                diagnostics
+                diagnostics, &budget
             );
 
             if (diagnostics.hasErrors()) {
@@ -355,7 +360,9 @@ namespace LOICollection::form {
             return {};
         }
 
-        auto result = handle.value()->base->show([this, id, handle = handle.value(), player = std::ref(player)](ll::ui::MessageBox::Result closeResult) mutable -> void {
+        const auto budget = frontend::sandbox::budgetForScript(handle->scriptId);
+
+        auto result = handle.value()->base->show([this, id, handle = handle.value(), player = std::ref(player), budget](ll::ui::MessageBox::Result closeResult) mutable -> void {
             frontend::DiagnosticEngine diagnostics;
             frontend::CallbackTypeValues values;
 
@@ -376,7 +383,7 @@ namespace LOICollection::form {
             [[maybe_unused]] auto cbResult = frontend::ir::VM::callFunctionRef(
                 handle->show, values,
                 frontend::Context::withScriptId(frontend::Context{ player }.params, handle->scriptId),
-                diagnostics
+                diagnostics, &budget
             );
 
             if (diagnostics.hasErrors()) {
@@ -403,7 +410,9 @@ namespace LOICollection::form {
         if (!handle.value()->base)
             return ll::makeStringError("PaginatedForm is not built");
 
-        auto result = handle.value()->base->show([this, id, handle = handle.value(), player = std::ref(player)](ll::ui::ScreenSession::Result closeResult) mutable -> void {
+        const auto budget = frontend::sandbox::budgetForScript(handle->scriptId);
+
+        auto result = handle.value()->base->show([this, id, handle = handle.value(), player = std::ref(player), budget](ll::ui::ScreenSession::Result closeResult) mutable -> void {
             auto resultObj = std::make_shared<frontend::Object>();
             resultObj->className = "PaginatedFormResult";
             resultObj->classIndex = -1;
@@ -424,7 +433,7 @@ namespace LOICollection::form {
                 [[maybe_unused]] auto cbResult = frontend::ir::VM::callFunctionRef(
                     handle->show, values,
                     frontend::Context::withScriptId(frontend::Context{ player }.params, handle->scriptId),
-                    diagnostics
+                    diagnostics, &budget
                 );
 
                 if (diagnostics.hasErrors()) {
@@ -449,7 +458,9 @@ namespace LOICollection::form {
         if (!handle.has_value())
             return ll::Unexpected(handle.error());
 
-        auto finish = [this, id, handle = handle.value(), player = std::ref(player)]() mutable -> void {
+        const auto budget = frontend::sandbox::budgetForScript(handle->scriptId);
+
+        auto finish = [this, id, handle = handle.value(), player = std::ref(player), budget]() mutable -> void {
             if (handle->pendingSubflow) {
                 if (handle->onClosed)
                     handle->onClosed(player.get());
@@ -473,7 +484,7 @@ namespace LOICollection::form {
                 [[maybe_unused]] auto cbResult = frontend::ir::VM::callFunctionRef(
                     handle->show, values,
                     frontend::Context::withScriptId(frontend::Context{ player }.params, handle->scriptId),
-                    diagnostics
+                    diagnostics, &budget
                 );
 
                 if (diagnostics.hasErrors()) {

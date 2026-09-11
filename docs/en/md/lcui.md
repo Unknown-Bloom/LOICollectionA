@@ -759,14 +759,46 @@ form = new CustomForm("example.shop", {tr("example.shop.title")}) {
 
 ## Execution Budget and Call Depth
 
-To keep runaway scripts from hanging the server, the VM enforces two hard limits on every script execution:
+To keep runaway scripts from hanging the server, the VM meters **fuel** on every script execution (including script re-entry such as form callbacks): each instruction costs 1 point, and wall clock, native calls, objects and memory each have their own quota. Exhausting any one of them aborts execution immediately with an error.
 
-| Limit | Cap | Behavior on breach |
-| --- | --- | --- |
-| Instructions | 1,000,000 | Execution aborts with `Execution budget exhausted` |
-| Call depth | 256 call frames | Execution aborts with `Call stack depth limit exceeded` |
+| Quota | Default | Allowed range | Behavior on breach |
+| --- | --- | --- | --- |
+| Instructions | 1,000,000 | 10,000 ~ 100,000,000 | Execution aborts with `Execution budget exhausted` |
+| Wall clock | 1,000 ms | 10 ~ 30,000 ms | Execution aborts with `Execution timeout` |
+| Call depth | 256 frames | 16 ~ 4,096 | Execution aborts with `Call stack depth limit exceeded` |
+| Native calls | 100,000 | 1,000 ~ 10,000,000 | Execution aborts with `Execution budget exhausted` |
+| Objects | 100,000 | 1,000 ~ 10,000,000 | same as above |
+| Array elements | 100,000 | 1,000 ~ 10,000,000 | same as above |
+| Single string | 1 MiB | 4 KiB ~ 256 MiB | Execution aborts with `String size budget exhausted` |
+| Cumulative memory | 64 MiB | 1 MiB ~ 1 GiB | Execution aborts with `Total byte budget exhausted` |
 
-Ordinary GUI scripts stay far below both caps; a loop that forgot its step (e.g. `while (true)`) or an unbounded recursion is aborted in time instead of dragging the server down.
+Ordinary GUI scripts stay far below these caps; a loop that forgot its step (e.g. `while (true)`) or an unbounded recursion is aborted in time instead of dragging the server down.
+
+### Tuning the budget per script
+
+The defaults live in code and can be overridden per script in `gui/permission.json` — the root-level `budget` sets the global default, `scripts.<id>.budget` applies to that one script only, and any field left out falls back to the level above:
+
+```json
+{
+    "defaultPolicy": "deny",
+    "budget": { "maxInstructions": 250000, "maxWallTimeMs": 750 },
+    "scripts": {
+        "market": {
+            "enabled": true,
+            "budget": { "maxInstructions": 4000000 },
+            "gui": { "values": [], "requests": [], "callbacks": [] }
+        }
+    }
+}
+```
+
+- The keys are `maxInstructions`, `maxWallTimeMs`, `maxFrames`, `maxNativeCalls`, `maxObjectCount`, `maxArrayElements`, `maxStringBytes`, `maxTotalBytes`; only `maxWallTimeMs` carries the `Ms` suffix (milliseconds), everything else is a plain count.
+- Values outside the allowed range are **clamped to the bound**: `0` does not switch the sandbox off, and `99999999` ms does not become 27 hours.
+- Non-numeric or negative values (e.g. `"1000"`, `-5`) are ignored and fall back to the level above.
+- An unknown script id uses the root-level `budget`.
+
+> [!TIP]
+> Prefer raising the budget of a **single** script over raising the global default — the point of a quota is to contain the script that runs away, and relaxing it globally loosens every script at once.
 
 ## Bytecode Optimization
 
@@ -796,7 +828,7 @@ After compiling a script, `GUIManager::load` serializes the bytecode to a `<scri
 - A package is self-contained: with the `.lcui` source removed, the script still loads as long as the ABI fingerprint matches. This is how closed-source scripts are distributed.
 - Debug information lives in a separate `.lcp.dbg` file; when it is missing the bytecode still executes, only line/column information is lost.
 
-The current package format version is v5.
+The current package format version is v2.
 
 ## Common Constraints and Pitfalls
 
@@ -804,7 +836,7 @@ The current package format version is v5.
 - Declarative UI blocks are only allowed on form classes (`CustomForm` / `MessageBox` / `PaginatedForm` / `ScriptForm`); the `on:` named argument is only available inside a block.
 - Component calls may only appear as statements inside a declarative UI block; component recursion (direct or indirect) is a compile error.
 - Imported files may only contain top-level definitions (`class` / `func` / `using` / `component` / `import`); same-named definitions in different files conflict and raise an error.
-- Every script execution is capped at 1,000,000 instructions and 256 call frames; exceeding either aborts the execution.
+- Every script execution is bound by the execution budget (1,000,000 instructions / 256 call frames by default); exceeding it aborts the execution. The budget is tunable per script via `budget` in `permission.json` — see [Execution Budget and Call Depth](#execution-budget-and-call-depth).
 - `return` can only be used inside a function; `break`/`continue` can only be used inside a loop.
 - A type declaration (`x: int`) must also provide an initial value; class fields without a default value must be assigned in the constructor.
 - `None` can only be used in an `optional` context; directly reading, performing arithmetic on, or comparing an empty `optional` raises an error.

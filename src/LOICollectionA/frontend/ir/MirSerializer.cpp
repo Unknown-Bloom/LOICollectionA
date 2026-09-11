@@ -301,9 +301,6 @@ namespace LOICollection::frontend::ir {
             writer.i32(instr.src3);
             writer.i32(instr.imm);
             writeTypeInfo(writer, instr.type);
-            writer.u64(instr.loc.line);
-            writer.u64(instr.loc.column);
-            writer.u64(instr.loc.offset);
         }
 
         bool readInstruction(Reader& reader, MirInstr& instr) {
@@ -317,17 +314,7 @@ namespace LOICollection::frontend::ir {
                 || !reader.i32(instr.src3) || !reader.i32(instr.imm))
                 return false;
 
-            if (!readTypeInfo(reader, instr.type))
-                return false;
-
-            uint64_t line = 0;
-            uint64_t column = 0;
-            uint64_t offset = 0;
-            if (!reader.u64(line) || !reader.u64(column) || !reader.u64(offset))
-                return false;
-
-            instr.loc = SourceLocation(line, column, offset);
-            return true;
+            return readTypeInfo(reader, instr.type);
         }
 
         void writeDebugInfo(Writer& writer, const MirChunk& chunk) {

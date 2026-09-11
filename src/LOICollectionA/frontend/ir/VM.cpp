@@ -293,7 +293,8 @@ namespace LOICollection::frontend::ir {
         const FunctionRefPtr& func,
         const CallbackTypeValues& args,
         const CallbackTypePlaces& placeholders,
-        DiagnosticEngine& diagnostics
+        DiagnosticEngine& diagnostics,
+        const sandbox::SandboxBudget* budget
     ) {
         if (!func) {
             diagnostics.addError({ 0, 0, 0 }, "Cannot call a null function reference");
@@ -334,6 +335,9 @@ namespace LOICollection::frontend::ir {
         VM vm(diagnostics, snapshot
             ? std::make_shared<GlobalsTable>(*snapshot)
             : std::make_shared<GlobalsTable>());
+
+        if (budget)
+            vm.setBudget(*budget);
 
         struct FrameLimitGuard {
             std::shared_ptr<sandbox::SandboxBudget> budget;

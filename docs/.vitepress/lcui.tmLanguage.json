@@ -6,9 +6,11 @@
     { "include": "#comments" },
     { "include": "#strings" },
     { "include": "#numbers" },
+    { "include": "#namespaces" },
     { "include": "#keywords" },
     { "include": "#types" },
     { "include": "#builtins" },
+    { "include": "#formClasses" },
     { "include": "#operators" },
     { "include": "#classNames" },
     { "include": "#identifiers" }
@@ -44,28 +46,32 @@
       "match": "\\b(?:0x[0-9a-fA-F]+|\\d+\\.\\d*|\\.\\d+|\\d+)\\b",
       "name": "constant.numeric.lcui"
     },
+    "namespaces": {
+      "match": "\\b(?:mc|ui)(?=\\s*::)",
+      "name": "entity.name.namespace.lcui"
+    },
     "keywords": {
       "patterns": [
         {
-          "match": "\\b(?:new|func|class|extends|super|this|return|if|else|for|while|break|continue|using|static|None|true|false|instanceof)\\b",
-          "name": "keyword.control.lcui"
-        },
-        {
-          "match": "(?<=for\\s*\\([^)]*?)\\bin\\b",
+          "match": "\\b(?:new|func|class|trait|impl|extends|super|this|return|if|for|while|break|continue|in|using|import|component|static|public|private|instanceof|let|const|None|true|false)\\b",
           "name": "keyword.control.lcui"
         }
       ]
     },
     "types": {
-      "match": "\\b(?:int|float|string|bool|void|optional|variant|any)\\b",
+      "match": "\\b(?:int|float|string|bool|void|optional|variant)\\b",
       "name": "storage.type.lcui"
     },
     "builtins": {
       "match": "\\b(?:tr|score|entity|print|println|error)\\s*(?=\\()",
       "name": "support.function.builtin.lcui"
     },
+    "formClasses": {
+      "match": "\\b(?:CustomForm|MessageBox|MessageBoxResult|PaginatedForm|PaginatedFormResult|ScriptForm|UIRawMessage|ObservableBoolean|ObservableNumber|ObservableString|ObservableUIRawMessage)\\b",
+      "name": "support.class.builtin.lcui"
+    },
     "operators": {
-      "match": "->|\\+\\+|--|\\+=|-=|\\*=|/=|%=|==|!=|<=|>=|&&|\\|\\||\\?\\?|\\?\\.|\\.\\.|[=+\\-*/%<>!?:;,.()\\[\\]{}|]",
+      "match": "::|->|\\+\\+|--|\\+=|-=|\\*=|/=|%=|==|!=|<=|>=|&&|\\|\\||\\?\\?|\\?\\.|\\.\\.|[=+\\-*/%<>!?:;,.()\\[\\]{}|]",
       "name": "keyword.operator.lcui"
     },
     "classNames": {

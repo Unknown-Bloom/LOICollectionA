@@ -12,6 +12,7 @@
 #include "LOICollectionA/frontend/Callback.h"
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
 #include "LOICollectionA/frontend/ir/VM.h"
+#include "LOICollectionA/frontend/sandbox/ScriptPermission.h"
 
 #include "LOICollectionA/frontend/builtin/ui/form/ScriptFormClass.h"
 #include "LOICollectionA/frontend/builtin/ui/form/CustomFormOptionsClass.h"
@@ -222,10 +223,12 @@ namespace LOICollection::server::Plugins {
         if (!options.has_value())
             return ll::Unexpected(options.error());
 
-        handle->base->button(*label, [callback, placeholders]() -> void {
+        const auto budget = frontend::sandbox::budgetForScript(Context::scriptIdOf(placeholders));
+
+        handle->base->button(*label, [callback, placeholders, budget]() -> void {
             frontend::DiagnosticEngine diagnostics;
             [[maybe_unused]] auto result = frontend::ir::VM::callFunctionRef(
-                callback, {}, placeholders, diagnostics
+                callback, {}, placeholders, diagnostics, &budget
             );
             if (diagnostics.hasErrors()) {
                 ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA")
@@ -254,7 +257,9 @@ namespace LOICollection::server::Plugins {
         auto action = hydrateMenuItem(actionObject);
         int index = handle->nextActionIndex++;
 
-        handle->base->button(*label, [handle, actionObject, action, index, callback, placeholders]() mutable -> void {
+        const auto budget = frontend::sandbox::budgetForScript(Context::scriptIdOf(placeholders));
+
+        handle->base->button(*label, [handle, actionObject, action, index, callback, placeholders, budget]() mutable -> void {
             auto& player = std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0)).get();
             handle->action = actionObject;
             handle->actionIndex = index;
@@ -277,7 +282,7 @@ namespace LOICollection::server::Plugins {
 
             frontend::DiagnosticEngine diagnostics;
             [[maybe_unused]] auto result = frontend::ir::VM::callFunctionRef(
-                callback, {}, placeholders, diagnostics
+                callback, {}, placeholders, diagnostics, &budget
             );
             if (diagnostics.hasErrors()) {
                 ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA")

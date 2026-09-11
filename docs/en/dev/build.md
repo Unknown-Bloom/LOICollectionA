@@ -86,6 +86,19 @@ tests/
 └─ client/          # client tests (compiled only for the client target)
 ```
 
+### Fuzzing
+
+`tests/common/frontend/FuzzTest.cpp` runs a deterministic fuzz harness as part of the normal gtest suite — no extra tooling needed. It feeds mutated sources and random token soups through the lexer, parser, component expander and semantic analyzer, and round-trips serialized `.lcp` packages through the serializer with corrupted bytes. Every input must terminate, never crash, and stay inside a per-input time budget (250 ms), so parser DoS regressions fail the suite instead of reaching a server.
+
+The generator is seeded, so a failure is always reproducible. Raise the iteration count locally with:
+
+```bash
+LOICOLLECTION_A_FUZZ_ROUNDS=20000
+```
+
+> [!NOTE]
+> The harness is intentionally deterministic rather than coverage-guided: the whole suite is compiled into the plugin and driven by `/test all`, which rules out sanitizer/process-based fuzzers such as libFuzzer.
+
 ## Packaging and Release
 
 ### modpacker

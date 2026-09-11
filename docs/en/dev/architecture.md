@@ -111,6 +111,11 @@ src/LOICollectionA/
 ├─ data/                     # data layer: SQLiteStorage (SQLite connection pool), JsonStorage
 ├─ frontend/                 # LCUI script engine: Lexer, Parser, SemanticAnalyzer,
 │   │                        #   AST, Callback (native binding registry), ir/ (compiler, VM)
+│   ├─ sandbox/              # script sandbox: ScriptPermission (permission and execution
+│   │                        #   budget configuration), SandboxBudget (fuel metering),
+│   │                        #   CapabilityGate, SandboxReport
+│   ├─ lsp/                  # LCUI language service core: Protocol (JSON-RPC framing),
+│   │                        #   Analysis (diagnostics and symbols), LanguageServer (dispatch)
 │   └─ builtin/              # built-in script implementations: Math/Format/String functions,
 │                            #   mc/server commands, ui/ (form and Observable native classes)
 ├─ include/                  # public header files (distributed with the plugin after installation)

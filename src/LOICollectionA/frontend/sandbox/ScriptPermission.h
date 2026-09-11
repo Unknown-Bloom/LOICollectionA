@@ -9,6 +9,9 @@
 
 #include <nlohmann/json.hpp>
 
+#include "LOICollectionA/base/ServiceProvider.h"
+#include "LOICollectionA/frontend/sandbox/ScriptBudget.h"
+
 namespace LOICollection::frontend::sandbox {
     namespace Config {
         struct C_ScriptCommandPermission {
@@ -27,10 +30,12 @@ namespace LOICollection::frontend::sandbox {
             bool enabled = true;
             C_ScriptCommandPermission commands;
             C_ScriptGuiPermission gui;
+            BudgetOverride budget;
         };
 
         struct C_ScriptPermission {
             std::string defaultPolicy = "deny";
+            BudgetOverride defaultBudget;
             std::unordered_map<std::string, C_ScriptPermissionEntry> scripts;
         };
     }
@@ -38,7 +43,11 @@ namespace LOICollection::frontend::sandbox {
     class PermissionGate {
     public:
         PermissionGate() = default;
-        explicit PermissionGate(Config::C_ScriptPermission config) : mConfig(std::move(config)) {}
+        explicit PermissionGate(Config::C_ScriptPermission config) : mConfig(std::move(config)) {
+            mBudget.setDefault(mConfig.defaultBudget);
+            for (const auto& [scriptId, entry] : mConfig.scripts)
+                mBudget.setOverride(scriptId, entry.budget);
+        }
 
         static std::optional<PermissionGate> fromJson(const std::string& json, std::string& error) {
             try {
@@ -105,10 +114,15 @@ namespace LOICollection::frontend::sandbox {
             return find(scriptId) != nullptr;
         }
 
+        [[nodiscard]] SandboxBudget budgetFor(const std::string& scriptId) const {
+            return mBudget.resolve(scriptId);
+        }
+
     private:
         using GuiList = std::vector<std::string> Config::C_ScriptGuiPermission::*;
 
         Config::C_ScriptPermission mConfig;
+        BudgetPolicy mBudget;
 
         [[nodiscard]] const Config::C_ScriptPermissionEntry* find(const std::string& scriptId) const {
             const auto it = mConfig.scripts.find(scriptId);
@@ -132,6 +146,8 @@ namespace LOICollection::frontend::sandbox {
             Config::C_ScriptPermission result;
             if (root.contains("defaultPolicy") && root["defaultPolicy"].is_string())
                 result.defaultPolicy = root["defaultPolicy"].get<std::string>();
+
+            result.defaultBudget = readBudget(root.value("budget", nlohmann::json::object()));
 
             if (!root.contains("scripts") || !root["scripts"].is_object())
                 return result;
@@ -159,10 +175,39 @@ namespace LOICollection::frontend::sandbox {
                     readList(gui, "navigations", entry.gui.navigations);
                 }
 
+                entry.budget = readBudget(value.value("budget", nlohmann::json::object()));
+
                 result.scripts.emplace(scriptId, std::move(entry));
             }
 
             return result;
+        }
+
+        static BudgetOverride readBudget(const nlohmann::json& object) {
+            BudgetOverride result;
+            if (!object.is_object())
+                return result;
+
+            result.maxInstructions = readCount(object, "maxInstructions");
+            result.maxFrames = readCount(object, "maxFrames");
+            result.maxNativeCalls = readCount(object, "maxNativeCalls");
+            result.maxObjectCount = readCount(object, "maxObjectCount");
+            result.maxArrayElements = readCount(object, "maxArrayElements");
+            result.maxStringBytes = readCount(object, "maxStringBytes");
+            result.maxTotalBytes = readCount(object, "maxTotalBytes");
+
+            if (const auto milliseconds = readCount(object, "maxWallTimeMs"))
+                result.maxWallTime = std::chrono::milliseconds(*milliseconds);
+
+            return result;
+        }
+
+        static std::optional<std::size_t> readCount(const nlohmann::json& object, const char* key) {
+            const auto it = object.find(key);
+            if (it == object.end() || !it->is_number_unsigned())
+                return std::nullopt;
+
+            return it->get<std::size_t>();
         }
 
         static void readList(const nlohmann::json& object, const char* key, std::vector<std::string>& out) {
@@ -184,4 +229,11 @@ namespace LOICollection::frontend::sandbox {
     private:
         PermissionGate mGate;
     };
+
+    [[nodiscard]] inline SandboxBudget budgetForScript(const std::string& scriptId) {
+        if (const auto service = ServiceProvider::getInstance().getService<ScriptPermissionService>())
+            return service->gate().budgetFor(scriptId);
+
+        return SandboxBudget{};
+    }
 }

@@ -968,14 +968,46 @@ form = new CustomForm("example.shop", {tr("example.shop.title")}) {
 
 ## 执行预算与调用深度
 
-为防止失控脚本卡死服务器，VM 对每次脚本执行设置了两道硬限制：
+为防止失控脚本卡死服务器，VM 对每次脚本执行（含表单回调这类脚本重入）计量**燃料（fuel）**：每执行一条指令扣 1 点，同时墙钟、原生调用、对象与内存占用各有独立配额。任何一项耗尽都会立即终止执行并报错。
 
-| 限制 | 上限 | 触发后的行为 |
-| --- | --- | --- |
-| 指令数 | 1,000,000 条 | 终止执行并报错 `Execution budget exhausted` |
-| 调用深度 | 256 层调用帧 | 终止执行并报错 `Call stack depth limit exceeded` |
+| 配额 | 默认值 | 允许范围 | 触发后的行为 |
+| --- | --- | --- | --- |
+| 指令数 | 1,000,000 条 | 10,000 ~ 100,000,000 | 终止执行并报错 `Execution budget exhausted` |
+| 墙钟 | 1,000 ms | 10 ~ 30,000 ms | 终止执行并报错 `Execution timeout` |
+| 调用深度 | 256 层调用帧 | 16 ~ 4,096 | 终止执行并报错 `Call stack depth limit exceeded` |
+| 原生调用 | 100,000 次 | 1,000 ~ 10,000,000 | 终止执行并报错 `Execution budget exhausted` |
+| 对象数 | 100,000 个 | 1,000 ~ 10,000,000 | 同上 |
+| 数组元素 | 100,000 个 | 1,000 ~ 10,000,000 | 同上 |
+| 单字符串 | 1 MiB | 4 KiB ~ 256 MiB | 终止执行并报错 `String size budget exhausted` |
+| 累计内存 | 64 MiB | 1 MiB ~ 1 GiB | 终止执行并报错 `Total byte budget exhausted` |
 
-普通界面脚本远达不到这两个上限；忘写步进条件的死循环（如 `while (true)`）或无终止条件的递归会被及时中止，而不是拖垮服务器。
+普通界面脚本远达不到这些上限；忘写步进条件的死循环（如 `while (true)`）或无终止条件的递归会被及时中止，而不是拖垮服务器。
+
+### 按脚本调整预算
+
+默认配额写在代码里，可按脚本在 `gui/permission.json` 中覆盖——根节点的 `budget` 是全局默认值，`scripts.<id>.budget` 只对该脚本生效，未写的字段沿用上层取值：
+
+```json
+{
+    "defaultPolicy": "deny",
+    "budget": { "maxInstructions": 250000, "maxWallTimeMs": 750 },
+    "scripts": {
+        "market": {
+            "enabled": true,
+            "budget": { "maxInstructions": 4000000 },
+            "gui": { "values": [], "requests": [], "callbacks": [] }
+        }
+    }
+}
+```
+
+- 键名依次是 `maxInstructions`、`maxWallTimeMs`、`maxFrames`、`maxNativeCalls`、`maxObjectCount`、`maxArrayElements`、`maxStringBytes`、`maxTotalBytes`；只有 `maxWallTimeMs` 带 `Ms` 后缀（单位是毫秒），其余均为计数；
+- 超出允许范围的取值会被**夹到边界**：`0` 不会关闭沙箱，`99999999` ms 也变不成 27 小时；
+- 非数字或负数（如 `"1000"`、`-5`）一律忽略，回退到上层默认值；
+- 未知脚本 id 使用根节点 `budget`。
+
+> [!TIP]
+> 优先调大**单个**脚本的预算，而不是一上来就抬高全局默认值——配额的意义是圈住失控脚本，全局放宽等于给所有脚本一起松绑。
 
 ## 字节码优化
 
@@ -1005,7 +1037,7 @@ form = new CustomForm("example.shop", {tr("example.shop.title")}) {
 - 产物自包含：删除 `.lcui` 后，只要 ABI 指纹匹配，脚本依然可以加载——这是闭源脚本的发布方式；
 - 调试信息单独存放在 `.lcp.dbg`，缺失时字节码照常执行，仅丢失行列号信息。
 
-当前产物格式版本为 v5。
+当前产物格式版本为 v2。
 
 ## 常见约束与陷阱
 
@@ -1013,7 +1045,7 @@ form = new CustomForm("example.shop", {tr("example.shop.title")}) {
 - 声明式 UI 块只能用于表单类（`CustomForm` / `MessageBox` / `PaginatedForm` / `ScriptForm`）；`on:` 命名参数只在块内可用。
 - 组件调用只能作为声明式 UI 块内的语句；组件递归（直接或间接）会报编译错误。
 - 被导入的文件只能包含顶层定义（`class` / `func` / `using` / `component` / `import`）；不同文件中的同名定义会冲突报错。
-- 单次脚本执行的指令数上限为 1,000,000、调用深度上限为 256 层，超限会终止执行。
+- 每次脚本执行都受执行预算约束（默认 1,000,000 条指令 / 256 层调用帧），超限会终止执行；可按脚本在 `permission.json` 的 `budget` 中调整，见[执行预算与调用深度](#执行预算与调用深度)。
 - `return` 只能在函数内使用；`break`/`continue` 只能在循环内使用。
 - 类型声明（`x: int`）必须同时提供初始值；没有默认值的类字段必须在构造函数中赋值。
 - `None` 只能用于 `optional` 上下文；空 `optional` 直接读取、算术或比较会报错。

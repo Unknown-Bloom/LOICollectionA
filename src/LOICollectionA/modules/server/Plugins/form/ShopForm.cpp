@@ -16,6 +16,7 @@
 #include "LOICollectionA/frontend/Callback.h"
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
 #include "LOICollectionA/frontend/ir/VM.h"
+#include "LOICollectionA/frontend/sandbox/ScriptPermission.h"
 
 #include "LOICollectionA/frontend/builtin/ui/form/ScriptFormClass.h"
 
@@ -97,10 +98,12 @@ namespace LOICollection::server::Plugins {
         auto resultObj = handle->makeResult ? handle->makeResult() : nullptr;
         values.emplace_back(resultObj ? TypedValue(resultObj) : TypedValue{});
 
+        const auto budget = frontend::sandbox::budgetForScript(handle->scriptId);
+
         [[maybe_unused]] auto cbResult = frontend::ir::VM::callFunctionRef(
             handle->show, values,
             frontend::Context::withScriptId(frontend::Context{ std::ref(player) }.params, handle->scriptId),
-            diagnostics
+            diagnostics, &budget
         );
 
         if (diagnostics.hasErrors()) {
