@@ -35,6 +35,7 @@ namespace LOICollection::frontend {
         Variant,
         Optional,
         Generic,
+        Trait,
         None
     };
 
@@ -66,6 +67,7 @@ namespace LOICollection::frontend {
         SourceLocation loc;
         std::string name;
         std::vector<TypeExpr> args;
+        bool dyn = false;
     };
 
     inline std::string typeInfoToString(const TypeInfo& type) {
@@ -107,6 +109,8 @@ namespace LOICollection::frontend {
                     (type.optionalInner ? typeInfoToString(*type.optionalInner) : std::string("unknown")) + ">";
             case TypeKind::Generic:
                 return type.typeVar.empty() ? "generic" : type.typeVar;
+            case TypeKind::Trait:
+                return "dyn " + type.className;
         }
 
         return "unknown";

@@ -147,6 +147,30 @@ namespace LOICollection::frontend {
             return {};
         }
 
+        if (targetType.kind == TypeKind::Trait) {
+            auto traitIt = this->traits.find(targetType.className);
+            if (traitIt == this->traits.end()) {
+                diagnostics.addError(node.loc, "Unknown trait: " + targetType.className);
+                return {};
+            }
+
+            for (const auto& m : traitIt->second) {
+                if (m.name != node.methodName || m.paramCount != argCount)
+                    continue;
+
+                TypeInfo ret;
+                if (m.hasReturnType)
+                    ret = this->resolveTypeExpr(m.returnTypeExpr, node.loc, false);
+                node.dynamicDispatch = true;
+                return ret;
+            }
+
+            diagnostics.addError(node.loc,
+                "Trait '" + targetType.className + "' has no method '" + node.methodName +
+                "' with " + std::to_string(argCount) + " argument(s)");
+            return {};
+        }
+
         if (targetType.kind == TypeKind::Generic) {
             auto boundIt = this->activeTypeParamBounds.find(targetType.typeVar);
             if (boundIt != this->activeTypeParamBounds.end()) {

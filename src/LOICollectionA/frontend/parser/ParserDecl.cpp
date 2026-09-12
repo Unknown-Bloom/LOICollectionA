@@ -51,7 +51,11 @@ namespace LOICollection::frontend {
             return nullptr;
         }
 
-        if (currentToken.type != TokenType::TOKEN_IDENT) {
+        bool isDyn = false;
+        if (currentToken.type == TokenType::TOKEN_DYN) {
+            if (!eat(TokenType::TOKEN_DYN)) return nullptr;
+            isDyn = true;
+        } else if (currentToken.type != TokenType::TOKEN_IDENT) {
             diagnostics.addError(currentToken.loc, "Expected type name");
             return nullptr;
         }
@@ -59,6 +63,7 @@ namespace LOICollection::frontend {
         auto type = std::make_unique<TypeExpr>();
         type->loc = currentToken.loc;
         type->name = currentToken.value;
+        type->dyn = isDyn;
 
         if (!eat(TokenType::TOKEN_IDENT)) return nullptr;
 

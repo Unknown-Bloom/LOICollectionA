@@ -295,6 +295,25 @@ namespace LOICollection::frontend {
     }
 
     TypeInfo SemanticAnalyzer::resolveTypeExpr(const TypeExpr& expr, SourceLocation loc, bool reportError) {
+        if (expr.dyn) {
+            if (!expr.args.empty()) {
+                if (reportError)
+                    this->diagnostics.addError(loc, "Trait object '" + expr.name + "' does not accept type arguments");
+                return {};
+            }
+
+            if (!this->traits.contains(expr.name)) {
+                if (reportError)
+                    this->diagnostics.addError(loc, "Unknown trait: " + expr.name);
+                return {};
+            }
+
+            TypeInfo result;
+            result.kind = TypeKind::Trait;
+            result.className = expr.name;
+            return result;
+        }
+
         if (expr.name == "variant") {
             if (expr.args.size() < 2) {
                 if (reportError)

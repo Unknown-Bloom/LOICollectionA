@@ -200,6 +200,14 @@ namespace LOICollection::frontend {
         if (target == from)
             return true;
 
+        if (target.kind == TypeKind::Trait) {
+            if (from.kind == TypeKind::Trait)
+                return target.className == from.className;
+            if (from.kind == TypeKind::Object)
+                return this->satisfiesTrait(from, target.className);
+            return false;
+        }
+
         if (target.kind == TypeKind::Object && from.kind == TypeKind::Object)
             return this->isDerived(from.className, target.className);
 
