@@ -9,8 +9,8 @@
 
 #include "LOICollectionA/frontend/AST.h"
 
-namespace PaginatedFormClass {
-    struct PaginatedFormHandle : LOICollection::frontend::NativeHandle {
+namespace LCPaginatedFormClass {
+    struct LCPaginatedFormHandle : LOICollection::frontend::NativeHandle {
         std::string guiId;
         ll::ui::TextValue title;
 
@@ -51,9 +51,9 @@ namespace PaginatedFormClass {
             this->show.reset();
         }
 
-        ~PaginatedFormHandle() override { this->release(); }
+        ~LCPaginatedFormHandle() override { this->release(); }
     };
 
-    void refreshPage(const std::shared_ptr<PaginatedFormHandle>& form);
+    void refreshPage(const std::shared_ptr<LCPaginatedFormHandle>& form);
     void registerClasses(const std::string& name);
 }

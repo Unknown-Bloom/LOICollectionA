@@ -7,8 +7,8 @@
 
 #include "LOICollectionA/frontend/AST.h"
 
-namespace MessageBoxClass {
-    struct MessageBoxHandle : LOICollection::frontend::NativeHandle {
+namespace LCMessageBoxClass {
+    struct LCMessageBoxHandle : LOICollection::frontend::NativeHandle {
         std::unique_ptr<ll::ui::MessageBox> base;
 
         LOICollection::frontend::FunctionRefPtr show;
@@ -18,7 +18,7 @@ namespace MessageBoxClass {
             this->show.reset();
         }
 
-        ~MessageBoxHandle() override { this->release(); }
+        ~LCMessageBoxHandle() override { this->release(); }
     };
 
     void registerClasses(const std::string& name);

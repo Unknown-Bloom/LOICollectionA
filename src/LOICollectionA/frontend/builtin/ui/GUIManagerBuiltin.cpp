@@ -132,7 +132,7 @@ namespace GUIManagerBuiltin {
         ll::Expected<void> result;
 
         switch (std::get<int>(args[1])) {
-            case static_cast<int>(GUIManagerType::CustomForm): {
+            case static_cast<int>(GUIManagerType::LCCustomForm): {
                 result = GUIManager::getInstance().switchToCustomForm(
                     std::get<std::string>(args[0]),
                     std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0))
@@ -140,7 +140,7 @@ namespace GUIManagerBuiltin {
 
                 break;
             }
-            case static_cast<int>(GUIManagerType::MessageBox): {
+            case static_cast<int>(GUIManagerType::LCMessageBox): {
                 result = GUIManager::getInstance().switchToMessageBox(
                     std::get<std::string>(args[0]),
                     std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0))
@@ -148,7 +148,7 @@ namespace GUIManagerBuiltin {
 
                 break;
             }
-            case static_cast<int>(GUIManagerType::PaginatedForm): {
+            case static_cast<int>(GUIManagerType::LCPaginatedForm): {
                 result = GUIManager::getInstance().switchToPaginatedForm(
                     std::get<std::string>(args[0]),
                     std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0))
@@ -156,7 +156,7 @@ namespace GUIManagerBuiltin {
 
                 break;
             }
-            case static_cast<int>(GUIManagerType::ScriptForm): {
+            case static_cast<int>(GUIManagerType::LCScriptForm): {
                 result = GUIManager::getInstance().switchToScriptForm(
                     std::get<std::string>(args[0]),
                     std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0))

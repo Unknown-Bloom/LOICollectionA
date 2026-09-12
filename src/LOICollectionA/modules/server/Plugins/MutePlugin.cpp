@@ -237,7 +237,7 @@ namespace LOICollection::server::Plugins {
                 return output.error(tr(origin.getLocaleCode(), "commands.generic.target"));
             Player& player = *static_cast<Player*>(entity);
             
-            form::GUIManager::getInstance().open("mute", "mute.open", form::GUIManagerType::CustomForm, player)
+            form::GUIManager::getInstance().open("mute", "mute.open", form::GUIManagerType::LCCustomForm, player)
                 .or_else(modules::defaultErrorHandler<MutePlugin>);
 
             output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.generic.ui")), player.getRealName());

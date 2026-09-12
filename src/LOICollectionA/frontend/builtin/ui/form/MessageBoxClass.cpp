@@ -19,7 +19,7 @@
 using namespace LOICollection::frontend;
 using namespace CustomFormOptionsClass;
 
-namespace MessageBoxClass {
+namespace LCMessageBoxClass {
     ll::Expected<ObjectRef> makeMessageBox(const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
         auto title = toTextValue(args[1]);
         if (!title)
@@ -27,7 +27,7 @@ namespace MessageBoxClass {
 
         std::reference_wrapper<Player> player = std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0));
 
-        auto handle = std::make_shared<MessageBoxHandle>();
+        auto handle = std::make_shared<LCMessageBoxHandle>();
         handle->scriptId = Context::scriptIdOf(placeholders);
         handle->base = std::make_unique<ll::ui::MessageBox>(player, *title);
 
@@ -42,7 +42,7 @@ namespace MessageBoxClass {
     }
 
     ll::Expected<TypedValue> body(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto* box = static_cast<MessageBoxHandle*>(self->native.get())->base.get();
+        auto* box = static_cast<LCMessageBoxHandle*>(self->native.get())->base.get();
 
         auto value = toTextValue(args[0]);
         if (!value)
@@ -53,7 +53,7 @@ namespace MessageBoxClass {
     }
 
     ll::Expected<TypedValue> button1(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto* box = static_cast<MessageBoxHandle*>(self->native.get())->base.get();
+        auto* box = static_cast<LCMessageBoxHandle*>(self->native.get())->base.get();
 
         auto label = toTextValue(args[0]);
         if (!label)
@@ -73,7 +73,7 @@ namespace MessageBoxClass {
     }
 
     ll::Expected<TypedValue> button2(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto* box = static_cast<MessageBoxHandle*>(self->native.get())->base.get();
+        auto* box = static_cast<LCMessageBoxHandle*>(self->native.get())->base.get();
 
         auto label = toTextValue(args[0]);
         if (!label)
@@ -100,13 +100,13 @@ namespace MessageBoxClass {
         if (callback->argCount != 1)
             return ll::makeStringError("show callback must take exactly one parameter");
 
-        static_cast<MessageBoxHandle*>(self->native.get())->show = callback;
+        static_cast<LCMessageBoxHandle*>(self->native.get())->show = callback;
 
         return self;
     }
 
     ll::Expected<TypedValue> close(const ObjectRef& self, const CallbackTypeValues&) {
-        auto result = static_cast<MessageBoxHandle*>(self->native.get())->base->close();
+        auto result = static_cast<LCMessageBoxHandle*>(self->native.get())->base->close();
         if (!result)
             return ll::Unexpected(result.error());
 
@@ -114,7 +114,7 @@ namespace MessageBoxClass {
     }
 
     ll::Expected<TypedValue> isShowing(const ObjectRef& self, const CallbackTypeValues&) {
-        return static_cast<MessageBoxHandle*>(self->native.get())->base->isShowing();
+        return static_cast<LCMessageBoxHandle*>(self->native.get())->base->isShowing();
     }
 
     void registerClasses(const std::string&) {
@@ -161,4 +161,4 @@ namespace MessageBoxClass {
     }
 }
 
-REGISTER_CALLBACK(MessageBox, MessageBoxClass::registerClasses)
+REGISTER_CALLBACK(MessageBox, LCMessageBoxClass::registerClasses)

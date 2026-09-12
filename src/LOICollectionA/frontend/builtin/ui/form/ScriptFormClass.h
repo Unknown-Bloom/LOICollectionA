@@ -12,8 +12,8 @@
 
 class Player;
 
-namespace ScriptFormClass {
-    struct ScriptFormHandle : LOICollection::frontend::NativeHandle {
+namespace LCScriptFormClass {
+    struct LCScriptFormHandle : LOICollection::frontend::NativeHandle {
         std::unique_ptr<ll::ui::CustomForm> base;
         std::unique_ptr<ll::ui::MessageBox> box;
 
@@ -33,6 +33,6 @@ namespace ScriptFormClass {
             this->onBoxResult = nullptr;
         }
 
-        ~ScriptFormHandle() override { this->release(); }
+        ~LCScriptFormHandle() override { this->release(); }
     };
 }

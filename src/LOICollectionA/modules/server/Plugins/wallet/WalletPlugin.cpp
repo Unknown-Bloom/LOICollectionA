@@ -467,7 +467,7 @@ namespace LOICollection::server::Plugins {
                 return output.error(tr(origin.getLocaleCode(), "commands.generic.target"));
             Player& player = *static_cast<Player*>(entity);
 
-            form::GUIManager::getInstance().open("wallet", "wallet.open", form::GUIManagerType::CustomForm, player)
+            form::GUIManager::getInstance().open("wallet", "wallet.open", form::GUIManagerType::LCCustomForm, player)
                 .or_else(modules::defaultErrorHandler<WalletPlugin>);
 
             output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.generic.ui")), player.getRealName());
@@ -505,7 +505,7 @@ namespace LOICollection::server::Plugins {
                 return output.error(tr(origin.getLocaleCode(), "commands.generic.target"));
             Player& player = *static_cast<Player*>(entity);
 
-            form::GUIManager::getInstance().open("wallet", "wallet.bank", form::GUIManagerType::CustomForm, player)
+            form::GUIManager::getInstance().open("wallet", "wallet.bank", form::GUIManagerType::LCCustomForm, player)
                 .or_else(modules::defaultErrorHandler<WalletPlugin>);
 
             output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.generic.ui")), player.getRealName());
@@ -516,7 +516,7 @@ namespace LOICollection::server::Plugins {
                 return output.error(tr(origin.getLocaleCode(), "commands.generic.target"));
             Player& player = *static_cast<Player*>(entity);
 
-            form::GUIManager::getInstance().open("wallet", "wallet.rank", form::GUIManagerType::PaginatedForm, player)
+            form::GUIManager::getInstance().open("wallet", "wallet.rank", form::GUIManagerType::LCPaginatedForm, player)
                 .or_else(modules::defaultErrorHandler<WalletPlugin>);
 
             output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.generic.ui")), player.getRealName());

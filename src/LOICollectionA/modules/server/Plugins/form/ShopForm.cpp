@@ -32,7 +32,7 @@ using namespace LOICollection::frontend;
 using I18nUtilsTools::tr;
 
 namespace LOICollection::server::Plugins {
-    struct ShopFormHandle : ScriptFormClass::ScriptFormHandle {
+    struct ShopFormHandle : LCScriptFormClass::LCScriptFormHandle {
         ShopData data;
         ObjectRef dataObject;
 

@@ -20,7 +20,7 @@
 using namespace LOICollection::frontend;
 
 namespace LOICollection::server::Plugins {
-    struct MenuMessageBoxHandle : ScriptFormClass::ScriptFormHandle {
+    struct MenuMessageBoxHandle : LCScriptFormClass::LCScriptFormHandle {
         ObjectRef action1;
         ObjectRef action2;
         ObjectRef resultAction;

@@ -211,7 +211,7 @@ namespace LOICollection::server::Plugins {
                             ctx->elements.emplace_back(-1);
                             ctx->elements.emplace_back(type);
 
-                            return form::GUIManager::getInstance().open("market.trade", "market.trade.request", form::GUIManagerType::CustomForm, *target, ctx);
+                            return form::GUIManager::getInstance().open("market.trade", "market.trade.request", form::GUIManagerType::LCCustomForm, *target, ctx);
                         });
                 });
         });
@@ -253,7 +253,7 @@ namespace LOICollection::server::Plugins {
             ctx->elements.emplace_back(-1);
             ctx->elements.emplace_back("");
 
-            return form::GUIManager::getInstance().open("market.trade", "market.trade.content", form::GUIManagerType::PaginatedForm, *dest, ctx);
+            return form::GUIManager::getInstance().open("market.trade", "market.trade.content", form::GUIManagerType::LCPaginatedForm, *dest, ctx);
         });
 
         form::GUIManager::getInstance().registerCallback("market.trade.item", [&owner](frontend::ArrayRef args, Player& player) -> ll::Expected<void> {
@@ -305,7 +305,7 @@ namespace LOICollection::server::Plugins {
             ctx->elements.emplace_back(-1);
             ctx->elements.emplace_back("");
 
-            return form::GUIManager::getInstance().open("market.trade", "market.trade.item", form::GUIManagerType::CustomForm, *buyer, ctx);
+            return form::GUIManager::getInstance().open("market.trade", "market.trade.item", form::GUIManagerType::LCCustomForm, *buyer, ctx);
         });
 
         form::GUIManager::getInstance().registerCallback("market.trade.item.submit", [&owner](frontend::ArrayRef args, Player& player) -> ll::Expected<void> {
@@ -338,7 +338,7 @@ namespace LOICollection::server::Plugins {
             ctx->elements.emplace_back(score);
             ctx->elements.emplace_back("");
 
-            return form::GUIManager::getInstance().open("market.trade", "market.trade.confirm", form::GUIManagerType::CustomForm, *seller, ctx);
+            return form::GUIManager::getInstance().open("market.trade", "market.trade.confirm", form::GUIManagerType::LCCustomForm, *seller, ctx);
         });
 
         form::GUIManager::getInstance().registerCallback("market.trade.accept", [&owner](frontend::ArrayRef args, Player& player) -> ll::Expected<void> {

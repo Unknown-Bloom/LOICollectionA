@@ -199,7 +199,7 @@ namespace LOICollection::server::Plugins {
                 return output.error(tr(origin.getLocaleCode(), "commands.generic.target"));
             Player& player = *static_cast<Player*>(entity);
 
-            form::GUIManager::getInstance().open("chat", "chat.manage", form::GUIManagerType::CustomForm, player)
+            form::GUIManager::getInstance().open("chat", "chat.manage", form::GUIManagerType::LCCustomForm, player)
                 .or_else(modules::defaultErrorHandler<ChatPlugin>);
 
             output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.generic.ui")), player.getRealName());
@@ -210,7 +210,7 @@ namespace LOICollection::server::Plugins {
                 return output.error(tr(origin.getLocaleCode(), "commands.generic.target"));
             Player& player = *static_cast<Player*>(entity);
             
-            form::GUIManager::getInstance().open("chat", "chat.setting", form::GUIManagerType::CustomForm, player)
+            form::GUIManager::getInstance().open("chat", "chat.setting", form::GUIManagerType::LCCustomForm, player)
                 .or_else(modules::defaultErrorHandler<ChatPlugin>);
 
             output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.generic.ui")), player.getRealName());

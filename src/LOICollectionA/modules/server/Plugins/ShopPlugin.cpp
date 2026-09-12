@@ -114,7 +114,7 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(ShopPluginErrorCode::Invalid));
 
-        return form::GUIManager::getInstance().open("shop", id, form::GUIManagerType::ScriptForm, player);
+        return form::GUIManager::getInstance().open("shop", id, form::GUIManagerType::LCScriptForm, player);
     }
 
     ll::Expected<ShopActionResult> ShopPlugin::commodity(Player& player, int number, const ShopItemData& data, ShopType type) {

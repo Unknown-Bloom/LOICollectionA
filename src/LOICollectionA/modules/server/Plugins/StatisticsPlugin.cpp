@@ -149,7 +149,7 @@ namespace LOICollection::server::Plugins {
             auto ctx = std::make_shared<frontend::ArrayValue>();
             ctx->elements.emplace_back("");
 
-            form::GUIManager::getInstance().open("statistics", "statistics.open", form::GUIManagerType::PaginatedForm, player, ctx)
+            form::GUIManager::getInstance().open("statistics", "statistics.open", form::GUIManagerType::LCPaginatedForm, player, ctx)
                 .or_else(modules::defaultErrorHandler<StatisticsPlugin>);
 
             output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.generic.ui")), player.getRealName());
@@ -166,7 +166,7 @@ namespace LOICollection::server::Plugins {
                         auto ctx = std::make_shared<frontend::ArrayValue>();
                         ctx->elements.emplace_back(name);
 
-                        return form::GUIManager::getInstance().open("statistics", "statistics.specific", form::GUIManagerType::CustomForm, player, ctx)
+                        return form::GUIManager::getInstance().open("statistics", "statistics.specific", form::GUIManagerType::LCCustomForm, player, ctx)
                             .transform([&output, &origin, &player]() -> void {
                                 output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.generic.ui")), player.getRealName());
                             });
