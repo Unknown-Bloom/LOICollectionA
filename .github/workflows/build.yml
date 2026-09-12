@@ -3,11 +3,13 @@ on:
         paths:
             - ".github/workflows/build.yml"
             - "src/**"
+            - "tests/**"
             - "xmake.lua"
     push:
         paths:
             - ".github/workflows/build.yml"
             - "src/**"
+            - "tests/**"
             - "xmake.lua"
         branches:
             - "**" 
