@@ -80,27 +80,27 @@ namespace LOICollection::frontend::lsp {
         std::optional<Range> range;
     };
 
-    LOICOLLECTION_A_API void to_json(nlohmann::json& j, const Position& value);
-    LOICOLLECTION_A_API void from_json(const nlohmann::json& j, Position& value);
+    LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const Position& value);
+    LOICOLLECTION_A_API void from_json(const nlohmann::ordered_json& j, Position& value);
 
-    LOICOLLECTION_A_API void to_json(nlohmann::json& j, const Range& value);
-    LOICOLLECTION_A_API void from_json(const nlohmann::json& j, Range& value);
+    LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const Range& value);
+    LOICOLLECTION_A_API void from_json(const nlohmann::ordered_json& j, Range& value);
 
-    LOICOLLECTION_A_API void to_json(nlohmann::json& j, const Location& value);
+    LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const Location& value);
 
-    LOICOLLECTION_A_API void to_json(nlohmann::json& j, const Diagnostic& value);
+    LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const Diagnostic& value);
 
-    LOICOLLECTION_A_API void to_json(nlohmann::json& j, const CompletionItem& value);
+    LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const CompletionItem& value);
 
-    LOICOLLECTION_A_API void to_json(nlohmann::json& j, const Hover& value);
+    LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const Hover& value);
 
-    LOICOLLECTION_A_NDAPI nlohmann::json makeResponse(const nlohmann::json& id, nlohmann::json result);
+    LOICOLLECTION_A_NDAPI nlohmann::ordered_json makeResponse(const nlohmann::ordered_json& id, nlohmann::ordered_json result);
 
-    LOICOLLECTION_A_NDAPI nlohmann::json makeError(const nlohmann::json& id, int code, std::string message);
+    LOICOLLECTION_A_NDAPI nlohmann::ordered_json makeError(const nlohmann::ordered_json& id, int code, std::string message);
 
-    LOICOLLECTION_A_NDAPI nlohmann::json makeNotification(std::string method, nlohmann::json params);
+    LOICOLLECTION_A_NDAPI nlohmann::ordered_json makeNotification(std::string method, nlohmann::ordered_json params);
 
-    LOICOLLECTION_A_NDAPI std::string encodeMessage(const nlohmann::json& message);
+    LOICOLLECTION_A_NDAPI std::string encodeMessage(const nlohmann::ordered_json& message);
 
-    LOICOLLECTION_A_API bool decodeMessage(std::string& buffer, nlohmann::json& message);
+    LOICOLLECTION_A_API bool decodeMessage(std::string& buffer, nlohmann::ordered_json& message);
 }

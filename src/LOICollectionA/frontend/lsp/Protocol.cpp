@@ -4,78 +4,78 @@
 #include "LOICollectionA/frontend/lsp/Protocol.h"
 
 namespace LOICollection::frontend::lsp {
-    void to_json(nlohmann::json& j, const Position& value) {
-        j = nlohmann::json{ { "line", value.line }, { "character", value.character } };
+    void to_json(nlohmann::ordered_json& j, const Position& value) {
+        j = nlohmann::ordered_json{ { "line", value.line }, { "character", value.character } };
     }
 
-    void from_json(const nlohmann::json& j, Position& value) {
+    void from_json(const nlohmann::ordered_json& j, Position& value) {
         value.line = j.value("line", std::size_t{ 0 });
         value.character = j.value("character", std::size_t{ 0 });
     }
 
-    void to_json(nlohmann::json& j, const Range& value) {
-        j = nlohmann::json{ { "start", value.start }, { "end", value.end } };
+    void to_json(nlohmann::ordered_json& j, const Range& value) {
+        j = nlohmann::ordered_json{ { "start", value.start }, { "end", value.end } };
     }
 
-    void from_json(const nlohmann::json& j, Range& value) {
+    void from_json(const nlohmann::ordered_json& j, Range& value) {
         if (j.contains("start"))
             value.start = j.at("start").get<Position>();
         if (j.contains("end"))
             value.end = j.at("end").get<Position>();
     }
 
-    void to_json(nlohmann::json& j, const Location& value) {
-        j = nlohmann::json{ { "uri", value.uri }, { "range", value.range } };
+    void to_json(nlohmann::ordered_json& j, const Location& value) {
+        j = nlohmann::ordered_json{ { "uri", value.uri }, { "range", value.range } };
     }
 
-    void to_json(nlohmann::json& j, const Diagnostic& value) {
-        j = nlohmann::json{
+    void to_json(nlohmann::ordered_json& j, const Diagnostic& value) {
+        j = nlohmann::ordered_json{
             { "range", value.range },
             { "severity", static_cast<int>(value.severity) },
             { "message", value.message },
         };
     }
 
-    void to_json(nlohmann::json& j, const CompletionItem& value) {
-        j = nlohmann::json{
+    void to_json(nlohmann::ordered_json& j, const CompletionItem& value) {
+        j = nlohmann::ordered_json{
             { "label", value.label },
             { "kind", static_cast<int>(value.kind) },
             { "detail", value.detail },
         };
     }
 
-    void to_json(nlohmann::json& j, const Hover& value) {
-        j = nlohmann::json{ { "contents", value.contents } };
+    void to_json(nlohmann::ordered_json& j, const Hover& value) {
+        j = nlohmann::ordered_json{ { "contents", value.contents } };
         if (value.range)
             j["range"] = *value.range;
     }
 
-    nlohmann::json makeResponse(const nlohmann::json& id, nlohmann::json result) {
-        return nlohmann::json{
+    nlohmann::ordered_json makeResponse(const nlohmann::ordered_json& id, nlohmann::ordered_json result) {
+        return nlohmann::ordered_json{
             { "jsonrpc", "2.0" },
             { "id", id },
             { "result", std::move(result) },
         };
     }
 
-    nlohmann::json makeError(const nlohmann::json& id, int code, std::string message) {
-        return nlohmann::json{
+    nlohmann::ordered_json makeError(const nlohmann::ordered_json& id, int code, std::string message) {
+        return nlohmann::ordered_json{
             { "jsonrpc", "2.0" },
             { "id", id },
-            { "error", nlohmann::json{ { "code", code }, { "message", std::move(message) } } },
+            { "error", nlohmann::ordered_json{ { "code", code }, { "message", std::move(message) } } },
         };
     }
 
-    nlohmann::json makeNotification(std::string method, nlohmann::json params) {
-        return nlohmann::json{
+    nlohmann::ordered_json makeNotification(std::string method, nlohmann::ordered_json params) {
+        return nlohmann::ordered_json{
             { "jsonrpc", "2.0" },
             { "method", std::move(method) },
             { "params", std::move(params) },
         };
     }
 
-    std::string encodeMessage(const nlohmann::json& message) {
-        const std::string body = message.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+    std::string encodeMessage(const nlohmann::ordered_json& message) {
+        const std::string body = message.dump(-1, ' ', false, nlohmann::ordered_json::error_handler_t::replace);
 
         std::string result = "Content-Length: ";
         result += std::to_string(body.size());
@@ -85,7 +85,7 @@ namespace LOICollection::frontend::lsp {
         return result;
     }
 
-    bool decodeMessage(std::string& buffer, nlohmann::json& message) {
+    bool decodeMessage(std::string& buffer, nlohmann::ordered_json& message) {
         constexpr std::string_view kSeparator = "\r\n\r\n";
         constexpr std::string_view kLengthField = "Content-Length:";
         constexpr std::size_t kMaxPending = 64u << 20;
@@ -122,7 +122,7 @@ namespace LOICollection::frontend::lsp {
         const std::string body = buffer.substr(bodyStart, length);
         buffer.erase(0, bodyStart + length);
 
-        message = nlohmann::json::parse(body, nullptr, false);
+        message = nlohmann::ordered_json::parse(body, nullptr, false);
 
         return !message.is_discarded();
     }

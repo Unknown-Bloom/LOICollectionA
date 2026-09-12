@@ -38,8 +38,8 @@ namespace LOICollection::frontend::lsp {
             return false;
         }
 
-        nlohmann::json request(int id, const std::string& method, const nlohmann::json& params) {
-            return nlohmann::json{
+        nlohmann::ordered_json request(int id, const std::string& method, const nlohmann::ordered_json& params) {
+            return nlohmann::ordered_json{
                 { "jsonrpc", "2.0" },
                 { "id", id },
                 { "method", method },
@@ -47,11 +47,11 @@ namespace LOICollection::frontend::lsp {
             };
         }
 
-        nlohmann::json singleMessage(const std::string& encoded) {
+        nlohmann::ordered_json singleMessage(const std::string& encoded) {
             std::string buffer = encoded;
-            nlohmann::json message;
+            nlohmann::ordered_json message;
 
-            return decodeMessage(buffer, message) ? message : nlohmann::json(nullptr);
+            return decodeMessage(buffer, message) ? message : nlohmann::ordered_json(nullptr);
         }
     }
 
@@ -121,10 +121,10 @@ namespace LOICollection::frontend::lsp {
     }
 
     TEST(LspTest, DecodeMessageWaitsForPartialInput) {
-        const std::string encoded = encodeMessage(makeNotification("$/ping", nlohmann::json::object()));
+        const std::string encoded = encodeMessage(makeNotification("$/ping", nlohmann::ordered_json::object()));
 
         std::string buffer;
-        nlohmann::json message;
+        nlohmann::ordered_json message;
 
         const std::size_t split = encoded.size() / 2;
 
@@ -141,19 +141,19 @@ namespace LOICollection::frontend::lsp {
         LanguageServer server;
 
         const auto initialize = singleMessage(
-            server.handle(encodeMessage(request(1, "initialize", nlohmann::json::object()))));
+            server.handle(encodeMessage(request(1, "initialize", nlohmann::ordered_json::object()))));
 
         ASSERT_TRUE(initialize.is_object());
         EXPECT_EQ(initialize.value("id", 0), 1);
         EXPECT_TRUE(initialize.at("result").contains("capabilities"));
 
-        nlohmann::json document;
+        nlohmann::ordered_json document;
         document["uri"] = kUri;
         document["languageId"] = "lcui";
         document["version"] = 1;
         document["text"] = kSource;
 
-        nlohmann::json didOpen;
+        nlohmann::ordered_json didOpen;
         didOpen["textDocument"] = document;
 
         const auto published = singleMessage(
@@ -168,19 +168,19 @@ namespace LOICollection::frontend::lsp {
     TEST(LspTest, ServerAnswersCompletionAndHover) {
         LanguageServer server;
 
-        nlohmann::json document;
+        nlohmann::ordered_json document;
         document["uri"] = kUri;
         document["languageId"] = "lcui";
         document["version"] = 1;
         document["text"] = kSource;
 
-        nlohmann::json didOpen;
+        nlohmann::ordered_json didOpen;
         didOpen["textDocument"] = document;
 
         server.handle(encodeMessage(makeNotification("textDocument/didOpen", didOpen)));
 
-        nlohmann::json completionParams;
-        completionParams["textDocument"] = nlohmann::json{ { "uri", kUri } };
+        nlohmann::ordered_json completionParams;
+        completionParams["textDocument"] = nlohmann::ordered_json{ { "uri", kUri } };
         completionParams["position"] = Position{ 6, 13 };
 
         const auto completion = singleMessage(server.handle(
@@ -189,8 +189,8 @@ namespace LOICollection::frontend::lsp {
         ASSERT_TRUE(completion.is_object());
         EXPECT_FALSE(completion.at("result").at("items").empty());
 
-        nlohmann::json hoverParams;
-        hoverParams["textDocument"] = nlohmann::json{ { "uri", kUri } };
+        nlohmann::ordered_json hoverParams;
+        hoverParams["textDocument"] = nlohmann::ordered_json{ { "uri", kUri } };
         hoverParams["position"] = Position{ 6, 13 };
 
         const auto hover = singleMessage(server.handle(
@@ -204,7 +204,7 @@ namespace LOICollection::frontend::lsp {
         LanguageServer server;
 
         const auto error = singleMessage(
-            server.handle(encodeMessage(request(4, "textDocument/unknown", nlohmann::json::object()))));
+            server.handle(encodeMessage(request(4, "textDocument/unknown", nlohmann::ordered_json::object()))));
 
         ASSERT_TRUE(error.is_object());
         EXPECT_TRUE(error.contains("error"));

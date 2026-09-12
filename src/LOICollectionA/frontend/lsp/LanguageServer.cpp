@@ -168,19 +168,19 @@ namespace LOICollection::frontend::lsp {
             }
         }
 
-        nlohmann::json initializeResult() {
-            return nlohmann::json{
+        nlohmann::ordered_json initializeResult() {
+            return nlohmann::ordered_json{
                 {
-                    "capabilities", nlohmann::json{
+                    "capabilities", nlohmann::ordered_json{
                         { "textDocumentSync", 1 },
-                        { "completionProvider", nlohmann::json{
-                            { "triggerCharacters", nlohmann::json::array({ "." }) },
+                        { "completionProvider", nlohmann::ordered_json{
+                            { "triggerCharacters", nlohmann::ordered_json::array({ "." }) },
                         } },
                         { "hoverProvider", true },
                         { "definitionProvider", true },
                     },
                 },
-                { "serverInfo", nlohmann::json{ { "name", "LOICollectionA LCUI" } } },
+                { "serverInfo", nlohmann::ordered_json{ { "name", "LOICollectionA LCUI" } } },
             };
         }
     }
@@ -189,7 +189,7 @@ namespace LOICollection::frontend::lsp {
         this->inbound.append(bytes);
 
         std::string outbound;
-        nlohmann::json message;
+        nlohmann::ordered_json message;
 
         while (decodeMessage(this->inbound, message))
             outbound += this->dispatch(message);
@@ -274,13 +274,13 @@ namespace LOICollection::frontend::lsp {
         return Location{ uri, symbol->range };
     }
 
-    std::string LanguageServer::dispatch(const nlohmann::json& message) {
+    std::string LanguageServer::dispatch(const nlohmann::ordered_json& message) {
         if (!message.is_object() || !message.contains("method"))
             return {};
 
         const std::string method = message.value("method", std::string{});
-        const nlohmann::json& id = message.contains("id") ? message.at("id") : nlohmann::json(nullptr);
-        const nlohmann::json params = message.value("params", nlohmann::json::object());
+        const nlohmann::ordered_json& id = message.contains("id") ? message.at("id") : nlohmann::ordered_json(nullptr);
+        const nlohmann::ordered_json params = message.value("params", nlohmann::ordered_json::object());
 
         if (method == "initialize")
             return encodeMessage(makeResponse(id, initializeResult()));
@@ -291,7 +291,7 @@ namespace LOICollection::frontend::lsp {
         }
 
         if (method == "shutdown")
-            return encodeMessage(makeResponse(id, nlohmann::json(nullptr)));
+            return encodeMessage(makeResponse(id, nlohmann::ordered_json(nullptr)));
 
         if (method == "exit" || method.starts_with("$/"))
             return {};
@@ -311,7 +311,7 @@ namespace LOICollection::frontend::lsp {
             this->closeDocument(params);
 
             return encodeMessage(makeNotification("textDocument/publishDiagnostics",
-                nlohmann::json{ { "uri", uri }, { "diagnostics", nlohmann::json::array() } }));
+                nlohmann::ordered_json{ { "uri", uri }, { "diagnostics", nlohmann::ordered_json::array() } }));
         }
 
         if (method == "textDocument/completion")
@@ -331,15 +331,15 @@ namespace LOICollection::frontend::lsp {
         if (it == this->documents.end())
             return {};
 
-        nlohmann::json diagnostics = nlohmann::json::array();
+        nlohmann::ordered_json diagnostics = nlohmann::ordered_json::array();
         for (const auto& diagnostic : analyze(it->second.text).diagnostics)
             diagnostics.push_back(diagnostic);
 
         return encodeMessage(makeNotification("textDocument/publishDiagnostics",
-            nlohmann::json{ { "uri", uri }, { "diagnostics", std::move(diagnostics) } }));
+            nlohmann::ordered_json{ { "uri", uri }, { "diagnostics", std::move(diagnostics) } }));
     }
 
-    void LanguageServer::openDocument(const nlohmann::json& params) {
+    void LanguageServer::openDocument(const nlohmann::ordered_json& params) {
         if (!params.contains("textDocument"))
             return;
 
@@ -352,7 +352,7 @@ namespace LOICollection::frontend::lsp {
         this->documents.insert_or_assign(document.value("uri", std::string{}), std::move(opened));
     }
 
-    void LanguageServer::changeDocument(const nlohmann::json& params) {
+    void LanguageServer::changeDocument(const nlohmann::ordered_json& params) {
         const auto it = this->documents.find(this->uriOf(params));
         if (it == this->documents.end())
             return;
@@ -368,12 +368,12 @@ namespace LOICollection::frontend::lsp {
                 it->second.text = change.at("text").get<std::string>();
     }
 
-    void LanguageServer::closeDocument(const nlohmann::json& params) {
+    void LanguageServer::closeDocument(const nlohmann::ordered_json& params) {
         this->documents.erase(this->uriOf(params));
     }
 
-    nlohmann::json LanguageServer::documentCompletion(const nlohmann::json& params) const {
-        nlohmann::json items = nlohmann::json::array();
+    nlohmann::ordered_json LanguageServer::documentCompletion(const nlohmann::ordered_json& params) const {
+        nlohmann::ordered_json items = nlohmann::ordered_json::array();
 
         if (params.contains("position")) {
             for (const auto& item : LanguageServer::completionsAt(
@@ -381,30 +381,30 @@ namespace LOICollection::frontend::lsp {
                 items.push_back(item);
         }
 
-        return nlohmann::json{ { "isIncomplete", false }, { "items", std::move(items) } };
+        return nlohmann::ordered_json{ { "isIncomplete", false }, { "items", std::move(items) } };
     }
 
-    nlohmann::json LanguageServer::documentHover(const nlohmann::json& params) const {
+    nlohmann::ordered_json LanguageServer::documentHover(const nlohmann::ordered_json& params) const {
         if (!params.contains("position"))
-            return nlohmann::json(nullptr);
+            return nlohmann::ordered_json(nullptr);
 
         const auto hover = LanguageServer::hoverAt(
             this->textOf(params), params.at("position").get<Position>());
 
-        return hover ? nlohmann::json(*hover) : nlohmann::json(nullptr);
+        return hover ? nlohmann::ordered_json(*hover) : nlohmann::ordered_json(nullptr);
     }
 
-    nlohmann::json LanguageServer::documentDefinition(const nlohmann::json& params) const {
+    nlohmann::ordered_json LanguageServer::documentDefinition(const nlohmann::ordered_json& params) const {
         if (!params.contains("position"))
-            return nlohmann::json(nullptr);
+            return nlohmann::ordered_json(nullptr);
 
         const auto location = LanguageServer::definitionAt(
             this->uriOf(params), this->textOf(params), params.at("position").get<Position>());
 
-        return location ? nlohmann::json(*location) : nlohmann::json(nullptr);
+        return location ? nlohmann::ordered_json(*location) : nlohmann::ordered_json(nullptr);
     }
 
-    const std::string& LanguageServer::textOf(const nlohmann::json& params) const {
+    const std::string& LanguageServer::textOf(const nlohmann::ordered_json& params) const {
         static const std::string empty;
 
         const auto it = this->documents.find(this->uriOf(params));
@@ -412,7 +412,7 @@ namespace LOICollection::frontend::lsp {
         return it == this->documents.end() ? empty : it->second.text;
     }
 
-    std::string LanguageServer::uriOf(const nlohmann::json& params) const {
+    std::string LanguageServer::uriOf(const nlohmann::ordered_json& params) const {
         if (!params.contains("textDocument"))
             return {};
 
