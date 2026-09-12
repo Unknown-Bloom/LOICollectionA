@@ -24,6 +24,7 @@ add_requires(
     "levibuildscript",
     "preloader 1.15.7",
     "nlohmann_json 3.12.0",
+    "asio",
     "gtest v1.17.0"
 )
 
@@ -129,6 +130,7 @@ target("LOICollectionA")
         "levilamina",
         "preloader",
         "nlohmann_json",
+        "asio",
         "sqlitecpp"
     )
 
