@@ -1,8 +1,15 @@
 #pragma once
 
+#include <memory>
+
 #include <ll/api/Mod/NativeMod.h>
 
 #include "LOICollectionA/ConfigPlugin.h"
+#include "LOICollectionA/frontend/lsp/LanguageServer.h"
+
+namespace LOICollection::frontend::lsp {
+    class LspServer;
+}
 
 namespace LOICollection {
     class A {
@@ -24,5 +31,7 @@ namespace LOICollection {
         ll::mod::NativeMod& mSelf;
 
         Config::C_Config config;
+        frontend::lsp::LanguageServer lspEngine_;
+        std::unique_ptr<frontend::lsp::LspServer> lspServer_;
     };
 }

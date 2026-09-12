@@ -28,6 +28,8 @@
 
 #include "LOICollectionA/frontend/sandbox/ScriptPermission.h"
 
+#include "LOICollectionA/frontend/lsp/Server.h"
+
 #include "LOICollectionA/ConfigPlugin.h"
 
 #include "LOICollectionA/LOICollectionA.h"
@@ -161,6 +163,17 @@ namespace LOICollection {
 
         LOICollectionAPI::CallbackUtils::getInstance().compile();
 
+        if (this->config.LanguageServer.enabled) {
+            this->lspServer_ = std::make_unique<frontend::lsp::LspServer>(this->lspEngine_);
+
+            if (const auto ec = this->lspServer_->start(this->config.LanguageServer.port); ec) {
+                logger.error("LSP server failed on 127.0.0.1:{}: {}", this->config.LanguageServer.port, ec.message());
+                this->lspServer_.reset();
+            } else {
+                logger.info("LSP server listening on 127.0.0.1:{}", this->config.LanguageServer.port);
+            }
+        }
+
         std::vector<std::string> mMods = modules::ModManager::getInstance().mods();
         std::for_each(mMods.begin(), mMods.end(), [&logger](const std::string& mod) -> void {
             std::shared_ptr<modules::ModuleBase> mModule = modules::ModManager::getInstance().getModule(mod);
@@ -181,6 +194,11 @@ namespace LOICollection {
 
     bool A::disable() {
         ll::io::Logger& logger = this->mSelf.getLogger();
+
+        if (this->lspServer_) {
+            this->lspServer_->stop();
+            this->lspServer_.reset();
+        }
 
         form::GUIManager::getInstance().releaseAllUI();
 

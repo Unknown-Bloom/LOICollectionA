@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -303,12 +304,18 @@ namespace Config {
         std::string PermissionFilePath = "gui/permission.json";
     };
 
+    struct C_LanguageServer {
+        bool enabled = false;
+        std::uint16_t port = 9257;
+    };
+
     struct C_Config {
         int version = 0;
         std::string ConsoleLanguage = "system";
-        
+
         C_ServerConfig ServerConfig;
         C_ScriptPermission ScriptPermission;
+        C_LanguageServer LanguageServer;
     };
     
     std::string GetVersion();
