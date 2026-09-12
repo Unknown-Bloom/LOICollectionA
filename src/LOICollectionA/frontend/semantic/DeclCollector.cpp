@@ -187,6 +187,21 @@ namespace LOICollection::frontend {
             }
             ClassNode& cls = clsOpt->get();
 
+            if (cls.typeParams.size() != impl.typeParams.size()) {
+                this->diagnostics.addError(impl.loc,
+                    "impl for generic class '" + targetName +
+                    "' must declare matching type parameters");
+                continue;
+            }
+            for (size_t i = 0; i < impl.typeParams.size(); ++i) {
+                if (impl.typeParams[i].name != cls.typeParams[i].name) {
+                    this->diagnostics.addError(impl.loc,
+                        "impl type parameter '" + impl.typeParams[i].name +
+                        "' does not match class type parameter '" + cls.typeParams[i].name + "'");
+                    break;
+                }
+            }
+
             std::string traitName;
             if (impl.trait) {
                 traitName = impl.trait->name;
@@ -280,6 +295,25 @@ namespace LOICollection::frontend {
     }
 
     TypeInfo SemanticAnalyzer::resolveTypeExpr(const TypeExpr& expr, SourceLocation loc, bool reportError) {
+        if (expr.dyn) {
+            if (!expr.args.empty()) {
+                if (reportError)
+                    this->diagnostics.addError(loc, "Trait object '" + expr.name + "' does not accept type arguments");
+                return {};
+            }
+
+            if (!this->traits.contains(expr.name)) {
+                if (reportError)
+                    this->diagnostics.addError(loc, "Unknown trait: " + expr.name);
+                return {};
+            }
+
+            TypeInfo result;
+            result.kind = TypeKind::Trait;
+            result.className = expr.name;
+            return result;
+        }
+
         if (expr.name == "variant") {
             if (expr.args.size() < 2) {
                 if (reportError)
@@ -317,8 +351,30 @@ namespace LOICollection::frontend {
         }
 
         if (!expr.args.empty()) {
+            if (auto clsOpt = this->findClass(expr.name)) {
+                const ClassNode& cls = clsOpt->get();
+                if (cls.typeParams.size() != expr.args.size()) {
+                    if (reportError)
+                        this->diagnostics.addError(loc,
+                            "Class '" + expr.name + "' expects " +
+                            std::to_string(cls.typeParams.size()) +
+                            " type argument(s), got " +
+                            std::to_string(expr.args.size()));
+                    return {};
+                }
+
+                TypeInfo result;
+                result.kind = TypeKind::Object;
+                result.className = expr.name;
+                result.typeArgs.reserve(expr.args.size());
+                for (const auto& arg : expr.args)
+                    result.typeArgs.push_back(this->resolveTypeExpr(arg, loc, reportError));
+                return result;
+            }
+
             if (reportError)
-                this->diagnostics.addError(loc, "Type '" + expr.name + "' does not accept type arguments");
+                this->diagnostics.addError(loc,
+                    "Type '" + expr.name + "' does not accept type arguments");
             return {};
         }
 
@@ -348,6 +404,25 @@ namespace LOICollection::frontend {
     void SemanticAnalyzer::resolveDeclaredTypes() {
         for (auto clsRef : this->classes) {
             ClassNode& cls = clsRef.get();
+
+            auto savedParams = std::move(this->activeTypeParams);
+            auto savedBounds = std::move(this->activeTypeParamBounds);
+            for (const auto& tp : cls.typeParams) {
+                for (const auto& bound : tp.bounds)
+                    if (!this->traits.contains(bound))
+                        this->diagnostics.addError(cls.loc,
+                            "Unknown trait bound '" + bound + "' for type parameter '" + tp.name + "'");
+
+                TypeInfo g;
+                g.kind = TypeKind::Generic;
+                g.typeVar = tp.name;
+                this->activeTypeParams[tp.name] = g;
+                this->activeTypeParamBounds[tp.name] = tp.bounds;
+            }
+            auto guard = make_scope_guard([&] {
+                this->activeTypeParams = std::move(savedParams);
+                this->activeTypeParamBounds = std::move(savedBounds);
+            });
 
             for (auto& member : cls.members) {
                 if (member.hasTypeExpr)

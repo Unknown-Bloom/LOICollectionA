@@ -147,6 +147,30 @@ namespace LOICollection::frontend {
             return {};
         }
 
+        if (targetType.kind == TypeKind::Trait) {
+            auto traitIt = this->traits.find(targetType.className);
+            if (traitIt == this->traits.end()) {
+                diagnostics.addError(node.loc, "Unknown trait: " + targetType.className);
+                return {};
+            }
+
+            for (const auto& m : traitIt->second) {
+                if (m.name != node.methodName || m.paramCount != argCount)
+                    continue;
+
+                TypeInfo ret;
+                if (m.hasReturnType)
+                    ret = this->resolveTypeExpr(m.returnTypeExpr, node.loc, false);
+                node.dynamicDispatch = true;
+                return ret;
+            }
+
+            diagnostics.addError(node.loc,
+                "Trait '" + targetType.className + "' has no method '" + node.methodName +
+                "' with " + std::to_string(argCount) + " argument(s)");
+            return {};
+        }
+
         if (targetType.kind == TypeKind::Generic) {
             auto boundIt = this->activeTypeParamBounds.find(targetType.typeVar);
             if (boundIt != this->activeTypeParamBounds.end()) {
@@ -221,6 +245,8 @@ namespace LOICollection::frontend {
 
         ClassNode& cls = clsOpt->get();
 
+        auto subst = this->substituteParamTypes(cls, targetType);
+
         std::vector<std::pair<std::reference_wrapper<ClassNode>, std::reference_wrapper<MethodDecl>>> candidates;
         std::optional<std::reference_wrapper<ClassNode>> walk = std::ref(cls);
         for (size_t step = 0; step <= this->classes.size() && walk; ++step) {
@@ -239,7 +265,7 @@ namespace LOICollection::frontend {
 
                 bool match = true;
                 for (size_t j = 0; j < argCount; ++j) {
-                    const TypeInfo& param = method.paramTypes[j];
+                    const TypeInfo& param = this->substituteType(method.paramTypes[j], subst);
                     if (!this->isAssignableTo(param, argTypes[j])) {
                         match = false;
                         break;
@@ -311,13 +337,14 @@ namespace LOICollection::frontend {
         node.methodOrdinal = this->methodOrdinal(cls.name, this->methodSignature(method));
 
         for (size_t j = 0; j < argCount; ++j) {
-            if (method.paramTypes[j].kind == TypeKind::Optional &&
+            const TypeInfo& param = this->substituteType(method.paramTypes[j], subst);
+            if (param.kind == TypeKind::Optional &&
                 argTypes[j].kind == TypeKind::Optional) {
                 node.args[j]->preserveOptional = true;
             }
         }
 
-        return method.returnType;
+        return this->substituteType(method.returnType, subst);
     }
 
     TypeInfo SemanticAnalyzer::checkFuncCall(FuncCallNode& node, MethodScope& scope) {
@@ -513,43 +540,82 @@ namespace LOICollection::frontend {
         }
 
         ClassNode& cls = clsOpt->get();
-        auto ctorRef = this->findConstructor(cls);
 
-        if (!ctorRef) {
-            if (argCount != 0) {
-                diagnostics.addError(node.loc,
-                    "Class '" + cls.name + "' has no constructor");
+        auto ctorOpt = this->findConstructor(cls);
+        MethodDecl* ctor = ctorOpt ? &ctorOpt->method.get() : nullptr;
+
+        TypeInfo type;
+        type.kind = TypeKind::Object;
+        type.className = cls.name;
+        for (const auto& typeArg : node.typeArgs)
+            type.typeArgs.push_back(this->resolveTypeExpr(typeArg, node.loc, true));
+
+        std::unordered_map<std::string, TypeInfo> subst;
+        if (type.typeArgs.empty() && !cls.typeParams.empty() && ctor &&
+            ctor->params.size() == argCount) {
+            for (const auto& tp : cls.typeParams)
+                subst[tp.name] = {};
+            for (size_t j = 0; j < argCount; ++j) {
+                const TypeInfo& pt = ctor->paramTypes[j];
+                if (pt.kind != TypeKind::Generic)
+                    continue;
+                auto it = subst.find(pt.typeVar);
+                if (it == subst.end())
+                    continue;
+                if (it->second.kind == TypeKind::Unknown)
+                    it->second = argTypes[j];
+                else if (it->second != argTypes[j])
+                    it->second = {};
             }
-
-            return { TypeKind::Object, cls.name };
+            for (const auto& tp : cls.typeParams)
+                type.typeArgs.push_back(subst[tp.name]);
         }
 
-        MethodDecl& ctor = ctorRef->method.get();
+        if (cls.typeParams.size() != type.typeArgs.size()) {
+            if (cls.typeParams.empty()) {
+                diagnostics.addError(node.loc, "Class '" + cls.name + "' does not accept type arguments");
+            } else {
+                diagnostics.addError(node.loc,
+                    "Class '" + cls.name + "' must provide all type arguments");
+            }
+            return type;
+        }
 
-        if (ctor.params.size() != argCount) {
+        for (size_t i = 0; i < cls.typeParams.size(); ++i)
+            subst[cls.typeParams[i].name] = type.typeArgs[i];
+
+        if (!ctor) {
+            if (argCount != 0)
+                diagnostics.addError(node.loc, "Class '" + cls.name + "' has no constructor");
+
+            return type;
+        }
+
+        if (ctor->params.size() != argCount) {
             diagnostics.addError(node.loc,
                 "Constructor of class '" + cls.name + "' expects " +
-                std::to_string(ctor.params.size()) + " argument(s), got " +
+                std::to_string(ctor->params.size()) + " argument(s), got " +
                 std::to_string(argCount));
 
-            return { TypeKind::Object, cls.name };
+            return type;
         }
 
         for (size_t j = 0; j < argCount; ++j) {
-            if (!this->isAssignableTo(ctor.paramTypes[j], argTypes[j])) {
+            const TypeInfo& param = this->substituteType(ctor->paramTypes[j], subst);
+            if (!this->isAssignableTo(param, argTypes[j])) {
                 diagnostics.addError(node.loc,
-                    "Type mismatch for constructor parameter '" + ctor.params[j].name +
-                    "': expected " + typeToString(ctor.paramTypes[j]) +
+                    "Type mismatch for constructor parameter '" + ctor->params[j].name +
+                    "': expected " + typeToString(param) +
                     ", got " + typeToString(argTypes[j]));
             }
 
-            if (ctor.paramTypes[j].kind == TypeKind::Optional &&
+            if (param.kind == TypeKind::Optional &&
                 argTypes[j].kind == TypeKind::Optional) {
                 node.args[j]->preserveOptional = true;
             }
         }
 
-        return { TypeKind::Object, cls.name };
+        return type;
     }
 
     TypeInfo SemanticAnalyzer::checkSuperCall(SuperCallNode& node, MethodScope& scope) {

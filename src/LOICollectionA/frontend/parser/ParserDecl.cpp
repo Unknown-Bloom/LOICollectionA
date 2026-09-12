@@ -51,7 +51,11 @@ namespace LOICollection::frontend {
             return nullptr;
         }
 
-        if (currentToken.type != TokenType::TOKEN_IDENT) {
+        bool isDyn = false;
+        if (currentToken.type == TokenType::TOKEN_DYN) {
+            if (!eat(TokenType::TOKEN_DYN)) return nullptr;
+            isDyn = true;
+        } else if (currentToken.type != TokenType::TOKEN_IDENT) {
             diagnostics.addError(currentToken.loc, "Expected type name");
             return nullptr;
         }
@@ -59,6 +63,7 @@ namespace LOICollection::frontend {
         auto type = std::make_unique<TypeExpr>();
         type->loc = currentToken.loc;
         type->name = currentToken.value;
+        type->dyn = isDyn;
 
         if (!eat(TokenType::TOKEN_IDENT)) return nullptr;
 
@@ -165,6 +170,9 @@ namespace LOICollection::frontend {
         if (!eat(TokenType::TOKEN_IDENT)) return nullptr;
 
         auto cls = std::make_unique<ClassNode>(loc, name);
+
+        if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "<")
+            cls->typeParams = parseTypeParams();
 
         if (currentToken.type == TokenType::TOKEN_EXTENDS) {
             if (!eat(TokenType::TOKEN_EXTENDS)) return nullptr;
@@ -427,12 +435,10 @@ namespace LOICollection::frontend {
 
         if (!eat(TokenType::TOKEN_IMPL)) return nullptr;
 
-        if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "<") {
-            diagnostics.addError(currentToken.loc,
-                "Generic impl blocks require generic classes, which are not part of the language yet");
-            skipBalancedBraces();
-            return nullptr;
-        }
+        auto impl = std::make_unique<ImplNode>(loc);
+
+        if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "<")
+            impl->typeParams = parseTypeParams();
 
         auto first = parseTypeExpr();
         if (!first) {
@@ -440,8 +446,6 @@ namespace LOICollection::frontend {
             skipBalancedBraces();
             return nullptr;
         }
-
-        auto impl = std::make_unique<ImplNode>(loc);
 
         if (currentToken.type == TokenType::TOKEN_FOR) {
             if (!eat(TokenType::TOKEN_FOR)) return nullptr;
