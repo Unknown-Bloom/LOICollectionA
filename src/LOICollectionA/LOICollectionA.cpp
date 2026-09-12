@@ -35,6 +35,9 @@
 #include "LOICollectionA/LOICollectionA.h"
 
 namespace LOICollection {
+    A::A() : mSelf(*ll::mod::NativeMod::current()) {}
+    A::~A() = default;
+
     A& A::getInstance() {
         static A instance;
         return instance;
