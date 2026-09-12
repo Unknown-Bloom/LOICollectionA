@@ -310,7 +310,7 @@ namespace LOICollection::form {
             return {};
         }
 
-        const auto budget = frontend::sandbox::budgetForScript(handle->scriptId);
+        const auto budget = frontend::sandbox::budgetForScript(handle.value()->scriptId);
 
         auto result = handle.value()->base->show([this, id, handle = handle.value(), player = std::ref(player), budget](ll::ui::ScreenSession::Result closeResult) mutable -> void {
             frontend::DiagnosticEngine diagnostics;
@@ -360,7 +360,7 @@ namespace LOICollection::form {
             return {};
         }
 
-        const auto budget = frontend::sandbox::budgetForScript(handle->scriptId);
+        const auto budget = frontend::sandbox::budgetForScript(handle.value()->scriptId);
 
         auto result = handle.value()->base->show([this, id, handle = handle.value(), player = std::ref(player), budget](ll::ui::MessageBox::Result closeResult) mutable -> void {
             frontend::DiagnosticEngine diagnostics;
@@ -410,7 +410,7 @@ namespace LOICollection::form {
         if (!handle.value()->base)
             return ll::makeStringError("PaginatedForm is not built");
 
-        const auto budget = frontend::sandbox::budgetForScript(handle->scriptId);
+        const auto budget = frontend::sandbox::budgetForScript(handle.value()->scriptId);
 
         auto result = handle.value()->base->show([this, id, handle = handle.value(), player = std::ref(player), budget](ll::ui::ScreenSession::Result closeResult) mutable -> void {
             auto resultObj = std::make_shared<frontend::Object>();
@@ -458,7 +458,7 @@ namespace LOICollection::form {
         if (!handle.has_value())
             return ll::Unexpected(handle.error());
 
-        const auto budget = frontend::sandbox::budgetForScript(handle->scriptId);
+        const auto budget = frontend::sandbox::budgetForScript(handle.value()->scriptId);
 
         auto finish = [this, id, handle = handle.value(), player = std::ref(player), budget]() mutable -> void {
             if (handle->pendingSubflow) {
