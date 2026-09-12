@@ -175,7 +175,7 @@ namespace LOICollection::frontend {
                     "Cannot access private member '" + m.name + "' of class '" + field->owner.get().name + "'");
             }
 
-            return m.type;
+            return this->substituteType(m.type, this->substituteParamTypes(cls, targetType));
         }
 
         diagnostics.addError(node.loc,

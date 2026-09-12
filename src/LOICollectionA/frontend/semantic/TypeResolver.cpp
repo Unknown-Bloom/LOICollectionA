@@ -52,6 +52,14 @@ namespace LOICollection::frontend {
         return typeInfoToString(type);
     }
 
+    std::unordered_map<std::string, TypeInfo> SemanticAnalyzer::substituteParamTypes(
+        const ClassNode& cls, const TypeInfo& objType) const {
+        std::unordered_map<std::string, TypeInfo> subst;
+        for (size_t i = 0; i < cls.typeParams.size() && i < objType.typeArgs.size(); ++i)
+            subst[cls.typeParams[i].name] = objType.typeArgs[i];
+        return subst;
+    }
+
     bool SemanticAnalyzer::isNumeric(const TypeInfo& type) const {
         return type.kind == TypeKind::Int || type.kind == TypeKind::Float;
     }
@@ -72,6 +80,8 @@ namespace LOICollection::frontend {
                 substituteType(*type.optionalInner, subst));
         for (size_t i = 0; i < result.variantOptions.size(); ++i)
             result.variantOptions[i] = substituteType(result.variantOptions[i], subst);
+        for (auto& arg : result.typeArgs)
+            arg = substituteType(arg, subst);
         return result;
     }
 

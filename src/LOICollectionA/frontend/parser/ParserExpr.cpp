@@ -469,13 +469,36 @@ namespace LOICollection::frontend {
 
                 std::string className = currentToken.value;
                 if (!eat(TokenType::TOKEN_IDENT)) return nullptr;
+
+                auto node = std::make_unique<NewNode>(loc, std::move(className), std::vector<std::unique_ptr<ExprNode>>{});
+
+                if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "<") {
+                    advance();
+                    while ((currentToken.type != TokenType::TOKEN_OP || currentToken.value != ">") &&
+                           currentToken.type != TokenType::TOKEN_EOF) {
+                        auto t = parseTypeExpr();
+                        if (!t) {
+                            synchronize({ TokenType::TOKEN_COMMA, TokenType::TOKEN_RPAREN,
+                                          TokenType::TOKEN_LBRACE });
+                            break;
+                        }
+                        node->typeArgs.push_back(std::move(*t));
+                        if (currentToken.type == TokenType::TOKEN_COMMA)
+                            advance();
+                        else
+                            break;
+                    }
+                    if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == ">")
+                        advance();
+                }
+
                 if (!eat(TokenType::TOKEN_LPAREN)) return nullptr;
 
                 auto args = parseArgs();
 
                 if (!eat(TokenType::TOKEN_RPAREN)) return nullptr;
 
-                auto node = std::make_unique<NewNode>(loc, std::move(className), std::move(args));
+                node->args = std::move(args);
 
                 if (currentToken.type == TokenType::TOKEN_LBRACE) {
                     if (!eat(TokenType::TOKEN_LBRACE)) return nullptr;

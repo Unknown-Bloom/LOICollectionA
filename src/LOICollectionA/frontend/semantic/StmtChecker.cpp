@@ -52,30 +52,30 @@ namespace LOICollection::frontend {
     void SemanticAnalyzer::checkBody(std::optional<std::reference_wrapper<ClassNode>> cls, MethodDecl& method) {
         MethodScope scope{ cls, std::ref(method) };
 
-        bool pushedTypeParams = false;
-        if (!method.typeParams.empty()) {
-            pushedTypeParams = true;
-            this->activeTypeParams.clear();
-            this->activeTypeParamBounds.clear();
-            for (const auto& tp : method.typeParams) {
+        auto savedParams = std::move(this->activeTypeParams);
+        auto savedBounds = std::move(this->activeTypeParamBounds);
+        auto pushTypeParams = [&](const std::vector<TypeParam>& typeParams) {
+            for (const auto& tp : typeParams) {
                 TypeInfo g;
                 g.kind = TypeKind::Generic;
                 g.typeVar = tp.name;
                 this->activeTypeParams[tp.name] = g;
                 this->activeTypeParamBounds[tp.name] = tp.bounds;
             }
-        }
+        };
+        if (cls)
+            pushTypeParams(cls->get().typeParams);
+        pushTypeParams(method.typeParams);
+        auto guard = make_scope_guard([&] {
+            this->activeTypeParams = std::move(savedParams);
+            this->activeTypeParamBounds = std::move(savedBounds);
+        });
 
         if (method.body) {
             this->blockScopes.emplace_back();
             auto popScope = make_scope_guard([this] { this->blockScopes.pop_back(); });
 
             checkStatement(*method.body, scope);
-        }
-
-        if (pushedTypeParams) {
-            this->activeTypeParams.clear();
-            this->activeTypeParamBounds.clear();
         }
 
         if (method.hasReturnType && !method.isConstructor &&

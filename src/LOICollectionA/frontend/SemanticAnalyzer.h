@@ -104,6 +104,8 @@ namespace LOICollection::frontend {
         [[nodiscard]] bool isNumeric(const TypeInfo& type) const;
         [[nodiscard]] bool isNameDefined(const std::string& name, MethodScope& scope) const;
         [[nodiscard]] bool isAssignableTo(const TypeInfo& target, const TypeInfo& from) const;
+        [[nodiscard]] std::unordered_map<std::string, TypeInfo> substituteParamTypes(
+            const ClassNode& cls, const TypeInfo& objType) const;
         [[nodiscard]] std::string receiverVariable(MethodCallNode& node) const;
         void reportReceiverCaptures(const std::string& name);
         void requireLet(AssignmentNode& node, const VariableNode& var);

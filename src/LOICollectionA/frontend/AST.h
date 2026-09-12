@@ -44,12 +44,14 @@ namespace LOICollection::frontend {
         std::vector<TypeInfo> variantOptions{};
         std::shared_ptr<TypeInfo> optionalInner{};
         std::string typeVar{};
+        std::vector<TypeInfo> typeArgs{};
 
         bool operator==(const TypeInfo& other) const {
             return kind == other.kind &&
                    className == other.className &&
                    typeVar == other.typeVar &&
                    variantOptions == other.variantOptions &&
+                   typeArgs == other.typeArgs &&
                    ((!optionalInner && !other.optionalInner) ||
                     (optionalInner && other.optionalInner && *optionalInner == *other.optionalInner));
         }
@@ -73,7 +75,19 @@ namespace LOICollection::frontend {
             case TypeKind::Float: return "float";
             case TypeKind::String: return "string";
             case TypeKind::Bool: return "bool";
-            case TypeKind::Object: return "class " + type.className;
+            case TypeKind::Object: {
+                std::string result = "class " + type.className;
+                if (!type.typeArgs.empty()) {
+                    result += "<";
+                    for (size_t i = 0; i < type.typeArgs.size(); ++i) {
+                        if (i != 0)
+                            result += ", ";
+                        result += typeInfoToString(type.typeArgs[i]);
+                    }
+                    result += ">";
+                }
+                return result;
+            }
             case TypeKind::Function: return "function";
             case TypeKind::Void: return "void";
             case TypeKind::Array: return "array";
@@ -573,6 +587,7 @@ namespace LOICollection::frontend {
         TypeExpr target;
         std::vector<MethodDecl> methods;
         std::vector<ClassMember> consts;
+        std::vector<TypeParam> typeParams;
 
         explicit ImplNode(SourceLocation location) : loc(location) {}
 
@@ -620,6 +635,7 @@ namespace LOICollection::frontend {
         std::vector<std::unique_ptr<ExprNode>> args;
         std::unique_ptr<BlockNode> declarativeBlock;
         std::string receiverName;
+        std::vector<TypeExpr> typeArgs;
 
         NewNode(SourceLocation location, std::string name, auto&& a)
             : loc(location), className(std::move(name)), args(std::forward<decltype(a)>(a)) {}

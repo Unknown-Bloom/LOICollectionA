@@ -166,6 +166,9 @@ namespace LOICollection::frontend {
 
         auto cls = std::make_unique<ClassNode>(loc, name);
 
+        if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "<")
+            cls->typeParams = parseTypeParams();
+
         if (currentToken.type == TokenType::TOKEN_EXTENDS) {
             if (!eat(TokenType::TOKEN_EXTENDS)) return nullptr;
             if (currentToken.type != TokenType::TOKEN_IDENT) {
@@ -427,12 +430,10 @@ namespace LOICollection::frontend {
 
         if (!eat(TokenType::TOKEN_IMPL)) return nullptr;
 
-        if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "<") {
-            diagnostics.addError(currentToken.loc,
-                "Generic impl blocks require generic classes, which are not part of the language yet");
-            skipBalancedBraces();
-            return nullptr;
-        }
+        auto impl = std::make_unique<ImplNode>(loc);
+
+        if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "<")
+            impl->typeParams = parseTypeParams();
 
         auto first = parseTypeExpr();
         if (!first) {
@@ -440,8 +441,6 @@ namespace LOICollection::frontend {
             skipBalancedBraces();
             return nullptr;
         }
-
-        auto impl = std::make_unique<ImplNode>(loc);
 
         if (currentToken.type == TokenType::TOKEN_FOR) {
             if (!eat(TokenType::TOKEN_FOR)) return nullptr;
