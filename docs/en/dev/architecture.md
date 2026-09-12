@@ -141,3 +141,22 @@ The plugin supports both `server` and `client` targets at the same time, disting
 ## Data Layer
 
 All persistent data is accessed through `SQLiteStorage` (default, supports read/write connection pool and transactions) or `JsonStorage` (simple JSON files); both return `ll::Expected<T>` to support chained error handling. See the "Data Layer" section of the [Module Development Guide](./module.md) for usage.
+
+## Scripting VM
+
+LCUI scripts are compiled in `frontend/ir/` into three-address MIR and executed directly by `VM`. Object access and field caching are designed around two ideas:
+
+### Object Model and Field Layout
+
+Each `Object` holds an **immutable** `FieldLayout` (an ordered map from field names to slot indices). Class fields known at compile/construction time occupy contiguous slots, so `slotOf(name)` is O(1). Dynamically written fields fall back to a `spill` hash map, keeping undeclared fields accessible.
+
+### Polymorphic Inline Cache (PIC)
+
+`VM::mFieldSlots` was upgraded from monomorphic (a single `name+layout+slot`) to a **polymorphic inline cache** of capacity 4: the field name is constant per instruction and up to 4 candidate slots are cached keyed by `layout` pointer. Same-shape objects hit directly; heterogeneous call sites degrade to sequential probing; beyond 4 shapes it falls back to a linear lookup. This accelerates hot same-shape paths without sacrificing correctness at heterogeneous sites.
+
+### Hidden Class / Shape Transitions
+
+`extendShape(base, name)` memoizes an immutable extended `FieldLayout` keyed by `(base, name)`, so objects of the same kind share one shape. `Object::addField()` migrates dynamically added fields into real slots (instead of per-object `spill`), letting objects with the same dynamic shape converge to one `layout` and thus stabilizing the PIC across objects. Existing fields are written in place, preserving semantics.
+
+> [!NOTE]
+> The shape-transition table and caches follow the project's existing **single-threaded (tick model)** assumption, consistent with `ClassCall`'s `epoch` cache; no locks are introduced, keeping it simple and fast.

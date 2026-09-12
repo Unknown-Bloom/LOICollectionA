@@ -140,3 +140,22 @@ tests/                       # gtest 测试（common/ 跨平台、server/、clie
 ## 数据层
 
 所有持久化数据通过 `SQLiteStorage`（默认，支持读写连接池与事务）或 `JsonStorage`（简单 JSON 文件）访问，二者都返回 `ll::Expected<T>` 以支持链式错误处理。用法详见 [模块开发指南](./module.md) 的"数据层"章节。
+
+## 脚本引擎 VM
+
+LCUI 脚本在 `frontend/ir/` 编译为三地址 MIR，由 `VM` 直接解释执行。对象访问与字段缓存围绕以下两点设计：
+
+### 对象模型与字段布局
+
+每个 `Object` 持有一个**不可变**的 `FieldLayout`（字段名到 slot 索引的有序映射）。编译期/构造期已知的类字段在布局中占据连续 slot，`slotOf(name)` 为常数时间查找。字段动态写入先落到 `spill` 哈希表作为回退，保证未声明字段仍可存取。
+
+### 多态内联缓存（PIC）
+
+`VM::mFieldSlots` 由单态（1 个 `name+layout+slot`）升级为容量 4 的**多态内联缓存**：字段名在每条指令处常量化，以 `layout` 指针为键缓存至多 4 个候选 slot。同形状对象直接命中；异质调用点退化为顺序探测；超过 4 类形状时回退线性查找。这样既加速同类热路径，又不牺牲异构调用点的正确性。
+
+### Hidden Class / 形状转换
+
+`extendShape(base, name)` 以 `(base, name)` 为键**记忆化**生成不可变扩展 `FieldLayout`，使同类对象共享同一形状；`Object::addField()` 把动态新增字段迁移到真实 slot（而非各自独立的 `spill`），令具有相同动态形状的对象收敛到同一 `layout`，从而让 PIC 在多对象之间稳定命中。已存在字段原地写入，语义不变。
+
+> [!NOTE]
+> 形状转换表与缓存沿用项目既有的**单线程（tick 模型）**假设，与 `ClassCall` 的 `epoch` 缓存一致，未引入锁，保持简洁与性能。
