@@ -441,7 +441,7 @@ namespace LOICollection::frontend::ir {
     }
 
     void Compiler::visit(ValueNode& node) {
-        const int idx = this->addConstant(node.value);
+        [[maybe_unused]] const int idx = this->addConstant(node.value);
 
         switch (node.value.index()) {
             case 0: case 1: case 2: case 3: case 7:
@@ -855,8 +855,6 @@ namespace LOICollection::frontend::ir {
     void Compiler::visit(ArithmeticNode& node) {
         const int lhs = this->compileValue(*node.left, node.loc);
         const int rhs = this->compileValue(*node.right, node.loc);
-
-        const bool isInt = node.type.kind == TypeKind::Int;
 
         if (node.op == "+") this->lastResultReg = this->emitBinary(MirOp::ADD, lhs, rhs, node.loc, node.type);
         else if (node.op == "-") this->lastResultReg = this->emitBinary(MirOp::SUB, lhs, rhs, node.loc, node.type);

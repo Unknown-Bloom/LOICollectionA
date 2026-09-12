@@ -60,15 +60,6 @@ namespace {
         return total;
     }
 
-    bool containsOpEverywhere(const MirChunk& chunk, MirOp op) {
-        if (containsOp(chunk, op))
-            return true;
-        for (const auto& body : chunk.methodBodies)
-            if (containsOp(*body, op))
-                return true;
-        return false;
-    }
-
     int countOpEverywhere(const MirChunk& chunk, MirOp op) {
         int total = countOp(chunk, op);
         for (const auto& body : chunk.methodBodies)

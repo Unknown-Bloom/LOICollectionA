@@ -177,12 +177,14 @@ namespace LOICollection::frontend {
             ASSERT_TRUE(restored.has_value());
 
             std::string mutated = *blob;
-            for (std::size_t i = 0; i < 4; ++i)
+            for (std::size_t i = 0; i < 4; ++i) {
                 if (!mutated.empty())
                     mutated[rng.below(mutated.size())] = static_cast<char>(rng.next());
+            }
 
-            if (mutated != *blob)
+            if (mutated != *blob) {
                 EXPECT_FALSE(ir::MirSerializer::deserialize(mutated, header).has_value());
+            }
 
             for (std::size_t i = 0; i < 8; ++i) {
                 std::string garbage(i + 1, static_cast<char>(rng.next()));

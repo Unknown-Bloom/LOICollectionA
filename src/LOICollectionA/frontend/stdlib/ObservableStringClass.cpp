@@ -111,7 +111,7 @@ namespace ObservableStringClass {
                 return *l + *r;
             return *l + ir::VM::valueToString(right);
         });
-        for (const std::string& op : { "==", "!=", ">", "<", ">=", "<=" })
+        for (const std::string op : { "==", "!=", ">", "<", ">=", "<=" })
             classes.registerOperator("ObservableString", op, [op](const TypedValue& left, const TypedValue& right) -> ll::Expected<TypedValue> {
                 auto l = stringOperand(left);
                 auto r = stringOperand(right);

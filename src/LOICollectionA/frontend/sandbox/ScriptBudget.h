@@ -19,6 +19,13 @@ namespace LOICollection::frontend::sandbox {
         std::optional<std::size_t> maxArrayElements;
         std::optional<std::size_t> maxStringBytes;
         std::optional<std::size_t> maxTotalBytes;
+
+        BudgetOverride() = default;
+
+        BudgetOverride(std::optional<std::size_t> instructions) : maxInstructions(instructions) {}
+
+        BudgetOverride(std::optional<std::size_t> instructions, std::optional<std::chrono::milliseconds> wallTime)
+            : maxInstructions(instructions), maxWallTime(wallTime) {}
     };
 
     class BudgetPolicy {

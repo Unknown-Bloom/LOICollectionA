@@ -148,7 +148,7 @@ namespace ObservableNumberClass {
         classes.registerMethod("ObservableNumber", "subscribe", subscribe, { ParamType::FUNCTION });
         classes.registerMethod("ObservableNumber", "unsubscribe", unsubscribe, { ParamType::INT });
 
-        for (const std::string& op : { "+", "-", "*", "/", "%", "^", "==", "!=", ">", "<", ">=", "<=" })
+        for (const std::string op : { "+", "-", "*", "/", "%", "^", "==", "!=", ">", "<", ">=", "<=" })
             classes.registerOperator("ObservableNumber", op, [op](const TypedValue& left, const TypedValue& right) {
                 return numberOperator(left, right, op);
             });

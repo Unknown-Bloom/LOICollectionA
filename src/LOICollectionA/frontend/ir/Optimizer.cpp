@@ -6,6 +6,7 @@
 #include "LOICollectionA/frontend/ir/opt/passes/LICMPass.h"
 #include "LOICollectionA/frontend/ir/opt/passes/CSEPass.h"
 #include "LOICollectionA/frontend/ir/opt/passes/DeadValuePass.h"
+#include "LOICollectionA/frontend/ir/opt/passes/InlinePass.h"
 
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 
@@ -28,6 +29,11 @@ namespace LOICollection::frontend::ir {
 
     Optimizer::Stats Optimizer::optimizeChunk(MirChunk& chunk) {
         Stats total;
+
+        if (this->enabled(Pass::Inline)) {
+            opt::InlinePass inliner{ chunk };
+            total.removed += inliner.run(8);
+        }
 
         for (int pass = 0; pass < 16; ++pass) {
             Stats once = this->optimizeChunkOnce(chunk);

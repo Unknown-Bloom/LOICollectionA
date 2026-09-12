@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <string_view>
 #include <vector>
 
 #include "LOICollectionA/frontend/Lexer.h"
@@ -287,18 +288,9 @@ TEST(LexerTest, PeekDoesNotAdvance) {
 }
 
 TEST(LexerTest, UnexpectedCharactersAlwaysAdvance) {
-    for (const std::string src : {
-            std::string("`"),
-            std::string("@"),
-            std::string("#"),
-            std::string("~"),
-            std::string("\x80\x81\xff"),
-            std::string("let a = `;"),
-            std::string("func f() { ` }"),
-            std::string("class C { ` }"),
-         }) {
+    for (const std::string_view src : { "`", "@", "#", "~", "\x80\x81\xff", "let a = `;", "func f() { ` }", "class C { ` }" }) {
         DiagnosticEngine diagnostics;
-        Lexer lexer(src, diagnostics);
+        Lexer lexer(std::string{src}, diagnostics);
 
         int count = 0;
         while (lexer.getNextToken().type != TokenType::TOKEN_EOF && count < 1000000)
