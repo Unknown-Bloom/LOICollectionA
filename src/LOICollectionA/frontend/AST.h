@@ -895,6 +895,34 @@ namespace LOICollection::frontend {
     };
 
     using FieldLayoutPtr = std::shared_ptr<const FieldLayout>;
+
+    namespace detail {
+        struct ShapeKey {
+            const FieldLayout* base;
+            std::string name;
+            bool operator==(const ShapeKey&) const = default;
+        };
+        struct ShapeKeyHash {
+            size_t operator()(const ShapeKey& key) const noexcept {
+                return std::hash<const void*>{}(static_cast<const void*>(key.base)) ^
+                       (std::hash<std::string>{}(key.name) << 1);
+            }
+        };
+    }
+
+    inline FieldLayoutPtr extendShape(const FieldLayout* base, const std::string& name) {
+        static std::unordered_map<detail::ShapeKey, FieldLayoutPtr, detail::ShapeKeyHash> transitions;
+        detail::ShapeKey key{base, name};
+        if (auto it = transitions.find(key); it != transitions.end())
+            return it->second;
+
+        auto names = base ? base->names : std::vector<std::string>{};
+        names.push_back(name);
+        auto extended = std::make_shared<const FieldLayout>(std::move(names));
+        auto [it, _] = transitions.emplace(key, std::move(extended));
+        return it->second;
+    }
+
     using SpillMap = std::unordered_map<std::string, ValueNode::ValueType>;
 
     struct Object {
@@ -958,10 +986,32 @@ namespace LOICollection::frontend {
         }
 
         void assign(const std::string& name, ValueNode::ValueType value) {
+            this->addField(name, std::move(value));
+        }
+
+        void addField(const std::string& name, ValueNode::ValueType value) {
             if (!this->layout)
                 this->adoptLayout();
 
-            this->fieldAtOrSpill(this->slotOf(name), name) = std::move(value);
+            if (int slot = this->slotOf(name); slot >= 0) {
+                this->slots[static_cast<size_t>(slot)] = std::move(value);
+                return;
+            }
+
+            const FieldLayoutPtr next = extendShape(this->layout.get(), name);
+            const int slot = static_cast<int>(next->names.size()) - 1;
+
+            ValueNode::ValueType stored = std::move(value);
+            if (this->spill) {
+                if (auto it = this->spill->find(name); it != this->spill->end()) {
+                    stored = std::move(it->second);
+                    this->spill->erase(it);
+                }
+            }
+
+            this->layout = next;
+            this->slots.resize(next->names.size());
+            this->slots[static_cast<size_t>(slot)] = std::move(stored);
         }
 
         [[nodiscard]] ValueNode::ValueType* find(const std::string& name) {
