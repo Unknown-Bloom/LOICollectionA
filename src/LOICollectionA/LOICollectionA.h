@@ -31,7 +31,7 @@ namespace LOICollection {
     private:
         ll::mod::NativeMod& mSelf;
 
-        Config::C_Config config;
+        ::Config::C_Config config;
         frontend::lsp::LanguageServer lspEngine_;
         std::unique_ptr<frontend::lsp::LspServer> lspServer_;
     };
