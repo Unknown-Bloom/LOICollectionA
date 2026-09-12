@@ -1,3 +1,6 @@
+#pragma push_macro("MessageBox")
+#undef MessageBox
+
 #include <memory>
 #include <string>
 #include <fstream>
@@ -76,10 +79,10 @@ namespace LOICollection::form {
     struct GUIManager::Impl {
         std::unordered_map<std::string, std::shared_ptr<frontend::ir::MirChunk>> cache;
 
-        std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<LCCustomFormClass::LCCustomFormHandle>>> forms;
-        std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<LCMessageBoxClass::LCMessageBoxHandle>>> boxs;
-        std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<LCPaginatedFormClass::LCPaginatedFormHandle>>> paginatedForms;
-        std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<LCScriptFormClass::LCScriptFormHandle>>> scriptForms;
+        std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<CustomFormClass::CustomFormHandle>>> forms;
+        std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<MessageBoxClass::MessageBoxHandle>>> boxs;
+        std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<PaginatedFormClass::PaginatedFormHandle>>> paginatedForms;
+        std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<ScriptFormClass::ScriptFormHandle>>> scriptForms;
 
         std::unordered_map<std::string, ValueCallback> values;
         std::unordered_map<std::string, RequestCallback> requests;
@@ -283,10 +286,10 @@ namespace LOICollection::form {
                 return ll::makeStringError(diagnostics.getErrorMessage());
 
             switch (type) {
-                case GUIManagerType::LCCustomForm: return this->switchToCustomForm(formId, player);
-                case GUIManagerType::LCMessageBox: return this->switchToMessageBox(formId, player); 
-                case GUIManagerType::LCPaginatedForm: return this->switchToPaginatedForm(formId, player);
-                case GUIManagerType::LCScriptForm: return this->switchToScriptForm(formId, player);
+                case GUIManagerType::CustomForm: return this->switchToCustomForm(formId, player);
+                case GUIManagerType::MessageBox: return this->switchToMessageBox(formId, player); 
+                case GUIManagerType::PaginatedForm: return this->switchToPaginatedForm(formId, player);
+                case GUIManagerType::ScriptForm: return this->switchToScriptForm(formId, player);
             }
         }
 
@@ -524,22 +527,22 @@ namespace LOICollection::form {
         return ll::makeStringError("ScriptForm is not built");
     }
 
-    void GUIManager::registerCustomFormUI(const std::string& id, std::shared_ptr<LCCustomFormClass::LCCustomFormHandle> form, Player& player) {
+    void GUIManager::registerCustomFormUI(const std::string& id, std::shared_ptr<CustomFormClass::CustomFormHandle> form, Player& player) {
         auto [it, _] = this->mImpl->forms.try_emplace(player.getUuid().asString());
         it->second.insert_or_assign(id, std::move(form));
     }
 
-    void GUIManager::registerMessageBoxUI(const std::string& id, std::shared_ptr<LCMessageBoxClass::LCMessageBoxHandle> box, Player& player) {
+    void GUIManager::registerMessageBoxUI(const std::string& id, std::shared_ptr<MessageBoxClass::MessageBoxHandle> box, Player& player) {
         auto [it, _] = this->mImpl->boxs.try_emplace(player.getUuid().asString());
         it->second.insert_or_assign(id, std::move(box));
     }
 
-    void GUIManager::registerPaginatedFormUI(const std::string& id, std::shared_ptr<LCPaginatedFormClass::LCPaginatedFormHandle> form, Player& player) {
+    void GUIManager::registerPaginatedFormUI(const std::string& id, std::shared_ptr<PaginatedFormClass::PaginatedFormHandle> form, Player& player) {
         auto [it, _] = this->mImpl->paginatedForms.try_emplace(player.getUuid().asString());
         it->second.insert_or_assign(id, std::move(form));
     }
 
-    void GUIManager::registerScriptFormUI(const std::string& id, std::shared_ptr<LCScriptFormClass::LCScriptFormHandle> form, Player& player) {
+    void GUIManager::registerScriptFormUI(const std::string& id, std::shared_ptr<ScriptFormClass::ScriptFormHandle> form, Player& player) {
         auto [it, _] = this->mImpl->scriptForms.try_emplace(player.getUuid().asString());
         it->second.insert_or_assign(id, std::move(form));
     }
@@ -587,7 +590,7 @@ namespace LOICollection::form {
         releaseHandles(this->mImpl->scriptForms);
     }
 
-    ll::Expected<std::shared_ptr<LCCustomFormClass::LCCustomFormHandle>> GUIManager::getCustomFormUI(const std::string& id, Player& player) {
+    ll::Expected<std::shared_ptr<CustomFormClass::CustomFormHandle>> GUIManager::getCustomFormUI(const std::string& id, Player& player) {
         if (auto it = this->mImpl->forms.find(player.getUuid().asString()); it != this->mImpl->forms.end()) {
             auto& innerMap = it->second;
             if (auto innerIt = innerMap.find(id); innerIt != innerMap.end())
@@ -599,7 +602,7 @@ namespace LOICollection::form {
         return ll::makeStringError("Player has no registered forms");
     }
 
-    ll::Expected<std::shared_ptr<LCMessageBoxClass::LCMessageBoxHandle>> GUIManager::getMessageBoxUI(const std::string& id, Player& player) {
+    ll::Expected<std::shared_ptr<MessageBoxClass::MessageBoxHandle>> GUIManager::getMessageBoxUI(const std::string& id, Player& player) {
         if (auto it = this->mImpl->boxs.find(player.getUuid().asString()); it != this->mImpl->boxs.end()) {
             auto& innerMap = it->second;
             if (auto innerIt = innerMap.find(id); innerIt != innerMap.end())
@@ -611,7 +614,7 @@ namespace LOICollection::form {
         return ll::makeStringError("Player has no registered messageboxs");
     }
 
-    ll::Expected<std::shared_ptr<LCPaginatedFormClass::LCPaginatedFormHandle>> GUIManager::getPaginatedFormUI(const std::string& id, Player& player) {
+    ll::Expected<std::shared_ptr<PaginatedFormClass::PaginatedFormHandle>> GUIManager::getPaginatedFormUI(const std::string& id, Player& player) {
         if (auto it = this->mImpl->paginatedForms.find(player.getUuid().asString()); it != this->mImpl->paginatedForms.end()) {
             auto& innerMap = it->second;
             if (auto innerIt = innerMap.find(id); innerIt != innerMap.end())
@@ -623,7 +626,7 @@ namespace LOICollection::form {
         return ll::makeStringError("Player has no registered paginated forms");
     }
 
-    ll::Expected<std::shared_ptr<LCScriptFormClass::LCScriptFormHandle>> GUIManager::getScriptFormUI(const std::string& id, Player& player) {
+    ll::Expected<std::shared_ptr<ScriptFormClass::ScriptFormHandle>> GUIManager::getScriptFormUI(const std::string& id, Player& player) {
         if (auto it = this->mImpl->scriptForms.find(player.getUuid().asString()); it != this->mImpl->scriptForms.end()) {
             auto& innerMap = it->second;
             if (auto innerIt = innerMap.find(id); innerIt != innerMap.end())
@@ -671,3 +674,5 @@ namespace LOICollection::form {
         return it->second(args, player);
     }
 }
+
+#pragma pop_macro("MessageBox")

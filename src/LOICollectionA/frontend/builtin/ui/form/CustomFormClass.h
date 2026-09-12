@@ -7,8 +7,8 @@
 
 #include "LOICollectionA/frontend/AST.h"
 
-namespace LCCustomFormClass {
-    struct LCCustomFormHandle : LOICollection::frontend::NativeHandle {
+namespace CustomFormClass {
+    struct CustomFormHandle : LOICollection::frontend::NativeHandle {
         std::unique_ptr<ll::ui::CustomForm> base;
 
         LOICollection::frontend::FunctionRefPtr show;
@@ -18,7 +18,7 @@ namespace LCCustomFormClass {
             this->show.reset();
         }
 
-        ~LCCustomFormHandle() override { this->release(); }
+        ~CustomFormHandle() override { this->release(); }
     };
 
     void registerClasses(const std::string& name);

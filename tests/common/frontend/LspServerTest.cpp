@@ -1,12 +1,9 @@
 #include <gtest/gtest.h>
 
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
 #include <array>
-#include <cstring>
+#include <charconv>
+#include <chrono>
+#include <cstdint>
 #include <string>
 #include <thread>
 
@@ -16,9 +13,34 @@
 #include "LOICollectionA/frontend/lsp/Protocol.h"
 #include "LOICollectionA/frontend/lsp/Server.h"
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+using SocketHandle = SOCKET;
+constexpr SocketHandle kInvalidSocket = INVALID_SOCKET;
+inline void closeSocket(SocketHandle s) { ::closesocket(s); }
+#else
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+using SocketHandle = int;
+constexpr SocketHandle kInvalidSocket = -1;
+inline void closeSocket(SocketHandle s) { ::close(s); }
+#endif
+
 namespace LOICollection::frontend::lsp {
     namespace {
         constexpr std::uint16_t kPort = 29517;
+
+#ifdef _WIN32
+        struct WinsockInit {
+            WinsockInit() {
+                WSADATA data;
+                ::WSAStartup(0x0202, &data);
+            }
+        };
+#endif
 
         nlohmann::ordered_json request(int id, const std::string& method, const nlohmann::ordered_json& params) {
             return nlohmann::ordered_json{
@@ -34,7 +56,7 @@ namespace LOICollection::frontend::lsp {
             return "Content-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body;
         }
 
-        std::string readFramed(int fd) {
+        std::string readFramed(SocketHandle fd) {
             std::string buf;
             char c = 0;
 
@@ -67,14 +89,17 @@ namespace LOICollection::frontend::lsp {
     }
 
     TEST(LspServerTest, HandshakeOverLoopback) {
+#ifdef _WIN32
+        WinsockInit winsock;
+#endif
         LanguageServer engine;
         LspServer server(engine);
 
         ASSERT_FALSE(server.start(kPort));
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-        const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-        ASSERT_GE(fd, 0);
+        const SocketHandle fd = ::socket(AF_INET, SOCK_STREAM, 0);
+        ASSERT_NE(fd, kInvalidSocket);
 
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
@@ -84,8 +109,8 @@ namespace LOICollection::frontend::lsp {
         ASSERT_EQ(::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)), 0);
 
         const std::string initialize = frame(request(1, "initialize", nlohmann::ordered_json::object()));
-        ASSERT_EQ(::send(fd, initialize.data(), initialize.size(), 0),
-                  static_cast<ssize_t>(initialize.size()));
+        ASSERT_EQ(::send(fd, initialize.data(), static_cast<int>(initialize.size()), 0),
+                  static_cast<int>(initialize.size()));
 
         std::string response = readFramed(fd);
         nlohmann::ordered_json message;
@@ -95,8 +120,8 @@ namespace LOICollection::frontend::lsp {
         EXPECT_TRUE(message.at("result").contains("capabilities"));
 
         const std::string unknown = frame(request(2, "textDocument/unknown", nlohmann::ordered_json::object()));
-        ASSERT_EQ(::send(fd, unknown.data(), unknown.size(), 0),
-                  static_cast<ssize_t>(unknown.size()));
+        ASSERT_EQ(::send(fd, unknown.data(), static_cast<int>(unknown.size()), 0),
+                  static_cast<int>(unknown.size()));
 
         response = readFramed(fd);
         message = nlohmann::ordered_json{};
@@ -105,7 +130,7 @@ namespace LOICollection::frontend::lsp {
         EXPECT_TRUE(message.contains("error"));
         EXPECT_EQ(message.at("error").value("code", 0), -32601);
 
-        ::close(fd);
+        closeSocket(fd);
         server.stop();
     }
 }

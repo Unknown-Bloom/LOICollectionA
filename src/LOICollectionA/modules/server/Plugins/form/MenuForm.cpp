@@ -28,7 +28,7 @@
 using namespace LOICollection::frontend;
 
 namespace LOICollection::server::Plugins {
-    struct MenuFormHandle : LCScriptFormClass::LCScriptFormHandle {
+    struct MenuFormHandle : ScriptFormClass::ScriptFormHandle {
         ObjectRef action;
         int actionIndex = -1;
         int nextActionIndex = 0;

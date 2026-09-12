@@ -1,3 +1,6 @@
+#pragma push_macro("MessageBox")
+#undef MessageBox
+
 #include <atomic>
 #include <memory>
 #include <ranges>
@@ -255,7 +258,7 @@ namespace LOICollection::server::Plugins {
             ctx->elements.emplace_back("");
             ctx->elements.emplace_back("");
 
-            form::GUIManager::getInstance().open("tpa", "tpa.open", form::GUIManagerType::LCPaginatedForm, player, ctx)
+            form::GUIManager::getInstance().open("tpa", "tpa.open", form::GUIManagerType::PaginatedForm, player, ctx)
                 .or_else(modules::defaultErrorHandler<TpaPlugin>);
 
             output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.generic.ui")), player.getRealName());
@@ -270,7 +273,7 @@ namespace LOICollection::server::Plugins {
             ctx->elements.emplace_back("");
             ctx->elements.emplace_back("");
 
-            form::GUIManager::getInstance().open("tpa", "tpa.setting", form::GUIManagerType::LCCustomForm, player, ctx)
+            form::GUIManager::getInstance().open("tpa", "tpa.setting", form::GUIManagerType::CustomForm, player, ctx)
                 .or_else(modules::defaultErrorHandler<TpaPlugin>);
 
             output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.generic.ui")), player.getRealName());
@@ -329,7 +332,7 @@ namespace LOICollection::server::Plugins {
         ctx->elements.emplace_back("invite");
         ctx->elements.emplace_back(id);
 
-        auto open = form::GUIManager::getInstance().open("tpa", "tpa.invite", form::GUIManagerType::LCMessageBox, target, ctx);
+        auto open = form::GUIManager::getInstance().open("tpa", "tpa.invite", form::GUIManagerType::MessageBox, target, ctx);
         if (!open.has_value())
             return ll::Unexpected(open.error());
 
@@ -1137,3 +1140,5 @@ namespace LOICollection::server::Plugins {
             });
     }
 }
+
+#pragma pop_macro("MessageBox")

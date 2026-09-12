@@ -33,8 +33,8 @@
 using namespace LOICollection::frontend;
 using namespace CustomFormOptionsClass;
 
-namespace LCPaginatedFormClass {
-    void refreshPage(const std::shared_ptr<LCPaginatedFormHandle>& form) {
+namespace PaginatedFormClass {
+    void refreshPage(const std::shared_ptr<PaginatedFormHandle>& form) {
         const int begin = (form->page - 1) * form->pageSize;
         const int end = std::min(begin + form->pageSize, static_cast<int>(form->elements.size()));
 
@@ -69,7 +69,7 @@ namespace LCPaginatedFormClass {
 
         std::reference_wrapper<Player> player = std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0));
 
-        auto handle = std::make_shared<LCPaginatedFormHandle>();
+        auto handle = std::make_shared<PaginatedFormHandle>();
         handle->scriptId = Context::scriptIdOf(placeholders);
         handle->guiId = std::get<std::string>(args[0]);
         handle->title = std::move(*title);
@@ -136,7 +136,7 @@ namespace LCPaginatedFormClass {
     }
 
     ll::Expected<TypedValue> previous(const ObjectRef& self, const CallbackTypeValues&) {
-        auto form = std::static_pointer_cast<LCPaginatedFormHandle>(self->native);
+        auto form = std::static_pointer_cast<PaginatedFormHandle>(self->native);
         if (form->page > 1)
             form->page -= 1;
 
@@ -145,7 +145,7 @@ namespace LCPaginatedFormClass {
     }
 
     ll::Expected<TypedValue> next(const ObjectRef& self, const CallbackTypeValues&) {
-        auto form = std::static_pointer_cast<LCPaginatedFormHandle>(self->native);
+        auto form = std::static_pointer_cast<PaginatedFormHandle>(self->native);
         if (form->page < form->pageCount)
             form->page += 1;
 
@@ -154,7 +154,7 @@ namespace LCPaginatedFormClass {
     }
 
     ll::Expected<TypedValue> choose(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto form = std::static_pointer_cast<LCPaginatedFormHandle>(self->native);
+        auto form = std::static_pointer_cast<PaginatedFormHandle>(self->native);
 
         int page = std::get<int>(args[0]);
         if (page >= 1 && page <= form->pageCount)
@@ -165,7 +165,7 @@ namespace LCPaginatedFormClass {
     }
 
     ll::Expected<TypedValue> previousButton(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto form = std::static_pointer_cast<LCPaginatedFormHandle>(self->native);
+        auto form = std::static_pointer_cast<PaginatedFormHandle>(self->native);
         if (form->previousAdded)
             return ll::makeStringError("previousButton has already been added");
         if (form->base->isShowing())
@@ -188,7 +188,7 @@ namespace LCPaginatedFormClass {
     }
 
     ll::Expected<TypedValue> nextButton(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto form = std::static_pointer_cast<LCPaginatedFormHandle>(self->native);
+        auto form = std::static_pointer_cast<PaginatedFormHandle>(self->native);
         if (form->nextAdded)
             return ll::makeStringError("nextButton has already been added");
         if (form->base->isShowing())
@@ -211,7 +211,7 @@ namespace LCPaginatedFormClass {
     }
 
     ll::Expected<TypedValue> chooseButton(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto form = std::static_pointer_cast<LCPaginatedFormHandle>(self->native);
+        auto form = std::static_pointer_cast<PaginatedFormHandle>(self->native);
         if (form->chooseAdded)
             return ll::makeStringError("chooseButton has already been added");
         if (form->base->isShowing())
@@ -250,7 +250,7 @@ namespace LCPaginatedFormClass {
     }
 
     ll::Expected<TypedValue> button(const ObjectRef& self, const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
-        auto form = std::static_pointer_cast<LCPaginatedFormHandle>(self->native);
+        auto form = std::static_pointer_cast<PaginatedFormHandle>(self->native);
         if (form->base->isShowing())
             return ll::makeStringError("PaginatedForm is already showing");
 
@@ -281,7 +281,7 @@ namespace LCPaginatedFormClass {
     }
 
     ll::Expected<TypedValue> closeButton(const ObjectRef& self, const CallbackTypeValues&) {
-        auto form = std::static_pointer_cast<LCPaginatedFormHandle>(self->native);
+        auto form = std::static_pointer_cast<PaginatedFormHandle>(self->native);
         if (form->closeButtonAdded)
             return ll::makeStringError("closeButton has already been added");
         if (form->base->isShowing())
@@ -294,7 +294,7 @@ namespace LCPaginatedFormClass {
     }
 
     ll::Expected<TypedValue> divider(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto form = std::static_pointer_cast<LCPaginatedFormHandle>(self->native);
+        auto form = std::static_pointer_cast<PaginatedFormHandle>(self->native);
         if (form->base->isShowing())
             return ll::makeStringError("PaginatedForm is already showing");
 
@@ -307,7 +307,7 @@ namespace LCPaginatedFormClass {
     }
 
     ll::Expected<TypedValue> dropdown(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto form = std::static_pointer_cast<LCPaginatedFormHandle>(self->native);
+        auto form = std::static_pointer_cast<PaginatedFormHandle>(self->native);
         if (form->base->isShowing())
             return ll::makeStringError("PaginatedForm is already showing");
 
@@ -345,7 +345,7 @@ namespace LCPaginatedFormClass {
     }
 
     ll::Expected<TypedValue> header(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto form = std::static_pointer_cast<LCPaginatedFormHandle>(self->native);
+        auto form = std::static_pointer_cast<PaginatedFormHandle>(self->native);
         if (form->base->isShowing())
             return ll::makeStringError("PaginatedForm is already showing");
 
@@ -362,7 +362,7 @@ namespace LCPaginatedFormClass {
     }
 
     ll::Expected<TypedValue> label(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto form = std::static_pointer_cast<LCPaginatedFormHandle>(self->native);
+        auto form = std::static_pointer_cast<PaginatedFormHandle>(self->native);
         if (form->base->isShowing())
             return ll::makeStringError("PaginatedForm is already showing");
 
@@ -379,7 +379,7 @@ namespace LCPaginatedFormClass {
     }
 
     ll::Expected<TypedValue> slider(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto form = std::static_pointer_cast<LCPaginatedFormHandle>(self->native);
+        auto form = std::static_pointer_cast<PaginatedFormHandle>(self->native);
         if (form->base->isShowing())
             return ll::makeStringError("PaginatedForm is already showing");
 
@@ -408,7 +408,7 @@ namespace LCPaginatedFormClass {
     }
 
     ll::Expected<TypedValue> spacer(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto form = std::static_pointer_cast<LCPaginatedFormHandle>(self->native);
+        auto form = std::static_pointer_cast<PaginatedFormHandle>(self->native);
         if (form->base->isShowing())
             return ll::makeStringError("PaginatedForm is already showing");
 
@@ -421,7 +421,7 @@ namespace LCPaginatedFormClass {
     }
 
     ll::Expected<TypedValue> textField(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto form = std::static_pointer_cast<LCPaginatedFormHandle>(self->native);
+        auto form = std::static_pointer_cast<PaginatedFormHandle>(self->native);
         if (form->base->isShowing())
             return ll::makeStringError("PaginatedForm is already showing");
 
@@ -443,7 +443,7 @@ namespace LCPaginatedFormClass {
     }
 
     ll::Expected<TypedValue> toggle(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto form = std::static_pointer_cast<LCPaginatedFormHandle>(self->native);
+        auto form = std::static_pointer_cast<PaginatedFormHandle>(self->native);
         if (form->base->isShowing())
             return ll::makeStringError("PaginatedForm is already showing");
 
@@ -472,13 +472,13 @@ namespace LCPaginatedFormClass {
         if (callback->argCount != 1)
             return ll::makeStringError("show callback must take exactly one parameter");
 
-        static_cast<LCPaginatedFormHandle*>(self->native.get())->show = callback;
+        static_cast<PaginatedFormHandle*>(self->native.get())->show = callback;
 
         return self;
     }
 
     ll::Expected<TypedValue> close(const ObjectRef& self, const CallbackTypeValues&) {
-        auto result = static_cast<LCPaginatedFormHandle*>(self->native.get())->base->close();
+        auto result = static_cast<PaginatedFormHandle*>(self->native.get())->base->close();
         if (!result)
             return ll::Unexpected(result.error());
 
@@ -486,7 +486,7 @@ namespace LCPaginatedFormClass {
     }
 
     ll::Expected<TypedValue> isShowing(const ObjectRef& self, const CallbackTypeValues&) {
-        return static_cast<LCPaginatedFormHandle*>(self->native.get())->base->isShowing();
+        return static_cast<PaginatedFormHandle*>(self->native.get())->base->isShowing();
     }
 
     void registerClasses(const std::string&) {
@@ -590,4 +590,4 @@ namespace LCPaginatedFormClass {
     }
 }
 
-REGISTER_CALLBACK(PaginatedForm, LCPaginatedFormClass::registerClasses)
+REGISTER_CALLBACK(PaginatedForm, PaginatedFormClass::registerClasses)

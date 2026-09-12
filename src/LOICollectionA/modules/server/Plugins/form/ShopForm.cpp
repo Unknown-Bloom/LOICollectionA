@@ -1,3 +1,6 @@
+#pragma push_macro("MessageBox")
+#undef MessageBox
+
 #include <format>
 #include <memory>
 #include <string>
@@ -32,7 +35,7 @@ using namespace LOICollection::frontend;
 using I18nUtilsTools::tr;
 
 namespace LOICollection::server::Plugins {
-    struct ShopFormHandle : LCScriptFormClass::LCScriptFormHandle {
+    struct ShopFormHandle : ScriptFormClass::ScriptFormHandle {
         ShopData data;
         ObjectRef dataObject;
 
@@ -464,3 +467,5 @@ namespace LOICollection::server::Plugins {
 }
 
 REGISTER_CALLBACK(ShopForm, LOICollection::server::Plugins::registerShopFormClasses)
+
+#pragma pop_macro("MessageBox")

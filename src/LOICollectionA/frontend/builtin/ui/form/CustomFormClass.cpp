@@ -29,7 +29,7 @@
 using namespace LOICollection::frontend;
 using namespace CustomFormOptionsClass;
 
-namespace LCCustomFormClass {
+namespace CustomFormClass {
     ll::Expected<ObjectRef> makeCustomForm(const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
         auto title = toTextValue(args[1]);
         if (!title)
@@ -37,7 +37,7 @@ namespace LCCustomFormClass {
 
         std::reference_wrapper<Player> player = std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0));
 
-        auto handle = std::make_shared<LCCustomFormHandle>();
+        auto handle = std::make_shared<CustomFormHandle>();
         handle->scriptId = Context::scriptIdOf(placeholders);
         handle->base = std::make_unique<ll::ui::CustomForm>(player, *title);
 
@@ -54,7 +54,7 @@ namespace LCCustomFormClass {
     ll::Expected<TypedValue> button(
         const ObjectRef& self, const CallbackTypeValues& args, const CallbackTypePlaces& placeholders
     ) {
-        auto* form = static_cast<LCCustomFormHandle*>(self->native.get())->base.get();
+        auto* form = static_cast<CustomFormHandle*>(self->native.get())->base.get();
 
         auto label = toTextValue(args[0]);
         if (!label)
@@ -83,13 +83,13 @@ namespace LCCustomFormClass {
     }
 
     ll::Expected<TypedValue> closeButton(const ObjectRef& self, const CallbackTypeValues&) {
-        static_cast<LCCustomFormHandle*>(self->native.get())->base->closeButton();
+        static_cast<CustomFormHandle*>(self->native.get())->base->closeButton();
 
         return self;
     }
 
     ll::Expected<TypedValue> divider(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto* form = static_cast<LCCustomFormHandle*>(self->native.get())->base.get();
+        auto* form = static_cast<CustomFormHandle*>(self->native.get())->base.get();
 
         auto options = readVisibleOptions<ll::ui::DividerOptions>(
             std::get<ObjectRef>(args[0]), "DividerOptions");
@@ -101,7 +101,7 @@ namespace LCCustomFormClass {
     }
 
     ll::Expected<TypedValue> dropdown(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto* form = static_cast<LCCustomFormHandle*>(self->native.get())->base.get();
+        auto* form = static_cast<CustomFormHandle*>(self->native.get())->base.get();
 
         auto label = toTextValue(args[0]);
         if (!label)
@@ -139,7 +139,7 @@ namespace LCCustomFormClass {
     }
 
     ll::Expected<TypedValue> header(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto* form = static_cast<LCCustomFormHandle*>(self->native.get())->base.get();
+        auto* form = static_cast<CustomFormHandle*>(self->native.get())->base.get();
 
         auto text = toTextValue(args[0]);
         if (!text)
@@ -155,7 +155,7 @@ namespace LCCustomFormClass {
     }
 
     ll::Expected<TypedValue> label(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto* form = static_cast<LCCustomFormHandle*>(self->native.get())->base.get();
+        auto* form = static_cast<CustomFormHandle*>(self->native.get())->base.get();
 
         auto text = toTextValue(args[0]);
         if (!text)
@@ -171,7 +171,7 @@ namespace LCCustomFormClass {
     }
 
     ll::Expected<TypedValue> slider(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto* form = static_cast<LCCustomFormHandle*>(self->native.get())->base.get();
+        auto* form = static_cast<CustomFormHandle*>(self->native.get())->base.get();
 
         auto label = toTextValue(args[0]);
         if (!label)
@@ -199,7 +199,7 @@ namespace LCCustomFormClass {
     }
 
     ll::Expected<TypedValue> spacer(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto* form = static_cast<LCCustomFormHandle*>(self->native.get())->base.get();
+        auto* form = static_cast<CustomFormHandle*>(self->native.get())->base.get();
 
         auto options = readVisibleOptions<ll::ui::SpacingOptions>(
             std::get<ObjectRef>(args[0]), "SpacingOptions");
@@ -211,7 +211,7 @@ namespace LCCustomFormClass {
     }
 
     ll::Expected<TypedValue> textField(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto* form = static_cast<LCCustomFormHandle*>(self->native.get())->base.get();
+        auto* form = static_cast<CustomFormHandle*>(self->native.get())->base.get();
 
         auto label = toTextValue(args[0]);
         if (!label)
@@ -233,7 +233,7 @@ namespace LCCustomFormClass {
     }
 
     ll::Expected<TypedValue> toggle(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto* form = static_cast<LCCustomFormHandle*>(self->native.get())->base.get();
+        auto* form = static_cast<CustomFormHandle*>(self->native.get())->base.get();
 
         auto label = toTextValue(args[0]);
         if (!label)
@@ -262,13 +262,13 @@ namespace LCCustomFormClass {
         if (callback->argCount != 1)
             return ll::makeStringError("show callback must take exactly one parameter");
 
-        static_cast<LCCustomFormHandle*>(self->native.get())->show = callback;
+        static_cast<CustomFormHandle*>(self->native.get())->show = callback;
 
         return self;
     }
 
     ll::Expected<TypedValue> close(const ObjectRef& self, const CallbackTypeValues&) {
-        auto result = static_cast<LCCustomFormHandle*>(self->native.get())->base->close();
+        auto result = static_cast<CustomFormHandle*>(self->native.get())->base->close();
         if (!result)
             return ll::Unexpected(result.error());
 
@@ -276,7 +276,7 @@ namespace LCCustomFormClass {
     }
 
     ll::Expected<TypedValue> isShowing(const ObjectRef& self, const CallbackTypeValues&) {
-        return static_cast<LCCustomFormHandle*>(self->native.get())->base->isShowing();
+        return static_cast<CustomFormHandle*>(self->native.get())->base->isShowing();
     }
 
     void registerClasses(const std::string&) {
@@ -351,4 +351,4 @@ namespace LCCustomFormClass {
     }
 }
 
-REGISTER_CALLBACK(CustomForm, LCCustomFormClass::registerClasses)
+REGISTER_CALLBACK(CustomForm, CustomFormClass::registerClasses)

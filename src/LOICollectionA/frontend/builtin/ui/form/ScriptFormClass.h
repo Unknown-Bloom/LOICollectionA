@@ -10,10 +10,13 @@
 #include "LOICollectionA/frontend/AST.h"
 #include "LOICollectionA/frontend/Callback.h"
 
+#pragma push_macro("MessageBox")
+#undef MessageBox
+
 class Player;
 
-namespace LCScriptFormClass {
-    struct LCScriptFormHandle : LOICollection::frontend::NativeHandle {
+namespace ScriptFormClass {
+    struct ScriptFormHandle : LOICollection::frontend::NativeHandle {
         std::unique_ptr<ll::ui::CustomForm> base;
         std::unique_ptr<ll::ui::MessageBox> box;
 
@@ -33,6 +36,8 @@ namespace LCScriptFormClass {
             this->onBoxResult = nullptr;
         }
 
-        ~LCScriptFormHandle() override { this->release(); }
+        ~ScriptFormHandle() override { this->release(); }
     };
 }
+
+#pragma pop_macro("MessageBox")

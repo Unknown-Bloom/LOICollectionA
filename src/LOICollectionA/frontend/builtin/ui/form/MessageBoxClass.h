@@ -7,8 +7,11 @@
 
 #include "LOICollectionA/frontend/AST.h"
 
-namespace LCMessageBoxClass {
-    struct LCMessageBoxHandle : LOICollection::frontend::NativeHandle {
+#pragma push_macro("MessageBox")
+#undef MessageBox
+
+namespace MessageBoxClass {
+    struct MessageBoxHandle : LOICollection::frontend::NativeHandle {
         std::unique_ptr<ll::ui::MessageBox> base;
 
         LOICollection::frontend::FunctionRefPtr show;
@@ -18,8 +21,10 @@ namespace LCMessageBoxClass {
             this->show.reset();
         }
 
-        ~LCMessageBoxHandle() override { this->release(); }
+        ~MessageBoxHandle() override { this->release(); }
     };
 
     void registerClasses(const std::string& name);
 }
+
+#pragma pop_macro("MessageBox")

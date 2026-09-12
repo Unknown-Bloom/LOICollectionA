@@ -138,13 +138,13 @@ namespace LOICollection::server::Plugins {
                     ctx->elements.emplace_back("");
                     ctx->elements.emplace_back("");
 
-                    form::GUIManager::getInstance().open("notice", "notice.open", form::GUIManagerType::LCPaginatedForm, player, ctx)
+                    form::GUIManager::getInstance().open("notice", "notice.open", form::GUIManagerType::PaginatedForm, player, ctx)
                         .or_else(modules::defaultErrorHandler<NoticePlugin>);
                 } else {
                     ctx->elements.emplace_back("view");
                     ctx->elements.emplace_back(param.Object);
 
-                    form::GUIManager::getInstance().open("notice", "notice.view", form::GUIManagerType::LCCustomForm, player, ctx)
+                    form::GUIManager::getInstance().open("notice", "notice.view", form::GUIManagerType::CustomForm, player, ctx)
                         .or_else(modules::defaultErrorHandler<NoticePlugin>);
                 }
 
@@ -163,7 +163,7 @@ namespace LOICollection::server::Plugins {
             ctx->elements.emplace_back("");
             ctx->elements.emplace_back("");
 
-            form::GUIManager::getInstance().open("notice", "notice.edit", form::GUIManagerType::LCCustomForm, player, ctx)
+            form::GUIManager::getInstance().open("notice", "notice.edit", form::GUIManagerType::CustomForm, player, ctx)
                 .or_else(modules::defaultErrorHandler<NoticePlugin>);
 
             output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.generic.ui")), player.getRealName());
@@ -178,7 +178,7 @@ namespace LOICollection::server::Plugins {
             ctx->elements.emplace_back("");
             ctx->elements.emplace_back("");
 
-            form::GUIManager::getInstance().open("notice", "notice.setting", form::GUIManagerType::LCCustomForm, player, ctx)
+            form::GUIManager::getInstance().open("notice", "notice.setting", form::GUIManagerType::CustomForm, player, ctx)
                 .or_else(modules::defaultErrorHandler<NoticePlugin>);
 
             output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.generic.ui")), player.getRealName());
@@ -521,7 +521,7 @@ namespace LOICollection::server::Plugins {
                     ctx->elements.emplace_back("auto");
                     ctx->elements.emplace_back("");
 
-                    return form::GUIManager::getInstance().open("notice", "notice.auto", form::GUIManagerType::LCCustomForm, event.self(), ctx);
+                    return form::GUIManager::getInstance().open("notice", "notice.auto", form::GUIManagerType::CustomForm, event.self(), ctx);
                 })
                 .or_else(modules::defaultErrorHandler<NoticePlugin>);
         });

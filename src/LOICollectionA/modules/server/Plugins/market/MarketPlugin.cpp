@@ -162,7 +162,7 @@ namespace LOICollection::server::Plugins {
                 return output.error(tr(origin.getLocaleCode(), "commands.generic.target"));
             Player& player = *static_cast<Player*>(entity);
 
-            form::GUIManager::getInstance().open("market", "market.open", form::GUIManagerType::LCCustomForm, player)
+            form::GUIManager::getInstance().open("market", "market.open", form::GUIManagerType::CustomForm, player)
                 .or_else(modules::defaultErrorHandler<MarketPlugin>);
 
             output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.generic.ui")), player.getRealName());

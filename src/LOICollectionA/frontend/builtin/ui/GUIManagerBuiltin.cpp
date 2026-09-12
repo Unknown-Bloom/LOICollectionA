@@ -1,3 +1,6 @@
+#pragma push_macro("MessageBox")
+#undef MessageBox
+
 #include <any>
 #include <memory>
 #include <string>
@@ -132,7 +135,7 @@ namespace GUIManagerBuiltin {
         ll::Expected<void> result;
 
         switch (std::get<int>(args[1])) {
-            case static_cast<int>(GUIManagerType::LCCustomForm): {
+            case static_cast<int>(GUIManagerType::CustomForm): {
                 result = GUIManager::getInstance().switchToCustomForm(
                     std::get<std::string>(args[0]),
                     std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0))
@@ -140,7 +143,7 @@ namespace GUIManagerBuiltin {
 
                 break;
             }
-            case static_cast<int>(GUIManagerType::LCMessageBox): {
+            case static_cast<int>(GUIManagerType::MessageBox): {
                 result = GUIManager::getInstance().switchToMessageBox(
                     std::get<std::string>(args[0]),
                     std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0))
@@ -148,7 +151,7 @@ namespace GUIManagerBuiltin {
 
                 break;
             }
-            case static_cast<int>(GUIManagerType::LCPaginatedForm): {
+            case static_cast<int>(GUIManagerType::PaginatedForm): {
                 result = GUIManager::getInstance().switchToPaginatedForm(
                     std::get<std::string>(args[0]),
                     std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0))
@@ -156,7 +159,7 @@ namespace GUIManagerBuiltin {
 
                 break;
             }
-            case static_cast<int>(GUIManagerType::LCScriptForm): {
+            case static_cast<int>(GUIManagerType::ScriptForm): {
                 result = GUIManager::getInstance().switchToScriptForm(
                     std::get<std::string>(args[0]),
                     std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0))
@@ -186,3 +189,5 @@ namespace GUIManagerBuiltin {
 }
 
 REGISTER_CALLBACK(GUIManager, GUIManagerBuiltin::registerFunctions)
+
+#pragma pop_macro("MessageBox")

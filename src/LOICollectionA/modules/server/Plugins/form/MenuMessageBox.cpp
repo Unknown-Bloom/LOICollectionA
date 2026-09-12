@@ -1,3 +1,6 @@
+#pragma push_macro("MessageBox")
+#undef MessageBox
+
 #include <any>
 #include <memory>
 #include <string>
@@ -20,7 +23,7 @@
 using namespace LOICollection::frontend;
 
 namespace LOICollection::server::Plugins {
-    struct MenuMessageBoxHandle : LCScriptFormClass::LCScriptFormHandle {
+    struct MenuMessageBoxHandle : ScriptFormClass::ScriptFormHandle {
         ObjectRef action1;
         ObjectRef action2;
         ObjectRef resultAction;
@@ -163,3 +166,5 @@ namespace LOICollection::server::Plugins {
 }
 
 REGISTER_CALLBACK(MenuMessageBox, LOICollection::server::Plugins::registerMenuMessageBoxClasses)
+
+#pragma pop_macro("MessageBox")
