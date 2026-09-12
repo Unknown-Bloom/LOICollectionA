@@ -60,6 +60,43 @@ namespace LOICollection::frontend::ir {
         return std::nullopt;
     }
 
+    static std::string valueClassOf(const ValueNode::ValueType& val) {
+        if (std::holds_alternative<std::string>(val))
+            return "String";
+        if (std::holds_alternative<ArrayRef>(val))
+            return "Array";
+
+        return {};
+    }
+
+    static std::optional<ll::Expected<TypedValue>> registeredValue(
+        const ValueNode::ValueType& left, const ValueNode::ValueType& right,
+        std::string_view token, DiagnosticEngine& diagnostics, const SourceLocation& loc
+    ) {
+        const std::string cls = valueClassOf(left);
+        if (cls.empty() || !ClassCall::getInstance().hasOperator(cls, std::string(token)))
+            return std::nullopt;
+
+        return ClassCall::getInstance().callOperator(cls, std::string(token), left, right, diagnostics, loc);
+    }
+
+    static std::optional<TypedValue> registeredArith(
+        const ValueNode::ValueType& left, const ValueNode::ValueType& right,
+        std::string_view token, DiagnosticEngine& diagnostics, const SourceLocation& loc
+    ) {
+        if (auto result = registeredValue(left, right, token, diagnostics, loc); result.has_value()) {
+            if (result->has_value())
+                return result->value();
+
+            diagnostics.addError(loc,
+                "Operator '" + std::string(token) + "' failed for class '" + valueClassOf(left) +
+                "': " + result->error().message());
+            return 0;
+        }
+
+        return std::nullopt;
+    }
+
     ValueNode::ValueType VM::applyArithmetic(const ValueNode::ValueType& left, const ValueNode::ValueType& right, MirOp op, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
         const std::string_view token = opToken(op);
 
@@ -96,6 +133,9 @@ namespace LOICollection::frontend::ir {
                 return result.value();
             }
         }
+
+        if (auto result = registeredArith(left, right, token, diagnostics, loc); result)
+            return *result;
 
         return std::visit([&token, &diagnostics, &loc, op](auto&& l, auto&& r) -> ValueNode::ValueType {
             using T = std::decay_t<decltype(l)>;
@@ -255,6 +295,9 @@ namespace LOICollection::frontend::ir {
                 return VM::valueToBool(result.value());
             }
         }
+
+        if (auto result = registeredArith(left, right, token, diagnostics, loc); result)
+            return VM::valueToBool(*result);
 
         return std::visit([&token, &diagnostics, &loc, op](auto&& l, auto&& r) -> bool {
             using T = std::decay_t<decltype(l)>;

@@ -4,14 +4,26 @@
 
 #include <ll/api/Expected.h>
 
+#include <optional>
+
 #include "LOICollectionA/frontend/Callback.h"
 #include "LOICollectionA/frontend/Unicode.h"
+
+#include "LOICollectionA/frontend/ir/VM.h"
 
 #include "LOICollectionA/frontend/stdlib/StringClass.h"
 
 using namespace LOICollection::frontend;
 
 namespace StringClass {
+    namespace {
+        std::optional<std::string> stringOperand(const TypedValue& value) {
+            if (const auto* text = std::get_if<std::string>(&value))
+                return *text;
+
+            return std::nullopt;
+        }
+    }
     ll::Expected<TypedValue> length(const TypedValue& self, const CallbackTypeValues&) {
         return static_cast<int>(codepointCount(std::get<std::string>(self)));
     }
@@ -107,6 +119,33 @@ namespace StringClass {
         classes.registerValueMethod("String", "indexOf", indexOf, { ParamType::STRING });
         classes.registerValueMethod("String", "toInt", toInt, {});
         classes.registerValueMethod("String", "toFloat", toFloat, {});
+
+        classes.registerOperator("String", "+", [](const TypedValue& left, const TypedValue& right) -> ll::Expected<TypedValue> {
+            auto l = stringOperand(left);
+            if (!l)
+                return ll::makeStringError("String '+' requires a string left operand");
+
+            if (auto r = stringOperand(right))
+                return *l + *r;
+            return *l + ir::VM::valueToString(right);
+        });
+
+        for (const std::string op : { "==", "!=", ">", "<", ">=", "<=" })
+            classes.registerOperator("String", op, [op](const TypedValue& left, const TypedValue& right) -> ll::Expected<TypedValue> {
+                auto l = stringOperand(left);
+                auto r = stringOperand(right);
+                if (!l || !r)
+                    return ll::makeStringError("String '" + op + "' requires string operands");
+
+                auto cmp = *l <=> *r;
+                if (op == "==") return cmp == 0;
+                if (op == "!=") return cmp != 0;
+                if (op == ">") return cmp > 0;
+                if (op == "<") return cmp < 0;
+                if (op == ">=") return cmp >= 0;
+
+                return cmp <= 0;
+            });
     }
 }
 

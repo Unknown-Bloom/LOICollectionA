@@ -178,4 +178,18 @@ TEST(StdlibObservableTest, BooleanOperators) {
     EXPECT_EQ(eval("let b = new ObservableBoolean(true, false); b != true"), "false");
 }
 
+TEST(StdlibStringTest, RegisteredOperators) {
+    EXPECT_EQ(eval("\"a\" + \"b\" + \"c\""), "abc");
+    EXPECT_EQ(eval("\"x\" + 5"), "x5");
+    EXPECT_EQ(eval("5 + \"x\""), "5x");
+    EXPECT_EQ(eval("\"ab\" == \"ab\""), "true");
+    EXPECT_EQ(eval("\"ab\" == \"cd\""), "false");
+    EXPECT_EQ(eval("\"ab\" != \"ab\""), "false");
+    EXPECT_EQ(eval("\"ab\" < \"ac\""), "true");
+    EXPECT_EQ(eval("\"ab\" > \"aa\""), "true");
+    EXPECT_EQ(eval("\"ac\" <= \"ab\""), "false");
+    EXPECT_EQ(eval("\"aa\" >= \"ab\""), "false");
+    EXPECT_THROW(eval("\"ab\" == 5"), std::runtime_error);
+}
+
 #endif
