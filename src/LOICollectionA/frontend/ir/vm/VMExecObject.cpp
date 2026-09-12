@@ -23,14 +23,15 @@ namespace LOICollection::frontend::ir {
             obj.adoptLayout();
 
         FieldCacheSlot& cached = this->mFieldSlots[&instr];
+        const FieldLayout* layout = obj.layout.get();
 
-        if (cached.name != name || cached.layout != obj.layout.get()) {
-            cached.name = name;
-            cached.layout = obj.layout.get();
-            cached.slot = obj.slotOf(name);
+        int slot = cached.probe(layout);
+        if (slot < 0) {
+            slot = obj.slotOf(name);
+            cached.store(layout, slot);
         }
 
-        return cached.slot;
+        return slot;
     }
 
     void VM::execFieldAccess(ExecArgs& s) {
@@ -76,8 +77,14 @@ namespace LOICollection::frontend::ir {
                 }
 
                 auto obj = std::get<ObjectRef>(objValue);
-                obj->fieldAtOrSpill(this->resolveFieldSlot(*obj, name, instr), name) =
-                    this->regOf(frame, instr.src2);
+                int slot = this->resolveFieldSlot(*obj, name, instr);
+                if (slot < 0) {
+                    obj->addField(name, this->regOf(frame, instr.src2));
+                    slot = obj->slotOf(name);
+                    this->mFieldSlots[&instr].store(obj->layout.get(), slot);
+                } else {
+                    obj->slots[static_cast<size_t>(slot)] = this->regOf(frame, instr.src2);
+                }
             } break;
             case MirOp::LOAD_FIELD_SLOT: {
                 const ValueNode::ValueType& objValue = this->regOf(frame, instr.src1);

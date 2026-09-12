@@ -53,9 +53,21 @@ namespace LOICollection::frontend::ir {
 
     private:
         struct FieldCacheSlot {
-            std::string name;
-            const FieldLayout* layout = nullptr;
-            int slot = -1;
+            static constexpr int Capacity = 4;
+            const FieldLayout* layouts[Capacity] = {};
+            int slots[Capacity] = {};
+            int head = -1;
+
+            [[nodiscard]] int probe(const FieldLayout* layout) const {
+                for (int i = 0; i < Capacity; ++i)
+                    if (layouts[i] == layout) return slots[i];
+                return -1;
+            }
+            void store(const FieldLayout* layout, int slot) {
+                head = (head + 1) % Capacity;
+                layouts[head] = layout;
+                slots[head] = slot;
+            }
         };
 
         struct Frame {
