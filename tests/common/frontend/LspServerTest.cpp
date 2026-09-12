@@ -42,7 +42,7 @@ namespace LOICollection::frontend::lsp {
         };
 #endif
 
-        nlohmann::ordered_json request(int id, const std::string& method, const nlohmann::ordered_json& params) {
+        nlohmann::ordered_json makeRequest(int id, const std::string& method, const nlohmann::ordered_json& params) {
             return nlohmann::ordered_json{
                 { "jsonrpc", "2.0" },
                 { "id", id },
@@ -108,7 +108,7 @@ namespace LOICollection::frontend::lsp {
 
         ASSERT_EQ(::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)), 0);
 
-        const std::string initialize = frame(request(1, "initialize", nlohmann::ordered_json::object()));
+        const std::string initialize = frame(makeRequest(1, "initialize", nlohmann::ordered_json::object()));
         ASSERT_EQ(::send(fd, initialize.data(), static_cast<int>(initialize.size()), 0),
                   static_cast<int>(initialize.size()));
 
@@ -119,7 +119,7 @@ namespace LOICollection::frontend::lsp {
         ASSERT_TRUE(message.contains("result"));
         EXPECT_TRUE(message.at("result").contains("capabilities"));
 
-        const std::string unknown = frame(request(2, "textDocument/unknown", nlohmann::ordered_json::object()));
+        const std::string unknown = frame(makeRequest(2, "textDocument/unknown", nlohmann::ordered_json::object()));
         ASSERT_EQ(::send(fd, unknown.data(), static_cast<int>(unknown.size()), 0),
                   static_cast<int>(unknown.size()));
 
