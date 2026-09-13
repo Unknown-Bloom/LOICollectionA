@@ -641,6 +641,32 @@ namespace LOICollection::frontend::ir {
         return lhs;
     }
 
+    int Compiler::emitOperatorOverload(
+        const OperatorOverload& overload, int receiver, int arg, const SourceLocation& loc
+    ) {
+        const int argCount = arg < 0 ? 0 : 1;
+        const int base = this->reserveRegs(argCount + 1);
+
+        if (arg >= 0)
+            this->current.get().emit(MirOp::MOVE, 0, base, arg, -1, loc);
+        this->current.get().emit(MirOp::MOVE, 0, base + argCount, receiver, -1, loc);
+
+        auto it = classMethodIndices.find(overload.className);
+        if (it != classMethodIndices.end() && overload.methodOrdinal >= 0 &&
+            static_cast<size_t>(overload.methodOrdinal) < it->second.size()) {
+            const int dst = this->allocReg();
+            const int classIdx = this->classIndices[overload.className];
+            const int metaIdx = this->addVirtualCall(classIdx, overload.methodOrdinal, argCount);
+            this->current.get().emitCall(
+                MirOp::CALL_METHOD_VIRTUAL, metaIdx, dst, base, -1, argCount, loc);
+            return dst;
+        }
+
+        this->diagnostics.addError(loc,
+            "Unresolved operator overload: " + overload.methodName);
+        return this->allocReg();
+    }
+
     void Compiler::visit(IfNode& node) {
         const int cond = this->compileValue(*node.condition, node.loc);
 
@@ -758,6 +784,11 @@ namespace LOICollection::frontend::ir {
         const int lhs = this->compileValue(*node.left, node.loc);
         const int rhs = this->compileValue(*node.right, node.loc);
 
+        if (node.overload) {
+            this->lastResultReg = this->emitOperatorOverload(*node.overload, lhs, rhs, node.loc);
+            return;
+        }
+
         const bool isInt = node.left->type.kind == TypeKind::Int && node.right->type.kind == TypeKind::Int;
         const TypeInfo resultType = isInt ? node.left->type : TypeInfo{};
 
@@ -856,6 +887,11 @@ namespace LOICollection::frontend::ir {
         const int lhs = this->compileValue(*node.left, node.loc);
         const int rhs = this->compileValue(*node.right, node.loc);
 
+        if (node.overload) {
+            this->lastResultReg = this->emitOperatorOverload(*node.overload, lhs, rhs, node.loc);
+            return;
+        }
+
         if (node.op == "+") this->lastResultReg = this->emitBinary(MirOp::ADD, lhs, rhs, node.loc, node.type);
         else if (node.op == "-") this->lastResultReg = this->emitBinary(MirOp::SUB, lhs, rhs, node.loc, node.type);
         else if (node.op == "*") this->lastResultReg = this->emitBinary(MirOp::MUL, lhs, rhs, node.loc, node.type);
@@ -869,6 +905,11 @@ namespace LOICollection::frontend::ir {
         const int src = this->compileValue(*node.operand, node.loc);
 
         if (node.op == "-") {
+            if (node.overload) {
+                this->lastResultReg = this->emitOperatorOverload(*node.overload, src, -1, node.loc);
+                return;
+            }
+
             const int dst = this->allocReg();
             this->current.get().emit(MirOp::NEG, 0, dst, src, -1, node.loc, node.type);
             this->lastResultReg = dst;

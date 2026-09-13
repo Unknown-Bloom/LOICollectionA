@@ -112,6 +112,7 @@ namespace LOICollection::frontend {
 
         void registerClass(ClassNode& node);
         void collectTypeAliases(ProgramNode& root);
+        void seedOperatorTraits();
         void resolveDeclaredTypes();
         void resolveHierarchy();
         void buildMethodOrdinals();
@@ -141,6 +142,9 @@ namespace LOICollection::frontend {
         TypeInfo checkInstanceOf(InstanceOfNode& node, MethodScope& scope);
         TypeInfo checkReturn(ReturnNode& node, MethodScope& scope);
         TypeInfo checkLambda(LambdaNode& node, MethodScope& scope);
+
+        std::optional<OperatorOverload> resolveOperatorOverload(
+            const std::string& op, const TypeInfo& receiver, const TypeInfo& arg, const MethodScope& scope);
 
         TypeInfo lookupName(const std::string& name, MethodScope& scope);
         void unify(TypeInfo& target, const TypeInfo& from, SourceLocation loc, const std::string& what);

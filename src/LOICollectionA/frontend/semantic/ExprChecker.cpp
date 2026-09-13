@@ -230,13 +230,25 @@ namespace LOICollection::frontend {
                 auto& arith = static_cast<ArithmeticNode&>(node);
                 TypeInfo left = checkExpr(*arith.left, scope);
                 TypeInfo right = checkExpr(*arith.right, scope);
+
+                if (auto overload = resolveOperatorOverload(arith.op, left, right, scope)) {
+                    arith.overload = overload;
+                    return overload->returnType;
+                }
+
                 return arithmeticResult(arith.op, left, right);
             }
 
             case ASTNode::Type::Compare: {
                 auto& cmp = static_cast<CompareNode&>(node);
-                checkExpr(*cmp.left, scope);
-                checkExpr(*cmp.right, scope);
+                TypeInfo left = checkExpr(*cmp.left, scope);
+                TypeInfo right = checkExpr(*cmp.right, scope);
+
+                if (auto overload = resolveOperatorOverload(cmp.op, left, right, scope)) {
+                    cmp.overload = overload;
+                    return overload->returnType;
+                }
+
                 return { TypeKind::Bool };
             }
 
@@ -250,6 +262,14 @@ namespace LOICollection::frontend {
             case ASTNode::Type::Unary: {
                 auto& unary = static_cast<UnaryNode&>(node);
                 TypeInfo operand = checkExpr(*unary.operand, scope);
+
+                if (unary.op == "-") {
+                    if (auto overload = resolveOperatorOverload("neg", operand, {}, scope)) {
+                        unary.overload = overload;
+                        return overload->returnType;
+                    }
+                }
+
                 return unary.op == "!" ? TypeInfo{ TypeKind::Bool } : operand;
             }
 

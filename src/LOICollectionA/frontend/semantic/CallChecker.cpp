@@ -711,6 +711,47 @@ namespace LOICollection::frontend {
         return { TypeKind::Bool };
     }
 
+    std::optional<OperatorOverload> SemanticAnalyzer::resolveOperatorOverload(
+        const std::string& op, const TypeInfo& receiver, const TypeInfo& arg, const MethodScope& scope) {
+        if (!operatorTraitFor(op))
+            return std::nullopt;
+        if (receiver.kind != TypeKind::Object)
+            return std::nullopt;
+
+        const std::string& methodName = *operatorMethodFor(op);
+        std::optional<std::reference_wrapper<ClassNode>> walk =
+            receiver.className.empty() ? std::nullopt : this->findClass(receiver.className);
+        if (!walk)
+            return std::nullopt;
+
+        bool unary = op == "neg";
+        for (size_t step = 0; step <= this->classes.size() && walk; ++step) {
+            ClassNode& cls = walk->get();
+            for (auto& method : cls.methods) {
+                if (method.isConstructor || method.isStatic || method.name != methodName)
+                    continue;
+                if (unary ? method.params.empty() : method.params.size() == 1) {
+                    OperatorOverload result;
+                    result.className = cls.name;
+                    result.methodName = methodName;
+                    result.methodOrdinal = this->methodOrdinal(cls.name, this->methodSignature(method));
+                    result.returnType = method.returnType;
+                    return result;
+                }
+            }
+
+            if (cls.baseClassName.empty())
+                break;
+
+            auto baseOpt = this->findClass(cls.baseClassName);
+            if (!baseOpt)
+                break;
+            walk = baseOpt;
+        }
+
+        return std::nullopt;
+    }
+
     size_t SemanticAnalyzer::knownParamCount(const MethodDecl& method) const {
         size_t count = 0;
         for (const auto& type : method.paramTypes) {

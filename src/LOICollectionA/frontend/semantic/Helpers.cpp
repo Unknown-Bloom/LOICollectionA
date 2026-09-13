@@ -77,6 +77,28 @@ namespace LOICollection::frontend {
         return { TypeKind::Float };
     }
 
+    std::optional<std::string> operatorTraitFor(const std::string& op) {
+        static const std::unordered_map<std::string, std::string> table = {
+            {"+", "Add"}, {"-", "Sub"}, {"*", "Mul"}, {"/", "Div"},
+            {"%", "Mod"}, {"^", "Pow"}, {"neg", "Neg"},
+            {"==", "Eq"}, {"!=", "Ne"}, {"<", "Lt"}, {"<=", "Le"},
+            {">", "Gt"}, {">=", "Ge"},
+        };
+        auto it = table.find(op);
+        return it == table.end() ? std::nullopt : std::optional<std::string>(it->second);
+    }
+
+    std::optional<std::string> operatorMethodFor(const std::string& op) {
+        static const std::unordered_map<std::string, std::string> table = {
+            {"+", "op_add"}, {"-", "op_sub"}, {"*", "op_mul"}, {"/", "op_div"},
+            {"%", "op_mod"}, {"^", "op_pow"}, {"neg", "op_neg"},
+            {"==", "op_eq"}, {"!=", "op_ne"}, {"<", "op_lt"}, {"<=", "op_le"},
+            {">", "op_gt"}, {">=", "op_ge"},
+        };
+        auto it = table.find(op);
+        return it == table.end() ? std::nullopt : std::optional<std::string>(it->second);
+    }
+
     bool isNativeClass(const std::string& name) {
         return ClassCall::getInstance().isRegistered(name);
     }

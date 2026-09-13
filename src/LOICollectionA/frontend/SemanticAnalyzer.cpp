@@ -47,6 +47,8 @@ namespace LOICollection::frontend {
 
         this->collectTypeAliases(root);
 
+        this->seedOperatorTraits();
+
         for (auto& part : root.parts) {
             switch (part->getType()) {
                 case ASTNode::Type::Class:

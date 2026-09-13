@@ -466,6 +466,71 @@ a == c;   // true
 
 `None == None` 为 `true`。
 
+### 运算符重载
+
+脚本类可以通过实现内置的运算符 `trait` 来重载运算，让自定义对象支持 `+`、`-`、`==`、一元负号等（Rust 风格：运算符对应一个 trait，trait 对应一个 `op_xxx` 方法）。内置运算符 trait 如下：
+
+| 运算符 | trait | 方法 | 参数 |
+| --- | --- | --- | --- |
+| `+` | `Add` | `op_add(rhs)` | 1 |
+| `-` | `Sub` | `op_sub(rhs)` | 1 |
+| `*` | `Mul` | `op_mul(rhs)` | 1 |
+| `/` | `Div` | `op_div(rhs)` | 1 |
+| `%` | `Mod` | `op_mod(rhs)` | 1 |
+| `^` | `Pow` | `op_pow(rhs)` | 1 |
+| `-`（一元） | `Neg` | `op_neg()` | 0 |
+| `==` | `Eq` | `op_eq(rhs)` | 1 |
+| `!=` | `Ne` | `op_ne(rhs)` | 1 |
+| `<` | `Lt` | `op_lt(rhs)` | 1 |
+| `<=` | `Le` | `op_le(rhs)` | 1 |
+| `>` | `Gt` | `op_gt(rhs)` | 1 |
+| `>=` | `Ge` | `op_ge(rhs)` | 1 |
+
+使用时对类 `impl` 对应的 trait 并实现 `op_xxx` 方法，运算符表达式即会调用该方法：
+
+```lcui
+class Vec2 {
+    public:
+    x = 0;
+    y = 0;
+}
+
+impl Add for Vec2 {
+    func op_add(rhs: Vec2) -> Vec2 {
+        let r = new Vec2();
+        r.x = this.x + rhs.x;
+        r.y = this.y + rhs.y;
+        return r;
+    }
+}
+
+let a = new Vec2();
+a.x = 3;
+let b = new Vec2();
+b.x = 4;
+let c = a + b;      // 调用 Vec2.op_add，c.x == 7
+```
+
+比较类运算符返回 `bool`，可用于相等性判断：
+
+```lcui
+impl Eq for Money {
+    func op_eq(rhs: Money) -> bool {
+        return this.cents == rhs.cents;
+    }
+}
+
+a == b;   // 调用 Money.op_eq
+```
+
+#### 运算符重载规则
+
+- 二元运算以**左侧操作数**为接收者（`this`），调用左类实现的 `op_xxx`；仅当左侧是脚本类且实现了对应 trait 时才会触发重载。
+- `Neg`（一元负号）无参数，以操作数为接收者。
+- 重载方法的**返回类型**即运算符表达式的结果类型，可用于类型推导与后续调用。
+- 继承时沿基类链向上查找对应 `op_xxx` 方法。
+- 未实现对应 trait 的类保持内置行为不变；`int`、`float`、`string` 等基本类型的原生运算（含 `String` 的原生 `+` 拼接）不受影响。
+
 ### 逻辑运算符
 
 `&&`、`||` 支持短路求值：`false && 任意表达式` 不会执行右侧，`true || 任意表达式` 同样不会执行右侧。`!` 为逻辑非。

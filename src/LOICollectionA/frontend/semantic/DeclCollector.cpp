@@ -130,6 +130,26 @@ namespace LOICollection::frontend {
         };
     }
 
+    void SemanticAnalyzer::seedOperatorTraits() {
+        static const std::vector<std::pair<std::string, std::string>> ops = {
+            {"Add", "op_add"}, {"Sub", "op_sub"}, {"Mul", "op_mul"}, {"Div", "op_div"},
+            {"Mod", "op_mod"}, {"Pow", "op_pow"}, {"Neg", "op_neg"},
+            {"Eq", "op_eq"}, {"Ne", "op_ne"}, {"Lt", "op_lt"}, {"Le", "op_le"},
+            {"Gt", "op_gt"}, {"Ge", "op_ge"},
+        };
+
+        for (const auto& [traitName, methodName] : ops) {
+            if (this->traits.contains(traitName))
+                continue;
+
+            TraitMethod tm;
+            tm.name = methodName;
+            tm.paramCount = traitName == "Neg" ? 0 : 1;
+            tm.hasReturnType = true;
+            this->traits[traitName].push_back(std::move(tm));
+        }
+    }
+
     void SemanticAnalyzer::registerClass(ClassNode& node) {
         if (classByName.find(node.name) != classByName.end()) {
             diagnostics.addError(node.loc, "Duplicate class: " + node.name);

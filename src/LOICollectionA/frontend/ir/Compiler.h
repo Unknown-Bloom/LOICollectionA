@@ -152,6 +152,9 @@ namespace LOICollection::frontend::ir {
             int lhs, int rhs, const SourceLocation& loc
         );
 
+        int emitOperatorOverload(
+            const OperatorOverload& overload, int receiver, int arg, const SourceLocation& loc);
+
         void desugarDeclarativeStatements(std::unique_ptr<ASTNode>& node, const std::string& receiver);
         void compileDeclarativeBlock(BlockNode& block, const std::string& receiverName);
 

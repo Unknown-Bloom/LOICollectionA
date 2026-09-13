@@ -364,11 +364,20 @@ namespace LOICollection::frontend {
         }
     };
 
+    struct OperatorOverload {
+        std::string className;
+        std::string methodName;
+        int methodOrdinal = -1;
+        TypeInfo returnType;
+    };
+
     struct CompareNode : ExprNode {
         SourceLocation loc;
         std::unique_ptr<ExprNode> left;
         std::unique_ptr<ExprNode> right;
         std::string op;
+
+        std::optional<OperatorOverload> overload;
         
         CompareNode(auto&& l, auto&& r, std::string o)
             : left(std::forward<decltype(l)>(l)),
@@ -494,7 +503,9 @@ namespace LOICollection::frontend {
         std::unique_ptr<ExprNode> left;
         std::unique_ptr<ExprNode> right;
         std::string op;
-        
+
+        std::optional<OperatorOverload> overload;
+
         ArithmeticNode(auto&& l, auto&& r, std::string o)
             : left(std::forward<decltype(l)>(l)),
               right(std::forward<decltype(r)>(r)),
@@ -518,6 +529,8 @@ namespace LOICollection::frontend {
         SourceLocation loc;
         std::unique_ptr<ExprNode> operand;
         std::string op;
+
+        std::optional<OperatorOverload> overload;
         
         UnaryNode(auto&& expr, std::string o)
             : operand(std::forward<decltype(expr)>(expr)),
