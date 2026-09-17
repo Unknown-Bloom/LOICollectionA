@@ -53,39 +53,23 @@ namespace LOICollection::frontend {
         for (auto clsRef : this->orderedClasses) {
             ClassNode& cls = clsRef.get();
 
-            std::vector<std::string> order;
-            std::unordered_map<std::string, int> ordinals;
-            std::vector<std::string> staticOrder;
-            std::unordered_map<std::string, int> staticOrdinals;
-
+            MethodLayoutTable table;
             if (!cls.baseClassName.empty()) {
-                order = this->classMethodOrder[cls.baseClassName];
-                ordinals = this->classMethodOrdinals[cls.baseClassName];
-                staticOrder = this->classStaticMethodOrder[cls.baseClassName];
-                staticOrdinals = this->classStaticMethodOrdinals[cls.baseClassName];
+                table.order = this->classMethodOrder[cls.baseClassName];
+                table.staticOrder = this->classStaticMethodOrder[cls.baseClassName];
             }
+            extendMethodTable(table, cls.methods);
 
-            for (auto& method : cls.methods) {
-                if (method.isConstructor)
-                    continue;
+            std::unordered_map<std::string, int> ordinals;
+            std::unordered_map<std::string, int> staticOrdinals;
+            for (size_t i = 0; i < table.order.size(); ++i)
+                ordinals[table.order[i]] = static_cast<int>(i);
+            for (size_t i = 0; i < table.staticOrder.size(); ++i)
+                staticOrdinals[table.staticOrder[i]] = static_cast<int>(i);
 
-                std::string signature = this->methodSignature(method);
-                if (method.isStatic) {
-                    if (!staticOrdinals.contains(signature)) {
-                        staticOrdinals[signature] = static_cast<int>(staticOrder.size());
-                        staticOrder.push_back(signature);
-                    }
-                } else {
-                    if (!ordinals.contains(signature)) {
-                        ordinals[signature] = static_cast<int>(order.size());
-                        order.push_back(signature);
-                    }
-                }
-            }
-
-            this->classMethodOrder[cls.name] = std::move(order);
+            this->classMethodOrder[cls.name] = std::move(table.order);
             this->classMethodOrdinals[cls.name] = std::move(ordinals);
-            this->classStaticMethodOrder[cls.name] = std::move(staticOrder);
+            this->classStaticMethodOrder[cls.name] = std::move(table.staticOrder);
             this->classStaticMethodOrdinals[cls.name] = std::move(staticOrdinals);
         }
     }

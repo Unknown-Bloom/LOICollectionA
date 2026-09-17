@@ -108,25 +108,31 @@ namespace LOICollection::frontend::ir {
             }
         }
 
-        for (auto & method : node.methods) {
+        MethodLayoutTable table;
+        if (baseIdx >= 0) {
+            table.order = meta.methodSignatures;
+            table.staticOrder = meta.staticMethodSignatures;
+        }
+        extendMethodTable(table, node.methods);
+
+        meta.methodSignatures = table.order;
+        meta.staticMethodSignatures = table.staticOrder;
+        meta.methods.assign(meta.methodSignatures.size(), -1);
+        meta.staticMethods.assign(meta.staticMethodSignatures.size(), -1);
+
+        for (auto& method : node.methods) {
             int methodIdx = static_cast<int>(methodCount++);
 
-            if (method.isConstructor)
+            if (method.isConstructor) {
                 meta.constructorIndex = methodIdx;
-            else {
-                std::string signature = this->methodSignature(method);
-                auto& signatures = method.isStatic ? meta.staticMethodSignatures : meta.methodSignatures;
-                auto& methods = method.isStatic ? meta.staticMethods : meta.methods;
-
-                auto sigIt = std::ranges::find(signatures, signature);
-                if (sigIt != signatures.end()) {
-                    auto ordinal = static_cast<size_t>(std::distance(signatures.begin(), sigIt));
-                    methods[ordinal] = methodIdx;
-                } else {
-                    signatures.push_back(signature);
-                    methods.push_back(methodIdx);
-                }
+                continue;
             }
+
+            const auto& sigs = method.isStatic ? meta.staticMethodSignatures : meta.methodSignatures;
+            auto& target = method.isStatic ? meta.staticMethods : meta.methods;
+            const std::string signature = methodSignatureString(method);
+            auto sigIt = std::find(sigs.begin(), sigs.end(), signature);
+            target[static_cast<size_t>(std::distance(sigs.begin(), sigIt))] = methodIdx;
         }
 
         this->classMethodIndices[node.name] = meta.methods;
@@ -193,18 +199,6 @@ namespace LOICollection::frontend::ir {
 
             this->chunk.methods.push_back(std::move(mm));
         }
-    }
-
-    std::string Compiler::methodSignature(const MethodDecl& method) const {
-        std::string signature = method.name + "(";
-        for (size_t i = 0; i < method.paramTypes.size(); ++i) {
-            if (i != 0)
-                signature += ",";
-
-            signature += typeInfoToString(method.paramTypes[i]);
-        }
-        signature += ")";
-        return signature;
     }
 
 }

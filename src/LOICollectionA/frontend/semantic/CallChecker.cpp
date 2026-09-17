@@ -762,15 +762,7 @@ namespace LOICollection::frontend {
     }
 
     std::string SemanticAnalyzer::methodSignature(const MethodDecl& method) const {
-        std::string signature = method.name + "(";
-        for (size_t i = 0; i < method.paramTypes.size(); ++i) {
-            if (i != 0)
-                signature += ",";
-
-            signature += this->typeToString(method.paramTypes[i]);
-        }
-        signature += ")";
-        return signature;
+        return methodSignatureString(method);
     }
 
 }

@@ -169,8 +169,6 @@ namespace LOICollection::frontend::ir {
         int addByNameCall(const std::string& methodName, int argCount);
         int addSuperCall(int constructorIndex, int argCount);
 
-        [[nodiscard]] std::string methodSignature(const MethodDecl& method) const;
-
         [[nodiscard]] int fieldSlotOf(const TypeInfo& owner, const std::string& memberName) const;
 
         [[nodiscard]] auto suspendLoops() {

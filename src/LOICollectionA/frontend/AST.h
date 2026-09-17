@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -612,6 +613,34 @@ namespace LOICollection::frontend {
 
         void accept(ASTVisitor&) override {}
     };
+
+    inline std::string methodSignatureString(const MethodDecl& method) {
+        std::string signature = method.name + "(";
+        for (size_t i = 0; i < method.paramTypes.size(); ++i) {
+            if (i != 0)
+                signature += ",";
+            signature += typeInfoToString(method.paramTypes[i]);
+        }
+        signature += ")";
+        return signature;
+    }
+
+    struct MethodLayoutTable {
+        std::vector<std::string> order;
+        std::vector<std::string> staticOrder;
+    };
+
+    inline void extendMethodTable(MethodLayoutTable& table, const std::vector<MethodDecl>& methods) {
+        for (const auto& method : methods) {
+            if (method.isConstructor)
+                continue;
+
+            auto& target = method.isStatic ? table.staticOrder : table.order;
+            const std::string signature = methodSignatureString(method);
+            if (std::find(target.begin(), target.end(), signature) == target.end())
+                target.push_back(signature);
+        }
+    }
 
     struct ClassNode : ASTNode {
         SourceLocation loc;
