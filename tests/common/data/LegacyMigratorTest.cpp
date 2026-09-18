@@ -87,14 +87,14 @@ TEST_F(LegacyMigratorTest, OpensMigratingLegacyDb) {
 
 TEST_F(LegacyMigratorTest, ReopenDoesNotReArchive) {
     // 首次打开完成迁移后，再次打开不应重复触发归档。
-    auto first = BlockRepository::open(dbPath);
-    ASSERT_TRUE(first.has_value());
     {
+        auto first = BlockRepository::open(dbPath);
+        ASSERT_TRUE(first.has_value());
+
         auto has = first.value()->has("wallet", "u1");
         EXPECT_TRUE(has.has_value());
         EXPECT_TRUE(has.value());
-    }
-    first.reset();
+    } // 作用域结束，对象析构、连接关闭
 
     auto second = BlockRepository::open(dbPath);
     ASSERT_TRUE(second.has_value());
