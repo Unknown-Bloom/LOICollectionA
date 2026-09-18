@@ -712,7 +712,7 @@ namespace LOICollection::frontend {
     }
 
     std::optional<OperatorOverload> SemanticAnalyzer::resolveOperatorOverload(
-        const std::string& op, const TypeInfo& receiver, const TypeInfo& arg, const MethodScope& scope) {
+        const std::string& op, const TypeInfo& receiver) {
         if (!operatorTraitFor(op))
             return std::nullopt;
         if (receiver.kind != TypeKind::Object)

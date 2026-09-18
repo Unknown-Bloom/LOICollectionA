@@ -58,7 +58,6 @@ public:
         for (;;) {
             if (auto ok = readField(it); ok) {
                 PayloadField field = *ok;
-                std::string_view text;
                 std::string owned;
                 if (field.type == PayloadType::Text) {
                     owned.assign(field.textValue);
