@@ -143,7 +143,7 @@ ll::Expected<size_t> EventLog::sealBefore(std::int64_t timestamp) {
 
     size_t n = 0;
     for (auto id : *ids) {
-        if (auto r = mStore->control(id, BlockState::Sealed); !r)
+        if (auto r = mStore->control(id, BlockLifecycle::Sealed); !r)
             return ll::makeStringError(r.error().message());
         ++n;
     }
@@ -157,7 +157,7 @@ ll::Expected<size_t> EventLog::archiveBefore(std::int64_t timestamp) {
 
     size_t n = 0;
     for (auto id : *ids) {
-        if (auto r = mStore->control(id, BlockState::Archived); !r)
+        if (auto r = mStore->control(id, BlockLifecycle::Archived); !r)
             return ll::makeStringError(r.error().message());
         ++n;
     }

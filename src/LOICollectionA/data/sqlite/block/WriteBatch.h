@@ -39,7 +39,7 @@ public:
     [[nodiscard]] ll::Expected<void> setPayload(BlockId id, std::string_view payload);
 
     // 事务内变更块状态（如标记 Deleted），随提交原子生效。
-    [[nodiscard]] ll::Expected<void> control(BlockId id, BlockState to);
+    [[nodiscard]] ll::Expected<void> control(BlockId id, BlockLifecycle to);
 
     [[nodiscard]] ll::Expected<void> setProp(BlockId id, PropKey key, std::int64_t value);
     [[nodiscard]] ll::Expected<void> setProp(BlockId id, PropKey key, double value);

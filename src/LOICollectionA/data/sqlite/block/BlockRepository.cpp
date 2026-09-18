@@ -110,7 +110,7 @@ ll::Expected<std::unordered_map<std::string, std::string>> BlockRepository::read
         return ll::makeStringError(root.error().message());
 
     auto record = mStore->load(root.value(), key);
-    if (!record || record.value().state == BlockState::Deleted)
+    if (!record || record.value().state == BlockLifecycle::Deleted)
         return std::unordered_map<std::string, std::string>{};
 
     return decodeRow(mStore.get(), record.value().payload);
@@ -159,9 +159,9 @@ ll::Expected<void> BlockRepository::exec(std::string_view sql) {
 
     if (where == std::string_view::npos) {
         for (auto const& record : records.value()) {
-            if (record.state == BlockState::Deleted)
+            if (record.state == BlockLifecycle::Deleted)
                 continue;
-            if (auto r = mStore->control(record.id, BlockState::Deleted); !r)
+            if (auto r = mStore->control(record.id, BlockLifecycle::Deleted); !r)
                 return ll::makeStringError(r.error().message());
         }
         return {};
@@ -188,7 +188,7 @@ ll::Expected<void> BlockRepository::exec(std::string_view sql) {
     }
 
     for (auto const& record : records.value()) {
-        if (record.state == BlockState::Deleted)
+        if (record.state == BlockLifecycle::Deleted)
             continue;
         auto row = decodeRow(mStore.get(), record.payload);
         if (!row)
@@ -203,7 +203,7 @@ ll::Expected<void> BlockRepository::exec(std::string_view sql) {
             continue;
         }
         if (val < threshold) {
-            if (auto r = mStore->control(record.id, BlockState::Deleted); !r)
+            if (auto r = mStore->control(record.id, BlockLifecycle::Deleted); !r)
                 return ll::makeStringError(r.error().message());
         }
     }
@@ -233,10 +233,10 @@ ll::Expected<void> BlockRepository::remove(std::string_view table) {
         return ll::makeStringError(children.error().message());
 
     for (auto id : children.value()) {
-        if (auto r = mStore->control(id, BlockState::Deleted); !r)
+        if (auto r = mStore->control(id, BlockLifecycle::Deleted); !r)
             return ll::makeStringError(r.error().message());
     }
-    return mStore->control(root.value(), BlockState::Deleted);
+    return mStore->control(root.value(), BlockLifecycle::Deleted);
 }
 
 ll::Expected<void> BlockRepository::set(
@@ -277,7 +277,7 @@ ll::Expected<void> BlockRepository::del(std::string_view table, std::string_view
     auto record = mStore->load(root.value(), key);
     if (!record || record.value().id == 0)
         return {};
-    return mStore->control(record.value().id, BlockState::Deleted);
+    return mStore->control(record.value().id, BlockLifecycle::Deleted);
 }
 
 ll::Expected<void> BlockRepository::del(std::string_view table, std::vector<std::string> keys) {
@@ -323,7 +323,7 @@ ll::Expected<void> BlockRepository::set(
     }
 
     auto existing = mStore->load(root, key);
-    if (existing && existing.value().id != 0 && existing.value().state != BlockState::Deleted)
+    if (existing && existing.value().id != 0 && existing.value().state != BlockLifecycle::Deleted)
         return tx.setPayload(existing.value().id, payload.value());
 
     auto id = tx.append(root, kRowKind, key, payload.value());
@@ -349,7 +349,7 @@ ll::Expected<void> BlockRepository::del(WriteBatch& tx, std::string_view table, 
     auto record = mStore->load(rootRec.value().id, key);
     if (!record || record.value().id == 0)
         return {};
-    return tx.control(record.value().id, BlockState::Deleted);
+    return tx.control(record.value().id, BlockLifecycle::Deleted);
 }
 
 ll::Expected<void> BlockRepository::del(WriteBatch& tx, std::string_view table, std::vector<std::string> keys) {
@@ -394,7 +394,7 @@ ll::Expected<bool> BlockRepository::has(std::string_view table) {
     auto record = mStore->load(root.value());
     if (!record)
         return ll::makeStringError(record.error().message());
-    return record.value().state != BlockState::Deleted;
+    return record.value().state != BlockLifecycle::Deleted;
 }
 
 ll::Expected<std::unordered_map<std::string, std::string>> BlockRepository::get(
@@ -446,7 +446,7 @@ ll::Expected<std::vector<std::string>> BlockRepository::find(
 
     std::vector<std::string> keys;
     for (auto const& record : records.value()) {
-        if (record.state == BlockState::Deleted)
+        if (record.state == BlockLifecycle::Deleted)
             continue;
 
         auto row = decodeRow(mStore.get(), record.payload);
@@ -500,7 +500,7 @@ ll::Expected<std::vector<std::string>> BlockRepository::list(std::string_view ta
         auto record = mStore->load(id);
         if (!record)
             return ll::makeStringError(record.error().message());
-        if (record.value().state != BlockState::Deleted)
+        if (record.value().state != BlockLifecycle::Deleted)
             keys.emplace_back(record.value().name);
     }
     return keys;
@@ -517,7 +517,7 @@ ll::Expected<std::vector<std::string>> BlockRepository::list() {
         auto record = mStore->load(id);
         if (!record)
             return ll::makeStringError(record.error().message());
-        if (record.value().state != BlockState::Deleted)
+        if (record.value().state != BlockLifecycle::Deleted)
             names.emplace_back(record.value().name);
     }
     return names;
@@ -535,7 +535,7 @@ ll::Expected<std::vector<std::string>> BlockRepository::columns(std::string_view
     std::vector<std::string> columns;
     std::unordered_map<std::string, bool> seen;
     for (auto const& record : records.value()) {
-        if (record.state == BlockState::Deleted)
+        if (record.state == BlockLifecycle::Deleted)
             continue;
         auto row = decodeRow(mStore.get(), record.payload);
         if (!row)

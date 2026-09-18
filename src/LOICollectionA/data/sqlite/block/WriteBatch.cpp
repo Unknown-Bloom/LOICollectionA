@@ -52,7 +52,7 @@ ll::Expected<void> WriteBatch::setPayload(BlockId id, std::string_view payload) 
     return mStore->implSetPayload(*mTxn->connection(), id, payload);
 }
 
-ll::Expected<void> WriteBatch::control(BlockId id, BlockState to) {
+ll::Expected<void> WriteBatch::control(BlockId id, BlockLifecycle to) {
     if (mFinished)
         return ll::makeStringError("write batch already finished");
     return mStore->implControl(*mTxn->connection(), id, to);

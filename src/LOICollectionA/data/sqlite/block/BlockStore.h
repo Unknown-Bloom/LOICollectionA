@@ -19,7 +19,7 @@ class SQLiteConnection;
 
 using BlockId = std::int64_t;
 
-enum class BlockState : std::uint32_t {
+enum class BlockLifecycle : std::uint32_t {
     None = 0,
     Active = 1u << 0,
     Frozen = 1u << 1,
@@ -41,7 +41,7 @@ struct BlockView {
     BlockId parent = 0;
     std::int32_t kind = 0;
     std::string_view name;
-    BlockState state = BlockState::None;
+    BlockLifecycle state = BlockLifecycle::None;
     std::int64_t created = 0;
     std::int64_t updated = 0;
     std::string_view payload;
@@ -52,7 +52,7 @@ struct BlockRecord {
     BlockId parent = 0;
     std::int32_t kind = 0;
     std::string name;
-    BlockState state = BlockState::None;
+    BlockLifecycle state = BlockLifecycle::None;
     std::int64_t created = 0;
     std::int64_t updated = 0;
     std::vector<std::byte> payload;
@@ -81,8 +81,8 @@ public:
 
     [[nodiscard]] ll::Expected<void> setPayload(BlockId id, std::string_view payload);
     [[nodiscard]] ll::Expected<void> remove(BlockId id);
-    [[nodiscard]] ll::Expected<void> control(BlockId id, BlockState to);
-    [[nodiscard]] ll::Expected<BlockState> stateOf(BlockId id);
+    [[nodiscard]] ll::Expected<void> control(BlockId id, BlockLifecycle to);
+    [[nodiscard]] ll::Expected<BlockLifecycle> stateOf(BlockId id);
 
     [[nodiscard]] ll::Expected<std::vector<BlockId>> children(BlockId parent, std::int32_t kind = -1, size_t limit = 0);
     [[nodiscard]] ll::Expected<std::vector<BlockRecord>> records(BlockId parent, std::int32_t kind = -1, size_t limit = 0);
@@ -118,7 +118,7 @@ private:
         SQLiteConnection& conn, BlockId parent, std::int32_t kind, std::string_view name,
         std::string_view payload, BlockId& id);
     [[nodiscard]] ll::Expected<void> implSetPayload(SQLiteConnection& conn, BlockId id, std::string_view payload);
-    [[nodiscard]] ll::Expected<void> implControl(SQLiteConnection& conn, BlockId id, BlockState to);
+    [[nodiscard]] ll::Expected<void> implControl(SQLiteConnection& conn, BlockId id, BlockLifecycle to);
     [[nodiscard]] ll::Expected<void> implSetProp(SQLiteConnection& conn, BlockId id, PropKey key, PayloadType type, std::int64_t ival, double rval, std::string_view tval);
     [[nodiscard]] ll::Expected<void> implLink(SQLiteConnection& conn, BlockId src, BlockId dst, std::int32_t kind);
     [[nodiscard]] ll::Expected<void> implUnlink(SQLiteConnection& conn, BlockId src, BlockId dst, std::int32_t kind);

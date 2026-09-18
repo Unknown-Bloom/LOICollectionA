@@ -41,7 +41,7 @@ namespace {
         out.parent = stmt.getColumn(static_cast<int>(col++)).getInt64();
         out.name = stmt.getColumn(static_cast<int>(col++)).getString();
         out.kind = stmt.getColumn(static_cast<int>(col++)).getInt();
-        out.state = static_cast<BlockState>(stmt.getColumn(static_cast<int>(col++)).getInt64());
+        out.state = static_cast<BlockLifecycle>(stmt.getColumn(static_cast<int>(col++)).getInt64());
         out.created = stmt.getColumn(static_cast<int>(col++)).getInt64();
         out.updated = stmt.getColumn(static_cast<int>(col++)).getInt64();
         out.payload.clear();
@@ -181,7 +181,7 @@ ll::Expected<void> BlockStore::implCreateBlock(
     stmt.bind(1, static_cast<std::int64_t>(parent));
     stmt.bind(2, std::string(name));
     stmt.bind(3, kind);
-    stmt.bind(4, static_cast<std::int64_t>(BlockState::Active));
+    stmt.bind(4, static_cast<std::int64_t>(BlockLifecycle::Active));
     bindPayload(stmt, 5, payload);
     const std::int64_t ts = nowMs();
     stmt.bind(6, ts);
@@ -247,7 +247,7 @@ ll::Expected<void> BlockStore::withBlock(
         view.parent = stmt.getColumn(static_cast<int>(col++)).getInt64();
         view.name = stmt.getColumn(static_cast<int>(col++)).getText();
         view.kind = stmt.getColumn(static_cast<int>(col++)).getInt();
-        view.state = static_cast<BlockState>(stmt.getColumn(static_cast<int>(col++)).getInt64());
+        view.state = static_cast<BlockLifecycle>(stmt.getColumn(static_cast<int>(col++)).getInt64());
         view.created = stmt.getColumn(static_cast<int>(col++)).getInt64();
         view.updated = stmt.getColumn(static_cast<int>(col++)).getInt64();
         std::string payload;
@@ -307,10 +307,10 @@ ll::Expected<void> BlockStore::implSetPayload(SQLiteConnection& conn, BlockId id
 }
 
 ll::Expected<void> BlockStore::remove(BlockId id) {
-    return this->control(id, BlockState::Deleted);
+    return this->control(id, BlockLifecycle::Deleted);
 }
 
-ll::Expected<void> BlockStore::control(BlockId id, BlockState to) {
+ll::Expected<void> BlockStore::control(BlockId id, BlockLifecycle to) {
     auto guard = acquireConnection(this->mPool);
     if (!guard)
         return ll::makeStringError(guard.error().message());
@@ -325,7 +325,7 @@ ll::Expected<void> BlockStore::control(BlockId id, BlockState to) {
     }
 }
 
-ll::Expected<void> BlockStore::implControl(SQLiteConnection& conn, BlockId id, BlockState to) {
+ll::Expected<void> BlockStore::implControl(SQLiteConnection& conn, BlockId id, BlockLifecycle to) {
     auto& stmt = conn.statements().get("updateState");
     stmt.reset();
     stmt.bind(1, static_cast<std::int64_t>(to));
@@ -337,7 +337,7 @@ ll::Expected<void> BlockStore::implControl(SQLiteConnection& conn, BlockId id, B
     return {};
 }
 
-ll::Expected<BlockState> BlockStore::stateOf(BlockId id) {
+ll::Expected<BlockLifecycle> BlockStore::stateOf(BlockId id) {
     auto guard = acquireConnection(this->mPool);
     if (!guard)
         return ll::makeStringError(guard.error().message());
@@ -348,7 +348,7 @@ ll::Expected<BlockState> BlockStore::stateOf(BlockId id) {
         stmt.bind(1, id);
         if (!stmt.executeStep())
             return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound));
-        auto state = static_cast<BlockState>(stmt.getColumn(0).getInt64());
+        auto state = static_cast<BlockLifecycle>(stmt.getColumn(0).getInt64());
         stmt.reset();
         return state;
     } catch (SQLite::Exception const& e) {
