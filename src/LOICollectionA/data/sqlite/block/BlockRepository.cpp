@@ -62,6 +62,19 @@ ll::Expected<std::string> BlockRepository::encodeRow(
     return std::string(reinterpret_cast<char const*>(data.data()), data.size());
 }
 
+ll::Expected<std::string> BlockRepository::encodeRow(
+    WriteBatch& tx, std::unordered_map<std::string, std::string> const& values) {
+    PayloadWriter writer;
+    for (auto const& [column, value] : values) {
+        auto key = tx.intern(column);
+        if (!key)
+            return ll::makeStringError(key.error().message());
+        writer.write(key.value(), std::string_view(value));
+    }
+    auto data = writer.data();
+    return std::string(reinterpret_cast<char const*>(data.data()), data.size());
+}
+
 ll::Expected<std::unordered_map<std::string, std::string>> BlockRepository::decodeRow(
     observer<BlockStore> store, std::vector<std::byte> const& payload) {
     std::unordered_map<std::string, std::string> row;
@@ -92,10 +105,6 @@ ll::Expected<std::unordered_map<std::string, std::string>> BlockRepository::read
 }
 
 ll::Expected<void> BlockRepository::exec(std::string_view sql) {
-    // 兼容历史调用点：
-    //   DELETE FROM <table>                       -> 清空该表全部行
-    //   DELETE FROM <table> WHERE <col> < <num>   -> 删除满足数值条件(列值 < num)的行
-    //   VACUUM/PRAGMA/CREATE INDEX 等维护语句     -> 块模型下为空操作
     auto trim = [](std::string_view s) {
         while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
             s.remove_prefix(1);
@@ -142,7 +151,6 @@ ll::Expected<void> BlockRepository::exec(std::string_view sql) {
         return {};
     }
 
-    // DELETE FROM <table> WHERE <col> < <num>
     auto whereClause = trim(stmt.substr(where + 5));
     auto lt = whereClause.find('<');
     if (lt == std::string_view::npos)
@@ -282,7 +290,7 @@ ll::Expected<bool> BlockRepository::WriteTransaction::rollback() {
 ll::Expected<void> BlockRepository::set(
     WriteBatch& tx, std::string_view table, std::string_view key,
     std::unordered_map<std::string, std::string> values) {
-    auto payload = encodeRow(mStore.get(), values);
+    auto payload = encodeRow(tx, values);
     if (!payload)
         return ll::makeStringError(payload.error().message());
 

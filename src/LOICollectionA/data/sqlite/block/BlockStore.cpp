@@ -278,6 +278,7 @@ ll::Expected<BlockRecord> BlockStore::readBlock(SQLiteConnection& conn, BlockId 
         return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound));
 
     BlockRecord record;
+    record.id = id;
     readBlockRow(stmt, false, record, conn);
     stmt.reset();
     return record;

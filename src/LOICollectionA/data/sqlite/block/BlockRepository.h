@@ -25,8 +25,6 @@ public:
         OR
     };
 
-    // 块模型下的原子写事务。对多行/多表的一组 set/del 在提交时一次性原子生效，
-    // 镜像历史 SQLiteStorageTransaction 语义。可移动、按值持有，随提交/回滚析构。
     class WriteTransaction {
     public:
         WriteTransaction(WriteTransaction const&) = delete;
@@ -40,7 +38,6 @@ public:
         [[nodiscard]] ll::Expected<bool> commit();
         [[nodiscard]] ll::Expected<bool> rollback();
 
-        // 返回事务句柄，供事务版本的 set/del/get/has/list 传入。
         [[nodiscard]] WriteBatch& connection() const noexcept { return *mBatch; }
 
     private:
@@ -54,11 +51,9 @@ public:
     BlockRepository(BlockRepository const&) = delete;
     BlockRepository& operator=(BlockRepository const&) = delete;
 
-    // 从数据库路径构造（自建连接池与底层块存储，默认写连接数=4）
     [[nodiscard]] LOICOLLECTION_A_NDAPI static ll::Expected<std::shared_ptr<BlockRepository>> open(
         std::string dbPath, size_t connections = 4);
 
-    // 从调用方持有的已有块存储构造（共享同一底层库）
     [[nodiscard]] LOICOLLECTION_A_NDAPI static ll::Expected<std::shared_ptr<BlockRepository>> fromStore(
         std::shared_ptr<BlockStore> store);
 
@@ -74,7 +69,6 @@ public:
     [[nodiscard]] ll::Expected<void> del(std::string_view table, std::string_view key);
     [[nodiscard]] ll::Expected<void> del(std::string_view table, std::vector<std::string> keys);
 
-    // 事务上下文版本的写操作：写入被暂存到 tx，随 WriteTransaction::commit() 原子生效。
     [[nodiscard]] ll::Expected<void> set(
         WriteBatch& tx, std::string_view table, std::string_view key,
         std::string_view column, std::string_view value);
@@ -84,8 +78,6 @@ public:
     [[nodiscard]] ll::Expected<void> del(WriteBatch& tx, std::string_view table, std::string_view key);
     [[nodiscard]] ll::Expected<void> del(WriteBatch& tx, std::string_view table, std::vector<std::string> keys);
 
-    // 事务上下文版本的读取：读取已提交数据（历史 SQLite 在同一连接上读取未提交写入；
-    // 现有调用点均为“先读后写同 key”，块模型下用已提交快照即可得到等价结果）。
     [[nodiscard]] ll::Expected<std::unordered_map<std::string, std::string>> get(
         WriteBatch& tx, std::string_view table, std::string_view key);
     [[nodiscard]] ll::Expected<std::string> get(
@@ -127,6 +119,8 @@ private:
 
     static ll::Expected<std::string> encodeRow(
         observer<BlockStore> store, std::unordered_map<std::string, std::string> const& values);
+    static ll::Expected<std::string> encodeRow(
+        WriteBatch& tx, std::unordered_map<std::string, std::string> const& values);
     static ll::Expected<std::unordered_map<std::string, std::string>> decodeRow(
         observer<BlockStore> store, std::vector<std::byte> const& payload);
 
