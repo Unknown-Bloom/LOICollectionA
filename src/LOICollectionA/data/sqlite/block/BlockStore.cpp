@@ -478,6 +478,30 @@ ll::Expected<std::vector<BlockId>> BlockStore::queryInt(PropKey key, std::int64_
     }
 }
 
+ll::Expected<std::vector<BlockId>> BlockStore::queryInt(
+    BlockId parent, PropKey key, std::int64_t min, std::int64_t max, size_t limit) {
+    auto guard = acquireConnection(this->mPool);
+    if (!guard)
+        return ll::makeStringError(guard.error().message());
+
+    try {
+        auto& stmt = (**guard).statements().get("queryPropIntUnder");
+        stmt.reset();
+        stmt.bind(1, key);
+        stmt.bind(2, min);
+        stmt.bind(3, max);
+        stmt.bind(4, static_cast<std::int64_t>(parent));
+        stmt.bind(5, liveLimit(limit));
+
+        std::vector<BlockId> ids;
+        while (stmt.executeStep())
+            ids.push_back(stmt.getColumn(0).getInt64());
+        return ids;
+    } catch (SQLite::Exception const& e) {
+        return ll::makeStringError(e.what());
+    }
+}
+
 ll::Expected<std::vector<BlockId>> BlockStore::queryText(PropKey key, std::string_view value, size_t limit) {
     auto guard = acquireConnection(this->mPool);
     if (!guard)

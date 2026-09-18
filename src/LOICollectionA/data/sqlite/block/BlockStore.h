@@ -94,6 +94,8 @@ public:
         BlockId id, PropKey key, PayloadType type, std::int64_t ival, double rval, std::string_view tval);
 
     [[nodiscard]] ll::Expected<std::vector<BlockId>> queryInt(PropKey key, std::int64_t min, std::int64_t max, size_t limit = 0);
+    [[nodiscard]] ll::Expected<std::vector<BlockId>> queryInt(
+        BlockId parent, PropKey key, std::int64_t min, std::int64_t max, size_t limit = 0);
     [[nodiscard]] ll::Expected<std::vector<BlockId>> queryText(PropKey key, std::string_view value, size_t limit = 0);
 
     [[nodiscard]] ll::Expected<void> link(BlockId src, BlockId dst, std::int32_t kind);

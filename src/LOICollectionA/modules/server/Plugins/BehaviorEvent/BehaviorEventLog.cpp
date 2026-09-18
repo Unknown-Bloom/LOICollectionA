@@ -303,7 +303,7 @@ ll::Expected<size_t> BehaviorEventLog::count() {
 }
 
 ll::Expected<std::vector<BlockId>> BehaviorEventLog::byTimeRange(std::int64_t from, std::int64_t to, size_t limit) {
-    return mStore->queryInt(mKeyTimestamp, from, to, limit);
+    return mStore->queryInt(mRoot, mKeyTimestamp, from, to, limit);
 }
 
 ll::Expected<std::vector<BlockId>> BehaviorEventLog::byName(std::string_view name, size_t limit) {
@@ -319,27 +319,27 @@ ll::Expected<std::vector<BlockId>> BehaviorEventLog::byType(std::string_view typ
     if (!value)
         return ll::makeStringError(value.error().message());
 
-    return mStore->queryInt(mKeyType, *value, *value, limit);
+    return mStore->queryInt(mRoot, mKeyType, *value, *value, limit);
 }
 
 ll::Expected<std::vector<BlockId>> BehaviorEventLog::byActor(std::int64_t actor, size_t limit) {
-    return mStore->queryInt(mKeyActor, actor, actor, limit);
+    return mStore->queryInt(mRoot, mKeyActor, actor, actor, limit);
 }
 
 ll::Expected<std::vector<BlockId>> BehaviorEventLog::byDimension(std::int64_t dimension, size_t limit) {
-    return mStore->queryInt(mKeyDim, dimension, dimension, limit);
+    return mStore->queryInt(mRoot, mKeyDim, dimension, dimension, limit);
 }
 
 ll::Expected<std::vector<BlockId>> BehaviorEventLog::byPosition(
     std::int64_t x, std::int64_t y, std::int64_t z, size_t limit) {
-    auto xs = mStore->queryInt(mKeyPosX, x, x, limit);
+    auto xs = mStore->queryInt(mRoot, mKeyPosX, x, x, limit);
     if (!xs)
         return ll::makeStringError(xs.error().message());
 
     if (xs->empty())
         return xs;
 
-    auto ys = mStore->queryInt(mKeyPosY, y, y, limit);
+    auto ys = mStore->queryInt(mRoot, mKeyPosY, y, y, limit);
     if (!ys)
         return ll::makeStringError(ys.error().message());
 
@@ -347,7 +347,7 @@ ll::Expected<std::vector<BlockId>> BehaviorEventLog::byPosition(
     if (xs->empty())
         return xs;
 
-    auto zs = mStore->queryInt(mKeyPosZ, z, z, limit);
+    auto zs = mStore->queryInt(mRoot, mKeyPosZ, z, z, limit);
     if (!zs)
         return ll::makeStringError(zs.error().message());
 
@@ -379,7 +379,7 @@ ll::Expected<void> BehaviorEventLog::erase(std::span<const BlockId> ids) {
 }
 
 ll::Expected<size_t> BehaviorEventLog::archiveBefore(std::int64_t timestamp) {
-    auto ids = mStore->queryInt(mKeyTimestamp, std::numeric_limits<std::int64_t>::min(), timestamp);
+    auto ids = mStore->queryInt(mRoot, mKeyTimestamp, std::numeric_limits<std::int64_t>::min(), timestamp, 0);
     if (!ids)
         return ll::makeStringError(ids.error().message());
 
