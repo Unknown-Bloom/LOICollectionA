@@ -1058,7 +1058,7 @@ namespace LOICollection::server::Plugins {
             });
     }
 
-    ll::Expected<void> BehaviorEventPlugin::write(const std::string& id, const Event& event) {
+    ll::Expected<std::string> BehaviorEventPlugin::write(const Event& event) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(BehaviorEventPluginErrorCode::Invalid));
 
