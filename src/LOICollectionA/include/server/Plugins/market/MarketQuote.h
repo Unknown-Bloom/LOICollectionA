@@ -12,7 +12,7 @@
 
 #include "LOICollectionA/include/server/Plugins/market/MarketType.h"
 
-class SQLiteStorage;
+class BlockRepository;
 class TimerManager;
 
 namespace ll {
@@ -45,7 +45,7 @@ namespace LOICollection::server::Plugins {
     class MarketQuote {
     public:
         MarketQuote(
-            std::shared_ptr<SQLiteStorage> db,
+            std::shared_ptr<BlockRepository> db,
             const Config::C_Market& options,
             std::shared_ptr<ll::io::Logger> logger,
             TimerManager& timerManager

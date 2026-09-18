@@ -15,7 +15,7 @@
 
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/ConfigPlugin.h"
 
@@ -50,7 +50,7 @@ namespace LOICollection::server::Plugins {
     }
 
     struct MarketQuote::Impl {
-        std::shared_ptr<SQLiteStorage> db;
+        std::shared_ptr<BlockRepository> db;
         const Config::C_Market& options;
         std::shared_ptr<ll::io::Logger> logger;
         TimerManager& timerManager;
@@ -289,7 +289,7 @@ namespace LOICollection::server::Plugins {
     }
 
     MarketQuote::MarketQuote(
-        std::shared_ptr<SQLiteStorage> db,
+        std::shared_ptr<BlockRepository> db,
         const Config::C_Market& options,
         std::shared_ptr<ll::io::Logger> logger,
         TimerManager& timerManager

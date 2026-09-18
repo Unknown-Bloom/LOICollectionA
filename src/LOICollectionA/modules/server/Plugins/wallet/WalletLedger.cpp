@@ -21,7 +21,7 @@
 #include "LOICollectionA/utils/I18nUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/ConfigPlugin.h"
 
@@ -32,7 +32,7 @@ using I18nUtilsTools::tr;
 
 namespace LOICollection::server::Plugins {
     struct WalletLedger::Impl {
-        std::shared_ptr<SQLiteStorage> db;
+        std::shared_ptr<BlockRepository> db;
         const Config::C_Wallet& options;
         std::shared_ptr<ll::io::Logger> logger;
         TimerManager& timerManager;
@@ -40,7 +40,7 @@ namespace LOICollection::server::Plugins {
         std::atomic<uint64_t> mLedgerSeq{ 0 };
 
         Impl(
-            std::shared_ptr<SQLiteStorage> db_,
+            std::shared_ptr<BlockRepository> db_,
             const Config::C_Wallet& options_,
             std::shared_ptr<ll::io::Logger> logger_,
             TimerManager& timerManager_
@@ -51,7 +51,7 @@ namespace LOICollection::server::Plugins {
     };
 
     WalletLedger::WalletLedger(
-        std::shared_ptr<SQLiteStorage> db,
+        std::shared_ptr<BlockRepository> db,
         const Config::C_Wallet& options,
         std::shared_ptr<ll::io::Logger> logger,
         TimerManager& timerManager
@@ -64,7 +64,7 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<void> WalletLedger::createTables() {
-        return this->mImpl->db->create("WalletLedger", [](SQLiteStorage::ColumnCallback ctor) -> void {
+        return this->mImpl->db->create("WalletLedger", [](BlockRepository::ColumnCallback ctor) -> void {
             ctor("from_uuid");
             ctor("from_name");
             ctor("to_uuid");
@@ -75,7 +75,7 @@ namespace LOICollection::server::Plugins {
             ctor("time_ns");
             ctor("time");
         }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->db->create("WalletFee", [](SQLiteStorage::ColumnCallback ctor) -> void {
+            return this->mImpl->db->create("WalletFee", [](BlockRepository::ColumnCallback ctor) -> void {
                 ctor("amount");
             });
         }).and_then([this]() -> ll::Expected<void> {
@@ -136,7 +136,7 @@ namespace LOICollection::server::Plugins {
         return this->mImpl->db->find("WalletLedger", {
             { "from_uuid", uuid },
             { "to_uuid", uuid }
-        }, SQLiteStorage::FindCondition::OR)
+        }, BlockRepository::FindCondition::OR)
             .and_then([this, uuid, limit](const std::vector<std::string>& ids) -> ll::Expected<std::vector<std::string>> {
                 if (ids.empty())
                     return std::vector<std::string>{};
@@ -230,7 +230,7 @@ namespace LOICollection::server::Plugins {
         auto nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         long long todayStartNs = (nowNs / NS_PER_DAY) * NS_PER_DAY;
 
-        auto ids = this->mImpl->db->find("WalletLedger", std::vector<std::pair<std::string, std::string>>{ { "from_uuid", uuid } }, SQLiteStorage::FindCondition::AND);
+        auto ids = this->mImpl->db->find("WalletLedger", std::vector<std::pair<std::string, std::string>>{ { "from_uuid", uuid } }, BlockRepository::FindCondition::AND);
         if (!ids.has_value())
             return ll::Unexpected(ids.error());
 
@@ -264,7 +264,7 @@ namespace LOICollection::server::Plugins {
 
         auto sendIds = this->mImpl->db->find("WalletLedger", {
             { "type", "redenvelope_send" }
-        }, SQLiteStorage::FindCondition::AND);
+        }, BlockRepository::FindCondition::AND);
         if (!sendIds.has_value())
             return ll::Unexpected(sendIds.error());
 
@@ -291,7 +291,7 @@ namespace LOICollection::server::Plugins {
 
         auto grabIds = this->mImpl->db->find("WalletLedger", {
             { "type", "redenvelope_grab" }
-        }, SQLiteStorage::FindCondition::AND);
+        }, BlockRepository::FindCondition::AND);
         if (!grabIds.has_value())
             return ll::Unexpected(grabIds.error());
 

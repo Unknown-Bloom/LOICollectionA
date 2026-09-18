@@ -19,7 +19,7 @@
 
 class Player;
 class ItemStack;
-class SQLiteStorage;
+class BlockRepository;
 
 namespace Config {
     struct C_Market;
@@ -105,7 +105,7 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI static std::shared_ptr<MarketPlugin> getShared();
         LOICOLLECTION_A_NDAPI static std::error_code makeErrorCode(MarketPluginErrorCode e);
 
-        LOICOLLECTION_A_NDAPI std::shared_ptr<SQLiteStorage> getDatabase();
+        LOICOLLECTION_A_NDAPI std::shared_ptr<BlockRepository> getDatabase();
         LOICOLLECTION_A_NDAPI std::shared_ptr<ll::io::Logger> getLogger();
         LOICOLLECTION_A_NDAPI const Config::C_Market& getOptions() const;
 

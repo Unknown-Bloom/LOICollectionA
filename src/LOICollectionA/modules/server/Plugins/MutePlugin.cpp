@@ -45,7 +45,7 @@
 #include "LOICollectionA/utils/I18nUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/base/Wrapper.h"
 #include "LOICollectionA/base/ServiceProvider.h"
@@ -76,7 +76,7 @@ namespace LOICollection::server::Plugins {
 
         bool ModuleEnabled = false;
 
-        std::shared_ptr<SQLiteStorage> db;
+        std::shared_ptr<BlockRepository> db;
         std::shared_ptr<ll::io::Logger> logger;
 
         std::string mGuiPath;
@@ -99,7 +99,7 @@ namespace LOICollection::server::Plugins {
         return std::error_code{ static_cast<int>(e), cat };
     }
     
-    std::shared_ptr<SQLiteStorage> MutePlugin::getDatabase() {
+    std::shared_ptr<BlockRepository> MutePlugin::getDatabase() {
         return this->mImpl->db;
     }
 
@@ -540,7 +540,7 @@ namespace LOICollection::server::Plugins {
 
         return this->getDatabase()->find("Mute", {
             { "data", player.getUuid().asString() }
-        }, "", SQLiteStorage::FindCondition::AND);
+        }, "", BlockRepository::FindCondition::AND);
     }
 
     ll::Expected<std::vector<std::string>> MutePlugin::getMutes(int limit) {
@@ -597,7 +597,10 @@ namespace LOICollection::server::Plugins {
 
         auto mDataPath = std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("DataPath")->data());
 
-        this->mImpl->db = std::make_shared<SQLiteStorage>((mDataPath / "mute.db").string());
+        auto localDb = BlockRepository::open((mDataPath / "mute.db").string(), 4);
+        if (!localDb)
+            return ll::makeStringError(localDb.error().message());
+        this->mImpl->db = std::move(localDb.value());
         this->mImpl->logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
         this->mImpl->ModuleEnabled = true;
         this->mImpl->mGuiPath = (std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("GuiPath")->data()) / "mute.lcui").string();
@@ -623,7 +626,7 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->ModuleEnabled)
             return false;
 
-        return this->getDatabase()->create("Mute", [](SQLiteStorage::ColumnCallback ctor) -> void {
+        return this->getDatabase()->create("Mute", [](BlockRepository::ColumnCallback ctor) -> void {
             ctor("name");
             ctor("cause");
             ctor("time");

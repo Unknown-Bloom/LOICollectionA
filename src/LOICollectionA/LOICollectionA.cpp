@@ -16,7 +16,7 @@
 
 #include "LOICollectionA/utils/I18nUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/include/ModuleBase.h"
 #include "LOICollectionA/include/ModManager.h"
@@ -91,7 +91,12 @@ namespace LOICollection {
         ServiceProvider::getInstance().registerInstance<std::string>(std::make_shared<std::string>(dataFilePath.string()), "DataPath");
         ServiceProvider::getInstance().registerInstance<std::string>(std::make_shared<std::string>(guiFilePath.string()), "GuiPath");
         ServiceProvider::getInstance().registerInstance<std::string>(std::make_shared<std::string>(configDataPath.string()), "ConfigPath");
-        ServiceProvider::getInstance().registerInstance<SQLiteStorage>(std::make_shared<SQLiteStorage>((dataFilePath / "settings.db").string()), "SettingsDB");
+        if (auto settingsDb = BlockRepository::open((dataFilePath / "settings.db").string(), 4); !settingsDb) {
+            settingsDb.error().log(logger);
+            return false;
+        } else {
+            ServiceProvider::getInstance().registerInstance<BlockRepository>(std::move(settingsDb.value()), "SettingsDB");
+        }
 
         {
             auto permission = std::make_shared<frontend::sandbox::ScriptPermissionService>();

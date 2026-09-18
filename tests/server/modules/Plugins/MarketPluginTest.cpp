@@ -27,7 +27,7 @@
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/base/Wrapper.h"
 #include "LOICollectionA/base/ServiceProvider.h"
@@ -63,7 +63,7 @@ protected:
         if (!r2.has_value())
             GTEST_FAIL() << "Unable to clear data";
 
-        auto r3 = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB")->exec("DELETE FROM Market;");
+        auto r3 = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB")->exec("DELETE FROM Market;");
         if (!r3.has_value())
             GTEST_FAIL() << "Unable to clear data";
 
@@ -872,7 +872,7 @@ TEST_F(MarketPluginTest, StoreBuyOnlineOwner) {
     auto sales = MarketPlugin::getShared()->getDatabase()->find("StoreSale", {
         { "store_id", sp->getUuid().asString() },
         { "buyer_uuid", buyer.getPlayer()->getUuid().asString() }
-    }, SQLiteStorage::FindCondition::AND);
+    }, BlockRepository::FindCondition::AND);
     ASSERT_TRUE(sales.has_value());
     EXPECT_FALSE(sales.value().empty());
 
@@ -920,7 +920,7 @@ TEST_F(MarketPluginTest, StoreBuyOfflineOwner) {
     EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), 900);
     EXPECT_TRUE(InventoryUtils::isItemInInventory(*sp, "minecraft:grass_block", 1));
 
-    auto stored = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB")->get("Market", ownerUuid, "Score", "0");
+    auto stored = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB")->get("Market", ownerUuid, "Score", "0");
     ASSERT_TRUE(stored.has_value());
     EXPECT_EQ(SystemUtils::toInt(stored.value(), -1), 100);
 
@@ -1311,7 +1311,7 @@ TEST_F(MarketPluginTest, RuntimeTaxRatePersist) {
     ASSERT_TRUE(rate.has_value());
     EXPECT_DOUBLE_EQ(rate.value(), 0.05);
 
-    auto stored = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB")->get("MarketTax", "rate", "rate", "");
+    auto stored = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB")->get("MarketTax", "rate", "rate", "");
     ASSERT_TRUE(stored.has_value());
     EXPECT_DOUBLE_EQ(SystemUtils::toDouble(stored.value(), -1.0), 0.05);
 

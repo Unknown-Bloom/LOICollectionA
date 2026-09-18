@@ -15,7 +15,7 @@
 #include "LOICollectionA/include/server/Plugins/types/TpaType.h"
 
 class Player;
-class SQLiteStorage;
+class BlockRepository;
 
 namespace ll {
     namespace io {
@@ -67,7 +67,7 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI static std::shared_ptr<TpaPlugin> getShared();
         LOICOLLECTION_A_NDAPI static std::error_code makeErrorCode(TpaPluginErrorCode e);
 
-        LOICOLLECTION_A_NDAPI std::shared_ptr<SQLiteStorage> getDatabase();
+        LOICOLLECTION_A_NDAPI std::shared_ptr<BlockRepository> getDatabase();
         LOICOLLECTION_A_NDAPI std::shared_ptr<ll::io::Logger> getLogger();
 
         LOICOLLECTION_A_NDAPI ll::Expected<void> setInvite(Player& player, bool invite);

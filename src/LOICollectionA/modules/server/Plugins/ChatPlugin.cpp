@@ -40,7 +40,7 @@
 #include "LOICollectionA/utils/I18nUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/frontend/AST.h"
 
@@ -70,8 +70,8 @@ namespace LOICollection::server::Plugins {
 
         Config::C_Chat options;
 
-        std::shared_ptr<SQLiteStorage> db;
-        std::shared_ptr<SQLiteStorage> db2;
+        std::shared_ptr<BlockRepository> db;
+        std::shared_ptr<BlockRepository> db2;
         std::shared_ptr<ll::io::Logger> logger;
 
         std::string mGuiPath;
@@ -95,7 +95,7 @@ namespace LOICollection::server::Plugins {
         return std::error_code{ static_cast<int>(e), cat };
     }
 
-    std::shared_ptr<SQLiteStorage> ChatPlugin::getDatabase() {
+    std::shared_ptr<BlockRepository> ChatPlugin::getDatabase() {
         return this->mImpl->db;
     }
 
@@ -640,7 +640,7 @@ namespace LOICollection::server::Plugins {
                 return this->getDatabase()->find("Titles", {
                     { "title", text },
                     { "author", uuid }
-                }, "", SQLiteStorage::FindCondition::AND);
+                }, "", BlockRepository::FindCondition::AND);
             })
             .and_then([this](const std::string& id) -> ll::Expected<void> {
                 if (id.empty())
@@ -693,7 +693,7 @@ namespace LOICollection::server::Plugins {
                 return this->getDatabase()->find("Titles", {
                     { "title", title },
                     { "author", uuid }
-                }, "", SQLiteStorage::FindCondition::AND)
+                }, "", BlockRepository::FindCondition::AND)
                     .and_then([this, title, &player](const std::string& id) -> ll::Expected<std::string> {
                         auto data = this->getDatabase()->get("Titles", id);
                         if (!data.has_value())
@@ -725,7 +725,7 @@ namespace LOICollection::server::Plugins {
         return this->getDatabase()->find("Titles", {
             { "title", text },
             { "author", player.getUuid().asString() }
-        }, "", SQLiteStorage::FindCondition::AND)
+        }, "", BlockRepository::FindCondition::AND)
             .and_then([this](const std::string& id) -> ll::Expected<std::string> {
                 if (id.empty())
                     return "None";
@@ -741,7 +741,7 @@ namespace LOICollection::server::Plugins {
         return this->getDatabase()->find("Blacklist", {
             { "target", target.getUuid().asString() },
             { "author", player.getUuid().asString() }
-        }, "", SQLiteStorage::FindCondition::AND);
+        }, "", BlockRepository::FindCondition::AND);
     }
 
     ll::Expected<std::vector<std::string>> ChatPlugin::getTitles(Player& player) {
@@ -763,7 +763,7 @@ namespace LOICollection::server::Plugins {
 
         return this->getDatabase()->find("Blacklist", {
             { "author", uuid }
-        }, SQLiteStorage::FindCondition::AND)
+        }, BlockRepository::FindCondition::AND)
             .transform([this, uuid](const std::vector<std::string>& keys) -> std::vector<std::string> {
                 this->mImpl->BlacklistCache.put(uuid, keys);
                 return keys;
@@ -784,7 +784,7 @@ namespace LOICollection::server::Plugins {
         return this->getDatabase()->find("Titles", {
             { "title", text },
             { "author", player.getUuid().asString() }
-        }, "", SQLiteStorage::FindCondition::AND)
+        }, "", BlockRepository::FindCondition::AND)
             .transform([](const std::string& id) -> bool {
                 return !id.empty(); 
             });
@@ -825,8 +825,11 @@ namespace LOICollection::server::Plugins {
 
         auto mDataPath = std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("DataPath")->data());
 
-        this->mImpl->db = std::make_shared<SQLiteStorage>((mDataPath / "chat.db").string());
-        this->mImpl->db2 = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+        auto localDb = BlockRepository::open((mDataPath / "chat.db").string(), 4);
+        if (!localDb)
+            return ll::makeStringError(localDb.error().message());
+        this->mImpl->db = std::move(localDb.value());
+        this->mImpl->db2 = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
         this->mImpl->logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
         this->mImpl->options = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Chat;
         this->mImpl->mGuiPath = (std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("GuiPath")->data()) / "chat.lcui").string();
@@ -853,18 +856,18 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->options.ModuleEnabled)
             return false;
 
-        return this->mImpl->db2->create("Chat", [](SQLiteStorage::ColumnCallback ctor) -> void {
+        return this->mImpl->db2->create("Chat", [](BlockRepository::ColumnCallback ctor) -> void {
             ctor("name");
             ctor("title");
         }).and_then([this]() -> ll::Expected<void> {
-            return this->getDatabase()->create("Blacklist", [](SQLiteStorage::ColumnCallback ctor) -> void {
+            return this->getDatabase()->create("Blacklist", [](BlockRepository::ColumnCallback ctor) -> void {
                 ctor("name");
                 ctor("target");
                 ctor("author");
                 ctor("time");
             });
         }).and_then([this]() -> ll::Expected<void> {
-            return this->getDatabase()->create("Titles", [](SQLiteStorage::ColumnCallback ctor) -> void {
+            return this->getDatabase()->create("Titles", [](BlockRepository::ColumnCallback ctor) -> void {
                 ctor("title");
                 ctor("author");
                 ctor("time");

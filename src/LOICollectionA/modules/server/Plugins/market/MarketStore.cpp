@@ -37,7 +37,7 @@
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/base/Cache.h"
 
@@ -57,8 +57,8 @@ namespace LOICollection::server::Plugins {
     };
 
     struct MarketStore::Impl {
-        std::shared_ptr<SQLiteStorage> db;
-        std::shared_ptr<SQLiteStorage> settingsDb;
+        std::shared_ptr<BlockRepository> db;
+        std::shared_ptr<BlockRepository> settingsDb;
         const Config::C_Market& options;
         std::shared_ptr<ll::io::Logger> logger;
         TimerManager& timerManager;
@@ -67,8 +67,8 @@ namespace LOICollection::server::Plugins {
         LRUKCache<std::string, std::vector<std::string>> rankCache;
 
         Impl(
-            std::shared_ptr<SQLiteStorage> db_,
-            std::shared_ptr<SQLiteStorage> settingsDb_,
+            std::shared_ptr<BlockRepository> db_,
+            std::shared_ptr<BlockRepository> settingsDb_,
             const Config::C_Market& options_,
             std::shared_ptr<ll::io::Logger> logger_,
             TimerManager& timerManager_,
@@ -89,7 +89,7 @@ namespace LOICollection::server::Plugins {
     };
 
     ll::Expected<void> MarketStore::createTables() {
-        return this->mImpl->db->create("Store", [](SQLiteStorage::ColumnCallback ctor) -> void {
+        return this->mImpl->db->create("Store", [](BlockRepository::ColumnCallback ctor) -> void {
             ctor("name");
             ctor("introduce");
             ctor("icon");
@@ -97,7 +97,7 @@ namespace LOICollection::server::Plugins {
             ctor("owner_name");
             ctor("store_created_at");
         }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->db->create("StoreItem", [](SQLiteStorage::ColumnCallback ctor) -> void {
+            return this->mImpl->db->create("StoreItem", [](BlockRepository::ColumnCallback ctor) -> void {
                 ctor("store_id");
                 ctor("name");
                 ctor("icon");
@@ -106,7 +106,7 @@ namespace LOICollection::server::Plugins {
                 ctor("data");
             });
         }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->db->create("StoreSale", [](SQLiteStorage::ColumnCallback ctor) -> void {
+            return this->mImpl->db->create("StoreSale", [](BlockRepository::ColumnCallback ctor) -> void {
                 ctor("store_id");
                 ctor("item_name");
                 ctor("price");
@@ -118,7 +118,7 @@ namespace LOICollection::server::Plugins {
                 ctor("source");
             });
         }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->db->create("StoreReview", [](SQLiteStorage::ColumnCallback ctor) -> void {
+            return this->mImpl->db->create("StoreReview", [](BlockRepository::ColumnCallback ctor) -> void {
                 ctor("store_id");
                 ctor("buyer_uuid");
                 ctor("buyer_name");
@@ -358,7 +358,7 @@ namespace LOICollection::server::Plugins {
 
         return this->mImpl->db->find("StoreItem", {
             { "store_id", storeId }
-        }, SQLiteStorage::FindCondition::AND);
+        }, BlockRepository::FindCondition::AND);
     }
 
     ll::Expected<std::unordered_map<std::string, std::string>> MarketStore::getStoreItemData(const std::string& id) {
@@ -384,7 +384,7 @@ namespace LOICollection::server::Plugins {
         return this->mImpl->db->find("StoreSale", {
             { "store_id", storeId },
             { "buyer_uuid", player.getUuid().asString() }
-        }, SQLiteStorage::FindCondition::AND)
+        }, BlockRepository::FindCondition::AND)
             .transform([](const std::vector<std::string>& keys) -> bool {
                 return !keys.empty();
             });
@@ -452,7 +452,7 @@ namespace LOICollection::server::Plugins {
 
                 return this->mImpl->db->find("StoreItem", {
                     { "store_id", mUuid }
-                }, SQLiteStorage::FindCondition::AND)
+                }, BlockRepository::FindCondition::AND)
                     .and_then([this, mUuid, &player](const std::vector<std::string>& items) -> ll::Expected<bool> {
                         if (!items.empty())
                             return false;
@@ -495,7 +495,7 @@ namespace LOICollection::server::Plugins {
 
                 return this->mImpl->db->find("StoreItem", {
                     { "store_id", mUuid }
-                }, SQLiteStorage::FindCondition::AND)
+                }, BlockRepository::FindCondition::AND)
                     .and_then([this, mUuid, slot, &player, name, icon, intr, score, &mItemStack](const std::vector<std::string>& items) -> ll::Expected<bool> {
                         if (static_cast<int>(items.size()) >= this->mImpl->options.StoreMaximumItems)
                             return false;
@@ -682,11 +682,11 @@ namespace LOICollection::server::Plugins {
         int tax,
         const std::string& remainingData
     ) {
-        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
+        auto transaction = BlockRepository::WriteTransaction::create(*this->mImpl->db);
         if (!transaction.has_value())
             return ll::Unexpected(transaction.error());
 
-        auto conn = transaction.value().connection();
+        auto& conn = transaction.value().connection();
         std::string saleKey = SystemUtils::getCurrentTimestamp();
 
         std::unordered_map<std::string, std::string> sale = {
@@ -729,11 +729,11 @@ namespace LOICollection::server::Plugins {
         const std::unordered_map<std::string, std::string>& data,
         const std::string& saleKey
     ) {
-        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
+        auto transaction = BlockRepository::WriteTransaction::create(*this->mImpl->db);
         if (!transaction.has_value())
             return ll::Unexpected(transaction.error());
 
-        auto conn = transaction.value().connection();
+        auto& conn = transaction.value().connection();
 
         auto setResult = this->mImpl->db->set(conn, "StoreItem", id, data);
         if (!setResult.has_value())
@@ -808,7 +808,7 @@ namespace LOICollection::server::Plugins {
                 return this->mImpl->db->find("StoreSale", {
                     { "store_id", storeId },
                     { "buyer_uuid", mUuid }
-                }, SQLiteStorage::FindCondition::AND)
+                }, BlockRepository::FindCondition::AND)
                     .and_then([this, storeId, &player, rating, mContent, mUuid](const std::vector<std::string>& purchases) -> ll::Expected<bool> {
                         if (purchases.empty()) {
                             return LanguagePlugin::getShared()->getLanguage(player)
@@ -822,7 +822,7 @@ namespace LOICollection::server::Plugins {
                         return this->mImpl->db->find("StoreReview", {
                             { "store_id", storeId },
                             { "buyer_uuid", mUuid }
-                        }, SQLiteStorage::FindCondition::AND)
+                        }, BlockRepository::FindCondition::AND)
                             .and_then([this, storeId, &player, rating, mContent](const std::vector<std::string>& reviews) -> ll::Expected<bool> {
                                 if (!reviews.empty()) {
                                     return LanguagePlugin::getShared()->getLanguage(player)
@@ -895,7 +895,7 @@ namespace LOICollection::server::Plugins {
         return this->mImpl->db->find("StoreReview", {
             { "store_id", storeId },
             { "status", mStatus }
-        }, SQLiteStorage::FindCondition::AND);
+        }, BlockRepository::FindCondition::AND);
     }
 
     ll::Expected<std::unordered_map<std::string, std::string>> MarketStore::getReviewData(const std::string& id) {
@@ -926,8 +926,8 @@ namespace LOICollection::server::Plugins {
 
 
     MarketStore::MarketStore(
-        std::shared_ptr<SQLiteStorage> db,
-        std::shared_ptr<SQLiteStorage> settingsDb,
+        std::shared_ptr<BlockRepository> db,
+        std::shared_ptr<BlockRepository> settingsDb,
         const Config::C_Market& options,
         std::shared_ptr<ll::io::Logger> logger,
         TimerManager& timerManager,

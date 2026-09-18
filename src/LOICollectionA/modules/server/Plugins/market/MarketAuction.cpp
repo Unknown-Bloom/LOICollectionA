@@ -35,7 +35,7 @@
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/ConfigPlugin.h"
 
@@ -46,8 +46,8 @@ using I18nUtilsTools::tr;
 
 namespace LOICollection::server::Plugins {
     struct MarketAuction::Impl {
-        std::shared_ptr<SQLiteStorage> db;
-        std::shared_ptr<SQLiteStorage> settingsDb;
+        std::shared_ptr<BlockRepository> db;
+        std::shared_ptr<BlockRepository> settingsDb;
         const Config::C_Market& options;
         std::shared_ptr<ll::io::Logger> logger;
         TimerManager& timerManager;
@@ -55,8 +55,8 @@ namespace LOICollection::server::Plugins {
         TaxRateProvider taxRateProvider;
 
         Impl(
-            std::shared_ptr<SQLiteStorage> db_,
-            std::shared_ptr<SQLiteStorage> settingsDb_,
+            std::shared_ptr<BlockRepository> db_,
+            std::shared_ptr<BlockRepository> settingsDb_,
             const Config::C_Market& options_,
             std::shared_ptr<ll::io::Logger> logger_,
             TimerManager& timerManager_,
@@ -76,7 +76,7 @@ namespace LOICollection::server::Plugins {
     };
 
     ll::Expected<void> MarketAuction::createTables() {
-        return this->mImpl->db->create("StoreAuction", [](SQLiteStorage::ColumnCallback ctor) -> void {
+        return this->mImpl->db->create("StoreAuction", [](BlockRepository::ColumnCallback ctor) -> void {
             ctor("seller_uuid");
             ctor("seller_name");
             ctor("item_type");
@@ -271,11 +271,11 @@ namespace LOICollection::server::Plugins {
         int tax = static_cast<int>(std::floor(price * this->mImpl->effectiveTaxRate()));
         int sellerAmount = price - tax;
 
-        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
+        auto transaction = BlockRepository::WriteTransaction::create(*this->mImpl->db);
         if (!transaction.has_value())
             return ll::Unexpected(transaction.error());
 
-        auto conn = transaction.value().connection();
+        auto& conn = transaction.value().connection();
         std::string saleKey = SystemUtils::getCurrentTimestamp();
 
         std::unordered_map<std::string, std::string> sale = {
@@ -363,7 +363,7 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<void> MarketAuction::finalizeLose(const std::string& id, const std::unordered_map<std::string, std::string>& data) {
-        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
+        auto transaction = BlockRepository::WriteTransaction::create(*this->mImpl->db);
         if (!transaction.has_value())
             return ll::Unexpected(transaction.error());
 
@@ -429,11 +429,11 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<void> MarketAuction::restoreAuction(const std::string& id, const std::unordered_map<std::string, std::string>& data, const std::string& saleKey) {
-        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
+        auto transaction = BlockRepository::WriteTransaction::create(*this->mImpl->db);
         if (!transaction.has_value())
             return ll::Unexpected(transaction.error());
 
-        auto conn = transaction.value().connection();
+        auto& conn = transaction.value().connection();
 
         std::unordered_map<std::string, std::string> restored = data;
         restored["settled"] = "0";
@@ -516,7 +516,7 @@ namespace LOICollection::server::Plugins {
 
         return this->mImpl->db->find("StoreAuction", {
             { "seller_uuid", player.getUuid().asString() }
-        }, SQLiteStorage::FindCondition::AND);
+        }, BlockRepository::FindCondition::AND);
     }
 
     ll::Expected<std::unordered_map<std::string, std::string>> MarketAuction::getAuctionData(const std::string& id) {
@@ -533,8 +533,8 @@ namespace LOICollection::server::Plugins {
     }
 
     MarketAuction::MarketAuction(
-        std::shared_ptr<SQLiteStorage> db,
-        std::shared_ptr<SQLiteStorage> settingsDb,
+        std::shared_ptr<BlockRepository> db,
+        std::shared_ptr<BlockRepository> settingsDb,
         const Config::C_Market& options,
         std::shared_ptr<ll::io::Logger> logger,
         TimerManager& timerManager,

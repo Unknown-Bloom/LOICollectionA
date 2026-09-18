@@ -12,7 +12,7 @@
 #include "LOICollectionA/base/ServiceProvider.h"
 
 #include "LOICollectionA/data/JsonStorage.h"
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/include/server/Plugins/NoticePlugin.h"
 
@@ -32,7 +32,7 @@ protected:
         if (!saveResult.has_value())
             GTEST_FAIL() << "Unable to save data";
 
-        auto result = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB")->exec("DELETE FROM Notice;");
+        auto result = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB")->exec("DELETE FROM Notice;");
         if (!result.has_value())
             GTEST_FAIL() << "Unable to clear data";
     }

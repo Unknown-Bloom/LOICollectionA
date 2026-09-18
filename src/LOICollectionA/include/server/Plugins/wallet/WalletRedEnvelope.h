@@ -12,7 +12,7 @@
 #include "LOICollectionA/include/server/Plugins/wallet/WalletType.h"
 
 class Player;
-class SQLiteStorage;
+class BlockRepository;
 class TimerManager;
 
 namespace ll {
@@ -33,7 +33,7 @@ namespace LOICollection::server::Plugins {
         using TransferProvider = std::function<ll::Expected<void>(const std::string& target, int score)>;
 
         WalletRedEnvelope(
-            std::shared_ptr<SQLiteStorage> db,
+            std::shared_ptr<BlockRepository> db,
             const Config::C_Wallet& options,
             std::shared_ptr<ll::io::Logger> logger,
             TimerManager& timerManager,

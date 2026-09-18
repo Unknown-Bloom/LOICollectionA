@@ -54,7 +54,7 @@
 #include "LOICollectionA/utils/I18nUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/frontend/AST.h"
 
@@ -89,7 +89,7 @@ namespace LOICollection::server::Plugins {
 
         Config::C_Blacklist options;
         
-        std::shared_ptr<SQLiteStorage> db;
+        std::shared_ptr<BlockRepository> db;
         std::shared_ptr<ll::io::Logger> logger;
 
         std::string mGuiPath;
@@ -112,7 +112,7 @@ namespace LOICollection::server::Plugins {
         return std::error_code{ static_cast<int>(e), cat };
     }
     
-    std::shared_ptr<SQLiteStorage> BlacklistPlugin::getDatabase() {
+    std::shared_ptr<BlockRepository> BlacklistPlugin::getDatabase() {
         return this->mImpl->db;
     }
 
@@ -400,7 +400,7 @@ namespace LOICollection::server::Plugins {
                 { "data_uuid", mUuid },
                 { "data_ip", mIp },
                 { "data_clientid", mClientId }
-            }, "", SQLiteStorage::FindCondition::OR)
+            }, "", BlockRepository::FindCondition::OR)
                 .and_then([this, mUuid, &event](const std::string& id) -> ll::Expected<void> {
                     if (id.empty())
                         return {};
@@ -544,7 +544,7 @@ namespace LOICollection::server::Plugins {
             { "data_uuid", player.getUuid().asString() },
             { "data_ip", player.getIPAndPort().substr(0, player.getIPAndPort().find_last_of(':')) },
             { "data_clientid", player.getConnectionRequest().transform(&ConnectionRequest::getDeviceId).value_or("None") }
-        }, "", SQLiteStorage::FindCondition::OR);
+        }, "", BlockRepository::FindCondition::OR);
     }
 
     ll::Expected<std::unordered_map<std::string, std::string>> BlacklistPlugin::getBlacklistData(const std::string& id) {
@@ -601,7 +601,10 @@ namespace LOICollection::server::Plugins {
 
         auto mDataPath = std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("DataPath")->data());
 
-        this->mImpl->db = std::make_shared<SQLiteStorage>((mDataPath / "blacklist.db").string());
+        auto localDb = BlockRepository::open((mDataPath / "blacklist.db").string(), 4);
+        if (!localDb)
+            return ll::makeStringError(localDb.error().message());
+        this->mImpl->db = std::move(localDb.value());
         this->mImpl->logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
         this->mImpl->options = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Blacklist;
         this->mImpl->mGuiPath = (std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("GuiPath")->data()) / "blacklist.lcui").string();
@@ -627,7 +630,7 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->options.ModuleEnabled)
             return false;
 
-        return this->getDatabase()->create("Blacklist", [](SQLiteStorage::ColumnCallback ctor) -> void {
+        return this->getDatabase()->create("Blacklist", [](BlockRepository::ColumnCallback ctor) -> void {
             ctor("name");
             ctor("cause");
             ctor("time");

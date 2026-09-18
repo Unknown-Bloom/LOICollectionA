@@ -88,7 +88,7 @@ Global services registered at plugin startup:
 | `std::string` | `"DataPath"` | Plugin data directory (`plugins/LOICollectionA/data`) |
 | `std::string` | `"GuiPath"` | GUI directory (`plugins/LOICollectionA/gui`) |
 | `std::string` | `"ConfigPath"` | Configuration directory (`plugins/LOICollectionA/config`) |
-| `SQLiteStorage` | `"SettingsDB"` | Global settings database (`data/settings.db`) |
+| `BlockRepository` | `"SettingsDB"` | Global settings database (`data/settings.db`, block storage) |
 
 > [!NOTE]
 > The configuration is registered as `ReadOnlyWrapper<Config::C_Config>`, so modules can only **read** the configuration and cannot modify it. This is an intentional design: the configuration is only read once at startup, and modifying it at runtime requires restarting the server.
@@ -108,7 +108,8 @@ src/LOICollectionA/
 ├─ ConfigPlugin.h / .cpp     # configuration structure definition and loading
 ├─ base/                     # infrastructure: ServiceContainer, ServiceProvider,
 │                            #   ReadOnlyWrapper, LRUKCache, Throttle, ScopeGuard
-├─ data/                     # data layer: SQLiteStorage (SQLite connection pool), JsonStorage
+├─ data/                     # data layer: sqlite/ block storage (BlockStore + WriteBatch +
+│                            #   BlockRepository), JsonStorage
 ├─ frontend/                 # LCUI script engine: Lexer, Parser, SemanticAnalyzer,
 │   │                        #   AST, Callback (native binding registry), ir/ (compiler, VM)
 │   ├─ sandbox/              # script sandbox: ScriptPermission (permission and execution
@@ -140,7 +141,7 @@ The plugin supports both `server` and `client` targets at the same time, disting
 
 ## Data Layer
 
-All persistent data is accessed through `SQLiteStorage` (default, supports read/write connection pool and transactions) or `JsonStorage` (simple JSON files); both return `ll::Expected<T>` to support chained error handling. See the "Data Layer" section of the [Module Development Guide](./module.md) for usage.
+All persistent data is accessed through the block-storage facade `BlockRepository` (built on the `BlockStore`/`WriteBatch` block model with a read/write connection pool and atomic write transactions; `open` automatically archives any legacy `SQLiteStorage` database to `<db>.<timestamp>.legacy` and replays its data) or `JsonStorage` (simple JSON files); both return `ll::Expected<T>` to support chained error handling. See the "Data Layer" section of the [Module Development Guide](./module.md) for usage.
 
 ## Scripting VM
 

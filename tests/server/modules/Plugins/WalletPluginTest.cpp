@@ -15,7 +15,7 @@
 
 #include <mc/server/SimulatedPlayer.h>
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
@@ -42,7 +42,7 @@ protected:
     }
 
     void TearDown() override {
-        auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+        auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
 
         for (const char* sql : {
             "DELETE FROM Wallet;",
@@ -259,7 +259,7 @@ TEST_F(WalletPluginTest, RedenvelopePersistRow) {
     auto sp = ll::service::getLevel()->getPlayer("test_player");
     EXPECT_TRUE(sp);
 
-    auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+    auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
 
     Config::C_Wallet config = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Wallet;
 
@@ -277,7 +277,7 @@ TEST_F(WalletPluginTest, RedenvelopePersistRow) {
     EXPECT_TRUE(WalletPlugin::getShared()->setExecutor(executor).has_value());
     EXPECT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "test_key", 100, 5).has_value());
 
-    auto ids = storage->find("RedEnvelope", std::vector<std::pair<std::string, std::string>>{ { "chat_key", "test_key" } }, SQLiteStorage::FindCondition::AND);
+    auto ids = storage->find("RedEnvelope", std::vector<std::pair<std::string, std::string>>{ { "chat_key", "test_key" } }, BlockRepository::FindCondition::AND);
     EXPECT_TRUE(ids.has_value());
     ASSERT_EQ(ids.value().size(), 1u);
 
@@ -293,7 +293,7 @@ TEST_F(WalletPluginTest, RedenvelopeCrashRecovery) {
     auto sp = ll::service::getLevel()->getPlayer("test_player");
     EXPECT_TRUE(sp);
 
-    auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+    auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
 
     Config::C_Wallet config = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Wallet;
 
@@ -371,7 +371,7 @@ TEST_F(WalletPluginTest, LedgerRecordsTransfer) {
     TestSimulatedPlayer sp2("test_player4");
     EXPECT_TRUE(sp2.create());
 
-    auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+    auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
 
     Config::C_Wallet config = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Wallet;
 
@@ -386,7 +386,7 @@ TEST_F(WalletPluginTest, LedgerRecordsTransfer) {
 
     EXPECT_TRUE(WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 200).has_value());
 
-    auto ids = storage->find("WalletLedger", std::vector<std::pair<std::string, std::string>>{ { "from_uuid", sp->getUuid().asString() } }, SQLiteStorage::FindCondition::AND);
+    auto ids = storage->find("WalletLedger", std::vector<std::pair<std::string, std::string>>{ { "from_uuid", sp->getUuid().asString() } }, BlockRepository::FindCondition::AND);
     EXPECT_TRUE(ids.has_value());
     ASSERT_FALSE(ids.value().empty());
 
@@ -403,7 +403,7 @@ TEST_F(WalletPluginTest, LedgerHistoryVisibility) {
     auto sp = ll::service::getLevel()->getPlayer("test_player");
     EXPECT_TRUE(sp);
 
-    auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+    auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
 
     Config::C_Wallet config = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Wallet;
 
@@ -421,7 +421,7 @@ TEST_F(WalletPluginTest, LedgerHistoryVisibility) {
     auto ids = storage->find("WalletLedger", {
         { "from_uuid", sp->getUuid().asString() },
         { "to_uuid", sp->getUuid().asString() }
-    }, SQLiteStorage::FindCondition::OR);
+    }, BlockRepository::FindCondition::OR);
     EXPECT_TRUE(ids.has_value());
     ASSERT_FALSE(ids.value().empty());
 
@@ -564,7 +564,7 @@ TEST_F(WalletPluginTest, BankDepositAndWithdraw) {
     auto sp = ll::service::getLevel()->getPlayer("test_player");
     EXPECT_TRUE(sp);
 
-    auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+    auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
 
     Config::C_Wallet config = GetWalletConfig();
 
@@ -580,7 +580,7 @@ TEST_F(WalletPluginTest, BankDepositAndWithdraw) {
     EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), 400);
     EXPECT_EQ(WalletPlugin::getShared()->getBankPrincipal(sp->getUuid().asString()).value(), 100);
 
-    auto ids = storage->find("WalletLedger", std::vector<std::pair<std::string, std::string>>{ { "from_uuid", sp->getUuid().asString() } }, SQLiteStorage::FindCondition::AND);
+    auto ids = storage->find("WalletLedger", std::vector<std::pair<std::string, std::string>>{ { "from_uuid", sp->getUuid().asString() } }, BlockRepository::FindCondition::AND);
     EXPECT_TRUE(ids.has_value());
     ASSERT_FALSE(ids.value().empty());
     EXPECT_EQ(storage->get("WalletLedger", ids.value().at(0)).value()["type"], "bank_deposit");
@@ -664,7 +664,7 @@ TEST_F(WalletPluginTest, BankInterestCalculation) {
     auto sp = ll::service::getLevel()->getPlayer("test_player");
     EXPECT_TRUE(sp);
 
-    auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+    auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
 
     Config::C_Wallet config = GetWalletConfig();
 
@@ -691,7 +691,7 @@ TEST_F(WalletPluginTest, WealthRankingOrder) {
     auto sp = ll::service::getLevel()->getPlayer("test_player");
     EXPECT_TRUE(sp);
 
-    auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+    auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
 
     Config::C_Wallet config = GetWalletConfig();
 
@@ -780,7 +780,7 @@ TEST_F(WalletPluginTest, RedenvelopeTargetedOfflineByName) {
     TestSimulatedPlayer sp2("test_player4");
     EXPECT_TRUE(sp2.create());
 
-    auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+    auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
 
     Config::C_Wallet base = GetWalletConfig();
     base.RedEnvelopeTargetedEnabled = true;
@@ -801,7 +801,7 @@ TEST_F(WalletPluginTest, RedenvelopeTargetedOfflineByName) {
 
     EXPECT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "test_key", 100, 5, { "OfflineBob" }).has_value());
 
-    auto ids = storage->find("RedEnvelope", std::vector<std::pair<std::string, std::string>>{ { "chat_key", "test_key" } }, SQLiteStorage::FindCondition::AND);
+    auto ids = storage->find("RedEnvelope", std::vector<std::pair<std::string, std::string>>{ { "chat_key", "test_key" } }, BlockRepository::FindCondition::AND);
     ASSERT_TRUE(ids.has_value());
     ASSERT_EQ(ids.value().size(), 1u);
 
@@ -851,7 +851,7 @@ TEST_F(WalletPluginTest, EnvelopeStatsDetails) {
     TestSimulatedPlayer sp2("test_player4");
     EXPECT_TRUE(sp2.create());
 
-    auto storage = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+    auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
 
     Config::C_Wallet config = GetWalletConfig();
 
@@ -867,7 +867,7 @@ TEST_F(WalletPluginTest, EnvelopeStatsDetails) {
     EXPECT_TRUE(WalletPlugin::getShared()->setExecutor(executor).has_value());
     EXPECT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "test_key", 100, 5).has_value());
 
-    auto ids = storage->find("RedEnvelope", std::vector<std::pair<std::string, std::string>>{ { "chat_key", "test_key" } }, SQLiteStorage::FindCondition::AND);
+    auto ids = storage->find("RedEnvelope", std::vector<std::pair<std::string, std::string>>{ { "chat_key", "test_key" } }, BlockRepository::FindCondition::AND);
     ASSERT_TRUE(ids.has_value());
     ASSERT_EQ(ids.value().size(), 1u);
 

@@ -37,7 +37,7 @@
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/ConfigPlugin.h"
 
@@ -48,8 +48,8 @@ using I18nUtilsTools::tr;
 
 namespace LOICollection::server::Plugins {
     struct MarketWanted::Impl {
-        std::shared_ptr<SQLiteStorage> db;
-        std::shared_ptr<SQLiteStorage> settingsDb;
+        std::shared_ptr<BlockRepository> db;
+        std::shared_ptr<BlockRepository> settingsDb;
         const Config::C_Market& options;
         std::shared_ptr<ll::io::Logger> logger;
         TimerManager& timerManager;
@@ -57,8 +57,8 @@ namespace LOICollection::server::Plugins {
         TaxRateProvider taxRateProvider;
 
         Impl(
-            std::shared_ptr<SQLiteStorage> db_,
-            std::shared_ptr<SQLiteStorage> settingsDb_,
+            std::shared_ptr<BlockRepository> db_,
+            std::shared_ptr<BlockRepository> settingsDb_,
             const Config::C_Market& options_,
             std::shared_ptr<ll::io::Logger> logger_,
             TimerManager& timerManager_,
@@ -78,7 +78,7 @@ namespace LOICollection::server::Plugins {
     };
 
     ll::Expected<void> MarketWanted::createTables() {
-        return this->mImpl->db->create("StoreWanted", [](SQLiteStorage::ColumnCallback ctor) -> void {
+        return this->mImpl->db->create("StoreWanted", [](BlockRepository::ColumnCallback ctor) -> void {
             ctor("wanted_uuid");
             ctor("wanted_name");
             ctor("item_type");
@@ -121,7 +121,7 @@ namespace LOICollection::server::Plugins {
 
         return this->mImpl->db->find("StoreWanted", {
             { "wanted_uuid", mUuid }
-        }, SQLiteStorage::FindCondition::AND)
+        }, BlockRepository::FindCondition::AND)
             .and_then([this, mUuid, mScoreboard, mFrozen, mName, mItemStack = std::move(mItemStack), unitPrice, amount, &player](const std::vector<std::string>& items) -> ll::Expected<bool> {
                 if (static_cast<int>(items.size()) >= this->mImpl->options.StoreWantedMaxPerPlayer)
                     return false;
@@ -302,11 +302,11 @@ namespace LOICollection::server::Plugins {
         int tax,
         Player& seller
     ) {
-        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
+        auto transaction = BlockRepository::WriteTransaction::create(*this->mImpl->db);
         if (!transaction.has_value())
             return ll::Unexpected(transaction.error());
 
-        auto conn = transaction.value().connection();
+        auto& conn = transaction.value().connection();
         std::string saleKey = SystemUtils::getCurrentTimestamp();
 
         int total = SystemUtils::toInt(data.at("amount_total"), 0);
@@ -347,11 +347,11 @@ namespace LOICollection::server::Plugins {
         int amount,
         const std::string& saleKey
     ) {
-        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
+        auto transaction = BlockRepository::WriteTransaction::create(*this->mImpl->db);
         if (!transaction.has_value())
             return ll::Unexpected(transaction.error());
 
-        auto conn = transaction.value().connection();
+        auto& conn = transaction.value().connection();
 
         int total = SystemUtils::toInt(data.at("amount_total"), 0);
         int filled = SystemUtils::toInt(data.at("amount_filled"), 0);
@@ -370,7 +370,7 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<void> MarketWanted::deleteWanted(const std::string& id) {
-        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
+        auto transaction = BlockRepository::WriteTransaction::create(*this->mImpl->db);
         if (!transaction.has_value())
             return ll::Unexpected(transaction.error());
 
@@ -490,7 +490,7 @@ namespace LOICollection::server::Plugins {
 
         return this->mImpl->db->find("StoreWanted", {
             { "wanted_uuid", player.getUuid().asString() }
-        }, SQLiteStorage::FindCondition::AND);
+        }, BlockRepository::FindCondition::AND);
     }
 
     ll::Expected<std::unordered_map<std::string, std::string>> MarketWanted::getWantedData(const std::string& id) {
@@ -507,8 +507,8 @@ namespace LOICollection::server::Plugins {
     }
 
     MarketWanted::MarketWanted(
-        std::shared_ptr<SQLiteStorage> db,
-        std::shared_ptr<SQLiteStorage> settingsDb,
+        std::shared_ptr<BlockRepository> db,
+        std::shared_ptr<BlockRepository> settingsDb,
         const Config::C_Market& options,
         std::shared_ptr<ll::io::Logger> logger,
         TimerManager& timerManager,

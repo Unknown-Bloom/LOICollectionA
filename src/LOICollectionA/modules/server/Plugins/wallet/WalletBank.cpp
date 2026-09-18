@@ -21,7 +21,7 @@
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/ConfigPlugin.h"
 
@@ -32,7 +32,7 @@
 
 namespace LOICollection::server::Plugins {
     struct WalletBank::Impl {
-        std::shared_ptr<SQLiteStorage> db;
+        std::shared_ptr<BlockRepository> db;
         const Config::C_Wallet& options;
         std::shared_ptr<ll::io::Logger> logger;
         TimerManager& timerManager;
@@ -44,7 +44,7 @@ namespace LOICollection::server::Plugins {
         std::unordered_map<std::string, size_t> mRankOf;
 
         Impl(
-            std::shared_ptr<SQLiteStorage> db_,
+            std::shared_ptr<BlockRepository> db_,
             const Config::C_Wallet& options_,
             std::shared_ptr<ll::io::Logger> logger_,
             TimerManager& timerManager_,
@@ -57,7 +57,7 @@ namespace LOICollection::server::Plugins {
     };
 
     WalletBank::WalletBank(
-        std::shared_ptr<SQLiteStorage> db,
+        std::shared_ptr<BlockRepository> db,
         const Config::C_Wallet& options,
         std::shared_ptr<ll::io::Logger> logger,
         TimerManager& timerManager,
@@ -71,7 +71,7 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<void> WalletBank::createTables() {
-        return this->mImpl->db->create("WalletBank", [](SQLiteStorage::ColumnCallback ctor) -> void {
+        return this->mImpl->db->create("WalletBank", [](BlockRepository::ColumnCallback ctor) -> void {
             ctor("principal");
             ctor("deposit_at");
             ctor("name");
@@ -95,14 +95,14 @@ namespace LOICollection::server::Plugins {
 
         long long nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
-        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
+        auto transaction = BlockRepository::WriteTransaction::create(*this->mImpl->db);
         if (!transaction.has_value()) {
             ScoreboardUtils::addScore(player, mScoreboard, amount);
 
             return ll::Unexpected(transaction.error());
         }
 
-        auto conn = transaction.value().connection();
+        auto& conn = transaction.value().connection();
 
         auto current = this->mImpl->db->get(conn, "WalletBank", uuid);
         if (!current.has_value()) {
@@ -182,11 +182,11 @@ namespace LOICollection::server::Plugins {
         long long paidInterest = interest.value();
         long long interestTax = 0;
 
-        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
+        auto transaction = BlockRepository::WriteTransaction::create(*this->mImpl->db);
         if (!transaction.has_value())
             return ll::Unexpected(transaction.error());
 
-        auto conn = transaction.value().connection();
+        auto& conn = transaction.value().connection();
 
         if (this->mImpl->options.WalletInterestFromPool) {
             auto pool = this->mImpl->db->get(conn, "WalletFee", "total", "amount", "0");

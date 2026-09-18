@@ -1,21 +1,26 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <vector>
 #include <string>
+#include <memory>
 #include <filesystem>
 #include <string_view>
 #include <unordered_map>
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
-class SQLiteStorageTest : public testing::Test {
+class BlockRepositoryTest : public testing::Test {
 protected:
     static void SetUpTestSuite() {
-        tempDir = std::filesystem::temp_directory_path() / "sqlite_storage_test";
+        tempDir = std::filesystem::temp_directory_path() / "block_repository_test";
 
         std::filesystem::create_directories(tempDir);
 
-        storage = std::make_unique<SQLiteStorage>((tempDir / "test.db").string(), 2, 1, 10);
+        auto db = BlockRepository::open((tempDir / "test.db").string(), 2);
+        EXPECT_TRUE(db.has_value());
+        storage = std::move(db.value());
+        ASSERT_NE(storage, nullptr);
     }
 
     static void TearDownTestSuite() {
@@ -25,14 +30,14 @@ protected:
     }
 
     static std::filesystem::path tempDir;
-    static std::unique_ptr<SQLiteStorage> storage;
+    static std::shared_ptr<BlockRepository> storage;
 };
 
-std::filesystem::path SQLiteStorageTest::tempDir;
-std::unique_ptr<SQLiteStorage> SQLiteStorageTest::storage;
+std::filesystem::path BlockRepositoryTest::tempDir;
+std::shared_ptr<BlockRepository> BlockRepositoryTest::storage;
 
-TEST_F(SQLiteStorageTest, CreateTableAndSetGetSingleColumn) {
-    ASSERT_TRUE(storage->create("users", [](SQLiteStorage::ColumnCallback add) -> void {
+TEST_F(BlockRepositoryTest, CreateTableAndSetGetSingleColumn) {
+    ASSERT_TRUE(storage->create("users", [](BlockRepository::ColumnCallback add) -> void {
         add("name");
         add("age");
     }).has_value());
@@ -52,8 +57,8 @@ TEST_F(SQLiteStorageTest, CreateTableAndSetGetSingleColumn) {
     EXPECT_EQ(maps["age"], "30");
 }
 
-TEST_F(SQLiteStorageTest, SetMultipleColumnsAndGet) {
-    ASSERT_TRUE(storage->create("products", [](SQLiteStorage::ColumnCallback add) -> void {
+TEST_F(BlockRepositoryTest, SetMultipleColumnsAndGet) {
+    ASSERT_TRUE(storage->create("products", [](BlockRepository::ColumnCallback add) -> void {
         add("price");
         add("stock");
     }).has_value());
@@ -72,8 +77,8 @@ TEST_F(SQLiteStorageTest, SetMultipleColumnsAndGet) {
     EXPECT_EQ(maps["stock"], "100");
 }
 
-TEST_F(SQLiteStorageTest, DeleteSingleKey) {
-    ASSERT_TRUE(storage->create("cache", [](SQLiteStorage::ColumnCallback add) -> void {
+TEST_F(BlockRepositoryTest, DeleteSingleKey) {
+    ASSERT_TRUE(storage->create("cache", [](BlockRepository::ColumnCallback add) -> void {
         add("value");
     }).has_value());
 
@@ -90,26 +95,14 @@ TEST_F(SQLiteStorageTest, DeleteSingleKey) {
     EXPECT_FALSE(has2.value());
 }
 
-TEST_F(SQLiteStorageTest, DeleteMultipleKeys) {
-    ASSERT_TRUE(storage->create("temp", [](SQLiteStorage::ColumnCallback add) -> void {
+TEST_F(BlockRepositoryTest, DeleteMultipleKeys) {
+    ASSERT_TRUE(storage->create("temp", [](BlockRepository::ColumnCallback add) -> void {
         add("info");
     }).has_value());
 
     ASSERT_TRUE(storage->set("temp", "k1", "info", "a").has_value());
     ASSERT_TRUE(storage->set("temp", "k2", "info", "b").has_value());
     ASSERT_TRUE(storage->set("temp", "k3", "info", "c").has_value());
-
-    auto has1 = storage->has("temp", "k1");
-    EXPECT_TRUE(has1.has_value());
-    EXPECT_TRUE(has1.value());
-
-    auto has2 = storage->has("temp", "k2");
-    EXPECT_TRUE(has2.has_value());
-    EXPECT_TRUE(has2.value());
-
-    auto has3 = storage->has("temp", "k3");
-    EXPECT_TRUE(has3.has_value());
-    EXPECT_TRUE(has3.value());
 
     ASSERT_TRUE(storage->del("temp", std::vector<std::string>{"k1", "k3"}).has_value());
 
@@ -126,8 +119,8 @@ TEST_F(SQLiteStorageTest, DeleteMultipleKeys) {
     EXPECT_FALSE(del3.value());
 }
 
-TEST_F(SQLiteStorageTest, ListKeysAndTables) {
-    ASSERT_TRUE(storage->create("notes", [](SQLiteStorage::ColumnCallback add) -> void {
+TEST_F(BlockRepositoryTest, ListKeysAndTables) {
+    ASSERT_TRUE(storage->create("notes", [](BlockRepository::ColumnCallback add) -> void {
         add("content");
     }).has_value());
 
@@ -146,26 +139,27 @@ TEST_F(SQLiteStorageTest, ListKeysAndTables) {
     EXPECT_NE(std::find(tables.value().begin(), tables.value().end(), "notes"), tables.value().end());
 }
 
-TEST_F(SQLiteStorageTest, GetColumns) {
-    ASSERT_TRUE(storage->create("columns_test", [](SQLiteStorage::ColumnCallback add) -> void {
+TEST_F(BlockRepositoryTest, GetColumns) {
+    ASSERT_TRUE(storage->create("columns_test", [](BlockRepository::ColumnCallback add) -> void {
         add("col_a");
         add("col_b");
     }).has_value());
 
+    // 块模型下列结构由行数据推断：需先写入一行。
+    ASSERT_TRUE(storage->set("columns_test", "row1", "col_a", "x").has_value());
+    ASSERT_TRUE(storage->set("columns_test", "row1", "col_b", "y").has_value());
+
     auto cols = storage->columns("columns_test");
-    EXPECT_TRUE(cols.has_value());
+    ASSERT_TRUE(cols.has_value());
 
     auto& vecs = cols.value();
-    ASSERT_EQ(vecs.size(), 5);
-    EXPECT_EQ(vecs[0], "key");
-    EXPECT_EQ(vecs[1], "created_at");
-    EXPECT_EQ(vecs[2], "updated_at");
-    EXPECT_EQ(vecs[3], "col_a");
-    EXPECT_EQ(vecs[4], "col_b");
+    EXPECT_EQ(vecs.size(), 2);
+    EXPECT_NE(std::find(vecs.begin(), vecs.end(), "col_a"), vecs.end());
+    EXPECT_NE(std::find(vecs.begin(), vecs.end(), "col_b"), vecs.end());
 }
 
-TEST_F(SQLiteStorageTest, FindByCondition) {
-    ASSERT_TRUE(storage->create("books", [](SQLiteStorage::ColumnCallback add) -> void {
+TEST_F(BlockRepositoryTest, FindByCondition) {
+    ASSERT_TRUE(storage->create("books", [](BlockRepository::ColumnCallback add) -> void {
         add("author");
         add("year");
     }).has_value());
@@ -175,23 +169,23 @@ TEST_F(SQLiteStorageTest, FindByCondition) {
     ASSERT_TRUE(storage->set("books", "b2", "author", "Huxley").has_value());
     ASSERT_TRUE(storage->set("books", "b2", "year", "1932").has_value());
 
-    auto keys = storage->find("books", {{"author", "Orwell"}}, SQLiteStorage::FindCondition::AND);
+    auto keys = storage->find("books", {{"author", "Orwell"}}, BlockRepository::FindCondition::AND);
     EXPECT_TRUE(keys.has_value());
     ASSERT_EQ(keys.value().size(), 1);
     EXPECT_EQ(keys.value()[0], "b1");
 
-    auto keys2 = storage->find("books", {{"author", "Huxley"}, {"year", "1932"}}, SQLiteStorage::FindCondition::AND);
+    auto keys2 = storage->find("books", {{"author", "Huxley"}, {"year", "1932"}}, BlockRepository::FindCondition::AND);
     EXPECT_TRUE(keys2.has_value());
     ASSERT_EQ(keys2.value().size(), 1);
     EXPECT_EQ(keys2.value()[0], "b2");
 
-    auto keys3 = storage->find("books", {{"author", "Orwell"}, {"year", "1932"}}, SQLiteStorage::FindCondition::OR);
+    auto keys3 = storage->find("books", {{"author", "Orwell"}, {"year", "1932"}}, BlockRepository::FindCondition::OR);
     EXPECT_TRUE(keys3.has_value());
     EXPECT_EQ(keys3.value().size(), 2);
 }
 
-TEST_F(SQLiteStorageTest, FindColumnValues) {
-    ASSERT_TRUE(storage->create("scores", [](SQLiteStorage::ColumnCallback add) -> void {
+TEST_F(BlockRepositoryTest, FindColumnValues) {
+    ASSERT_TRUE(storage->create("scores", [](BlockRepository::ColumnCallback add) -> void {
         add("points");
     }).has_value());
 
@@ -207,8 +201,8 @@ TEST_F(SQLiteStorageTest, FindColumnValues) {
     EXPECT_EQ(vecs[0], "100");
 }
 
-TEST_F(SQLiteStorageTest, FindOrDefault) {
-    ASSERT_TRUE(storage->create("inventory", [](SQLiteStorage::ColumnCallback add) -> void {
+TEST_F(BlockRepositoryTest, FindOrDefault) {
+    ASSERT_TRUE(storage->create("inventory", [](BlockRepository::ColumnCallback add) -> void {
         add("qty");
     }).has_value());
 
@@ -223,8 +217,8 @@ TEST_F(SQLiteStorageTest, FindOrDefault) {
     EXPECT_EQ(notFound.value(), "default_key");
 }
 
-TEST_F(SQLiteStorageTest, RemoveTable) {
-    ASSERT_TRUE(storage->create("to_delete", [](SQLiteStorage::ColumnCallback add) -> void {
+TEST_F(BlockRepositoryTest, RemoveTable) {
+    ASSERT_TRUE(storage->create("to_delete", [](BlockRepository::ColumnCallback add) -> void {
         add("field");
     }).has_value());
 
@@ -239,27 +233,29 @@ TEST_F(SQLiteStorageTest, RemoveTable) {
     EXPECT_FALSE(has2.value());
 }
 
-TEST_F(SQLiteStorageTest, ExecRawSQL) {
-    ASSERT_TRUE(storage->exec("CREATE TABLE raw_test (id INTEGER PRIMARY KEY);").has_value());
+TEST_F(BlockRepositoryTest, ExecDeleteRows) {
+    ASSERT_TRUE(storage->create("raw_test", [](BlockRepository::ColumnCallback add) -> void {
+        add("value");
+    }).has_value());
+    ASSERT_TRUE(storage->set("raw_test", "k1", "value", "a").has_value());
+    ASSERT_TRUE(storage->set("raw_test", "k2", "value", "b").has_value());
 
-    auto has = storage->has("raw_test");
-    EXPECT_TRUE(has.has_value());
-    EXPECT_TRUE(has.value());
+    // 块模型：exec 支持清空整表与 VACUUM 维护的空操作。
+    ASSERT_TRUE(storage->exec("DELETE FROM raw_test;").has_value());
+    auto empty = storage->list("raw_test");
+    ASSERT_TRUE(empty.has_value());
+    EXPECT_TRUE(empty.value().empty());
 
-    ASSERT_TRUE(storage->exec("DROP TABLE raw_test;").has_value());
-
-    auto has2 = storage->has("raw_test");
-    EXPECT_TRUE(has2.has_value());
-    EXPECT_FALSE(has2.value());
+    ASSERT_TRUE(storage->exec("VACUUM;").has_value());
 }
 
-TEST_F(SQLiteStorageTest, TransactionCommit) {
-    ASSERT_TRUE(storage->create("tx_test", [](SQLiteStorage::ColumnCallback add) -> void {
+TEST_F(BlockRepositoryTest, TransactionCommit) {
+    ASSERT_TRUE(storage->create("tx_test", [](BlockRepository::ColumnCallback add) -> void {
         add("val");
     }).has_value());
 
     {
-        auto txn = SQLiteStorageTransaction::create(*storage);
+        auto txn = BlockRepository::WriteTransaction::create(*storage);
         ASSERT_TRUE(txn.has_value());
 
         ASSERT_TRUE(storage->set(txn.value().connection(), "tx_test", "tx_key", "val", "committed").has_value());
@@ -271,13 +267,13 @@ TEST_F(SQLiteStorageTest, TransactionCommit) {
     EXPECT_EQ(result.value()["val"], "committed");
 }
 
-TEST_F(SQLiteStorageTest, TransactionRollback) {
-    ASSERT_TRUE(storage->create("tx_rollback", [](SQLiteStorage::ColumnCallback add) -> void {
+TEST_F(BlockRepositoryTest, TransactionRollback) {
+    ASSERT_TRUE(storage->create("tx_rollback", [](BlockRepository::ColumnCallback add) -> void {
         add("val");
     }).has_value());
 
     {
-        auto txn = SQLiteStorageTransaction::create(*storage);
+        auto txn = BlockRepository::WriteTransaction::create(*storage);
         ASSERT_TRUE(txn.has_value());
 
         ASSERT_TRUE(storage->set(txn.value().connection(), "tx_rollback", "r_key", "val", "should_rollback").has_value());
@@ -288,8 +284,8 @@ TEST_F(SQLiteStorageTest, TransactionRollback) {
     EXPECT_FALSE(has.value());
 }
 
-TEST_F(SQLiteStorageTest, ReadOnlyOperations) {
-    ASSERT_TRUE(storage->create("readonly", [](SQLiteStorage::ColumnCallback add) -> void {
+TEST_F(BlockRepositoryTest, ReadOnlyOperations) {
+    ASSERT_TRUE(storage->create("readonly", [](BlockRepository::ColumnCallback add) -> void {
         add("data");
     }).has_value());
 
@@ -304,8 +300,8 @@ TEST_F(SQLiteStorageTest, ReadOnlyOperations) {
     EXPECT_EQ(val.value(), "ro_value");
 }
 
-TEST_F(SQLiteStorageTest, BatchGetKeys) {
-    ASSERT_TRUE(storage->create("batch", [](SQLiteStorage::ColumnCallback add) -> void {
+TEST_F(BlockRepositoryTest, BatchGetKeys) {
+    ASSERT_TRUE(storage->create("batch", [](BlockRepository::ColumnCallback add) -> void {
         add("info");
     }).has_value());
 

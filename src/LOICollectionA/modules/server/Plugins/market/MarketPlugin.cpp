@@ -54,7 +54,7 @@
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/base/Cache.h"
 #include "LOICollectionA/base/ScopeGuard.h"
@@ -108,8 +108,8 @@ namespace LOICollection::server::Plugins {
 
         Config::C_Market options;
 
-        std::shared_ptr<SQLiteStorage> db;
-        std::shared_ptr<SQLiteStorage> db2;
+        std::shared_ptr<BlockRepository> db;
+        std::shared_ptr<BlockRepository> db2;
         std::shared_ptr<ll::io::Logger> logger;
 
         std::string mGuiPath;
@@ -145,7 +145,7 @@ namespace LOICollection::server::Plugins {
         return std::error_code{ static_cast<int>(e), cat };
     }
 
-    std::shared_ptr<SQLiteStorage> MarketPlugin::getDatabase() {
+    std::shared_ptr<BlockRepository> MarketPlugin::getDatabase() {
         return this->mImpl->db;
     }
 
@@ -790,7 +790,7 @@ namespace LOICollection::server::Plugins {
         return this->getDatabase()->find("Blacklist", {
             { "target", target.getUuid().asString() },
             { "author", player.getUuid().asString() }
-        }, "", SQLiteStorage::FindCondition::AND);
+        }, "", BlockRepository::FindCondition::AND);
     }
 
     ll::Expected<std::vector<std::string>> MarketPlugin::getBlacklist(Player& player) {
@@ -809,7 +809,7 @@ namespace LOICollection::server::Plugins {
 
         return this->getDatabase()->find("Blacklist", {
             { "target", target }
-        }, SQLiteStorage::FindCondition::AND)
+        }, BlockRepository::FindCondition::AND)
             .transform([this, target](const std::vector<std::string>& ids) -> std::vector<std::string> {
                 this->mImpl->BlacklistCache.put(target, ids);
 
@@ -830,7 +830,7 @@ namespace LOICollection::server::Plugins {
 
         return this->getDatabase()->find("Item", {
             { "player_uuid", player.getUuid().asString() }
-        }, SQLiteStorage::FindCondition::AND);
+        }, BlockRepository::FindCondition::AND);
     }
 
     ll::Expected<std::unordered_map<std::string, std::string>> MarketPlugin::getItemData(const std::string& id) {
@@ -1222,8 +1222,11 @@ namespace LOICollection::server::Plugins {
         
         auto mDataPath = std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("DataPath")->data());
 
-        this->mImpl->db = std::make_shared<SQLiteStorage>((mDataPath / "market.db").string());
-        this->mImpl->db2 = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+        auto localDb = BlockRepository::open((mDataPath / "market.db").string(), 4);
+        if (!localDb)
+            return ll::makeStringError(localDb.error().message());
+        this->mImpl->db = std::move(localDb.value());
+        this->mImpl->db2 = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
         this->mImpl->logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
         this->mImpl->options = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Market;
         
@@ -1313,16 +1316,16 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->options.ModuleEnabled)
             return false;
 
-        return this->mImpl->db2->create("Market", [](SQLiteStorage::ColumnCallback ctor) -> void {
+        return this->mImpl->db2->create("Market", [](BlockRepository::ColumnCallback ctor) -> void {
             ctor("name");
             ctor("score");
         }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->db2->create("MarketTax", [](SQLiteStorage::ColumnCallback ctor) -> void {
+            return this->mImpl->db2->create("MarketTax", [](BlockRepository::ColumnCallback ctor) -> void {
                 ctor("total");
                 ctor("rate");
             });
         }).and_then([this]() -> ll::Expected<void> {
-            return this->getDatabase()->create("Item", [](SQLiteStorage::ColumnCallback ctor) -> void {
+            return this->getDatabase()->create("Item", [](BlockRepository::ColumnCallback ctor) -> void {
                 ctor("name");
                 ctor("icon");
                 ctor("introduce");
@@ -1332,7 +1335,7 @@ namespace LOICollection::server::Plugins {
                 ctor("player_uuid");
             });
         }).and_then([this]() -> ll::Expected<void> {
-            return this->getDatabase()->create("Blacklist", [](SQLiteStorage::ColumnCallback ctor) -> void {
+            return this->getDatabase()->create("Blacklist", [](BlockRepository::ColumnCallback ctor) -> void {
                 ctor("name");
                 ctor("target");
                 ctor("author");

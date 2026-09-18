@@ -24,7 +24,7 @@
 
 #include "LOICollectionA/utils/I18nUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/frontend/AST.h"
 
@@ -47,7 +47,7 @@ namespace LOICollection::server::Plugins {
 
         std::string mGuiPath;
 
-        std::shared_ptr<SQLiteStorage> db;
+        std::shared_ptr<BlockRepository> db;
         std::shared_ptr<ll::io::Logger> logger;
         
         ll::event::ListenerPtr PlayerConnectEventListener;
@@ -201,7 +201,7 @@ namespace LOICollection::server::Plugins {
     ll::Expected<bool> LanguagePlugin::load() {
         this->mImpl->mGuiPath = (std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("GuiPath")->data()) / "language.lcui").string();
 
-        this->mImpl->db = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+        this->mImpl->db = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
         this->mImpl->logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
 
         return true;
@@ -218,7 +218,7 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<bool> LanguagePlugin::registry() {
-        return this->mImpl->db->create("Language", [](SQLiteStorage::ColumnCallback ctor) -> void {
+        return this->mImpl->db->create("Language", [](BlockRepository::ColumnCallback ctor) -> void {
             ctor("name");
             ctor("value");
         }).and_then([this]() -> ll::Expected<void> {

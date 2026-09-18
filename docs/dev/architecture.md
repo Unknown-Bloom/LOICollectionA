@@ -88,7 +88,7 @@ auto svc = ServiceProvider::getInstance().getService<TService>(name);
 | `std::string` | `"DataPath"` | 插件数据目录（`plugins/LOICollectionA/data`） |
 | `std::string` | `"GuiPath"` | GUI 目录（`plugins/LOICollectionA/gui`） |
 | `std::string` | `"ConfigPath"` | 配置目录（`plugins/LOICollectionA/config`） |
-| `SQLiteStorage` | `"SettingsDB"` | 全局设置数据库（`data/settings.db`） |
+| `BlockRepository` | `"SettingsDB"` | 全局设置数据库（`data/settings.db`，块存储） |
 
 > [!NOTE]
 > 配置以 `ReadOnlyWrapper<Config::C_Config>` 注册，模块只能**读取**配置，无法修改。这是有意设计：配置只在启动时读取一次，运行期修改需要重启服务器。
@@ -108,7 +108,8 @@ src/LOICollectionA/
 ├─ ConfigPlugin.h / .cpp     # 配置结构定义与加载
 ├─ base/                     # 基础设施：ServiceContainer、ServiceProvider、
 │                            #   ReadOnlyWrapper、LRUKCache、Throttle、ScopeGuard
-├─ data/                     # 数据层：SQLiteStorage（SQLite 连接池）、JsonStorage
+├─ data/                     # 数据层：sqlite/ 块存储（BlockStore + WriteBatch +
+│                            #   BlockRepository）、JsonStorage
 ├─ frontend/                 # LCUI 脚本引擎：Lexer、Parser、SemanticAnalyzer、
 │   │                        #   AST、Callback（原生绑定注册表）、ir/（编译器、VM）
 │   ├─ sandbox/              # 脚本沙箱：ScriptPermission（权限与执行预算配置）、
@@ -139,7 +140,7 @@ tests/                       # gtest 测试（common/ 跨平台、server/、clie
 
 ## 数据层
 
-所有持久化数据通过 `SQLiteStorage`（默认，支持读写连接池与事务）或 `JsonStorage`（简单 JSON 文件）访问，二者都返回 `ll::Expected<T>` 以支持链式错误处理。用法详见 [模块开发指南](./module.md) 的"数据层"章节。
+所有持久化数据通过块存储门面 `BlockRepository`（基于 `BlockStore`/`WriteBatch` 的块模型，提供读写连接池与原子写事务；`open` 时自动将旧版 `SQLiteStorage` 数据库归档为 `<db>.<时间戳>.legacy` 并回放数据）或 `JsonStorage`（简单 JSON 文件）访问，二者都返回 `ll::Expected<T>` 以支持链式错误处理。用法详见 [模块开发指南](./module.md) 的"数据层"章节。
 
 ## 脚本引擎 VM
 

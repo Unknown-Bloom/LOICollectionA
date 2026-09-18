@@ -33,7 +33,7 @@
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
 #include "LOICollectionA/data/JsonStorage.h"
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/frontend/AST.h"
 
@@ -88,7 +88,7 @@ namespace LOICollection::server::Plugins {
         bool ModuleEnabled = false;
 
         std::shared_ptr<JsonStorage> db;
-        std::shared_ptr<SQLiteStorage> db2;
+        std::shared_ptr<BlockRepository> db2;
         std::shared_ptr<ll::io::Logger> logger;
 
         std::string mGuiPath;
@@ -630,7 +630,7 @@ namespace LOICollection::server::Plugins {
         auto mDataPath = std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("ConfigPath")->data());
 
         this->mImpl->db = std::make_shared<JsonStorage>(mDataPath / "notice.json");
-        this->mImpl->db2 = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+        this->mImpl->db2 = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
         this->mImpl->logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
         this->mImpl->ModuleEnabled = true;
         this->mImpl->mGuiPath = (std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("GuiPath")->data()) / "notice.lcui").string();
@@ -660,7 +660,7 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->ModuleEnabled)
             return false;
 
-        return this->mImpl->db2->create("Notice", [](SQLiteStorage::ColumnCallback ctor) -> void {
+        return this->mImpl->db2->create("Notice", [](BlockRepository::ColumnCallback ctor) -> void {
             ctor("name");
             ctor("close");
         }).and_then([this]() -> ll::Expected<void> {

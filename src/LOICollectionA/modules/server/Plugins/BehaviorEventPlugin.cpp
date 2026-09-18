@@ -81,7 +81,7 @@
 #include "LOICollectionA/utils/mc-server/BlockUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/base/Wrapper.h"
 #include "LOICollectionA/base/ServiceProvider.h"
@@ -118,7 +118,7 @@ namespace LOICollection::server::Plugins {
 
         Config::C_BehaviorEvent options;
 
-        std::shared_ptr<SQLiteStorage> db;
+        std::shared_ptr<BlockRepository> db;
         std::shared_ptr<ll::io::Logger> logger;
 
         std::unordered_map<std::string, ll::event::ListenerPtr> mListeners;
@@ -146,7 +146,7 @@ namespace LOICollection::server::Plugins {
         return std::error_code{ static_cast<int>(e), cat };
     }
 
-    std::shared_ptr<SQLiteStorage> BehaviorEventPlugin::getDatabase() {
+    std::shared_ptr<BlockRepository> BehaviorEventPlugin::getDatabase() {
         return this->mImpl->db;
     }
 
@@ -1051,7 +1051,11 @@ namespace LOICollection::server::Plugins {
 
         auto mDataPath = std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("DataPath")->data());
 
-        this->mImpl->db = std::make_shared<SQLiteStorage>((mDataPath / "behaviorevent.db").string());
+        if (auto repo = BlockRepository::open((mDataPath / "behaviorevent.db").string(), 4); !repo)
+            return ll::makeStringError(repo.error().message());
+        else
+            this->mImpl->db = std::move(*repo);
+
         this->mImpl->logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
         this->mImpl->options = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.BehaviorEvent;
 
@@ -1076,7 +1080,7 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->options.ModuleEnabled)
             return false;
 
-        return this->getDatabase()->create("Events", [](SQLiteStorage::ColumnCallback ctor) -> void {
+        return this->getDatabase()->create("Events", [](BlockRepository::ColumnCallback ctor) -> void {
             ctor("event_name");
             ctor("event_time");
             ctor("event_type");

@@ -29,7 +29,7 @@
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/ConfigPlugin.h"
 
@@ -42,7 +42,7 @@ using I18nUtilsTools::tr;
 
 namespace LOICollection::server::Plugins {
     struct WalletRedEnvelope::Impl {
-        std::shared_ptr<SQLiteStorage> db;
+        std::shared_ptr<BlockRepository> db;
         const Config::C_Wallet& options;
         std::shared_ptr<ll::io::Logger> logger;
         TimerManager& timerManager;
@@ -53,7 +53,7 @@ namespace LOICollection::server::Plugins {
         ll::ConcurrentDenseMap<std::string, std::vector<RedEnvelopeEntry>> mRedEnvelopes;
 
         Impl(
-            std::shared_ptr<SQLiteStorage> db_,
+            std::shared_ptr<BlockRepository> db_,
             const Config::C_Wallet& options_,
             std::shared_ptr<ll::io::Logger> logger_,
             TimerManager& timerManager_,
@@ -68,7 +68,7 @@ namespace LOICollection::server::Plugins {
     };
 
     WalletRedEnvelope::WalletRedEnvelope(
-        std::shared_ptr<SQLiteStorage> db,
+        std::shared_ptr<BlockRepository> db,
         const Config::C_Wallet& options,
         std::shared_ptr<ll::io::Logger> logger,
         TimerManager& timerManager,
@@ -83,7 +83,7 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<void> WalletRedEnvelope::createTables() {
-        return this->mImpl->db->create("RedEnvelope", [](SQLiteStorage::ColumnCallback ctor) -> void {
+        return this->mImpl->db->create("RedEnvelope", [](BlockRepository::ColumnCallback ctor) -> void {
             ctor("chat_key");
             ctor("sender_uuid");
             ctor("sender_name");
@@ -94,7 +94,7 @@ namespace LOICollection::server::Plugins {
             ctor("targets");
             ctor("expire_at");
         }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->db->create("RedEnvelopeGrab", [](SQLiteStorage::ColumnCallback ctor) -> void {
+            return this->mImpl->db->create("RedEnvelopeGrab", [](BlockRepository::ColumnCallback ctor) -> void {
                 ctor("name");
                 ctor("amount");
             });
@@ -137,11 +137,11 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<bool> WalletRedEnvelope::grabEnvelope(Player& player, const std::string& uuid, RedEnvelopeEntry& entry) {
-        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
+        auto transaction = BlockRepository::WriteTransaction::create(*this->mImpl->db);
         if (!transaction.has_value())
             return ll::Unexpected(transaction.error());
 
-        auto conn = transaction.value().connection();
+        auto& conn = transaction.value().connection();
 
         auto data = this->mImpl->db->get(conn, "RedEnvelope", entry.id);
         if (!data.has_value())
@@ -318,11 +318,11 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<void> WalletRedEnvelope::deleteEnvelope(const std::string& id) {
-        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
+        auto transaction = BlockRepository::WriteTransaction::create(*this->mImpl->db);
         if (!transaction.has_value())
             return ll::Unexpected(transaction.error());
 
-        auto conn = transaction.value().connection();
+        auto& conn = transaction.value().connection();
 
         auto delEnv = this->mImpl->db->del(conn, "RedEnvelope", id);
         if (!delEnv.has_value())
@@ -564,14 +564,14 @@ namespace LOICollection::server::Plugins {
         if (!targetsValue.empty())
             env["targets"] = targetsValue;
 
-        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
+        auto transaction = BlockRepository::WriteTransaction::create(*this->mImpl->db);
         if (!transaction.has_value()) {
             ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, total);
 
             return ll::Unexpected(transaction.error());
         }
 
-        auto conn = transaction.value().connection();
+        auto& conn = transaction.value().connection();
         auto setEnv = this->mImpl->db->set(conn, "RedEnvelope", id, env);
         if (!setEnv.has_value()) {
             ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, total);

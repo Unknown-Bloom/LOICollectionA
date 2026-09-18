@@ -50,7 +50,7 @@
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/include/form/GUIManager.h"
 
@@ -92,7 +92,7 @@ namespace LOICollection::server::Plugins {
 
         Config::C_Wallet options;
 
-        std::shared_ptr<SQLiteStorage> db;
+        std::shared_ptr<BlockRepository> db;
         std::shared_ptr<ll::io::Logger> logger;
 
         std::string mGuiPath;
@@ -730,7 +730,7 @@ namespace LOICollection::server::Plugins {
         if (!ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Wallet.ModuleEnabled)
             return false;
 
-        this->mImpl->db = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+        this->mImpl->db = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
         this->mImpl->logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
         this->mImpl->options = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Wallet;
         this->mImpl->mGuiPath = (std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("GuiPath")->data()) / "wallet.lcui").string();
@@ -786,7 +786,7 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->options.ModuleEnabled)
             return false;
 
-        return this->mImpl->db->create("Wallet", [](SQLiteStorage::ColumnCallback ctor) -> void {
+        return this->mImpl->db->create("Wallet", [](BlockRepository::ColumnCallback ctor) -> void {
             ctor("name");
             ctor("score");
             ctor("balance");

@@ -10,7 +10,7 @@
 
 #include <mc/server/SimulatedPlayer.h>
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/include/server/Plugins/BlacklistPlugin.h"
 

@@ -14,7 +14,7 @@
 #include "LOICollectionA/include/ModManager.h"
 
 class Vec3;
-class SQLiteStorage;
+class BlockRepository;
 
 namespace ll {
     namespace event {
@@ -72,7 +72,7 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI static std::shared_ptr<BehaviorEventPlugin> getShared();
         LOICOLLECTION_A_NDAPI static std::error_code makeErrorCode(BehaviorEventPluginErrorCode e);
 
-        LOICOLLECTION_A_NDAPI std::shared_ptr<SQLiteStorage> getDatabase();
+        LOICOLLECTION_A_NDAPI std::shared_ptr<BlockRepository> getDatabase();
         LOICOLLECTION_A_NDAPI std::shared_ptr<ll::io::Logger> getLogger();
 
         LOICOLLECTION_A_NDAPI ll::Expected<void> setExecutor(const ll::coro::Executor& executor);

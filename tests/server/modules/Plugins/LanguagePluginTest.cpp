@@ -9,7 +9,7 @@
 
 #include <mc/server/SimulatedPlayer.h>
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/base/ServiceProvider.h"
 
@@ -20,7 +20,7 @@ using namespace LOICollection::server::Plugins;
 class LanguagePluginTest : public testing::Test {
 protected:
     void TearDown() override {
-        auto result = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB")->exec("DELETE FROM Language;");
+        auto result = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB")->exec("DELETE FROM Language;");
         if (!result.has_value())
             GTEST_FAIL() << "Unable to clear data";
     }

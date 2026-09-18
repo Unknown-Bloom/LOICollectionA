@@ -17,7 +17,7 @@
 #include "LOICollectionA/utils/I18nUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/ConfigPlugin.h"
 
@@ -114,7 +114,7 @@ namespace LOICollection::server::Plugins {
             return owner.getDatabase()->find("StoreReview", {
                 { "store_id", storeId },
                 { "status", "approved" }
-            }, SQLiteStorage::FindCondition::AND)
+            }, BlockRepository::FindCondition::AND)
                 .and_then([&owner](const std::vector<std::string>& keys) -> ll::Expected<double> {
                     if (keys.empty())
                         return 0.0;
@@ -449,7 +449,7 @@ namespace LOICollection::server::Plugins {
                             return owner.getDatabase()->find("StoreReview", {
                                 { "store_id", storeId },
                                 { "buyer_uuid", player.getUuid().asString() }
-                            }, SQLiteStorage::FindCondition::AND)
+                            }, BlockRepository::FindCondition::AND)
                                 .transform([values](const std::vector<std::string>& reviews) -> frontend::ArrayRef {
                                     values->elements.emplace_back(reviews.empty());
 
@@ -467,7 +467,7 @@ namespace LOICollection::server::Plugins {
 
             return owner.getDatabase()->find("StoreReview", {
                 { "status", "pending" }
-            }, SQLiteStorage::FindCondition::AND)
+            }, BlockRepository::FindCondition::AND)
                 .and_then([&owner, &player, values](const std::vector<std::string>& keys) -> ll::Expected<frontend::ArrayRef> {
                     return owner.getDatabase()->get("StoreReview", keys)
                         .and_then([&player, keys, values](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> data) -> ll::Expected<frontend::ArrayRef> {
@@ -501,7 +501,7 @@ namespace LOICollection::server::Plugins {
 
             return owner.getDatabase()->find("StoreReview", {
                 { "status", "pending" }
-            }, SQLiteStorage::FindCondition::AND)
+            }, BlockRepository::FindCondition::AND)
                 .and_then([index](const std::vector<std::string>& keys) -> ll::Expected<frontend::ArrayRef> {
                     auto values = std::make_shared<frontend::ArrayValue>();
 
@@ -670,7 +670,7 @@ namespace LOICollection::server::Plugins {
 
                     return owner.getDatabase()->find("StoreItem", {
                         { "store_id", storeId }
-                    }, SQLiteStorage::FindCondition::AND)
+                    }, BlockRepository::FindCondition::AND)
                         .and_then([&owner, &player, values](const std::vector<std::string>& items) -> ll::Expected<frontend::ArrayRef> {
                             if (static_cast<int>(items.size()) >= owner.getOptions().StoreMaximumItems) {
                                 return LanguagePlugin::getShared()->getLanguage(player)

@@ -43,7 +43,7 @@
 #include "LOICollectionA/utils/I18nUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/frontend/AST.h"
 
@@ -72,8 +72,8 @@ namespace LOICollection::server::Plugins {
 
         Config::C_Statistics options;
 
-        std::shared_ptr<SQLiteStorage> db;
-        std::shared_ptr<SQLiteStorage> db2;
+        std::shared_ptr<BlockRepository> db;
+        std::shared_ptr<BlockRepository> db2;
         std::shared_ptr<ll::io::Logger> logger;
 
         std::string mGuiPath;
@@ -102,7 +102,7 @@ namespace LOICollection::server::Plugins {
         return std::error_code{ static_cast<int>(e), cat };
     }
 
-    std::shared_ptr<SQLiteStorage> StatisticsPlugin::getDatabase() {
+    std::shared_ptr<BlockRepository> StatisticsPlugin::getDatabase() {
         return this->mImpl->db;
     }
 
@@ -115,14 +115,14 @@ namespace LOICollection::server::Plugins {
             if (!this->mImpl->WriteDatabaseTaskRunning.load(std::memory_order_acquire))
                 return;
             
-            auto transaction = SQLiteStorageTransaction::create(*this->getDatabase());
+            auto transaction = BlockRepository::WriteTransaction::create(*this->getDatabase());
             if (!transaction.has_value()) {
                 modules::defaultErrorHandler<StatisticsPlugin>(transaction.error());
 
                 return;
             }
 
-            auto connection = transaction.value().connection();
+            auto& connection = transaction.value().connection();
 
             for (const auto& it : this->mImpl->mCache) {
                 for (const auto& it2 : it.second) {
@@ -478,8 +478,11 @@ namespace LOICollection::server::Plugins {
 
         auto mDataPath = std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("DataPath")->data());
 
-        this->mImpl->db = std::make_shared<SQLiteStorage>((mDataPath / "statistics.db").string());
-        this->mImpl->db2 = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+        auto localDb = BlockRepository::open((mDataPath / "statistics.db").string(), 4);
+        if (!localDb)
+            return ll::makeStringError(localDb.error().message());
+        this->mImpl->db = std::move(localDb.value());
+        this->mImpl->db2 = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
         this->mImpl->logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
         this->mImpl->options = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Statistics;
         this->mImpl->mGuiPath = (std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("GuiPath")->data()) / "statistics.lcui").string();
@@ -505,7 +508,7 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->options.ModuleEnabled)
             return false;
 
-        return this->getDatabase()->create("Statistics", [](SQLiteStorage::ColumnCallback ctor) -> void {
+        return this->getDatabase()->create("Statistics", [](BlockRepository::ColumnCallback ctor) -> void {
             ctor("onlinetime");
             ctor("kill");
             ctor("death");

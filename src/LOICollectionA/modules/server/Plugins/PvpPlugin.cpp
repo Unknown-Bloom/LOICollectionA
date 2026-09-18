@@ -31,7 +31,7 @@
 
 #include "LOICollectionA/utils/I18nUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/frontend/AST.h"
 
@@ -58,7 +58,7 @@ namespace LOICollection::server::Plugins {
 
         Config::C_Pvp options;
 
-        std::shared_ptr<SQLiteStorage> db;
+        std::shared_ptr<BlockRepository> db;
         std::shared_ptr<ll::io::Logger> logger;
 
         std::string mGuiPath;
@@ -272,7 +272,7 @@ namespace LOICollection::server::Plugins {
         if (!ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Pvp.ModuleEnabled)
             return false;
 
-        this->mImpl->db = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+        this->mImpl->db = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
         this->mImpl->logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
         this->mImpl->options = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Pvp;
         this->mImpl->mGuiPath = (std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("GuiPath")->data()) / "pvp.lcui").string();
@@ -298,7 +298,7 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->options.ModuleEnabled)
             return false;
         
-        return this->mImpl->db->create("Pvp", [](SQLiteStorage::ColumnCallback ctor) -> void {
+        return this->mImpl->db->create("Pvp", [](BlockRepository::ColumnCallback ctor) -> void {
             ctor("name");
             ctor("enable");
         }).and_then([this]() -> ll::Expected<void> {
