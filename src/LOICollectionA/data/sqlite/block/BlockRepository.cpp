@@ -7,24 +7,11 @@
 #include <utility>
 
 #include "LOICollectionA/data/sqlite/block/BlockError.h"
-#include "LOICollectionA/data/sqlite/block/LegacyMigrator.h"
 #include "LOICollectionA/data/sqlite/block/Payload.h"
 #include "LOICollectionA/data/sqlite/connection/ConnectionPool.h"
 
 namespace {
     constexpr std::int32_t kRowKind = 0;
-
-    ll::Expected<void> replayLegacy(BlockRepository& repo, legacy::LegacyDb const& data) {
-        for (auto const& table : data.tables) {
-            if (auto r = repo.create(table.name, [](BlockRepository::ColumnCallback) {}); !r)
-                return r;
-            for (auto const& record : table.records) {
-                if (auto r = repo.set(table.name, record.key, record.columns); !r)
-                    return r;
-            }
-        }
-        return {};
-    }
 }
 
 BlockRepository::BlockRepository(std::shared_ptr<BlockStore> store) : mStore(std::move(store)) {}
@@ -33,12 +20,6 @@ BlockRepository::~BlockRepository() = default;
 
 ll::Expected<std::shared_ptr<BlockRepository>> BlockRepository::open(
     std::string dbPath, size_t connections) {
-    // 阶段4 旧库归档：若目标路径遗留旧版 SQLiteStorage 数据库，
-    // 先捕获数据并把原库归档为 <dbPath>.<timestamp>.legacy，再以新块格式重开。
-    auto legacy = legacy::archiveLegacy(dbPath);
-    if (!legacy)
-        return ll::makeStringError(legacy.error().message());
-
     auto pool = std::make_shared<ConnectionPool>(std::move(dbPath), connections);
     auto store = BlockStore::create(pool);
     if (!store)
@@ -46,12 +27,6 @@ ll::Expected<std::shared_ptr<BlockRepository>> BlockRepository::open(
 
     auto repo = std::shared_ptr<BlockRepository>(new BlockRepository(std::move(*store)));
     repo->mPool = std::move(pool);
-
-    // 归档到内存的旧数据回放到新块存储，保证升级不断档。
-    if (!legacy.value().empty) {
-        if (auto r = replayLegacy(*repo, legacy.value()); !r)
-            return ll::makeStringError(r.error().message());
-    }
 
     return repo;
 }

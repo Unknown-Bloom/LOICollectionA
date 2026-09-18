@@ -88,7 +88,7 @@
 
 #include "LOICollectionA/ConfigPlugin.h"
 
-#include "LOICollectionA/include/server/Plugins/BehaviorEventPlugin.h"
+#include "LOICollectionA/include/server/Plugins/BehaviorEvent/BehaviorEventPlugin.h"
 
 struct Traits : moodycamel::ConcurrentQueueDefaultTraits {
     static const size_t BLOCK_SIZE = 1024;
@@ -232,11 +232,41 @@ namespace LOICollection::server::Plugins {
             });
             mEvents.erase(first, last);
 
-            std::for_each(mEvents.begin(), mEvents.end(), [this](const Event& mEvent) mutable -> void {
+            if (mEvents.empty())
+                return;
+
+            auto txn = BlockRepository::WriteTransaction::create(*this->getDatabase());
+            if (!txn) {
+                this->getLogger()->error("BehavorEventPlugin write transaction create failed: {}", txn.error().message());
+
+                return;
+            }
+
+            for (const Event& mEvent : mEvents) {
                 std::string mTismestamp = SystemUtils::getCurrentTimestamp();
 
-                this->write(mTismestamp, mEvent).or_else(modules::defaultErrorHandler<BehaviorEventPlugin>);
-            });
+                std::unordered_map<std::string, std::string> mData = {
+                    { "event_name", mEvent.eventName },
+                    { "event_time", mEvent.eventTime },
+                    { "event_type", mEvent.eventType },
+                    { "position_x", std::to_string(mEvent.posX) },
+                    { "position_y", std::to_string(mEvent.posY) },
+                    { "position_z", std::to_string(mEvent.posZ) },
+                    { "position_dimension", std::to_string(mEvent.dimension) }
+                };
+
+                for (const auto& field : mEvent.extendedFields)
+                    mData[field.first] = field.second;
+
+                if (auto r = this->getDatabase()->set(txn.value().connection(), "Events", mTismestamp, mData); !r) {
+                    this->getLogger()->error("BehavorEventPlugin write failed: {}", r.error().message());
+
+                    break;
+                }
+            }
+
+            if (auto r = txn.value().commit(); !r)
+                this->getLogger()->error("BehavorEventPlugin write commit failed: {}", r.error().message());
         });
     }
 

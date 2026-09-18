@@ -11,7 +11,7 @@
 
 #include <ll/api/Expected.h>
 
-#include "LOICollectionA/data/JsonError.h"
+#include "LOICollectionA/data/json/JsonError.h"
 
 #include "LOICollectionA/base/Macro.h"
 

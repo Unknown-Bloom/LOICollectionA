@@ -11,7 +11,7 @@
 
 #include <mc/server/SimulatedPlayer.h>
 
-#include "LOICollectionA/data/JsonStorage.h"
+#include "LOICollectionA/data/json/JsonStorage.h"
 
 #include "LOICollectionA/utils/mc-server/InventoryUtils.h"
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"

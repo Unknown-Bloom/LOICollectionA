@@ -15,6 +15,7 @@ SQLiteConnection::SQLiteConnection(std::string path, bool readOnly)
         this->database().exec("PRAGMA synchronous = NORMAL;");
         this->database().exec("PRAGMA temp_store = MEMORY;");
         this->database().exec("PRAGMA cache_size = 8096;");
+        this->database().exec("PRAGMA mmap_size = 268435456;");
         this->database().exec("PRAGMA busy_timeout = 5000;");
     }
 

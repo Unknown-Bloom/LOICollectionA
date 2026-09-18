@@ -11,7 +11,7 @@
 
 #include "LOICollectionA/base/ServiceProvider.h"
 
-#include "LOICollectionA/data/JsonStorage.h"
+#include "LOICollectionA/data/json/JsonStorage.h"
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/include/server/Plugins/NoticePlugin.h"

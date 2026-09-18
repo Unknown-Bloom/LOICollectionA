@@ -8,7 +8,7 @@
 
 #include <nlohmann/json.hpp>
 
-#include "LOICollectionA/data/JsonStorage.h"
+#include "LOICollectionA/data/json/JsonStorage.h"
 
 #include "LOICollectionA/LOICollectionA.h"
 

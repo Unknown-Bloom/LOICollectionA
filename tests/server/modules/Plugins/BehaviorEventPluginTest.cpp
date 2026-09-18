@@ -12,7 +12,7 @@
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
-#include "LOICollectionA/include/server/Plugins/BehaviorEventPlugin.h"
+#include "LOICollectionA/include/server/Plugins/BehaviorEvent/BehaviorEventPlugin.h"
 
 using namespace LOICollection::server::Plugins;
 

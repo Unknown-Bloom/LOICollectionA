@@ -125,13 +125,17 @@ ll::Expected<void> BlockStore::ensureSchema(SQLiteConnection& conn) {
         "state INTEGER NOT NULL DEFAULT 1, payload BLOB,"
         "created INTEGER NOT NULL, updated INTEGER NOT NULL)",
         "CREATE INDEX IF NOT EXISTS idx_block_parent ON block(parent)",
+        "CREATE INDEX IF NOT EXISTS idx_block_parent_name ON block(parent, name)",
         "CREATE TABLE IF NOT EXISTS prop("
         "block_id INTEGER NOT NULL, key INTEGER NOT NULL, type INTEGER NOT NULL,"
         "ival INTEGER NOT NULL DEFAULT 0, rval REAL NOT NULL DEFAULT 0, tval TEXT,"
         "PRIMARY KEY(block_id,key))",
+        "CREATE INDEX IF NOT EXISTS idx_prop_key_ival ON prop(key, ival)",
+        "CREATE INDEX IF NOT EXISTS idx_prop_key_tval ON prop(key, tval)",
         "CREATE TABLE IF NOT EXISTS link("
         "src INTEGER NOT NULL, dst INTEGER NOT NULL, kind INTEGER NOT NULL DEFAULT 0,"
         "PRIMARY KEY(src,dst,kind))",
+        "CREATE INDEX IF NOT EXISTS idx_link_dst_kind ON link(dst, kind)",
         "CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT)",
     };
 

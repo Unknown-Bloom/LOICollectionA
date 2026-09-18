@@ -9,7 +9,7 @@
 
 #include <ll/api/Expected.h>
 
-#include "LOICollectionA/data/JsonStorage.h"
+#include "LOICollectionA/data/json/JsonStorage.h"
 
 JsonStorage::JsonStorage(std::filesystem::path path) : mPath(std::move(path)){}
 JsonStorage::~JsonStorage() = default;
