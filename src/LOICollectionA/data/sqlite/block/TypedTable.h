@@ -191,6 +191,7 @@ namespace LOICollection::data {
 
             constexpr Key(E c) noexcept : value(c) {}
             consteval Key(std::string_view s) : value(parse(s)) {}
+            consteval Key(char const* s) : value(parse(std::string_view(s))) {}
         };
 
         [[nodiscard]] static ll::Expected<TypedTable> open(BlockRepository& repo, std::string_view name) {
