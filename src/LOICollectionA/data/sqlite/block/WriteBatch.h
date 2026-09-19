@@ -43,6 +43,9 @@ public:
     [[nodiscard]] ll::Expected<void> setProp(BlockId id, PropKey key, std::int64_t value);
     [[nodiscard]] ll::Expected<void> setProp(BlockId id, PropKey key, double value);
     [[nodiscard]] ll::Expected<void> setProp(BlockId id, PropKey key, std::string_view value);
+    [[nodiscard]] ll::Expected<void> setProp(
+        BlockId id, PropKey key, PayloadType type,
+        std::int64_t ival, double rval, std::string_view tval);
 
     [[nodiscard]] ll::Expected<std::int32_t> intern(std::string_view name);
 

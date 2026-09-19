@@ -76,6 +76,14 @@ ll::Expected<void> WriteBatch::setProp(BlockId id, PropKey key, std::string_view
     return mStore->implSetProp(*mTxn->connection(), id, key, PayloadType::Text, 0, 0.0, value);
 }
 
+ll::Expected<void> WriteBatch::setProp(
+    BlockId id, PropKey key, PayloadType type,
+    std::int64_t ival, double rval, std::string_view tval) {
+    if (mFinished)
+        return ll::makeStringError("write batch already finished");
+    return mStore->implSetProp(*mTxn->connection(), id, key, type, ival, rval, tval);
+}
+
 ll::Expected<std::int32_t> WriteBatch::intern(std::string_view name) {
     if (mFinished)
         return ll::makeStringError("write batch already finished");

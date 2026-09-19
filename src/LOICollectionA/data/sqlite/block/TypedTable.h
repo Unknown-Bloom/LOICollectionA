@@ -97,6 +97,7 @@ namespace LOICollection::data {
             p.key = key;
             p.type = PayloadType::Int;
             p.intValue = v ? 1 : 0;
+            p.textValue = v ? "1" : "0";
             return p;
         }
         template <std::integral T>
@@ -105,14 +106,24 @@ namespace LOICollection::data {
             p.key = key;
             p.type = PayloadType::Int;
             p.intValue = static_cast<std::int64_t>(v);
+            char buf[32];
+            auto [q, ec] = std::to_chars(buf, buf + sizeof(buf), p.intValue);
+            if (ec != std::errc())
+                return ll::makeStringError("cell encode integer failed");
+            p.textValue.assign(buf, q);
             return p;
         }
         template <std::floating_point T>
         static ll::Expected<BlockProp> makeCell(PropKey key, T v) {
             BlockProp p;
             p.key = key;
-            p.type = PayloadType::Real;
+            p.type = PayloadType::Double;
             p.realValue = static_cast<double>(v);
+            char buf[64];
+            auto [q, ec] = std::to_chars(buf, buf + sizeof(buf), p.realValue);
+            if (ec != std::errc())
+                return ll::makeStringError("cell encode float failed");
+            p.textValue.assign(buf, q);
             return p;
         }
         template <class T>
@@ -326,11 +337,8 @@ namespace LOICollection::data {
             auto rid = root();
             if (!rid.has_value())
                 return ll::makeStringError(rid.error().message());
-            if (conds.empty()) {
-                if (mode == FindMode::And)
-                    return std::vector<std::string>{};
+            if (conds.empty())
                 return list();
-            }
             std::vector<std::vector<BlockId>> groups;
             groups.reserve(conds.size());
             for (auto const& [col, val] : conds) {
@@ -466,11 +474,8 @@ namespace LOICollection::data {
                 if (!cell.has_value())
                     return ll::makeStringError(cell.error().message());
                 auto& c = cell.value();
-                switch (c.type) {
-                    case PayloadType::Int: return mTx->setProp(id.value(), c.key, c.intValue);
-                    case PayloadType::Double: return mTx->setProp(id.value(), c.key, c.realValue);
-                    default: return mTx->setProp(id.value(), c.key, std::string_view(c.textValue));
-                }
+                return mTx->setProp(
+                    id.value(), c.key, c.type, c.intValue, c.realValue, std::string_view(c.textValue));
             }
             template <class T>
             [[nodiscard]] ll::Expected<void> set(std::string_view rowKey, E col, T const& v) {
