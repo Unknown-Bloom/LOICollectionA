@@ -1,13 +1,10 @@
 #include "LOICollectionA/data/sqlite/block/BlockStore.h"
 
 #include <chrono>
-
 #include <cstring>
-
 #include <limits>
-
+#include <optional>
 #include <string>
-
 #include <utility>
 
 #include <SQLiteCpp/SQLiteCpp.h>
@@ -35,7 +32,11 @@ namespace {
                           : static_cast<std::int64_t>(limit);
     }
 
-    void readBlockRow(SQLite::Statement& stmt, bool withId, BlockRecord& out, SQLiteConnection& conn) {
+    ll::Expected<void> sqlError(SQLiteConnection& conn) {
+        return ll::makeStringError(std::string(conn.database().getErrorMsg()));
+    }
+
+    ll::Expected<void> readBlockRow(SQLite::Statement& stmt, bool withId, BlockRecord& out, SQLiteConnection& conn) {
         size_t col = 0;
         if (withId) out.id = stmt.getColumn(static_cast<int>(col++)).getInt64();
         out.parent = stmt.getColumn(static_cast<int>(col++)).getInt64();
@@ -54,7 +55,8 @@ namespace {
         auto& props = conn.statements().get("getPropsByBlock");
         props.reset();
         props.bind(1, static_cast<std::int64_t>(out.id));
-        while (props.executeStep()) {
+        int prc = props.tryExecuteStep();
+        while (prc == SQLITE_ROW) {
             BlockProp prop;
             prop.key = props.getColumn(0).getInt();
             prop.type = static_cast<PayloadType>(props.getColumn(1).getInt());
@@ -62,7 +64,12 @@ namespace {
             prop.realValue = props.getColumn(3).getDouble();
             prop.textValue = props.getColumn(4).isNull() ? "" : props.getColumn(4).getString();
             out.props.push_back(std::move(prop));
+            prc = props.tryExecuteStep();
         }
+        props.reset();
+        if (prc != SQLITE_DONE)
+            return sqlError(conn);
+        return {};
     }
 
     struct DbGuard {
@@ -139,13 +146,12 @@ ll::Expected<void> BlockStore::ensureSchema(SQLiteConnection& conn) {
         "CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT)",
     };
 
-    try {
-        for (auto const& sql : kSchema)
-            conn.database().exec(sql.data());
-        return {};
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
+    for (auto const& sql : kSchema) {
+        int rc = conn.database().tryExec(sql.data());
+        if (rc != SQLITE_OK)
+            return sqlError(conn);
     }
+    return {};
 }
 
 ll::Expected<std::unique_ptr<BlockStore>> BlockStore::create(std::shared_ptr<ConnectionPool> pool) {
@@ -166,15 +172,10 @@ ll::Expected<BlockId> BlockStore::createBlock(
     if (auto err = this->ensureSchema(*guard); !err)
         return ll::makeStringError(err.error().message());
 
-    try {
-        BlockId id = 0;
-        auto res = this->implCreateBlock(*guard, parent, kind, name, payload, id);
-        if (!res)
-            return ll::makeStringError(res.error().message());
-        return id;
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
-    }
+    BlockId id = 0;
+    if (auto res = this->implCreateBlock(*guard, parent, kind, name, payload, id); !res)
+        return ll::makeStringError(res.error().message());
+    return id;
 }
 
 ll::Expected<void> BlockStore::implCreateBlock(
@@ -190,24 +191,41 @@ ll::Expected<void> BlockStore::implCreateBlock(
     const std::int64_t ts = nowMs();
     stmt.bind(6, ts);
     stmt.bind(7, ts);
-    stmt.executeStep();
+    int rc = stmt.tryExecuteStep();
+    if (rc != SQLITE_DONE)
+        return sqlError(conn);
     id = conn.database().getLastInsertRowid();
+
+    BlockRecord rec;
+    rec.id = id;
+    rec.parent = parent;
+    rec.kind = kind;
+    rec.name = std::string(name);
+    rec.state = BlockLifecycle::Active;
+    rec.created = ts;
+    rec.updated = ts;
+    if (!payload.empty()) {
+        rec.payload.resize(payload.size());
+        std::memcpy(rec.payload.data(), payload.data(), payload.size());
+    }
+    mBlockCache.put(id, std::make_shared<BlockRecord>(std::move(rec)));
     return {};
 }
 
 ll::Expected<BlockRecord> BlockStore::load(BlockId id) {
+    if (auto cached = mBlockCache.get(id); cached.has_value())
+        return **cached;
+
     auto guard = acquireConnection(this->mPool);
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    try {
-        auto record = this->readBlock(*guard, id);
-        if (!record)
-            return ll::makeStringError(record.error().message());
-        return std::move(*record);
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
-    }
+    auto record = this->readBlock(*guard, id);
+    if (!record)
+        return ll::makeStringError(record.error().message());
+    auto shared = std::make_shared<BlockRecord>(std::move(*record));
+    mBlockCache.put(id, shared);
+    return *shared;
 }
 
 ll::Expected<BlockRecord> BlockStore::load(BlockId parent, std::string_view name) {
@@ -215,21 +233,22 @@ ll::Expected<BlockRecord> BlockStore::load(BlockId parent, std::string_view name
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    try {
-        auto& stmt = (**guard).statements().get("getBlockByName");
-        stmt.reset();
-        stmt.bind(1, static_cast<std::int64_t>(parent));
-        stmt.bind(2, std::string(name));
-        if (!stmt.executeStep())
-            return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound));
+    auto& stmt = (*guard).statements().get("getBlockByName");
+    stmt.reset();
+    stmt.bind(1, static_cast<std::int64_t>(parent));
+    stmt.bind(2, std::string(name));
+    int rc = stmt.tryExecuteStep();
+    if (rc == SQLITE_DONE)
+        return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound));
+    if (rc != SQLITE_ROW)
+        return sqlError(*guard);
 
-        BlockRecord record;
-        readBlockRow(stmt, true, record, *guard);
-        stmt.reset();
-        return record;
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
-    }
+    BlockRecord record;
+    if (auto r = readBlockRow(stmt, true, record, *guard); !r)
+        return ll::makeStringError(r.error().message());
+    stmt.reset();
+    mBlockCache.put(record.id, std::make_shared<BlockRecord>(record));
+    return record;
 }
 
 ll::Expected<void> BlockStore::withBlock(
@@ -238,48 +257,51 @@ ll::Expected<void> BlockStore::withBlock(
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    try {
-        auto& stmt = (**guard).statements().get("getBlockById");
-        stmt.reset();
-        stmt.bind(1, id);
-        if (!stmt.executeStep())
-            return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound));
+    auto& stmt = (*guard).statements().get("getBlockById");
+    stmt.reset();
+    stmt.bind(1, id);
+    int rc = stmt.tryExecuteStep();
+    if (rc == SQLITE_DONE)
+        return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound));
+    if (rc != SQLITE_ROW)
+        return sqlError(*guard);
 
-        size_t col = 0;
-        BlockView view;
-        view.id = id;
-        view.parent = stmt.getColumn(static_cast<int>(col++)).getInt64();
-        view.name = stmt.getColumn(static_cast<int>(col++)).getText();
-        view.kind = stmt.getColumn(static_cast<int>(col++)).getInt();
-        view.state = static_cast<BlockLifecycle>(stmt.getColumn(static_cast<int>(col++)).getInt64());
-        view.created = stmt.getColumn(static_cast<int>(col++)).getInt64();
-        view.updated = stmt.getColumn(static_cast<int>(col++)).getInt64();
-        std::string payload;
-        if (auto payloadCol = stmt.getColumn(static_cast<int>(col++)); !payloadCol.isNull()) {
-            int n = payloadCol.getBytes();
-            payload.resize(n);
-            std::memcpy(payload.data(), payloadCol.getBlob(), n);
-        }
-        view.payload = payload;
-
-        consumer(view);
-        stmt.reset();
-        return {};
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
+    size_t col = 0;
+    BlockView view;
+    view.id = id;
+    view.parent = stmt.getColumn(static_cast<int>(col++)).getInt64();
+    view.name = stmt.getColumn(static_cast<int>(col++)).getText();
+    view.kind = stmt.getColumn(static_cast<int>(col++)).getInt();
+    view.state = static_cast<BlockLifecycle>(stmt.getColumn(static_cast<int>(col++)).getInt64());
+    view.created = stmt.getColumn(static_cast<int>(col++)).getInt64();
+    view.updated = stmt.getColumn(static_cast<int>(col++)).getInt64();
+    std::string payload;
+    if (auto payloadCol = stmt.getColumn(static_cast<int>(col++)); !payloadCol.isNull()) {
+        int n = payloadCol.getBytes();
+        payload.resize(n);
+        std::memcpy(payload.data(), payloadCol.getBlob(), n);
     }
+    view.payload = payload;
+
+    consumer(view);
+    stmt.reset();
+    return {};
 }
 
 ll::Expected<BlockRecord> BlockStore::readBlock(SQLiteConnection& conn, BlockId id) {
     auto& stmt = conn.statements().get("getBlockById");
     stmt.reset();
     stmt.bind(1, id);
-    if (!stmt.executeStep())
+    int rc = stmt.tryExecuteStep();
+    if (rc == SQLITE_DONE)
         return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound));
+    if (rc != SQLITE_ROW)
+        return sqlError(conn);
 
     BlockRecord record;
     record.id = id;
-    readBlockRow(stmt, false, record, conn);
+    if (auto r = readBlockRow(stmt, false, record, conn); !r)
+        return ll::makeStringError(r.error().message());
     stmt.reset();
     return record;
 }
@@ -289,14 +311,9 @@ ll::Expected<void> BlockStore::setPayload(BlockId id, std::string_view payload) 
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    try {
-        auto res = this->implSetPayload(*guard, id, payload);
-        if (!res)
-            return ll::makeStringError(res.error().message());
-        return {};
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
-    }
+    if (auto res = this->implSetPayload(*guard, id, payload); !res)
+        return ll::makeStringError(res.error().message());
+    return {};
 }
 
 ll::Expected<void> BlockStore::implSetPayload(SQLiteConnection& conn, BlockId id, std::string_view payload) {
@@ -305,9 +322,12 @@ ll::Expected<void> BlockStore::implSetPayload(SQLiteConnection& conn, BlockId id
     bindPayload(stmt, 1, payload);
     stmt.bind(2, nowMs());
     stmt.bind(3, id);
-    stmt.executeStep();
+    int rc = stmt.tryExecuteStep();
+    if (rc != SQLITE_DONE)
+        return sqlError(conn);
     if (stmt.getChanges() == 0)
         return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound));
+    mBlockCache.erase(id);
     return {};
 }
 
@@ -320,14 +340,9 @@ ll::Expected<void> BlockStore::control(BlockId id, BlockLifecycle to) {
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    try {
-        auto res = this->implControl(*guard, id, to);
-        if (!res)
-            return ll::makeStringError(res.error().message());
-        return {};
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
-    }
+    if (auto res = this->implControl(*guard, id, to); !res)
+        return ll::makeStringError(res.error().message());
+    return {};
 }
 
 ll::Expected<void> BlockStore::implControl(SQLiteConnection& conn, BlockId id, BlockLifecycle to) {
@@ -336,9 +351,12 @@ ll::Expected<void> BlockStore::implControl(SQLiteConnection& conn, BlockId id, B
     stmt.bind(1, static_cast<std::int64_t>(to));
     stmt.bind(2, nowMs());
     stmt.bind(3, id);
-    stmt.executeStep();
+    int rc = stmt.tryExecuteStep();
+    if (rc != SQLITE_DONE)
+        return sqlError(conn);
     if (stmt.getChanges() == 0)
         return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound));
+    mBlockCache.erase(id);
     return {};
 }
 
@@ -347,18 +365,17 @@ ll::Expected<BlockLifecycle> BlockStore::stateOf(BlockId id) {
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    try {
-        auto& stmt = (**guard).statements().get("getState");
-        stmt.reset();
-        stmt.bind(1, id);
-        if (!stmt.executeStep())
-            return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound));
-        auto state = static_cast<BlockLifecycle>(stmt.getColumn(0).getInt64());
-        stmt.reset();
-        return state;
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
-    }
+    auto& stmt = (*guard).statements().get("getState");
+    stmt.reset();
+    stmt.bind(1, id);
+    int rc = stmt.tryExecuteStep();
+    if (rc == SQLITE_DONE)
+        return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound));
+    if (rc != SQLITE_ROW)
+        return sqlError(*guard);
+    auto state = static_cast<BlockLifecycle>(stmt.getColumn(0).getInt64());
+    stmt.reset();
+    return state;
 }
 
 ll::Expected<std::vector<BlockId>> BlockStore::children(BlockId parent, std::int32_t kind, size_t limit) {
@@ -366,21 +383,20 @@ ll::Expected<std::vector<BlockId>> BlockStore::children(BlockId parent, std::int
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    try {
-        auto& stmt = (**guard).statements().get("listChildren");
-        stmt.reset();
-        stmt.bind(1, static_cast<std::int64_t>(parent));
-        stmt.bind(2, kind);
-        stmt.bind(3, kind);
-        stmt.bind(4, liveLimit(limit));
+    auto& stmt = (*guard).statements().get("listChildren");
+    stmt.reset();
+    stmt.bind(1, static_cast<std::int64_t>(parent));
+    stmt.bind(2, kind);
+    stmt.bind(3, kind);
+    stmt.bind(4, liveLimit(limit));
 
-        std::vector<BlockId> ids;
-        while (stmt.executeStep())
-            ids.push_back(stmt.getColumn(0).getInt64());
-        return ids;
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
-    }
+    std::vector<BlockId> ids;
+    int rc = 0;
+    while ((rc = stmt.tryExecuteStep()) == SQLITE_ROW)
+        ids.push_back(stmt.getColumn(0).getInt64());
+    if (rc != SQLITE_DONE)
+        return sqlError(*guard);
+    return ids;
 }
 
 ll::Expected<std::vector<BlockRecord>> BlockStore::records(BlockId parent, std::int32_t kind, size_t limit) {
@@ -388,24 +404,24 @@ ll::Expected<std::vector<BlockRecord>> BlockStore::records(BlockId parent, std::
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    try {
-        auto& stmt = (**guard).statements().get("getChildrenFull");
-        stmt.reset();
-        stmt.bind(1, static_cast<std::int64_t>(parent));
-        stmt.bind(2, kind);
-        stmt.bind(3, kind);
-        stmt.bind(4, liveLimit(limit));
+    auto& stmt = (*guard).statements().get("getChildrenFull");
+    stmt.reset();
+    stmt.bind(1, static_cast<std::int64_t>(parent));
+    stmt.bind(2, kind);
+    stmt.bind(3, kind);
+    stmt.bind(4, liveLimit(limit));
 
-        std::vector<BlockRecord> out;
-        while (stmt.executeStep()) {
-            BlockRecord record;
-            readBlockRow(stmt, true, record, *guard);
-            out.push_back(std::move(record));
-        }
-        return out;
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
+    std::vector<BlockRecord> out;
+    int rc = 0;
+    while ((rc = stmt.tryExecuteStep()) == SQLITE_ROW) {
+        BlockRecord record;
+        if (auto r = readBlockRow(stmt, true, record, *guard); !r)
+            return ll::makeStringError(r.error().message());
+        out.push_back(std::move(record));
     }
+    if (rc != SQLITE_DONE)
+        return sqlError(*guard);
+    return out;
 }
 
 ll::Expected<void> BlockStore::setProp(BlockId id, PropKey key, std::int64_t value) {
@@ -426,14 +442,9 @@ ll::Expected<void> BlockStore::setProp(
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    try {
-        auto res = this->implSetProp(*guard, id, key, type, ival, rval, tval);
-        if (!res)
-            return ll::makeStringError(res.error().message());
-        return {};
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
-    }
+    if (auto res = this->implSetProp(*guard, id, key, type, ival, rval, tval); !res)
+        return ll::makeStringError(res.error().message());
+    return {};
 }
 
 ll::Expected<void> BlockStore::implSetProp(
@@ -450,9 +461,12 @@ ll::Expected<void> BlockStore::implSetProp(
         stmt.bind(6);
     else
         stmt.bind(6, std::string(tval));
-    stmt.executeStep();
+    int rc = stmt.tryExecuteStep();
+    if (rc != SQLITE_DONE)
+        return sqlError(conn);
     if (stmt.getChanges() == 0)
         return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound));
+    mBlockCache.erase(id);
     return {};
 }
 
@@ -461,21 +475,20 @@ ll::Expected<std::vector<BlockId>> BlockStore::queryInt(PropKey key, std::int64_
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    try {
-        auto& stmt = (**guard).statements().get("queryPropInt");
-        stmt.reset();
-        stmt.bind(1, key);
-        stmt.bind(2, min);
-        stmt.bind(3, max);
-        stmt.bind(4, liveLimit(limit));
+    auto& stmt = (*guard).statements().get("queryPropInt");
+    stmt.reset();
+    stmt.bind(1, key);
+    stmt.bind(2, min);
+    stmt.bind(3, max);
+    stmt.bind(4, liveLimit(limit));
 
-        std::vector<BlockId> ids;
-        while (stmt.executeStep())
-            ids.push_back(stmt.getColumn(0).getInt64());
-        return ids;
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
-    }
+    std::vector<BlockId> ids;
+    int rc = 0;
+    while ((rc = stmt.tryExecuteStep()) == SQLITE_ROW)
+        ids.push_back(stmt.getColumn(0).getInt64());
+    if (rc != SQLITE_DONE)
+        return sqlError(*guard);
+    return ids;
 }
 
 ll::Expected<std::vector<BlockId>> BlockStore::queryInt(
@@ -484,22 +497,21 @@ ll::Expected<std::vector<BlockId>> BlockStore::queryInt(
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    try {
-        auto& stmt = (**guard).statements().get("queryPropIntUnder");
-        stmt.reset();
-        stmt.bind(1, key);
-        stmt.bind(2, min);
-        stmt.bind(3, max);
-        stmt.bind(4, static_cast<std::int64_t>(parent));
-        stmt.bind(5, liveLimit(limit));
+    auto& stmt = (*guard).statements().get("queryPropIntUnder");
+    stmt.reset();
+    stmt.bind(1, key);
+    stmt.bind(2, min);
+    stmt.bind(3, max);
+    stmt.bind(4, static_cast<std::int64_t>(parent));
+    stmt.bind(5, liveLimit(limit));
 
-        std::vector<BlockId> ids;
-        while (stmt.executeStep())
-            ids.push_back(stmt.getColumn(0).getInt64());
-        return ids;
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
-    }
+    std::vector<BlockId> ids;
+    int rc = 0;
+    while ((rc = stmt.tryExecuteStep()) == SQLITE_ROW)
+        ids.push_back(stmt.getColumn(0).getInt64());
+    if (rc != SQLITE_DONE)
+        return sqlError(*guard);
+    return ids;
 }
 
 ll::Expected<std::vector<BlockId>> BlockStore::queryText(PropKey key, std::string_view value, size_t limit) {
@@ -507,20 +519,19 @@ ll::Expected<std::vector<BlockId>> BlockStore::queryText(PropKey key, std::strin
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    try {
-        auto& stmt = (**guard).statements().get("queryPropText");
-        stmt.reset();
-        stmt.bind(1, key);
-        stmt.bind(2, std::string(value));
-        stmt.bind(3, liveLimit(limit));
+    auto& stmt = (*guard).statements().get("queryPropText");
+    stmt.reset();
+    stmt.bind(1, key);
+    stmt.bind(2, std::string(value));
+    stmt.bind(3, liveLimit(limit));
 
-        std::vector<BlockId> ids;
-        while (stmt.executeStep())
-            ids.push_back(stmt.getColumn(0).getInt64());
-        return ids;
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
-    }
+    std::vector<BlockId> ids;
+    int rc = 0;
+    while ((rc = stmt.tryExecuteStep()) == SQLITE_ROW)
+        ids.push_back(stmt.getColumn(0).getInt64());
+    if (rc != SQLITE_DONE)
+        return sqlError(*guard);
+    return ids;
 }
 
 ll::Expected<void> BlockStore::link(BlockId src, BlockId dst, std::int32_t kind) {
@@ -528,14 +539,9 @@ ll::Expected<void> BlockStore::link(BlockId src, BlockId dst, std::int32_t kind)
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    try {
-        auto res = this->implLink(*guard, src, dst, kind);
-        if (!res)
-            return ll::makeStringError(res.error().message());
-        return {};
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
-    }
+    if (auto res = this->implLink(*guard, src, dst, kind); !res)
+        return ll::makeStringError(res.error().message());
+    return {};
 }
 
 ll::Expected<void> BlockStore::implLink(SQLiteConnection& conn, BlockId src, BlockId dst, std::int32_t kind) {
@@ -544,7 +550,9 @@ ll::Expected<void> BlockStore::implLink(SQLiteConnection& conn, BlockId src, Blo
     stmt.bind(1, src);
     stmt.bind(2, dst);
     stmt.bind(3, kind);
-    stmt.executeStep();
+    int rc = stmt.tryExecuteStep();
+    if (rc != SQLITE_DONE)
+        return sqlError(conn);
     return {};
 }
 
@@ -553,14 +561,9 @@ ll::Expected<void> BlockStore::unlink(BlockId src, BlockId dst, std::int32_t kin
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    try {
-        auto res = this->implUnlink(*guard, src, dst, kind);
-        if (!res)
-            return ll::makeStringError(res.error().message());
-        return {};
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
-    }
+    if (auto res = this->implUnlink(*guard, src, dst, kind); !res)
+        return ll::makeStringError(res.error().message());
+    return {};
 }
 
 ll::Expected<void> BlockStore::implUnlink(SQLiteConnection& conn, BlockId src, BlockId dst, std::int32_t kind) {
@@ -569,7 +572,9 @@ ll::Expected<void> BlockStore::implUnlink(SQLiteConnection& conn, BlockId src, B
     stmt.bind(1, src);
     stmt.bind(2, dst);
     stmt.bind(3, kind);
-    stmt.executeStep();
+    int rc = stmt.tryExecuteStep();
+    if (rc != SQLITE_DONE)
+        return sqlError(conn);
     return {};
 }
 
@@ -578,20 +583,19 @@ ll::Expected<std::vector<BlockId>> BlockStore::links(BlockId src, std::int32_t k
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    try {
-        auto& stmt = (**guard).statements().get("linksBySrc");
-        stmt.reset();
-        stmt.bind(1, src);
-        stmt.bind(2, kind);
-        stmt.bind(3, kind);
+    auto& stmt = (*guard).statements().get("linksBySrc");
+    stmt.reset();
+    stmt.bind(1, src);
+    stmt.bind(2, kind);
+    stmt.bind(3, kind);
 
-        std::vector<BlockId> ids;
-        while (stmt.executeStep())
-            ids.push_back(stmt.getColumn(0).getInt64());
-        return ids;
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
-    }
+    std::vector<BlockId> ids;
+    int rc = 0;
+    while ((rc = stmt.tryExecuteStep()) == SQLITE_ROW)
+        ids.push_back(stmt.getColumn(0).getInt64());
+    if (rc != SQLITE_DONE)
+        return sqlError(*guard);
+    return ids;
 }
 
 ll::Expected<std::vector<BlockId>> BlockStore::backlinks(BlockId dst, std::int32_t kind) {
@@ -599,20 +603,19 @@ ll::Expected<std::vector<BlockId>> BlockStore::backlinks(BlockId dst, std::int32
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    try {
-        auto& stmt = (**guard).statements().get("linksByDst");
-        stmt.reset();
-        stmt.bind(1, dst);
-        stmt.bind(2, kind);
-        stmt.bind(3, kind);
+    auto& stmt = (*guard).statements().get("linksByDst");
+    stmt.reset();
+    stmt.bind(1, dst);
+    stmt.bind(2, kind);
+    stmt.bind(3, kind);
 
-        std::vector<BlockId> ids;
-        while (stmt.executeStep())
-            ids.push_back(stmt.getColumn(0).getInt64());
-        return ids;
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
-    }
+    std::vector<BlockId> ids;
+    int rc = 0;
+    while ((rc = stmt.tryExecuteStep()) == SQLITE_ROW)
+        ids.push_back(stmt.getColumn(0).getInt64());
+    if (rc != SQLITE_DONE)
+        return sqlError(*guard);
+    return ids;
 }
 
 ll::Expected<std::int32_t> BlockStore::intern(std::string_view name) {
@@ -627,41 +630,95 @@ ll::Expected<std::string> BlockStore::unintern(std::int32_t id) {
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    try {
-        auto& stmt = (**guard).statements().get("getDictName");
-        stmt.reset();
-        stmt.bind(1, id);
-        if (!stmt.executeStep())
-            return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound));
-        auto name = stmt.getColumn(0).getString();
-        stmt.reset();
-        return name;
-    } catch (SQLite::Exception const& e) {
-        return ll::makeStringError(e.what());
-    }
+    auto& stmt = (*guard).statements().get("getDictName");
+    stmt.reset();
+    stmt.bind(1, id);
+    int rc = stmt.tryExecuteStep();
+    if (rc == SQLITE_DONE)
+        return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound));
+    if (rc != SQLITE_ROW)
+        return sqlError(*guard);
+    auto name = stmt.getColumn(0).getString();
+    stmt.reset();
+    return name;
 }
 
 ll::Expected<std::int32_t> BlockStore::resolveKey(SQLiteConnection& conn, std::string_view name) {
     auto& lookup = conn.statements().get("getDictId");
     lookup.reset();
     lookup.bind(1, std::string(name));
-    if (lookup.executeStep()) {
+    int rc = lookup.tryExecuteStep();
+    if (rc == SQLITE_ROW) {
         auto id = lookup.getColumn(0).getInt();
         lookup.reset();
         return id;
     }
+    if (rc != SQLITE_DONE)
+        return sqlError(conn);
 
     auto& insert = conn.statements().get("insertDict");
     insert.reset();
     insert.bind(1, std::string(name));
-    insert.executeStep();
+    int irc = insert.tryExecuteStep();
+    if (irc != SQLITE_DONE)
+        return sqlError(conn);
 
     lookup.reset();
     lookup.bind(1, std::string(name));
-    if (lookup.executeStep()) {
+    int rrc = lookup.tryExecuteStep();
+    if (rrc == SQLITE_ROW) {
         auto id = lookup.getColumn(0).getInt();
         lookup.reset();
         return id;
     }
+    if (rrc != SQLITE_DONE)
+        return sqlError(conn);
     return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::CreateFailed));
+}
+
+ll::Expected<std::optional<std::string>> BlockStore::metaGet(std::string_view key) {
+    auto guard = acquireConnection(this->mPool);
+    if (!guard)
+        return ll::makeStringError(guard.error().message());
+
+    auto& stmt = (*guard).statements().get("getMeta");
+    stmt.reset();
+    stmt.bind(1, std::string(key));
+    int rc = stmt.tryExecuteStep();
+    if (rc == SQLITE_DONE)
+        return std::nullopt;
+    if (rc != SQLITE_ROW)
+        return sqlError(*guard);
+    auto value = stmt.getColumn(0).getString();
+    stmt.reset();
+    return std::optional<std::string>(std::string(value));
+}
+
+ll::Expected<void> BlockStore::metaSet(std::string_view key, std::string_view value) {
+    auto guard = acquireConnection(this->mPool);
+    if (!guard)
+        return ll::makeStringError(guard.error().message());
+
+    auto& stmt = (*guard).statements().get("setMeta");
+    stmt.reset();
+    stmt.bind(1, std::string(key));
+    stmt.bind(2, std::string(value));
+    int rc = stmt.tryExecuteStep();
+    if (rc != SQLITE_DONE)
+        return sqlError(*guard);
+    return {};
+}
+
+ll::Expected<void> BlockStore::metaDel(std::string_view key) {
+    auto guard = acquireConnection(this->mPool);
+    if (!guard)
+        return ll::makeStringError(guard.error().message());
+
+    auto& stmt = (*guard).statements().get("delMeta");
+    stmt.reset();
+    stmt.bind(1, std::string(key));
+    int rc = stmt.tryExecuteStep();
+    if (rc != SQLITE_DONE)
+        return sqlError(*guard);
+    return {};
 }

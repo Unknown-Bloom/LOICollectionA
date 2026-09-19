@@ -14,7 +14,8 @@ namespace BlockError {
         CommitFailed = 6,
         RollbackFailed = 7,
         DuplicateName = 8,
-        InvalidState = 9
+        InvalidState = 9,
+        SchemaMismatch = 10
     };
 
     struct BlockErrorCategory : std::error_category {
@@ -33,6 +34,7 @@ namespace BlockError {
                 case BlockErrorCode::RollbackFailed: return "transaction rollback failed";
                 case BlockErrorCode::DuplicateName: return "duplicate block name under parent";
                 case BlockErrorCode::InvalidState: return "invalid block state";
+                case BlockErrorCode::SchemaMismatch: return "table schema version or columns mismatch";
             }
 
             return "Unknown";

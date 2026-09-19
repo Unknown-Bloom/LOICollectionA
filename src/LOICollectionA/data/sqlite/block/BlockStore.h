@@ -3,12 +3,14 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include <ll/api/Expected.h>
 
+#include "LOICollectionA/base/Cache.h"
 #include "LOICollectionA/base/Macro.h"
 #include "LOICollectionA/data/sqlite/block/Payload.h"
 
@@ -67,6 +69,10 @@ public:
         std::shared_ptr<ConnectionPool> pool);
 
     LOICOLLECTION_A_API ~BlockStore();
+
+    [[nodiscard]] ll::Expected<std::optional<std::string>> metaGet(std::string_view key);
+    [[nodiscard]] ll::Expected<void> metaSet(std::string_view key, std::string_view value);
+    [[nodiscard]] ll::Expected<void> metaDel(std::string_view key);
 
     BlockStore(BlockStore const&) = delete;
     BlockStore& operator=(BlockStore const&) = delete;
@@ -129,4 +135,5 @@ private:
     [[nodiscard]] ll::Expected<std::int32_t> resolveKey(SQLiteConnection& conn, std::string_view name);
 
     std::shared_ptr<ConnectionPool> mPool;
+    LRUCache<BlockId, BlockRecord> mBlockCache{2048};
 };

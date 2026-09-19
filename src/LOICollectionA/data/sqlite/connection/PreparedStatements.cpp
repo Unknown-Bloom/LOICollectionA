@@ -50,6 +50,7 @@ namespace {
         { "linksByDst", "SELECT src FROM link WHERE dst=? AND (?=-1 OR kind=?) ORDER BY src" },
         { "getMeta", "SELECT value FROM meta WHERE key=?" },
         { "setMeta", "INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value" },
+        { "delMeta", "DELETE FROM meta WHERE key=?" },
     });
 }
 
