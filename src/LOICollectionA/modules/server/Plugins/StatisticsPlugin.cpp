@@ -1,5 +1,6 @@
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <filesystem>
@@ -44,6 +45,7 @@
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/include/server/Plugins/TableSchema.h"
 
 #include "LOICollectionA/frontend/AST.h"
 
@@ -59,6 +61,22 @@
 using I18nUtilsTools::tr;
 
 namespace LOICollection::server::Plugins {
+    namespace {
+        StatisticsCol toStatisticsColumn(StatisticType type) {
+            switch (type) {
+                case StatisticType::onlinetime: return StatisticsCol::onlinetime;
+                case StatisticType::kills: return StatisticsCol::kill;
+                case StatisticType::deaths: return StatisticsCol::death;
+                case StatisticType::place: return StatisticsCol::place;
+                case StatisticType::destroy: return StatisticsCol::destroy;
+                case StatisticType::respawn: return StatisticsCol::respawn;
+                case StatisticType::join: return StatisticsCol::joins;
+            }
+
+            return StatisticsCol::onlinetime;
+        }
+    }
+
     struct StatisticsPlugin::operation {
         StatisticType Type;
     };
@@ -74,6 +92,8 @@ namespace LOICollection::server::Plugins {
 
         std::shared_ptr<BlockRepository> db;
         std::shared_ptr<BlockRepository> db2;
+        std::optional<StatisticsTable> statistics;
+        std::optional<LanguageTable> language;
         std::shared_ptr<ll::io::Logger> logger;
 
         std::string mGuiPath;
@@ -115,23 +135,40 @@ namespace LOICollection::server::Plugins {
             if (!this->mImpl->WriteDatabaseTaskRunning.load(std::memory_order_acquire))
                 return;
             
-            auto transaction = BlockRepository::WriteTransaction::create(*this->getDatabase());
+            auto transaction = this->mImpl->statistics->tx();
             if (!transaction.has_value()) {
                 modules::defaultErrorHandler<StatisticsPlugin>(transaction.error());
 
                 return;
             }
 
-            auto& connection = transaction.value().connection();
+            auto& batch = transaction.value();
 
             for (const auto& it : this->mImpl->mCache) {
                 for (const auto& it2 : it.second) {
-                    this->getDatabase()->set(connection, "Statistics", it.first, it2.first, std::to_string(it2.second))
-                        .or_else(modules::defaultErrorHandler<StatisticsPlugin>);
+                    auto column = magic_enum::enum_cast<StatisticsCol>(it2.first);
+                    if (!column.has_value())
+                        continue;
+
+                    auto result = batch.set(it.first, *column, it2.second);
+                    if (!result.has_value()) {
+                        auto rollbacked = batch.rollback();
+                        if (!rollbacked.has_value())
+                            modules::defaultErrorHandler<StatisticsPlugin>(rollbacked.error());
+
+                        modules::defaultErrorHandler<StatisticsPlugin>(result.error());
+
+                        return;
+                    }
                 }
             }
 
-            transaction.value().commit();
+            auto committed = batch.commit();
+            if (!committed.has_value()) {
+                modules::defaultErrorHandler<StatisticsPlugin>(committed.error());
+
+                return;
+            }
 
             this->mImpl->mCache.clear();
         });
@@ -370,7 +407,7 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(StatisticsPluginErrorCode::Invalid));
 
-        return this->getDatabase()->get("Language", uuid, "name", "Unknown");
+        return this->mImpl->language->get<std::string>(uuid, LanguageCol::name, std::string("Unknown"));
     }
 
     ll::Expected<std::vector<std::pair<std::string, int>>> StatisticsPlugin::getRankingList(StatisticType type, int limit) {
@@ -391,7 +428,7 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(StatisticsPluginErrorCode::Invalid));
 
-        return this->getDatabase()->list("Statistics")
+        return this->mImpl->statistics->list()
             .transform([this, type, limit](const std::vector<std::string>& ids) -> std::vector<std::pair<std::string, int>> {
                 return ids
                     | std::views::take(limit > 0 ? limit : static_cast<int>(ids.size()))
@@ -414,17 +451,15 @@ namespace LOICollection::server::Plugins {
             return ll::makeErrorCodeError(makeErrorCode(StatisticsPluginErrorCode::Invalid));
 
         return this->getStatisticName(type)
-            .and_then([this, uuid](const std::string& table) -> ll::Expected<int> {
+            .and_then([this, type, uuid](const std::string& table) -> ll::Expected<int> {
                 if (table.empty())
                     return 0;
 
                 if (this->mImpl->mCache.contains(uuid) && this->mImpl->mCache[uuid].contains(table))
                     return this->mImpl->mCache[uuid][table];
 
-                return this->getDatabase()->get("Statistics", uuid, table, "0")
-                    .transform([this, uuid, table](const std::string& value) -> int {
-                        int result = SystemUtils::toInt(value);
-
+                return this->mImpl->statistics->get<int>(uuid, toStatisticsColumn(type), 0)
+                    .transform([this, uuid, table](int result) -> int {
                         this->mImpl->mCache[uuid][table] = result;
 
                         return result;
@@ -457,7 +492,7 @@ namespace LOICollection::server::Plugins {
     }
 
     bool StatisticsPlugin::isValid() {
-        return this->getLogger() != nullptr && this->getDatabase() != nullptr;
+        return this->getLogger() != nullptr && this->mImpl->statistics.has_value() && this->mImpl->language.has_value();
     }
 
     int StatisticsPlugin::getRankingPlayerCount() {
@@ -495,6 +530,9 @@ namespace LOICollection::server::Plugins {
             return false;
 
         this->mImpl->db.reset();
+        this->mImpl->db2.reset();
+        this->mImpl->statistics.reset();
+        this->mImpl->language.reset();
         this->mImpl->logger.reset();
         this->mImpl->options = {};
 
@@ -508,17 +546,17 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->options.ModuleEnabled)
             return false;
 
-        return this->getDatabase()->create("Statistics", [](BlockRepository::ColumnCallback ctor) -> void {
-            ctor("onlinetime");
-            ctor("kill");
-            ctor("death");
-            ctor("place");
-            ctor("destroy");
-            ctor("respawn");
-            ctor("joins");
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->registeryUI();
-        }).transform([this]() -> bool {
+        auto language = LanguageTable::open(*this->mImpl->db2, "Language");
+        if (!language.has_value())
+            return ll::Unexpected(language.error());
+        this->mImpl->language.emplace(std::move(language.value()));
+
+        return StatisticsTable::open(*this->mImpl->db, "Statistics")
+            .and_then([this](StatisticsTable table) -> ll::Expected<void> {
+                this->mImpl->statistics.emplace(std::move(table));
+
+                return this->registeryUI();
+            }).transform([this]() -> bool {
             this->registeryCommand();
             this->listenEvent();
 

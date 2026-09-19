@@ -1,5 +1,6 @@
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 #include <ranges>
@@ -46,6 +47,7 @@
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/include/server/Plugins/TableSchema.h"
 
 #include "LOICollectionA/base/Wrapper.h"
 #include "LOICollectionA/base/ServiceProvider.h"
@@ -57,6 +59,8 @@
 using I18nUtilsTools::tr;
 
 namespace LOICollection::server::Plugins {
+    using LOICollection::data::FindMode;
+
     enum class MuteObject;
 
     constexpr inline auto MuteObjectName = ll::command::enum_name_v<MuteObject>;
@@ -77,6 +81,7 @@ namespace LOICollection::server::Plugins {
         bool ModuleEnabled = false;
 
         std::shared_ptr<BlockRepository> db;
+        std::optional<MuteTable> mute;
         std::shared_ptr<ll::io::Logger> logger;
 
         std::string mGuiPath;
@@ -204,7 +209,7 @@ namespace LOICollection::server::Plugins {
             });
         command.overload<operation>().text("info").required("Object").execute(
             [this](CommandOrigin const& origin, CommandOutput& output, operation const& param) -> void {
-                this->getDatabase()->get("Mute", param.Object)
+                this->mImpl->mute->getRow(param.Object)
                     .transform([&output, &origin, target = param.Object](std::unordered_map<std::string, std::string> data) -> void {
                         if (data.empty()) {
                             output.error(tr(origin.getLocaleCode(), "commands.mute.error.info"));
@@ -430,7 +435,7 @@ namespace LOICollection::server::Plugins {
                     if (id.empty())
                         return {};
 
-                    return this->getDatabase()->get("Mute", id)
+                    return this->mImpl->mute->getRow(id)
                         .and_then([this, id, &event](std::unordered_map<std::string, std::string> data) -> ll::Expected<void> {
                             if (SystemUtils::isPastOrPresent(data.at("time")))
                                 return this->delMute(event.self());
@@ -491,18 +496,32 @@ namespace LOICollection::server::Plugins {
         std::string mCause = cause.empty() ? "None" : cause;
         std::string mTimestamp = SystemUtils::getCurrentTimestamp();
 
-        std::unordered_map<std::string, std::string> mData = {
-            { "name", player.getRealName() },
-            { "cause", mCause },
-            { "time", time ? SystemUtils::toTimeCalculate(SystemUtils::getNowTime(), time * 60, "0") : "0" },
-            { "subtime", SystemUtils::getNowTime("%Y%m%d%H%M%S") },
-            { "data", player.getUuid().asString() }
-        };
+        long long mTime = time > 0 ? SystemUtils::toLongLong(SystemUtils::toTimeCalculate(SystemUtils::getNowTime(), time * 60, "0")) : 0;
+        long long mSubtime = SystemUtils::toLongLong(SystemUtils::getNowTime("%Y%m%d%H%M%S"));
 
-        return this->getDatabase()->set("Mute", mTimestamp, mData)
-            .transform([this, mCause, &player]() -> void {
-                this->getLogger()->info(fmt::runtime(LOICollectionAPI::CallbackUtils::getInstance().translate(tr({}, "mute.log1"), player)), mCause);
-            });
+        auto named = this->mImpl->mute->set(mTimestamp, MuteCol::name, player.getRealName());
+        if (!named.has_value())
+            return named;
+
+        auto caused = this->mImpl->mute->set(mTimestamp, MuteCol::cause, mCause);
+        if (!caused.has_value())
+            return caused;
+
+        auto timed = this->mImpl->mute->set(mTimestamp, MuteCol::time, mTime);
+        if (!timed.has_value())
+            return timed;
+
+        auto subTimed = this->mImpl->mute->set(mTimestamp, MuteCol::subtime, mSubtime);
+        if (!subTimed.has_value())
+            return subTimed;
+
+        auto dataed = this->mImpl->mute->set(mTimestamp, MuteCol::data, player.getUuid().asString());
+        if (!dataed.has_value())
+            return dataed;
+
+        this->getLogger()->info(fmt::runtime(LOICollectionAPI::CallbackUtils::getInstance().translate(tr({}, "mute.log1"), player)), mCause);
+
+        return {};
     }
 
     ll::Expected<void> MutePlugin::delMute(Player& player) {
@@ -527,7 +546,7 @@ namespace LOICollection::server::Plugins {
                     return ll::makeErrorCodeError(makeErrorCode(MutePluginErrorCode::NotFound));
                 }
 
-                return this->getDatabase()->del("Mute", id);
+                return this->mImpl->mute->del(id);
             })
             .transform([this, id]() -> void {
                 this->getLogger()->info(fmt::runtime(tr({}, "mute.log2")), id);
@@ -538,16 +557,16 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(MutePluginErrorCode::Invalid));
 
-        return this->getDatabase()->find("Mute", {
-            { "data", player.getUuid().asString() }
-        }, "", BlockRepository::FindCondition::AND);
+        return this->mImpl->mute->findFirst(FindMode::And, {
+            { MuteCol::data, player.getUuid().asString() }
+        });
     }
 
     ll::Expected<std::vector<std::string>> MutePlugin::getMutes(int limit) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(MutePluginErrorCode::Invalid));
         
-        return this->getDatabase()->list("Mute")
+        return this->mImpl->mute->list()
             .transform([limit](const std::vector<std::string>& keys) -> std::vector<std::string> {
                 return keys
                     | std::views::take(limit > 0 ? limit : static_cast<int>(keys.size()))
@@ -559,14 +578,14 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(MutePluginErrorCode::Invalid));
 
-        return this->getDatabase()->get("Mute", id);
+        return this->mImpl->mute->getRow(id);
     }
 
     ll::Expected<bool> MutePlugin::hasMute(const std::string& id) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(MutePluginErrorCode::Invalid));
 
-        return this->getDatabase()->has("Mute", id);
+        return this->mImpl->mute->has(id);
     }
 
     ll::Expected<bool> MutePlugin::isMute(Player& player) {
@@ -580,7 +599,7 @@ namespace LOICollection::server::Plugins {
     }
 
     bool MutePlugin::isValid() {
-        return this->getLogger() != nullptr && this->getDatabase() != nullptr;
+        return this->getLogger() != nullptr && this->mImpl->mute.has_value();
     }
 
     std::string MutePlugin::getName() {
@@ -613,6 +632,7 @@ namespace LOICollection::server::Plugins {
             return false;
 
         this->mImpl->db.reset();
+        this->mImpl->mute.reset();
         this->mImpl->logger.reset();
         this->mImpl->ModuleEnabled = false;
 
@@ -626,15 +646,12 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->ModuleEnabled)
             return false;
 
-        return this->getDatabase()->create("Mute", [](BlockRepository::ColumnCallback ctor) -> void {
-            ctor("name");
-            ctor("cause");
-            ctor("time");
-            ctor("subtime");
-            ctor("data");
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->registeryUI();
-        }).transform([this]() -> bool {
+        return MuteTable::open(*this->mImpl->db, "Mute")
+            .and_then([this](MuteTable table) -> ll::Expected<void> {
+                this->mImpl->mute.emplace(std::move(table));
+
+                return this->registeryUI();
+            }).transform([this]() -> bool {
             this->registeryCommand();
             this->listenEvent();
 

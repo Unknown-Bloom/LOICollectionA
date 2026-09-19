@@ -1,5 +1,6 @@
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <vector>
@@ -34,6 +35,7 @@
 
 #include "LOICollectionA/data/json/JsonStorage.h"
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/include/server/Plugins/TableSchema.h"
 
 #include "LOICollectionA/frontend/AST.h"
 
@@ -89,6 +91,7 @@ namespace LOICollection::server::Plugins {
 
         std::shared_ptr<JsonStorage> db;
         std::shared_ptr<BlockRepository> db2;
+        std::optional<NoticeTable> notice;
         std::shared_ptr<ll::io::Logger> logger;
 
         std::string mGuiPath;
@@ -497,15 +500,14 @@ namespace LOICollection::server::Plugins {
 
             std::string uuid = event.self().getUuid().asString();
 
-            this->mImpl->db2->has("Notice", uuid)
+            this->mImpl->notice->has(uuid)
                 .and_then([this, uuid, name = event.self().getRealName()](bool exists) -> ll::Expected<void> {
                     if (!exists) {
-                        std::unordered_map<std::string, std::string> data = {
-                            { "name", name },
-                            { "close", "false" }
-                        };
+                        auto named = this->mImpl->notice->set(uuid, "name", name);
+                        if (!named.has_value())
+                            return named;
 
-                        return this->mImpl->db2->set("Notice", uuid, data);
+                        return this->mImpl->notice->set(uuid, "close", false);
                     }
 
                     return {};
@@ -571,7 +573,7 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(NoticePluginErrorCode::Invalid));
 
-        return this->mImpl->db2->set("Notice", player.getUuid().asString(), "close", enable ? "true" : "false");
+        return this->mImpl->notice->set(player.getUuid().asString(), "close", enable);
     }
 
     ll::Expected<bool> NoticePlugin::has(const std::string& id) {
@@ -590,13 +592,11 @@ namespace LOICollection::server::Plugins {
         if (this->mImpl->CloseCache.contains(uuid))
             return *this->mImpl->CloseCache.get(uuid).value();
 
-        return this->mImpl->db2->get("Notice", uuid, "close", "false")
-            .transform([this, uuid](const std::string& value) -> bool {
-                bool result = (value == "true");
-                
-                this->mImpl->CloseCache.put(uuid, result);
+        return this->mImpl->notice->get<bool>(uuid, "close", false)
+            .transform([this, uuid](bool value) -> bool {
+                this->mImpl->CloseCache.put(uuid, value);
 
-                return result;
+                return value;
             });
     }
 
@@ -612,7 +612,7 @@ namespace LOICollection::server::Plugins {
     }
 
     bool NoticePlugin::isValid() {
-        return this->getLogger() != nullptr && this->getDatabase() != nullptr && this->mImpl->db2 != nullptr;
+        return this->getLogger() != nullptr && this->getDatabase() != nullptr && this->mImpl->notice.has_value();
     }
 
     std::string NoticePlugin::getName() {
@@ -647,6 +647,7 @@ namespace LOICollection::server::Plugins {
 
         this->mImpl->db.reset();
         this->mImpl->db2.reset();
+        this->mImpl->notice.reset();
         this->mImpl->logger.reset();
         this->mImpl->ModuleEnabled = false;
 
@@ -660,12 +661,12 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->ModuleEnabled)
             return false;
 
-        return this->mImpl->db2->create("Notice", [](BlockRepository::ColumnCallback ctor) -> void {
-            ctor("name");
-            ctor("close");
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->registeryUI();
-        }).transform([this]() -> bool {
+        return NoticeTable::open(*this->mImpl->db2, "Notice")
+            .and_then([this](NoticeTable table) -> ll::Expected<void> {
+                this->mImpl->notice.emplace(std::move(table));
+
+                return this->registeryUI();
+            }).transform([this]() -> bool {
             this->registeryCommand();
             this->listenEvent();
 
