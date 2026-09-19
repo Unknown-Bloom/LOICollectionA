@@ -534,6 +534,38 @@ ll::Expected<std::vector<BlockId>> BlockStore::queryText(PropKey key, std::strin
     return ids;
 }
 
+ll::Expected<std::vector<BlockId>> BlockStore::queryText(
+    BlockId parent, PropKey key, std::string_view value, size_t limit) {
+    auto guard = acquireConnection(this->mPool);
+    if (!guard)
+        return ll::makeStringError(guard.error().message());
+
+    auto& stmt = (*guard).statements().get("queryPropTextUnder");
+    stmt.reset();
+    stmt.bind(1, key);
+    stmt.bind(2, std::string(value));
+    stmt.bind(3, parent);
+    stmt.bind(4, liveLimit(limit));
+
+    std::vector<BlockId> ids;
+    int rc = 0;
+    while ((rc = stmt.tryExecuteStep()) == SQLITE_ROW)
+        ids.push_back(stmt.getColumn(0).getInt64());
+    if (rc != SQLITE_DONE)
+        return sqlError(*guard);
+    return ids;
+}
+
+ll::Expected<void> BlockStore::exec(std::string_view sql) {
+    auto guard = acquireConnection(this->mPool);
+    if (!guard)
+        return ll::makeStringError(guard.error().message());
+    int rc = (*guard).database().tryExec(std::string(sql).c_str());
+    if (rc != SQLITE_OK)
+        return sqlError(*guard);
+    return {};
+}
+
 ll::Expected<void> BlockStore::link(BlockId src, BlockId dst, std::int32_t kind) {
     auto guard = acquireConnection(this->mPool);
     if (!guard)

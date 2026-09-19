@@ -1,10 +1,14 @@
 #pragma once
 
+#include <algorithm>
+#include <charconv>
 #include <cstdint>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <unordered_map>
 #include <vector>
 
 #include <ll/api/Expected.h>
@@ -14,8 +18,11 @@
 #include "LOICollectionA/data/sqlite/block/BlockError.h"
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 #include "LOICollectionA/data/sqlite/block/BlockStore.h"
+#include "LOICollectionA/data/sqlite/block/WriteBatch.h"
 
 namespace LOICollection::data {
+
+    enum class FindMode { And, Or };
 
     template <class T>
     struct CellCodec;
@@ -305,6 +312,201 @@ namespace LOICollection::data {
 
         [[nodiscard]] std::string_view name() const noexcept { return mName; }
         [[nodiscard]] static constexpr std::uint32_t version() noexcept { return Version; }
+
+        [[nodiscard]] static ll::Expected<E> parseColumn(std::string_view s) {
+            auto opt = magic_enum::enum_cast<E>(s);
+            if (!opt)
+                return ll::makeStringError(std::string("unknown column: ").append(s));
+            return *opt;
+        }
+
+        [[nodiscard]] ll::Expected<std::vector<std::string>> find(
+            FindMode mode, std::vector<std::pair<Key, std::string>> const& conds) {
+            auto rid = root();
+            if (!rid.has_value())
+                return ll::makeStringError(rid.error().message());
+            if (conds.empty()) {
+                if (mode == FindMode::And)
+                    return std::vector<std::string>{};
+                return list();
+            }
+            std::vector<std::vector<BlockId>> groups;
+            groups.reserve(conds.size());
+            for (auto const& [col, val] : conds) {
+                auto ids = mRepo.store().queryText(rid.value(), colKey(col.value), val);
+                if (!ids.has_value())
+                    return ll::makeStringError(ids.error().message());
+                groups.push_back(std::move(*ids));
+            }
+            std::vector<BlockId> matched;
+            if (mode == FindMode::And) {
+                std::ranges::sort(groups, [](auto const& a, auto const& b) { return a.size() < b.size(); });
+                std::vector<BlockId> acc = groups.front();
+                for (size_t i = 1; i < groups.size(); ++i) {
+                    std::vector<BlockId> next;
+                    std::ranges::set_intersection(acc, groups[i], std::back_inserter(next));
+                    acc = std::move(next);
+                }
+                matched = std::move(acc);
+            } else {
+                std::vector<BlockId> acc;
+                for (auto& g : groups)
+                    acc.insert(acc.end(), g.begin(), g.end());
+                std::ranges::sort(acc);
+                acc.erase(std::unique(acc.begin(), acc.end()), acc.end());
+                matched = std::move(acc);
+            }
+            std::vector<std::string> keys;
+            keys.reserve(matched.size());
+            for (auto id : matched) {
+                auto rec = mRepo.store().load(id);
+                if (!rec.has_value())
+                    return ll::makeStringError(rec.error().message());
+                if (rec.value().state != BlockLifecycle::Deleted)
+                    keys.push_back(rec.value().name);
+            }
+            return keys;
+        }
+
+        [[nodiscard]] ll::Expected<std::string> findFirst(
+            FindMode mode, std::vector<std::pair<Key, std::string>> const& conds) {
+            auto keys = find(mode, conds);
+            if (!keys.has_value())
+                return ll::makeStringError(keys.error().message());
+            return keys.value().empty() ? std::string{} : keys.value().front();
+        }
+
+        template <class T>
+        [[nodiscard]] ll::Expected<std::vector<T>> findValues(
+            Key project, FindMode mode, std::vector<std::pair<Key, std::string>> const& conds) {
+            auto keys = find(mode, conds);
+            if (!keys.has_value())
+                return ll::makeStringError(keys.error().message());
+            std::vector<T> out;
+            out.reserve(keys.value().size());
+            for (auto const& k : keys.value()) {
+                auto v = get<T>(k, project, T{});
+                if (!v.has_value())
+                    return ll::makeStringError(v.error().message());
+                out.push_back(std::move(v.value()));
+            }
+            return out;
+        }
+
+        [[nodiscard]] ll::Expected<std::unordered_map<std::string, std::string>> getRow(std::string_view rowKey) {
+            auto rid = root();
+            if (!rid.has_value())
+                return ll::makeStringError(rid.error().message());
+            auto rec = mRepo.store().load(rid.value(), rowKey);
+            if (!rec.has_value())
+                return ll::makeStringError(rec.error().message());
+            std::unordered_map<std::string, std::string> out;
+            if (rec.value().id == 0 || rec.value().state == BlockLifecycle::Deleted)
+                return out;
+            auto names = magic_enum::enum_names<E>();
+            for (auto const& p : rec.value().props) {
+                if (static_cast<std::size_t>(p.key) >= names.size())
+                    continue;
+                std::string v;
+                switch (p.type) {
+                    case PayloadType::Int: v = std::to_string(p.intValue); break;
+                    case PayloadType::Double: {
+                        char buf[64];
+                        auto [q, ec] = std::to_chars(buf, buf + sizeof(buf), p.realValue);
+                        v = std::string(buf, q);
+                        break;
+                    }
+                    case PayloadType::Text: v = p.textValue; break;
+                    default: break;
+                }
+                out[std::string(names[p.key])] = std::move(v);
+            }
+            return out;
+        }
+
+        [[nodiscard]] ll::Expected<void> setRow(
+            std::string_view rowKey, std::unordered_map<std::string, std::string> const& cells) {
+            for (auto const& [cn, cv] : cells) {
+                auto col = parseColumn(cn);
+                if (!col.has_value())
+                    return ll::makeStringError(col.error().message());
+                auto r = set(rowKey, Key{*col}, cv);
+                if (!r.has_value())
+                    return ll::makeStringError(r.error().message());
+            }
+            return {};
+        }
+
+        class Batch {
+            BlockRepository& mRepo;
+            std::unique_ptr<WriteBatch> mTx;
+            BlockId mRoot;
+
+            [[nodiscard]] ll::Expected<BlockId> rowId(std::string_view rowKey) {
+                auto r = mRepo.store().load(mRoot, rowKey);
+                if (r.has_value() && r.value().id != 0 && r.value().state != BlockLifecycle::Deleted)
+                    return r.value().id;
+                auto a = mTx->append(mRoot, 0, rowKey);
+                if (!a.has_value())
+                    return ll::makeStringError(a.error().message());
+                return a.value();
+            }
+
+        public:
+            Batch(BlockRepository& repo, std::unique_ptr<WriteBatch> tx, BlockId root)
+                : mRepo(repo), mTx(std::move(tx)), mRoot(root) {}
+
+            template <class T>
+            [[nodiscard]] ll::Expected<void> set(std::string_view rowKey, Key col, T const& v) {
+                auto id = rowId(rowKey);
+                if (!id.has_value())
+                    return ll::makeStringError(id.error().message());
+                auto cell = makeCell(colKey(col.value), v);
+                if (!cell.has_value())
+                    return ll::makeStringError(cell.error().message());
+                return mTx->setProp(
+                    id.value(), cell.value().key, cell.value().type, cell.value().intValue,
+                    cell.value().realValue, cell.value().textValue);
+            }
+            template <class T>
+            [[nodiscard]] ll::Expected<void> set(std::string_view rowKey, E col, T const& v) {
+                return set(rowKey, Key{col}, v);
+            }
+
+            template <class T>
+            [[nodiscard]] ll::Expected<T> get(std::string_view rowKey, Key col, T const& def = T{}) {
+                auto rec = mRepo.store().load(mRoot, rowKey);
+                if (!rec.has_value() || rec.value().state == BlockLifecycle::Deleted)
+                    return def;
+                PropKey k = colKey(col.value);
+                for (auto const& p : rec.value().props) {
+                    if (p.key == k) {
+                        auto v = readCell<T>(p);
+                        if (!v.has_value())
+                            return ll::makeStringError(v.error().message());
+                        return std::move(v.value());
+                    }
+                }
+                return def;
+            }
+            template <class T>
+            [[nodiscard]] ll::Expected<T> get(std::string_view rowKey, E col, T const& def = T{}) {
+                return get(rowKey, Key{col}, def);
+            }
+
+            [[nodiscard]] ll::Expected<bool> commit() { return mTx->commit(); }
+            [[nodiscard]] ll::Expected<bool> rollback() { return mTx->rollback(); }
+        };
+
+        [[nodiscard]] ll::Expected<Batch> tx() {
+            auto b = WriteBatch::begin(mRepo.store());
+            if (!b.has_value())
+                return ll::makeStringError(b.error().message());
+            auto rid = root();
+            if (!rid.has_value())
+                return ll::makeStringError(rid.error().message());
+            return Batch(mRepo, std::move(*b), rid.value());
+        }
     };
 
 }

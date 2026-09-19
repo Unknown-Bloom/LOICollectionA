@@ -33,3 +33,7 @@ ll::Expected<void> BlockRepository::metaSet(std::string_view key, std::string_vi
 ll::Expected<void> BlockRepository::metaDel(std::string_view key) {
     return mStore->metaDel(key);
 }
+
+ll::Expected<void> BlockRepository::exec(std::string_view sql) {
+    return mStore->exec(sql);
+}

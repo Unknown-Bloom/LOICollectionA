@@ -103,6 +103,10 @@ public:
     [[nodiscard]] ll::Expected<std::vector<BlockId>> queryInt(
         BlockId parent, PropKey key, std::int64_t min, std::int64_t max, size_t limit = 0);
     [[nodiscard]] ll::Expected<std::vector<BlockId>> queryText(PropKey key, std::string_view value, size_t limit = 0);
+    [[nodiscard]] ll::Expected<std::vector<BlockId>> queryText(
+        BlockId parent, PropKey key, std::string_view value, size_t limit = 0);
+
+    [[nodiscard]] ll::Expected<void> exec(std::string_view sql);
 
     [[nodiscard]] ll::Expected<void> link(BlockId src, BlockId dst, std::int32_t kind);
     [[nodiscard]] ll::Expected<void> unlink(BlockId src, BlockId dst, std::int32_t kind);

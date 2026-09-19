@@ -41,6 +41,9 @@ namespace {
         { "queryPropIntUnder",
             "SELECT DISTINCT b.id FROM block b JOIN prop p ON p.block_id=b.id "
             "WHERE p.key=? AND p.ival>=? AND p.ival<=? AND b.parent=? AND (b.state & 24)=0 ORDER BY b.id LIMIT ?" },
+        { "queryPropTextUnder",
+            "SELECT DISTINCT b.id FROM block b JOIN prop p ON p.block_id=b.id "
+            "WHERE p.key=? AND p.tval=? AND b.parent=? AND (b.state & 24)=0 ORDER BY b.id LIMIT ?" },
         { "insertDict", "INSERT INTO dict(name) VALUES(?) ON CONFLICT(name) DO NOTHING" },
         { "getDictId", "SELECT id FROM dict WHERE name=?" },
         { "getDictName", "SELECT name FROM dict WHERE id=?" },

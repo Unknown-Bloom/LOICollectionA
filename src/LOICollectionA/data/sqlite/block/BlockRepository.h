@@ -28,6 +28,8 @@ public:
     [[nodiscard]] ll::Expected<void> metaSet(std::string_view key, std::string_view value);
     [[nodiscard]] ll::Expected<void> metaDel(std::string_view key);
 
+    [[nodiscard]] ll::Expected<void> exec(std::string_view sql);
+
 private:
     explicit BlockRepository(std::shared_ptr<BlockStore> store);
 
