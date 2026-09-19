@@ -464,9 +464,12 @@ namespace LOICollection::data {
                 auto cell = makeCell(colKey(col.value), v);
                 if (!cell.has_value())
                     return ll::makeStringError(cell.error().message());
-                return mTx->setProp(
-                    id.value(), cell.value().key, cell.value().type, cell.value().intValue,
-                    cell.value().realValue, cell.value().textValue);
+                auto& c = cell.value();
+                switch (c.type) {
+                    case PayloadType::Int: return mTx->setProp(id.value(), c.key, c.intValue);
+                    case PayloadType::Double: return mTx->setProp(id.value(), c.key, c.realValue);
+                    default: return mTx->setProp(id.value(), c.key, std::string_view(c.textValue));
+                }
             }
             template <class T>
             [[nodiscard]] ll::Expected<void> set(std::string_view rowKey, E col, T const& v) {
@@ -492,6 +495,18 @@ namespace LOICollection::data {
             template <class T>
             [[nodiscard]] ll::Expected<T> get(std::string_view rowKey, E col, T const& def = T{}) {
                 return get(rowKey, Key{col}, def);
+            }
+
+            [[nodiscard]] ll::Expected<bool> has(std::string_view rowKey) {
+                auto r = mRepo.store().load(mRoot, rowKey);
+                return r.has_value() && r.value().state != BlockLifecycle::Deleted;
+            }
+
+            [[nodiscard]] ll::Expected<void> del(std::string_view rowKey) {
+                auto r = mRepo.store().load(mRoot, rowKey);
+                if (!r.has_value() || r.value().state == BlockLifecycle::Deleted)
+                    return {};
+                return mTx->control(r.value().id, BlockLifecycle::Deleted);
             }
 
             [[nodiscard]] ll::Expected<bool> commit() { return mTx->commit(); }

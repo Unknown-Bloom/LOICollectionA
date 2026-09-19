@@ -25,7 +25,7 @@
 #include "LOICollectionA/utils/I18nUtils.h"
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
-#include "LOICollectionA/data/sqlite/block/TypedTable.h"
+#include "LOICollectionA/include/server/Plugins/TableSchema.h"
 
 #include "LOICollectionA/frontend/AST.h"
 
@@ -41,10 +41,6 @@
 using I18nUtilsTools::tr;
 
 namespace LOICollection::server::Plugins {
-    enum class LanguageCol { name, value };
-
-    using LanguageTable = LOICollection::data::TypedTable<LanguageCol, 1>;
-
     struct LanguagePlugin::Impl {
         LRUKCache<std::string, std::string> Cache;
 

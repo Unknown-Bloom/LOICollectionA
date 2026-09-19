@@ -32,7 +32,7 @@
 #include "LOICollectionA/utils/I18nUtils.h"
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
-#include "LOICollectionA/data/sqlite/block/TypedTable.h"
+#include "LOICollectionA/include/server/Plugins/TableSchema.h"
 
 #include "LOICollectionA/frontend/AST.h"
 
@@ -50,10 +50,6 @@
 using I18nUtilsTools::tr;
 
 namespace LOICollection::server::Plugins {
-    enum class PvpCol { name, enable };
-
-    using PvpTable = LOICollection::data::TypedTable<PvpCol, 1>;
-
     struct PvpPlugin::Impl {
         LRUKCache<std::string, bool> PvpCache;
 
