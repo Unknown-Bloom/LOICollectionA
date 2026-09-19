@@ -25,6 +25,7 @@
 #include "LOICollectionA/utils/I18nUtils.h"
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/data/sqlite/block/TypedTable.h"
 
 #include "LOICollectionA/frontend/AST.h"
 
@@ -40,6 +41,10 @@
 using I18nUtilsTools::tr;
 
 namespace LOICollection::server::Plugins {
+    enum class LanguageCol { name, value };
+
+    using LanguageTable = LOICollection::data::TypedTable<LanguageCol, 1>;
+
     struct LanguagePlugin::Impl {
         LRUKCache<std::string, std::string> Cache;
 
@@ -48,6 +53,7 @@ namespace LOICollection::server::Plugins {
         std::string mGuiPath;
 
         std::shared_ptr<BlockRepository> db;
+        std::optional<LanguageTable> language;
         std::shared_ptr<ll::io::Logger> logger;
         
         ll::event::ListenerPtr PlayerConnectEventListener;
@@ -150,7 +156,7 @@ namespace LOICollection::server::Plugins {
             if (auto data = I18nUtils::getInstance()->data; data.find(langcode) == data.end())
                 langcode = I18nUtils::getInstance()->defaultLocale;
 
-            if (!this->mImpl->db->has("Language", event.self().getUuid().asString())) {
+            if (!this->mImpl->language->has(event.self().getUuid().asString())) {
                 this->set(event.self(), langcode).or_else(modules::defaultErrorHandler<LanguagePlugin>);
             }
         }, ll::event::EventPriority::High);
@@ -165,7 +171,7 @@ namespace LOICollection::server::Plugins {
         if (this->mImpl->Cache.contains(uuid))
             return *this->mImpl->Cache.get(uuid).value();
         
-        return this->mImpl->db->get("Language", uuid, "value", I18nUtils::getInstance()->defaultLocale)
+        return this->mImpl->language->get<std::string>(uuid, "value", I18nUtils::getInstance()->defaultLocale)
             .transform([this, &uuid](std::string langcode) -> std::string {
                 this->mImpl->Cache.put(uuid, langcode);
                 return langcode;  
@@ -179,12 +185,11 @@ namespace LOICollection::server::Plugins {
     ll::Expected<void> LanguagePlugin::set(Player& player, const std::string& langcode) {
         std::string mObject = player.getUuid().asString();
 
-        std::unordered_map<std::string, std::string> mData = {
-            { "name", player.getRealName() },
-            { "value", langcode }
-        };
+        auto named = this->mImpl->language->set(mObject, "name", player.getRealName());
+        if (!named.has_value())
+            return named;
 
-        return this->mImpl->db->set("Language", mObject, mData)
+        return this->mImpl->language->set(mObject, "value", langcode)
             .transform([this, &mObject, &langcode]() -> void {
                 this->mImpl->Cache.put(mObject, langcode);
             });
@@ -209,6 +214,7 @@ namespace LOICollection::server::Plugins {
 
     ll::Expected<bool> LanguagePlugin::unload() {
         this->mImpl->db.reset();
+        this->mImpl->language.reset();
         this->mImpl->logger.reset();
 
         if (this->mImpl->mRegistered.load(std::memory_order_acquire))
@@ -218,12 +224,12 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<bool> LanguagePlugin::registry() {
-        return this->mImpl->db->create("Language", [](BlockRepository::ColumnCallback ctor) -> void {
-            ctor("name");
-            ctor("value");
-        }).and_then([this]() -> ll::Expected<void> {
-            return registeryUI();
-        }).transform([this]() -> bool {
+        return LanguageTable::open(*this->mImpl->db, "Language")
+            .and_then([this](LanguageTable table) -> ll::Expected<void> {
+                this->mImpl->language.emplace(std::move(table));
+
+                return registeryUI();
+            }).transform([this]() -> bool {
             this->registeryCommand();
             this->listenEvent();
 
