@@ -146,7 +146,7 @@ namespace LOICollection::server::Plugins {
                                 fmt::runtime(tr(language, "market.gui.wanted.info")),
                                 data.at("item_name"), data.at("wanted_name"), data.at("unit_price"),
                                 data.at("amount_filled"), data.at("amount_total"),
-                                SystemUtils::toFormatTime(data.at("expire_at"), data.at("expire_at"))
+                                SystemUtils::toFormatEpoch(data.at("expire_at"), data.at("expire_at"))
                             ));
 
                             return values;

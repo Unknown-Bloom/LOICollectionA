@@ -45,6 +45,15 @@ namespace SystemUtils {
         return std::format("{:%Y-%m-%d %H:%M:%S}", mTp);
     }
 
+    std::string toFormatEpoch(const std::string& epochSeconds, const std::string& defaultValue) {
+        long long seconds = toLongLong(epochSeconds, 0);
+        if (seconds <= 0)
+            return defaultValue;
+
+        auto st = std::chrono::sys_seconds(std::chrono::seconds(seconds));
+        return std::format("{:%Y-%m-%d %H:%M:%S}", st);
+    }
+
     std::string toFormatSecond(const std::string& str, const std::string& defaultValue) {
         long long seconds;
         auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), seconds);
