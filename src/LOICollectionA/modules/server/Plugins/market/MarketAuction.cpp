@@ -64,6 +64,8 @@ namespace LOICollection::server::Plugins {
         TaxRateProvider taxRateProvider;
         std::optional<StoreAuctionTable> mTable;
         std::optional<StoreSaleTable> mSale;
+        std::optional<MarketTable> market;
+        std::optional<MarketTaxTable> tax;
 
         Impl(
             std::shared_ptr<BlockRepository> db_,
@@ -96,7 +98,17 @@ namespace LOICollection::server::Plugins {
             .and_then([this](StoreSaleTable table) -> ll::Expected<void> {
                 this->mImpl->mSale.emplace(std::move(table));
 
-                return {};
+                return MarketTable::open(*this->mImpl->settingsDb, "Market")
+                    .and_then([this](MarketTable table) -> ll::Expected<MarketTaxTable> {
+                        this->mImpl->market.emplace(std::move(table));
+
+                        return MarketTaxTable::open(*this->mImpl->settingsDb, "MarketTax");
+                    })
+                    .and_then([this](MarketTaxTable table) -> ll::Expected<void> {
+                        this->mImpl->tax.emplace(std::move(table));
+
+                        return {};
+                    });
             });
     }
 
@@ -414,11 +426,11 @@ namespace LOICollection::server::Plugins {
                     });
             }
 
-            return this->mImpl->settingsDb->get("Market", data.at("seller_uuid"), "score", "0")
+            return this->mImpl->market->get<std::string>(data.at("seller_uuid"), "score", "0")
                 .and_then([this, &data, sellerAmount](const std::string& value) -> ll::Expected<void> {
                     int mMarketScore = SystemUtils::toInt(value, 0);
 
-                    return this->mImpl->settingsDb->set("Market", data.at("seller_uuid"), "score", std::to_string(mMarketScore + sellerAmount));
+                    return this->mImpl->market->set(data.at("seller_uuid"), "score", std::to_string(mMarketScore + sellerAmount));
                 });
         }();
 
@@ -598,11 +610,11 @@ namespace LOICollection::server::Plugins {
             return {};
         }
 
-        return this->mImpl->settingsDb->get("Market", uuid, "score", "0")
+        return this->mImpl->market->get<std::string>(uuid, "score", "0")
             .and_then([this, uuid, score](const std::string& value) -> ll::Expected<void> {
                 int mMarketScore = SystemUtils::toInt(value, 0);
 
-                return this->mImpl->settingsDb->set("Market", uuid, "score", std::to_string(mMarketScore + score));
+                return this->mImpl->market->set(uuid, "score", std::to_string(mMarketScore + score));
             });
     }
 
@@ -610,11 +622,11 @@ namespace LOICollection::server::Plugins {
         if (tax <= 0)
             return {};
 
-        return this->mImpl->settingsDb->get("MarketTax", "total", "total", "0")
+        return this->mImpl->tax->get<std::string>("total", "total", "0")
             .and_then([this, tax](const std::string& value) -> ll::Expected<void> {
                 long long total = SystemUtils::toLongLong(value, 0) + tax;
 
-                return this->mImpl->settingsDb->set("MarketTax", "total", "total", std::to_string(total));
+                return this->mImpl->tax->set("total", "total", std::to_string(total));
             });
     }
 
