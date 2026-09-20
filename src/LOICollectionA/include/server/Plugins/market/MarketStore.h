@@ -10,6 +10,7 @@
 
 #include "LOICollectionA/base/Macro.h"
 
+#include "LOICollectionA/include/server/Plugins/TableSchema.h"
 #include "LOICollectionA/include/server/Plugins/market/MarketType.h"
 
 class Player;
@@ -51,6 +52,13 @@ namespace LOICollection::server::Plugins {
 
     public:
         LOICOLLECTION_A_NDAPI ll::Expected<void> createTables();
+
+        [[nodiscard]] StoreTable&     stores();
+        [[nodiscard]] StoreItemTable& items();
+        [[nodiscard]] StoreSaleTable& sales();
+        [[nodiscard]] StoreReviewTable& reviews();
+
+        LOICOLLECTION_A_API void unload();
 
         LOICOLLECTION_A_NDAPI ll::Expected<bool> createStore(Player& player, const std::string& name, const std::string& icon, const std::string& introduce);
         LOICOLLECTION_A_NDAPI ll::Expected<bool> dissolveStore(Player& player);

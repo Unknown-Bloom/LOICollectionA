@@ -19,6 +19,8 @@
 
 #include "LOICollectionA/ConfigPlugin.h"
 
+#include "LOICollectionA/include/server/Plugins/TableSchema.h"
+
 #include "LOICollectionA/include/server/Plugins/market/MarketQuote.h"
 
 namespace LOICollection::server::Plugins {
@@ -122,67 +124,78 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<void> MarketQuote::rebuild() {
-        auto loadTable = [this](const std::string& table) -> ll::Expected<std::unordered_map<std::string, std::unordered_map<std::string, std::string>>> {
-            return this->mImpl->db->list(table)
-                .and_then([this, table](const std::vector<std::string>& keys) -> ll::Expected<std::unordered_map<std::string, std::unordered_map<std::string, std::string>>> {
-                    return this->mImpl->db->get(table, keys);
-                });
-        };
+        auto storeT = StoreTable::open(*this->mImpl->db, "Store");
+        if (!storeT.has_value())
+            return ll::Unexpected(storeT.error());
 
-        return loadTable("Store")
-            .and_then([this](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> stores) -> ll::Expected<std::unordered_map<std::string, std::string>> {
-                std::unordered_map<std::string, std::string> owners;
-                owners.reserve(stores.size());
-                for (const auto& [key, row] : stores)
-                    owners[key] = row.at("owner_uuid");
+        auto saleT = StoreSaleTable::open(*this->mImpl->db, "StoreSale");
+        if (!saleT.has_value())
+            return ll::Unexpected(saleT.error());
 
-                return owners;
-            })
-            .and_then([this, loadTable](std::unordered_map<std::string, std::string> owners) -> ll::Expected<void> {
-                return loadTable("StoreSale")
-                    .transform([this, owners](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> sales) mutable -> void {
-                        std::unordered_map<std::string, QuoteStat> rebuilt;
-                        std::unordered_set<std::string> sellers7d;
-                        std::unordered_set<std::string> sellers30d;
+        std::unordered_map<std::string, std::string> owners;
+        auto storeKeys = storeT->list();
+        if (!storeKeys.has_value())
+            return ll::Unexpected(storeKeys.error());
+        for (auto const& key : *storeKeys) {
+            auto row = storeT->getRow(key);
+            if (!row.has_value())
+                return ll::Unexpected(row.error());
+            owners[key] = row->contains("owner_uuid") ? row->at("owner_uuid") : "";
+        }
 
-                        std::string nowTime = SystemUtils::getNowTime();
+        auto saleKeys = saleT->list();
+        if (!saleKeys.has_value())
+            return ll::Unexpected(saleKeys.error());
 
-                        for (const auto& [key, row] : sales) {
-                            long long age = SystemUtils::toInt(SystemUtils::getTimeSpan(nowTime, row.at("time"), ""), -1);
-                            if (age < 0 || age > WINDOW_30D)
-                                continue;
+        std::unordered_map<std::string, QuoteStat> rebuilt;
+        std::unordered_set<std::string> sellers7d;
+        std::unordered_set<std::string> sellers30d;
 
-                            const std::string& itemName = row.at("item_name");
-                            int price = SystemUtils::toInt(row.at("price"), 0);
-                            int tax = SystemUtils::toInt(row.contains("tax") ? row.at("tax") : "0", 0);
-                            long long time = SystemUtils::toLongLong(key, 0);
-                            bool within7d = age <= WINDOW_7D;
+        std::string nowTime = SystemUtils::getNowTime();
 
-                            QuoteStat& stat = rebuilt[itemName];
-                            bool selfBuy = row.contains("buyer_uuid") && row.contains("seller_uuid") &&
-                                !row.at("buyer_uuid").empty() && row.at("buyer_uuid") == row.at("seller_uuid");
-                            bool outlier = this->mImpl->isOutlier(stat, price);
-                            this->mImpl->mergeStat(stat, price, tax, time, outlier || selfBuy, within7d);
+        for (auto const& key : *saleKeys) {
+            auto row = saleT->getRow(key);
+            if (!row.has_value())
+                return ll::Unexpected(row.error());
+            auto const& r = *row;
+            if (r.empty() || !r.contains("time") || !r.contains("item_name"))
+                continue;
 
-                            std::string seller = row.contains("seller_uuid") ? row.at("seller_uuid") : "";
-                            if (seller.empty()) {
-                                auto it = owners.find(row.at("store_id"));
-                                if (it != owners.end())
-                                    seller = it->second;
-                            }
-                            if (seller.empty())
-                                continue;
+            long long age = SystemUtils::toInt(SystemUtils::getTimeSpan(nowTime, r.at("time"), ""), -1);
+            if (age < 0 || age > WINDOW_30D)
+                continue;
 
-                            if (within7d)
-                                sellers7d.insert(seller);
-                            sellers30d.insert(seller);
-                        }
+            const std::string& itemName = r.at("item_name");
+            int price = SystemUtils::toInt(r.at("price"), 0);
+            int tax = SystemUtils::toInt(r.contains("tax") ? r.at("tax") : "0", 0);
+            long long time = SystemUtils::toLongLong(key, 0);
+            bool within7d = age <= WINDOW_7D;
 
-                        this->mImpl->stats = std::move(rebuilt);
-                        this->mImpl->activeSellers7d = std::move(sellers7d);
-                        this->mImpl->activeSellers30d = std::move(sellers30d);
-                    });
-            });
+            QuoteStat& stat = rebuilt[itemName];
+            bool selfBuy = r.contains("buyer_uuid") && r.contains("seller_uuid") &&
+                !r.at("buyer_uuid").empty() && r.at("buyer_uuid") == r.at("seller_uuid");
+            bool outlier = this->mImpl->isOutlier(stat, price);
+            this->mImpl->mergeStat(stat, price, tax, time, outlier || selfBuy, within7d);
+
+            std::string seller = r.contains("seller_uuid") ? r.at("seller_uuid") : "";
+            if (seller.empty()) {
+                auto it = owners.find(r.at("store_id"));
+                if (it != owners.end())
+                    seller = it->second;
+            }
+            if (seller.empty())
+                continue;
+
+            if (within7d)
+                sellers7d.insert(seller);
+            sellers30d.insert(seller);
+        }
+
+        this->mImpl->stats = std::move(rebuilt);
+        this->mImpl->activeSellers7d = std::move(sellers7d);
+        this->mImpl->activeSellers30d = std::move(sellers30d);
+
+        return {};
     }
 
     void MarketQuote::onItemSold(const std::string& itemName, int price, int tax, long long time, const std::string& sellerUuid, const std::string& buyerUuid) {

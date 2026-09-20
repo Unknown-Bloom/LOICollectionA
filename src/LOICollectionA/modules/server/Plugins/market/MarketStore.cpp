@@ -43,10 +43,12 @@
 
 #include "LOICollectionA/ConfigPlugin.h"
 
+#include "LOICollectionA/include/server/Plugins/TableSchema.h"
 #include "LOICollectionA/include/server/Plugins/market/MarketStore.h"
 #include "LOICollectionA/include/server/Plugins/market/MarketPlugin.h"
 
 using I18nUtilsTools::tr;
+using LOICollection::data::FindMode;
 
 namespace LOICollection::server::Plugins {
     struct MarketStore::RankData {
@@ -65,6 +67,11 @@ namespace LOICollection::server::Plugins {
         BlacklistProvider blacklistProvider;
         TaxRateProvider taxRateProvider;
         LRUKCache<std::string, std::vector<std::string>> rankCache;
+
+        std::optional<StoreTable> store;
+        std::optional<StoreItemTable> item;
+        std::optional<StoreSaleTable> sale;
+        std::optional<StoreReviewTable> review;
 
         Impl(
             std::shared_ptr<BlockRepository> db_,
@@ -89,53 +96,23 @@ namespace LOICollection::server::Plugins {
     };
 
     ll::Expected<void> MarketStore::createTables() {
-        return this->mImpl->db->create("Store", [](BlockRepository::ColumnCallback ctor) -> void {
-            ctor("name");
-            ctor("introduce");
-            ctor("icon");
-            ctor("owner_uuid");
-            ctor("owner_name");
-            ctor("store_created_at");
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->db->create("StoreItem", [](BlockRepository::ColumnCallback ctor) -> void {
-                ctor("store_id");
-                ctor("name");
-                ctor("icon");
-                ctor("introduce");
-                ctor("score");
-                ctor("data");
+        return StoreTable::open(*this->mImpl->db, "Store")
+            .and_then([this](StoreTable table) -> ll::Expected<void> {
+                this->mImpl->store.emplace(std::move(table));
+                return StoreItemTable::open(*this->mImpl->db, "StoreItem");
+            })
+            .and_then([this](StoreItemTable table) -> ll::Expected<void> {
+                this->mImpl->item.emplace(std::move(table));
+                return StoreSaleTable::open(*this->mImpl->db, "StoreSale");
+            })
+            .and_then([this](StoreSaleTable table) -> ll::Expected<void> {
+                this->mImpl->sale.emplace(std::move(table));
+                return StoreReviewTable::open(*this->mImpl->db, "StoreReview");
+            })
+            .and_then([this](StoreReviewTable table) -> ll::Expected<void> {
+                this->mImpl->review.emplace(std::move(table));
+                return {};
             });
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->db->create("StoreSale", [](BlockRepository::ColumnCallback ctor) -> void {
-                ctor("store_id");
-                ctor("item_name");
-                ctor("price");
-                ctor("tax");
-                ctor("buyer_uuid");
-                ctor("buyer_name");
-                ctor("seller_uuid");
-                ctor("time");
-                ctor("source");
-            });
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->db->create("StoreReview", [](BlockRepository::ColumnCallback ctor) -> void {
-                ctor("store_id");
-                ctor("buyer_uuid");
-                ctor("buyer_name");
-                ctor("rating");
-                ctor("content");
-                ctor("status");
-                ctor("time");
-            });
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->db->exec("CREATE INDEX IF NOT EXISTS idx_StoreSale_time ON StoreSale(time);")
-                .and_then([this]() -> ll::Expected<void> {
-                    return this->mImpl->db->exec("CREATE INDEX IF NOT EXISTS idx_StoreSale_item_name ON StoreSale(item_name);");
-                })
-                .and_then([this]() -> ll::Expected<void> {
-                    return this->mImpl->db->exec("CREATE INDEX IF NOT EXISTS idx_StoreItem_name ON StoreItem(name);");
-                });
-        });
     }
 
     ll::Expected<std::vector<std::string>> MarketStore::getStoreRanking() {
@@ -145,34 +122,38 @@ namespace LOICollection::server::Plugins {
         if (auto cached = this->mImpl->rankCache.get("global"); cached.has_value())
             return *cached.value();
 
-        auto loadTable = [this](const std::string& table) -> ll::Expected<std::unordered_map<std::string, std::unordered_map<std::string, std::string>>> {
-            return this->mImpl->db->list(table)
-                .and_then([this, table](const std::vector<std::string>& keys) -> ll::Expected<std::unordered_map<std::string, std::unordered_map<std::string, std::string>>> {
-                    return this->mImpl->db->get(table, keys);
-                });
+        auto loadAll = [this](auto& table) -> ll::Expected<std::unordered_map<std::string, std::unordered_map<std::string, std::string>>> {
+            auto keys = table.list();
+            if (!keys.has_value())
+                return ll::makeStringError(keys.error().message());
+            std::unordered_map<std::string, std::unordered_map<std::string, std::string>> out;
+            out.reserve(keys.value().size());
+            for (const auto& k : keys.value()) {
+                auto row = table.getRow(k);
+                if (!row.has_value())
+                    return ll::makeStringError(row.error().message());
+                out.emplace(k, std::move(row.value()));
+            }
+            return out;
         };
 
-        return loadTable("Store")
-            .and_then([](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> stores) -> ll::Expected<RankData> {
+        return loadAll(*this->mImpl->store)
+            .and_then([this, &loadAll](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> stores) -> ll::Expected<RankData> {
                 RankData data;
                 data.stores = std::move(stores);
-
-                return data;
-            })
-            .and_then([&loadTable](RankData data) -> ll::Expected<RankData> {
-                return loadTable("StoreItem").transform([data](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> items) mutable -> RankData {
+                return loadAll(*this->mImpl->item).transform([data](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> items) mutable -> RankData {
                     data.items = std::move(items);
                     return data;
                 });
             })
-            .and_then([&loadTable](RankData data) -> ll::Expected<RankData> {
-                return loadTable("StoreSale").transform([data](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> sales) mutable -> RankData {
+            .and_then([this, &loadAll](RankData data) -> ll::Expected<RankData> {
+                return loadAll(*this->mImpl->sale).transform([data](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> sales) mutable -> RankData {
                     data.sales = std::move(sales);
                     return data;
                 });
             })
-            .and_then([&loadTable](RankData data) -> ll::Expected<RankData> {
-                return loadTable("StoreReview").transform([data](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> reviews) mutable -> RankData {
+            .and_then([this, &loadAll](RankData data) -> ll::Expected<RankData> {
+                return loadAll(*this->mImpl->review).transform([data](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> reviews) mutable -> RankData {
                     data.reviews = std::move(reviews);
                     return data;
                 });
@@ -194,12 +175,12 @@ namespace LOICollection::server::Plugins {
                 std::unordered_map<std::string, long long> saleVolume;
                 std::unordered_map<std::string, int> pairTradeCount;
                 for (const auto& [key, row] : data.sales) {
-                    long long t = SystemUtils::toInt(SystemUtils::getTimeSpan(nowTime, row.at("time"), ""), 0);
+                    long long t = SystemUtils::toLongLong(SystemUtils::getTimeSpan(nowTime, row.at("time"), ""), 0);
                     if (t > txWindow)
                         continue;
 
                     const std::string& storeId = row.at("store_id");
-                    int price = SystemUtils::toInt(row.at("price"), 0);
+                    long long price = SystemUtils::toLongLong(row.at("price"), 0);
 
                     std::string seller = row.contains("seller_uuid") ? row.at("seller_uuid") : "";
                     if (seller.empty()) {
@@ -234,8 +215,8 @@ namespace LOICollection::server::Plugins {
                     if (row.at("status") != "approved")
                         continue;
 
-                    int rating = SystemUtils::toInt(row.at("rating"), 0);
-                    long long t = SystemUtils::toInt(SystemUtils::getTimeSpan(nowTime, row.at("time"), ""), 0);
+                    long long rating = SystemUtils::toLongLong(row.at("rating"), 0);
+                    long long t = SystemUtils::toLongLong(SystemUtils::getTimeSpan(nowTime, row.at("time"), ""), 0);
                     const std::string& storeId = row.at("store_id");
 
                     approvedCount[storeId]++;
@@ -263,7 +244,7 @@ namespace LOICollection::server::Plugins {
                         continue;
 
                     StoreScoreInput input;
-                    long long ageSeconds = SystemUtils::toInt(SystemUtils::getTimeSpan(nowTime, row.at("store_created_at"), ""), 0);
+                    long long ageSeconds = SystemUtils::toLongLong(SystemUtils::getTimeSpan(nowTime, row.at("store_created_at"), ""), 0);
                     input.ageDays = ageSeconds / static_cast<double>(DAY_SECONDS);
                     input.transactions30 = saleCount[storeId];
                     input.volume30 = saleVolume[storeId];
@@ -336,12 +317,12 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::Invalid));
 
-        return this->mImpl->db->has("Store", id)
+        return this->mImpl->store->has(id)
             .and_then([this, id](bool exists) -> ll::Expected<std::unordered_map<std::string, std::string>> {
                 if (!exists)
                     return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::StoreNotFound));
 
-                return this->mImpl->db->get("Store", id);
+                return this->mImpl->store->getRow(id);
             });
     }
 
@@ -356,21 +337,19 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->options.StoreEnabled)
             return {};
 
-        return this->mImpl->db->find("StoreItem", {
-            { "store_id", storeId }
-        }, BlockRepository::FindCondition::AND);
+        return this->mImpl->item->find(FindMode::And, {{StoreItemCol::store_id, storeId}});
     }
 
     ll::Expected<std::unordered_map<std::string, std::string>> MarketStore::getStoreItemData(const std::string& id) {
         if (!this->isValid())
             return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::Invalid));
 
-        return this->mImpl->db->has("StoreItem", id)
+        return this->mImpl->item->has(id)
             .and_then([this, id](bool exists) -> ll::Expected<std::unordered_map<std::string, std::string>> {
                 if (!exists)
                     return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::StoreItemNotFound));
 
-                return this->mImpl->db->get("StoreItem", id);
+                return this->mImpl->item->getRow(id);
             });
     }
 
@@ -381,10 +360,10 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->options.StoreEnabled)
             return false;
 
-        return this->mImpl->db->find("StoreSale", {
-            { "store_id", storeId },
-            { "buyer_uuid", player.getUuid().asString() }
-        }, BlockRepository::FindCondition::AND)
+        return this->mImpl->sale->find(FindMode::And, {
+            {StoreSaleCol::store_id, storeId},
+            {StoreSaleCol::buyer_uuid, player.getUuid().asString()}
+        })
             .transform([](const std::vector<std::string>& keys) -> bool {
                 return !keys.empty();
             });
@@ -400,7 +379,7 @@ namespace LOICollection::server::Plugins {
         std::string mUuid = player.getUuid().asString();
         int mCost = this->mImpl->options.StoreCreationCost;
 
-        return this->mImpl->db->has("Store", mUuid)
+        return this->mImpl->store->has(mUuid)
             .and_then([this, mUuid, mCost, &player, name, icon, introduce](bool exists) -> ll::Expected<bool> {
                 if (exists)
                     return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::StoreAlreadyExists));
@@ -412,15 +391,15 @@ namespace LOICollection::server::Plugins {
                     ScoreboardUtils::reduceScore(player, this->mImpl->options.TargetScoreboard, mCost);
 
                 std::unordered_map<std::string, std::string> data = {
-                    { "name", name },
-                    { "introduce", introduce },
-                    { "icon", icon },
-                    { "owner_uuid", mUuid },
-                    { "owner_name", player.getRealName() },
-                    { "store_created_at", SystemUtils::getNowTime() }
+                    {"name", name},
+                    {"introduce", introduce},
+                    {"icon", icon},
+                    {"owner_uuid", mUuid},
+                    {"owner_name", player.getRealName()},
+                    {"store_created_at", SystemUtils::getNowTime()}
                 };
 
-                return this->mImpl->db->set("Store", mUuid, data)
+                return this->mImpl->store->setRow(mUuid, data)
                     .or_else([this, mCost, &player](ll::Error e) -> ll::Expected<void> {
                         if (mCost > 0)
                             ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, mCost);
@@ -445,19 +424,17 @@ namespace LOICollection::server::Plugins {
 
         std::string mUuid = player.getUuid().asString();
 
-        return this->mImpl->db->has("Store", mUuid)
+        return this->mImpl->store->has(mUuid)
             .and_then([this, mUuid, &player](bool exists) -> ll::Expected<bool> {
                 if (!exists)
                     return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::StoreNotFound));
 
-                return this->mImpl->db->find("StoreItem", {
-                    { "store_id", mUuid }
-                }, BlockRepository::FindCondition::AND)
+                return this->mImpl->item->find(FindMode::And, {{StoreItemCol::store_id, mUuid}})
                     .and_then([this, mUuid, &player](const std::vector<std::string>& items) -> ll::Expected<bool> {
                         if (!items.empty())
                             return false;
 
-                        return this->mImpl->db->del("Store", mUuid)
+                        return this->mImpl->store->del(mUuid)
                             .transform([this, &player]() -> bool {
                                 this->clearRankCache();
                                 this->mImpl->logger->info(fmt::runtime(tr({}, "market.log10")), player.getRealName());
@@ -488,28 +465,29 @@ namespace LOICollection::server::Plugins {
 
         std::string mUuid = player.getUuid().asString();
 
-        return this->mImpl->db->has("Store", mUuid)
+        return this->mImpl->store->has(mUuid)
             .and_then([this, mUuid, slot, &player, name, icon, intr, score, &mItemStack](bool exists) -> ll::Expected<bool> {
                 if (!exists)
                     return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::StoreNotFound));
 
-                return this->mImpl->db->find("StoreItem", {
-                    { "store_id", mUuid }
-                }, BlockRepository::FindCondition::AND)
+                return this->mImpl->item->find(FindMode::And, {{StoreItemCol::store_id, mUuid}})
                     .and_then([this, mUuid, slot, &player, name, icon, intr, score, &mItemStack](const std::vector<std::string>& items) -> ll::Expected<bool> {
                         if (static_cast<int>(items.size()) >= this->mImpl->options.StoreMaximumItems)
                             return false;
 
+                        std::string itemKey = SystemUtils::getCurrentTimestamp();
                         std::unordered_map<std::string, std::string> data = {
-                            { "store_id", mUuid },
-                            { "name", name },
-                            { "icon", icon },
-                            { "introduce", intr },
-                            { "score", std::to_string(score) },
-                            { "data", mItemStack.save(*SaveContextFactory::createCloneSaveContext())->toSnbt(SnbtFormat::Minimize, 0) }
+                            {"store_id", mUuid},
+                            {"name", name},
+                            {"icon", icon},
+                            {"introduce", intr},
+                            {"data", mItemStack.save(*SaveContextFactory::createCloneSaveContext())->toSnbt(SnbtFormat::Minimize, 0)}
                         };
 
-                        return this->mImpl->db->set("StoreItem", SystemUtils::getCurrentTimestamp(), data)
+                        return this->mImpl->item->setRow(itemKey, data)
+                            .and_then([this, itemKey, score]() -> ll::Expected<void> {
+                                return this->mImpl->item->set(itemKey, StoreItemCol::score, static_cast<long long>(score));
+                            })
                             .transform([this, slot, &player, name]() -> bool {
                                 player.mInventory->mInventory->removeItem(slot, 64);
                                 player.refreshInventory();
@@ -544,7 +522,7 @@ namespace LOICollection::server::Plugins {
                             player.refreshInventory();
                         }
 
-                        return this->mImpl->db->del("StoreItem", id)
+                        return this->mImpl->item->del(id)
                             .transform([this, &player, data]() -> bool {
                                 this->clearRankCache();
                                 this->mImpl->logger->info(fmt::runtime(tr({}, "market.log12")), player.getRealName(), data.at("name"));
@@ -682,42 +660,68 @@ namespace LOICollection::server::Plugins {
         int tax,
         const std::string& remainingData
     ) {
-        auto transaction = BlockRepository::WriteTransaction::create(*this->mImpl->db);
-        if (!transaction.has_value())
-            return ll::Unexpected(transaction.error());
-
-        auto& conn = transaction.value().connection();
         std::string saleKey = SystemUtils::getCurrentTimestamp();
 
-        std::unordered_map<std::string, std::string> sale = {
-            { "store_id", storeId },
-            { "item_name", data.at("name") },
-            { "price", data.at("score") },
-            { "tax", std::to_string(tax) },
-            { "buyer_uuid", player.getUuid().asString() },
-            { "buyer_name", player.getRealName() },
-            { "seller_uuid", ownerUuid },
-            { "time", SystemUtils::getNowTime() }
-        };
+        auto saleTx = this->mImpl->sale->tx();
+        if (!saleTx.has_value())
+            return ll::Unexpected(saleTx.error());
 
-        auto setResult = this->mImpl->db->set(conn, "StoreSale", saleKey, sale);
+        auto& saleBatch = saleTx.value();
+        auto setResult = saleBatch.set(saleKey, StoreSaleCol::store_id, storeId);
+        if (!setResult.has_value())
+            return ll::Unexpected(setResult.error());
+        setResult = saleBatch.set(saleKey, StoreSaleCol::item_name, data.at("name"));
+        if (!setResult.has_value())
+            return ll::Unexpected(setResult.error());
+        setResult = saleBatch.set(saleKey, StoreSaleCol::price, static_cast<long long>(SystemUtils::toInt(data.at("score"), 0)));
+        if (!setResult.has_value())
+            return ll::Unexpected(setResult.error());
+        setResult = saleBatch.set(saleKey, StoreSaleCol::tax, static_cast<long long>(tax));
+        if (!setResult.has_value())
+            return ll::Unexpected(setResult.error());
+        setResult = saleBatch.set(saleKey, StoreSaleCol::buyer_uuid, player.getUuid().asString());
+        if (!setResult.has_value())
+            return ll::Unexpected(setResult.error());
+        setResult = saleBatch.set(saleKey, StoreSaleCol::buyer_name, player.getRealName());
+        if (!setResult.has_value())
+            return ll::Unexpected(setResult.error());
+        setResult = saleBatch.set(saleKey, StoreSaleCol::seller_uuid, ownerUuid);
+        if (!setResult.has_value())
+            return ll::Unexpected(setResult.error());
+        setResult = saleBatch.set(saleKey, StoreSaleCol::time, SystemUtils::getNowTime());
+        if (!setResult.has_value())
+            return ll::Unexpected(setResult.error());
+        setResult = saleBatch.set(saleKey, StoreSaleCol::source, std::string("store"));
         if (!setResult.has_value())
             return ll::Unexpected(setResult.error());
 
+        auto saleCommit = saleBatch.commit();
+        if (!saleCommit.has_value())
+            return ll::Unexpected(saleCommit.error());
+
         bool isPartial = !remainingData.empty();
-        std::unordered_map<std::string, std::string> updated = data;
-        if (isPartial)
-            updated["data"] = remainingData;
-
-        auto updateResult = isPartial
-            ? this->mImpl->db->set(conn, "StoreItem", id, updated)
-            : this->mImpl->db->del(conn, "StoreItem", id);
-        if (!updateResult.has_value())
-            return ll::Unexpected(updateResult.error());
-
-        auto commitResult = transaction.value().commit();
-        if (!commitResult.has_value())
-            return ll::Unexpected(commitResult.error());
+        auto itemTx = this->mImpl->item->tx();
+        if (!itemTx.has_value()) {
+            auto cr = this->restoreStoreSale(id, data, saleKey);
+            if (!cr.has_value())
+                return ll::Unexpected(cr.error());
+            return ll::Unexpected(itemTx.error());
+        }
+        auto& itemBatch = itemTx.value();
+        auto itemResult = isPartial ? itemBatch.set(id, StoreItemCol::data, remainingData) : itemBatch.del(id);
+        if (!itemResult.has_value()) {
+            auto cr = this->restoreStoreSale(id, data, saleKey);
+            if (!cr.has_value())
+                return ll::Unexpected(cr.error());
+            return ll::Unexpected(itemResult.error());
+        }
+        auto itemCommit = itemBatch.commit();
+        if (!itemCommit.has_value()) {
+            auto cr = this->restoreStoreSale(id, data, saleKey);
+            if (!cr.has_value())
+                return ll::Unexpected(cr.error());
+            return ll::Unexpected(itemCommit.error());
+        }
 
         this->clearRankCache();
 
@@ -729,21 +733,27 @@ namespace LOICollection::server::Plugins {
         const std::unordered_map<std::string, std::string>& data,
         const std::string& saleKey
     ) {
-        auto transaction = BlockRepository::WriteTransaction::create(*this->mImpl->db);
-        if (!transaction.has_value())
-            return ll::Unexpected(transaction.error());
+        auto itemTx = this->mImpl->item->tx();
+        if (!itemTx.has_value())
+            return ll::Unexpected(itemTx.error());
 
-        auto& conn = transaction.value().connection();
+        auto itemResult = itemTx.value().set(id, StoreItemCol::data, data.at("data"));
+        if (!itemResult.has_value())
+            return ll::Unexpected(itemResult.error());
 
-        auto setResult = this->mImpl->db->set(conn, "StoreItem", id, data);
-        if (!setResult.has_value())
-            return ll::Unexpected(setResult.error());
+        auto itemCommit = itemTx.value().commit();
+        if (!itemCommit.has_value())
+            return ll::Unexpected(itemCommit.error());
 
-        auto delResult = this->mImpl->db->del(conn, "StoreSale", saleKey);
-        if (!delResult.has_value())
-            return ll::Unexpected(delResult.error());
+        auto saleTx = this->mImpl->sale->tx();
+        if (!saleTx.has_value())
+            return ll::Unexpected(saleTx.error());
 
-        return transaction.value().commit().transform([this](bool) -> void {
+        auto saleResult = saleTx.value().del(saleKey);
+        if (!saleResult.has_value())
+            return ll::Unexpected(saleResult.error());
+
+        return saleTx.value().commit().transform([this](bool) -> void {
             this->clearRankCache();
         });
     }
@@ -800,15 +810,15 @@ namespace LOICollection::server::Plugins {
 
         std::string mUuid = player.getUuid().asString();
 
-        return this->mImpl->db->has("Store", storeId)
+        return this->mImpl->store->has(storeId)
             .and_then([this, storeId, &player, rating, mContent, mUuid](bool exists) -> ll::Expected<bool> {
                 if (!exists)
                     return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::StoreNotFound));
 
-                return this->mImpl->db->find("StoreSale", {
-                    { "store_id", storeId },
-                    { "buyer_uuid", mUuid }
-                }, BlockRepository::FindCondition::AND)
+                return this->mImpl->sale->find(FindMode::And, {
+                    {StoreSaleCol::store_id, storeId},
+                    {StoreSaleCol::buyer_uuid, mUuid}
+                })
                     .and_then([this, storeId, &player, rating, mContent, mUuid](const std::vector<std::string>& purchases) -> ll::Expected<bool> {
                         if (purchases.empty()) {
                             return LanguagePlugin::getShared()->getLanguage(player)
@@ -819,10 +829,10 @@ namespace LOICollection::server::Plugins {
                                 });
                         }
 
-                        return this->mImpl->db->find("StoreReview", {
-                            { "store_id", storeId },
-                            { "buyer_uuid", mUuid }
-                        }, BlockRepository::FindCondition::AND)
+                        return this->mImpl->review->find(FindMode::And, {
+                            {StoreReviewCol::store_id, storeId},
+                            {StoreReviewCol::buyer_uuid, mUuid}
+                        })
                             .and_then([this, storeId, &player, rating, mContent](const std::vector<std::string>& reviews) -> ll::Expected<bool> {
                                 if (!reviews.empty()) {
                                     return LanguagePlugin::getShared()->getLanguage(player)
@@ -833,17 +843,20 @@ namespace LOICollection::server::Plugins {
                                         });
                                 }
 
+                                std::string reviewKey = SystemUtils::getCurrentTimestamp();
                                 std::unordered_map<std::string, std::string> data = {
-                                    { "store_id", storeId },
-                                    { "buyer_uuid", player.getUuid().asString() },
-                                    { "buyer_name", player.getRealName() },
-                                    { "rating", std::to_string(rating) },
-                                    { "content", mContent },
-                                    { "status", "pending" },
-                                    { "time", SystemUtils::getNowTime() }
+                                    {"store_id", storeId},
+                                    {"buyer_uuid", player.getUuid().asString()},
+                                    {"buyer_name", player.getRealName()},
+                                    {"content", mContent},
+                                    {"status", "pending"},
+                                    {"time", SystemUtils::getNowTime()}
                                 };
 
-                                return this->mImpl->db->set("StoreReview", SystemUtils::getCurrentTimestamp(), data)
+                                return this->mImpl->review->setRow(reviewKey, data)
+                                    .and_then([this, reviewKey, rating]() -> ll::Expected<void> {
+                                        return this->mImpl->review->set(reviewKey, StoreReviewCol::rating, static_cast<long long>(rating));
+                                    })
                                     .transform([this, &player]() -> bool {
                                         this->mImpl->logger->info(fmt::runtime(tr({}, "market.log14")), player.getRealName());
 
@@ -869,7 +882,7 @@ namespace LOICollection::server::Plugins {
                 if (data.at("status") != "pending")
                     return false;
 
-                return this->mImpl->db->set("StoreReview", id, "status", approve ? "approved" : "rejected")
+                return this->mImpl->review->set(id, StoreReviewCol::status, approve ? std::string("approved") : std::string("rejected"))
                     .transform([this, approve]() -> bool {
                         if (approve)
                             this->clearRankCache();
@@ -892,22 +905,22 @@ namespace LOICollection::server::Plugins {
             ? "approved"
             : (status == MarketStoreReviewStatus::rejected ? "rejected" : "pending");
 
-        return this->mImpl->db->find("StoreReview", {
-            { "store_id", storeId },
-            { "status", mStatus }
-        }, BlockRepository::FindCondition::AND);
+        return this->mImpl->review->find(FindMode::And, {
+            {StoreReviewCol::store_id, storeId},
+            {StoreReviewCol::status, mStatus}
+        });
     }
 
     ll::Expected<std::unordered_map<std::string, std::string>> MarketStore::getReviewData(const std::string& id) {
         if (!this->isValid())
             return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::Invalid));
 
-        return this->mImpl->db->has("StoreReview", id)
+        return this->mImpl->review->has(id)
             .and_then([this, id](bool exists) -> ll::Expected<std::unordered_map<std::string, std::string>> {
                 if (!exists)
                     return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::StoreReviewNotFound));
 
-                return this->mImpl->db->get("StoreReview", id);
+                return this->mImpl->review->getRow(id);
             });
     }
 
@@ -924,6 +937,28 @@ namespace LOICollection::server::Plugins {
         });
     }
 
+    StoreTable& MarketStore::stores() {
+        return *this->mImpl->store;
+    }
+
+    StoreItemTable& MarketStore::items() {
+        return *this->mImpl->item;
+    }
+
+    StoreSaleTable& MarketStore::sales() {
+        return *this->mImpl->sale;
+    }
+
+    StoreReviewTable& MarketStore::reviews() {
+        return *this->mImpl->review;
+    }
+
+    void MarketStore::unload() {
+        this->mImpl->store.reset();
+        this->mImpl->item.reset();
+        this->mImpl->sale.reset();
+        this->mImpl->review.reset();
+    }
 
     MarketStore::MarketStore(
         std::shared_ptr<BlockRepository> db,
@@ -946,6 +981,8 @@ namespace LOICollection::server::Plugins {
     MarketStore::~MarketStore() = default;
 
     bool MarketStore::isValid() const {
-        return mImpl != nullptr && this->mImpl->db != nullptr && this->mImpl->settingsDb != nullptr && this->mImpl->logger != nullptr;
+        return mImpl != nullptr && this->mImpl->db != nullptr && this->mImpl->settingsDb != nullptr && this->mImpl->logger != nullptr
+            && this->mImpl->store.has_value() && this->mImpl->item.has_value()
+            && this->mImpl->sale.has_value() && this->mImpl->review.has_value();
     }
 }

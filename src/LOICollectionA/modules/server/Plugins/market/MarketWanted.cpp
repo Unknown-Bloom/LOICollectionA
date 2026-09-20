@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cmath>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 #include <utility>
@@ -41,12 +42,20 @@
 
 #include "LOICollectionA/ConfigPlugin.h"
 
+#include "LOICollectionA/include/server/Plugins/TableSchema.h"
 #include "LOICollectionA/include/server/Plugins/market/MarketWanted.h"
 #include "LOICollectionA/include/server/Plugins/market/MarketPlugin.h"
 
 using I18nUtilsTools::tr;
+using LOICollection::data::FindMode;
 
 namespace LOICollection::server::Plugins {
+
+    static long long nowEpochSeconds() {
+        return std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+    }
+
     struct MarketWanted::Impl {
         std::shared_ptr<BlockRepository> db;
         std::shared_ptr<BlockRepository> settingsDb;
@@ -55,6 +64,8 @@ namespace LOICollection::server::Plugins {
         TimerManager& timerManager;
         BlacklistProvider blacklistProvider;
         TaxRateProvider taxRateProvider;
+        std::optional<StoreWantedTable> mTable;
+        std::optional<StoreSaleTable> mSale;
 
         Impl(
             std::shared_ptr<BlockRepository> db_,
@@ -78,17 +89,17 @@ namespace LOICollection::server::Plugins {
     };
 
     ll::Expected<void> MarketWanted::createTables() {
-        return this->mImpl->db->create("StoreWanted", [](BlockRepository::ColumnCallback ctor) -> void {
-            ctor("wanted_uuid");
-            ctor("wanted_name");
-            ctor("item_type");
-            ctor("item_data");
-            ctor("item_name");
-            ctor("unit_price");
-            ctor("amount_total");
-            ctor("amount_filled");
-            ctor("expire_at");
-        });
+        return StoreWantedTable::open(*this->mImpl->db, "StoreWanted")
+            .and_then([this](StoreWantedTable table) -> ll::Expected<StoreSaleTable> {
+                this->mImpl->mTable.emplace(std::move(table));
+
+                return StoreSaleTable::open(*this->mImpl->db, "StoreSale");
+            })
+            .and_then([this](StoreSaleTable table) -> ll::Expected<void> {
+                this->mImpl->mSale.emplace(std::move(table));
+
+                return {};
+            });
     }
 
     ll::Expected<bool> MarketWanted::createWanted(Player& player, int slot, const std::string& name, int unitPrice, int amount) {
@@ -119,9 +130,9 @@ namespace LOICollection::server::Plugins {
         if (mFrozen <= 0 || mFrozen > 2'147'483'647LL)
             return false;
 
-        return this->mImpl->db->find("StoreWanted", {
-            { "wanted_uuid", mUuid }
-        }, BlockRepository::FindCondition::AND)
+        return this->mImpl->mTable->find(FindMode::And, {
+            { StoreWantedCol::wanted_uuid, mUuid }
+        })
             .and_then([this, mUuid, mScoreboard, mFrozen, mName, mItemStack = std::move(mItemStack), unitPrice, amount, &player](const std::vector<std::string>& items) -> ll::Expected<bool> {
                 if (static_cast<int>(items.size()) >= this->mImpl->options.StoreWantedMaxPerPlayer)
                     return false;
@@ -137,33 +148,56 @@ namespace LOICollection::server::Plugins {
 
                 ScoreboardUtils::reduceScore(player, mScoreboard, static_cast<int>(mFrozen));
 
-                std::unordered_map<std::string, std::string> data = {
-                    { "wanted_uuid", mUuid },
-                    { "wanted_name", player.getRealName() },
-                    { "item_type", mItemStack.getTypeName() },
-                    { "item_data", mItemStack.save(*SaveContextFactory::createCloneSaveContext())->toSnbt(SnbtFormat::Minimize, 0) },
-                    { "item_name", mName },
-                    { "unit_price", std::to_string(unitPrice) },
-                    { "amount_total", std::to_string(amount) },
-                    { "amount_filled", "0" },
-                    { "created_at", SystemUtils::getNowTime() },
-                    { "expire_at", SystemUtils::toTimeCalculate(
-                          SystemUtils::getNowTime(),
-                          this->mImpl->options.StoreWantedExpireDays * 86'400
-                      ) }
-                };
+                long long mExpireAt = nowEpochSeconds() + static_cast<long long>(this->mImpl->options.StoreWantedExpireDays) * 86'400LL;
+                std::string mId = SystemUtils::getCurrentTimestamp();
 
-                return this->mImpl->db->set("StoreWanted", SystemUtils::getCurrentTimestamp(), data)
-                    .or_else([mScoreboard, mFrozen, &player](ll::Error e) -> ll::Expected<void> {
-                        ScoreboardUtils::addScore(player, mScoreboard, static_cast<int>(mFrozen));
+                auto& t = *this->mImpl->mTable;
+                auto tx = t.tx();
+                if (!tx.has_value())
+                    return ll::Unexpected(tx.error());
 
-                        return ll::Unexpected(e);
+                auto r = tx->set(mId, StoreWantedCol::wanted_uuid, mUuid)
+                    .and_then([&]() -> ll::Expected<void> {
+                        return tx->set(mId, StoreWantedCol::wanted_name, player.getRealName());
                     })
-                    .transform([this, &player, mName]() -> bool {
-                        this->mImpl->logger->info(fmt::runtime(tr({}, "market.log20")), player.getRealName(), mName);
-
-                        return true;
+                    .and_then([&]() -> ll::Expected<void> {
+                        return tx->set(mId, StoreWantedCol::item_type, mItemStack.getTypeName());
+                    })
+                    .and_then([&]() -> ll::Expected<void> {
+                        return tx->set(mId, StoreWantedCol::item_data, mItemStack.save(*SaveContextFactory::createCloneSaveContext())->toSnbt(SnbtFormat::Minimize, 0));
+                    })
+                    .and_then([&]() -> ll::Expected<void> {
+                        return tx->set(mId, StoreWantedCol::item_name, mName);
+                    })
+                    .and_then([&]() -> ll::Expected<void> {
+                        return tx->set(mId, StoreWantedCol::unit_price, static_cast<long long>(unitPrice));
+                    })
+                    .and_then([&]() -> ll::Expected<void> {
+                        return tx->set(mId, StoreWantedCol::amount_total, static_cast<long long>(amount));
+                    })
+                    .and_then([&]() -> ll::Expected<void> {
+                        return tx->set(mId, StoreWantedCol::amount_filled, 0LL);
+                    })
+                    .and_then([&]() -> ll::Expected<void> {
+                        return tx->set(mId, StoreWantedCol::expire_at, mExpireAt);
                     });
+
+                if (!r.has_value()) {
+                    (void)tx->rollback();
+
+                    return ll::Unexpected(r.error());
+                }
+
+                auto c = tx->commit();
+                if (!c.has_value()) {
+                    (void)tx->rollback();
+
+                    return ll::Unexpected(c.error());
+                }
+
+                this->mImpl->logger->info(fmt::runtime(tr({}, "market.log20")), player.getRealName(), mName);
+
+                return true;
             });
     }
 
@@ -222,7 +256,8 @@ namespace LOICollection::server::Plugins {
                 if (buyerUuid == player.getUuid().asString())
                     return false;
 
-                if (SystemUtils::isPastOrPresent(data.at("expire_at")))
+                long long expireAt = SystemUtils::toLongLong(data.at("expire_at"), 0);
+                if (nowEpochSeconds() >= expireAt)
                     return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::WantedExpired));
 
                 int total = SystemUtils::toInt(data.at("amount_total"), 0);
@@ -302,41 +337,68 @@ namespace LOICollection::server::Plugins {
         int tax,
         Player& seller
     ) {
-        auto transaction = BlockRepository::WriteTransaction::create(*this->mImpl->db);
-        if (!transaction.has_value())
-            return ll::Unexpected(transaction.error());
-
-        auto& conn = transaction.value().connection();
-        std::string saleKey = SystemUtils::getCurrentTimestamp();
-
         int total = SystemUtils::toInt(data.at("amount_total"), 0);
         int filled = SystemUtils::toInt(data.at("amount_filled"), 0) + amount;
 
-        auto updateResult = filled >= total
-            ? this->mImpl->db->del(conn, "StoreWanted", id)
-            : this->mImpl->db->set(conn, "StoreWanted", id, "amount_filled", std::to_string(filled));
-        if (!updateResult.has_value())
+        auto& t = *this->mImpl->mTable;
+        auto tx = t.tx();
+        if (!tx.has_value())
+            return ll::Unexpected(tx.error());
+
+        auto updateResult = (filled >= total)
+            ? tx->del(id)
+            : tx->set(id, StoreWantedCol::amount_filled, static_cast<long long>(filled));
+        if (!updateResult.has_value()) {
+            (void)tx->rollback();
+
             return ll::Unexpected(updateResult.error());
+        }
 
-        std::unordered_map<std::string, std::string> sale = {
-            { "store_id", data.at("wanted_uuid") },
-            { "item_name", data.at("item_name") },
-            { "price", std::to_string(pay) },
-            { "tax", std::to_string(tax) },
-            { "buyer_uuid", data.at("wanted_uuid") },
-            { "buyer_name", data.at("wanted_name") },
-            { "seller_uuid", seller.getUuid().asString() },
-            { "time", SystemUtils::getNowTime() },
-            { "source", "wanted" }
-        };
+        auto commitResult = tx->commit();
+        if (!commitResult.has_value()) {
+            (void)tx->rollback();
 
-        auto setResult = this->mImpl->db->set(conn, "StoreSale", saleKey, sale);
+            return ll::Unexpected(commitResult.error());
+        }
+
+        std::string saleKey = SystemUtils::getCurrentTimestamp();
+
+        auto saleTx = this->mImpl->mSale->tx();
+        if (!saleTx.has_value())
+            return ll::Unexpected(saleTx.error());
+
+        auto& saleBatch = saleTx.value();
+        auto setResult = saleBatch.set(saleKey, StoreSaleCol::store_id, data.at("wanted_uuid"));
+        if (!setResult.has_value())
+            return ll::Unexpected(setResult.error());
+        setResult = saleBatch.set(saleKey, StoreSaleCol::item_name, data.at("item_name"));
+        if (!setResult.has_value())
+            return ll::Unexpected(setResult.error());
+        setResult = saleBatch.set(saleKey, StoreSaleCol::price, static_cast<long long>(pay));
+        if (!setResult.has_value())
+            return ll::Unexpected(setResult.error());
+        setResult = saleBatch.set(saleKey, StoreSaleCol::tax, static_cast<long long>(tax));
+        if (!setResult.has_value())
+            return ll::Unexpected(setResult.error());
+        setResult = saleBatch.set(saleKey, StoreSaleCol::buyer_uuid, data.at("wanted_uuid"));
+        if (!setResult.has_value())
+            return ll::Unexpected(setResult.error());
+        setResult = saleBatch.set(saleKey, StoreSaleCol::buyer_name, data.at("wanted_name"));
+        if (!setResult.has_value())
+            return ll::Unexpected(setResult.error());
+        setResult = saleBatch.set(saleKey, StoreSaleCol::seller_uuid, seller.getUuid().asString());
+        if (!setResult.has_value())
+            return ll::Unexpected(setResult.error());
+        setResult = saleBatch.set(saleKey, StoreSaleCol::time, SystemUtils::getNowTime());
+        if (!setResult.has_value())
+            return ll::Unexpected(setResult.error());
+        setResult = saleBatch.set(saleKey, StoreSaleCol::source, std::string("wanted"));
         if (!setResult.has_value())
             return ll::Unexpected(setResult.error());
 
-        auto commitResult = transaction.value().commit();
-        if (!commitResult.has_value())
-            return ll::Unexpected(commitResult.error());
+        auto saleCommit = saleBatch.commit();
+        if (!saleCommit.has_value())
+            return ll::Unexpected(saleCommit.error());
 
         return saleKey;
     }
@@ -347,42 +409,129 @@ namespace LOICollection::server::Plugins {
         int amount,
         const std::string& saleKey
     ) {
-        auto transaction = BlockRepository::WriteTransaction::create(*this->mImpl->db);
-        if (!transaction.has_value())
-            return ll::Unexpected(transaction.error());
-
-        auto& conn = transaction.value().connection();
+        auto delSale = this->mImpl->mSale->del(saleKey);
+        if (!delSale.has_value())
+            return ll::Unexpected(delSale.error());
 
         int total = SystemUtils::toInt(data.at("amount_total"), 0);
         int filled = SystemUtils::toInt(data.at("amount_filled"), 0);
 
-        auto updateResult = filled + amount >= total
-            ? this->mImpl->db->set(conn, "StoreWanted", id, data)
-            : this->mImpl->db->set(conn, "StoreWanted", id, "amount_filled", std::to_string(filled));
-        if (!updateResult.has_value())
-            return ll::Unexpected(updateResult.error());
+        auto& t = *this->mImpl->mTable;
+        auto tx = t.tx();
+        if (!tx.has_value())
+            return ll::Unexpected(tx.error());
 
-        auto delResult = this->mImpl->db->del(conn, "StoreSale", saleKey);
-        if (!delResult.has_value())
-            return ll::Unexpected(delResult.error());
+        auto r = (filled + amount >= total)
+            ? tx->set(id, StoreWantedCol::wanted_uuid, data.at("wanted_uuid"))
+                .and_then([&]() -> ll::Expected<void> {
+                    return tx->set(id, StoreWantedCol::wanted_name, data.at("wanted_name"));
+                })
+                .and_then([&]() -> ll::Expected<void> {
+                    return tx->set(id, StoreWantedCol::item_type, data.at("item_type"));
+                })
+                .and_then([&]() -> ll::Expected<void> {
+                    return tx->set(id, StoreWantedCol::item_data, data.at("item_data"));
+                })
+                .and_then([&]() -> ll::Expected<void> {
+                    return tx->set(id, StoreWantedCol::item_name, data.at("item_name"));
+                })
+                .and_then([&]() -> ll::Expected<void> {
+                    return tx->set(id, StoreWantedCol::unit_price, SystemUtils::toLongLong(data.at("unit_price"), 0));
+                })
+                .and_then([&]() -> ll::Expected<void> {
+                    return tx->set(id, StoreWantedCol::amount_total, SystemUtils::toLongLong(data.at("amount_total"), 0));
+                })
+                .and_then([&]() -> ll::Expected<void> {
+                    return tx->set(id, StoreWantedCol::amount_filled, SystemUtils::toLongLong(data.at("amount_filled"), 0));
+                })
+                .and_then([&]() -> ll::Expected<void> {
+                    return tx->set(id, StoreWantedCol::expire_at, SystemUtils::toLongLong(data.at("expire_at"), 0));
+                })
+            : tx->set(id, StoreWantedCol::amount_filled, static_cast<long long>(filled));
+        if (!r.has_value()) {
+            (void)tx->rollback();
 
-        return transaction.value().commit().transform([](bool) -> void {});
+            return ll::Unexpected(r.error());
+        }
+
+        auto commitResult = tx->commit();
+        if (!commitResult.has_value()) {
+            (void)tx->rollback();
+
+            return ll::Unexpected(commitResult.error());
+        }
+
+        return {};
     }
 
     ll::Expected<void> MarketWanted::deleteWanted(const std::string& id) {
-        auto transaction = BlockRepository::WriteTransaction::create(*this->mImpl->db);
-        if (!transaction.has_value())
-            return ll::Unexpected(transaction.error());
+        auto tx = this->mImpl->mTable->tx();
+        if (!tx.has_value())
+            return ll::Unexpected(tx.error());
 
-        auto delResult = this->mImpl->db->del(transaction.value().connection(), "StoreWanted", id);
-        if (!delResult.has_value())
+        auto delResult = tx->del(id);
+        if (!delResult.has_value()) {
+            (void)tx->rollback();
+
             return ll::Unexpected(delResult.error());
+        }
 
-        return transaction.value().commit().transform([](bool) -> void {});
+        auto commitResult = tx->commit();
+        if (!commitResult.has_value()) {
+            (void)tx->rollback();
+
+            return ll::Unexpected(commitResult.error());
+        }
+
+        return {};
     }
 
     ll::Expected<void> MarketWanted::restoreWanted(const std::string& id, const std::unordered_map<std::string, std::string>& data) {
-        return this->mImpl->db->set("StoreWanted", id, data);
+        auto& t = *this->mImpl->mTable;
+        auto tx = t.tx();
+        if (!tx.has_value())
+            return ll::Unexpected(tx.error());
+
+        auto r = tx->set(id, StoreWantedCol::wanted_uuid, data.at("wanted_uuid"))
+            .and_then([&]() -> ll::Expected<void> {
+                return tx->set(id, StoreWantedCol::wanted_name, data.at("wanted_name"));
+            })
+            .and_then([&]() -> ll::Expected<void> {
+                return tx->set(id, StoreWantedCol::item_type, data.at("item_type"));
+            })
+            .and_then([&]() -> ll::Expected<void> {
+                return tx->set(id, StoreWantedCol::item_data, data.at("item_data"));
+            })
+            .and_then([&]() -> ll::Expected<void> {
+                return tx->set(id, StoreWantedCol::item_name, data.at("item_name"));
+            })
+            .and_then([&]() -> ll::Expected<void> {
+                return tx->set(id, StoreWantedCol::unit_price, SystemUtils::toLongLong(data.at("unit_price"), 0));
+            })
+            .and_then([&]() -> ll::Expected<void> {
+                return tx->set(id, StoreWantedCol::amount_total, SystemUtils::toLongLong(data.at("amount_total"), 0));
+            })
+            .and_then([&]() -> ll::Expected<void> {
+                return tx->set(id, StoreWantedCol::amount_filled, SystemUtils::toLongLong(data.at("amount_filled"), 0));
+            })
+            .and_then([&]() -> ll::Expected<void> {
+                return tx->set(id, StoreWantedCol::expire_at, SystemUtils::toLongLong(data.at("expire_at"), 0));
+            });
+
+        if (!r.has_value()) {
+            (void)tx->rollback();
+
+            return ll::Unexpected(r.error());
+        }
+
+        auto commitResult = tx->commit();
+        if (!commitResult.has_value()) {
+            (void)tx->rollback();
+
+            return ll::Unexpected(commitResult.error());
+        }
+
+        return {};
     }
 
     ll::Expected<void> MarketWanted::refundBuyer(const std::string& buyerUuid, int score, const std::string& scoreboard) {
@@ -426,48 +575,53 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<void> MarketWanted::sweepExpired() {
-        return this->mImpl->db->list("StoreWanted")
+        return this->mImpl->mTable->list()
             .and_then([this](const std::vector<std::string>& keys) -> ll::Expected<void> {
-                if (keys.empty())
-                    return {};
+                std::string mScoreboard = this->mImpl->options.TargetScoreboard;
 
-                return this->mImpl->db->get("StoreWanted", keys)
-                    .and_then([this](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> wanted) -> ll::Expected<void> {
-                        std::string mScoreboard = this->mImpl->options.TargetScoreboard;
+                for (const auto& id : keys) {
+                    auto row = this->mImpl->mTable->getRow(id);
+                    if (!row.has_value()) {
+                        this->mImpl->logger->warn("MarketWanted: load wanted {} failed: {}", id, row.error().message());
 
-                        for (const auto& [id, data] : wanted) {
-                            if (!SystemUtils::isPastOrPresent(data.at("expire_at")))
-                                continue;
+                        continue;
+                    }
 
-                            int total = SystemUtils::toInt(data.at("amount_total"), 0);
-                            int filled = SystemUtils::toInt(data.at("amount_filled"), 0);
-                            int remaining = std::max(0, total - filled);
-                            if (remaining <= 0)
-                                continue;
+                    auto data = std::move(row.value());
+                    if (data.empty())
+                        continue;
 
-                            int refund = SystemUtils::toInt(data.at("unit_price"), 0) * remaining;
+                    if (nowEpochSeconds() < SystemUtils::toLongLong(data.at("expire_at"), 0))
+                        continue;
 
-                            auto result = this->deleteWanted(id)
-                                .and_then([this, id, data, refund, mScoreboard]() -> ll::Expected<void> {
-                                    return this->refundBuyer(data.at("wanted_uuid"), refund, mScoreboard)
-                                        .or_else([this, id, data](ll::Error e) -> ll::Expected<void> {
-                                            this->mImpl->logger->warn(fmt::runtime(tr({}, "market.log21")), data.at("wanted_name"), id);
+                    int total = SystemUtils::toInt(data.at("amount_total"), 0);
+                    int filled = SystemUtils::toInt(data.at("amount_filled"), 0);
+                    int remaining = std::max(0, total - filled);
+                    if (remaining <= 0)
+                        continue;
 
-                                            return this->restoreWanted(id, data).and_then([e = std::move(e)]() mutable -> ll::Expected<void> {
-                                                return ll::Unexpected(std::move(e));
-                                            });
-                                        });
-                                })
-                                .transform([this, data, refund]() -> void {
-                                    this->mImpl->logger->info(fmt::runtime(tr({}, "market.log17")), data.at("item_name"), refund, data.at("wanted_name"));
+                    int refund = SystemUtils::toInt(data.at("unit_price"), 0) * remaining;
+
+                    auto result = this->deleteWanted(id)
+                        .and_then([this, id, data, refund, mScoreboard]() -> ll::Expected<void> {
+                            return this->refundBuyer(data.at("wanted_uuid"), refund, mScoreboard)
+                                .or_else([this, id, data](ll::Error e) -> ll::Expected<void> {
+                                    this->mImpl->logger->warn(fmt::runtime(tr({}, "market.log21")), data.at("wanted_name"), id);
+
+                                    return this->restoreWanted(id, data).and_then([e = std::move(e)]() mutable -> ll::Expected<void> {
+                                        return ll::Unexpected(std::move(e));
+                                    });
                                 });
+                        })
+                        .transform([this, data, refund]() -> void {
+                            this->mImpl->logger->info(fmt::runtime(tr({}, "market.log17")), data.at("item_name"), refund, data.at("wanted_name"));
+                        });
 
-                            if (!result.has_value())
-                                this->mImpl->logger->warn(fmt::runtime(tr({}, "market.log21")), data.at("wanted_name"), id);
-                        }
+                    if (!result.has_value())
+                        this->mImpl->logger->warn(fmt::runtime(tr({}, "market.log21")), data.at("wanted_name"), id);
+                }
 
-                        return {};
-                    });
+                return {};
             });
     }
 
@@ -478,7 +632,7 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->options.StoreWantedEnabled)
             return {};
 
-        return this->mImpl->db->list("StoreWanted");
+        return this->mImpl->mTable->list();
     }
 
     ll::Expected<std::vector<std::string>> MarketWanted::getWantedItems(Player& player) {
@@ -488,21 +642,21 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->options.StoreWantedEnabled)
             return {};
 
-        return this->mImpl->db->find("StoreWanted", {
-            { "wanted_uuid", player.getUuid().asString() }
-        }, BlockRepository::FindCondition::AND);
+        return this->mImpl->mTable->find(FindMode::And, {
+            { StoreWantedCol::wanted_uuid, player.getUuid().asString() }
+        });
     }
 
     ll::Expected<std::unordered_map<std::string, std::string>> MarketWanted::getWantedData(const std::string& id) {
         if (!this->isValid())
             return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::Invalid));
 
-        return this->mImpl->db->has("StoreWanted", id)
+        return this->mImpl->mTable->has(id)
             .and_then([this, id](bool exists) -> ll::Expected<std::unordered_map<std::string, std::string>> {
                 if (!exists)
                     return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::WantedNotFound));
 
-                return this->mImpl->db->get("StoreWanted", id);
+                return this->mImpl->mTable->getRow(id);
             });
     }
 
@@ -527,6 +681,6 @@ namespace LOICollection::server::Plugins {
     MarketWanted::~MarketWanted() = default;
 
     bool MarketWanted::isValid() const {
-        return mImpl != nullptr && this->mImpl->db != nullptr && this->mImpl->settingsDb != nullptr && this->mImpl->logger != nullptr;
+        return mImpl != nullptr && this->mImpl->db != nullptr && this->mImpl->settingsDb != nullptr && this->mImpl->logger != nullptr && this->mImpl->mTable.has_value();
     }
 }

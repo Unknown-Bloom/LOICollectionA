@@ -3,6 +3,7 @@
 #include <chrono>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -25,6 +26,8 @@
 
 #include "LOICollectionA/ConfigPlugin.h"
 
+#include "LOICollectionA/include/server/Plugins/TableSchema.h"
+
 #include "LOICollectionA/include/server/Plugins/wallet/WalletLedger.h"
 #include "LOICollectionA/include/server/Plugins/wallet/WalletPlugin.h"
 
@@ -36,6 +39,9 @@ namespace LOICollection::server::Plugins {
         const Config::C_Wallet& options;
         std::shared_ptr<ll::io::Logger> logger;
         TimerManager& timerManager;
+
+        std::optional<WalletLedgerTable> ledger;
+        std::optional<WalletFeeTable> fee;
 
         std::atomic<uint64_t> mLedgerSeq{ 0 };
 
@@ -60,31 +66,21 @@ namespace LOICollection::server::Plugins {
     WalletLedger::~WalletLedger() = default;
 
     bool WalletLedger::isValid() const {
-        return this->mImpl->db != nullptr;
+        return this->mImpl->db != nullptr
+            && this->mImpl->ledger.has_value()
+            && this->mImpl->fee.has_value();
     }
 
     ll::Expected<void> WalletLedger::createTables() {
-        return this->mImpl->db->create("WalletLedger", [](BlockRepository::ColumnCallback ctor) -> void {
-            ctor("from_uuid");
-            ctor("from_name");
-            ctor("to_uuid");
-            ctor("to_name");
-            ctor("amount");
-            ctor("fee");
-            ctor("type");
-            ctor("time_ns");
-            ctor("time");
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->db->create("WalletFee", [](BlockRepository::ColumnCallback ctor) -> void {
-                ctor("amount");
+        return WalletLedgerTable::open(*this->mImpl->db, "WalletLedger")
+            .and_then([this](WalletLedgerTable t) {
+                this->mImpl->ledger.emplace(std::move(t));
+                return WalletFeeTable::open(*this->mImpl->db, "WalletFee");
+            })
+            .and_then([this](WalletFeeTable t) -> ll::Expected<void> {
+                this->mImpl->fee.emplace(std::move(t));
+                return {};
             });
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->db->exec("CREATE INDEX IF NOT EXISTS idx_WalletLedger_time_ns ON WalletLedger(time_ns);");
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->db->exec("CREATE INDEX IF NOT EXISTS idx_WalletLedger_from_uuid ON WalletLedger(from_uuid);");
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->db->exec("CREATE INDEX IF NOT EXISTS idx_WalletLedger_to_uuid ON WalletLedger(to_uuid);");
-        });
     }
 
     void WalletLedger::record(const std::string& fromUuid, const std::string& fromName, const std::string& toUuid, const std::string& toName, long long amount, long long fee, const std::string& type) {
@@ -109,19 +105,26 @@ namespace LOICollection::server::Plugins {
 
         std::string id = std::to_string(nowNs) + "_" + std::to_string(this->mImpl->mLedgerSeq.fetch_add(1, std::memory_order_relaxed));
 
-        std::unordered_map<std::string, std::string> row = {
-            { "from_uuid", fromUuid },
-            { "from_name", fromName },
-            { "to_uuid", toUuid },
-            { "to_name", toName },
-            { "amount", std::to_string(amount) },
-            { "fee", std::to_string(fee) },
-            { "type", type },
-            { "time_ns", std::to_string(nowNs) },
-            { "time", SystemUtils::getNowTime() }
-        };
+        auto& ledger = *this->mImpl->ledger;
 
-        this->mImpl->db->set("WalletLedger", id, row)
+        auto tx = ledger.tx();
+        if (!tx.has_value()) {
+            tx.error().log(*this->mImpl->logger);
+            return;
+        }
+
+        auto& batch = tx.value();
+
+        batch.set(id, WalletLedgerCol::from_uuid, fromUuid)
+            .and_then([&]() { return batch.set(id, WalletLedgerCol::from_name, fromName); })
+            .and_then([&]() { return batch.set(id, WalletLedgerCol::to_uuid, toUuid); })
+            .and_then([&]() { return batch.set(id, WalletLedgerCol::to_name, toName); })
+            .and_then([&]() { return batch.set(id, WalletLedgerCol::amount, amount); })
+            .and_then([&]() { return batch.set(id, WalletLedgerCol::fee, fee); })
+            .and_then([&]() { return batch.set(id, WalletLedgerCol::type, type); })
+            .and_then([&]() { return batch.set(id, WalletLedgerCol::time_ns, nowNs); })
+            .and_then([&]() { return batch.set(id, WalletLedgerCol::time, SystemUtils::getNowTime()); })
+            .and_then([&]() { return batch.commit(); })
             .or_else([this](ll::Error e) -> ll::Expected<void> {
                 e.log(*this->mImpl->logger);
 
@@ -133,52 +136,54 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
-        return this->mImpl->db->find("WalletLedger", {
-            { "from_uuid", uuid },
-            { "to_uuid", uuid }
-        }, BlockRepository::FindCondition::OR)
-            .and_then([this, uuid, limit](const std::vector<std::string>& ids) -> ll::Expected<std::vector<std::string>> {
-                if (ids.empty())
-                    return std::vector<std::string>{};
+        return this->mImpl->ledger->find(FindMode::Or, {
+            { WalletLedgerCol::from_uuid, uuid },
+            { WalletLedgerCol::to_uuid, uuid }
+        }).and_then([this, uuid, limit](const std::vector<std::string>& ids) -> ll::Expected<std::vector<std::string>> {
+            if (ids.empty())
+                return std::vector<std::string>{};
 
-                return this->mImpl->db->get("WalletLedger", ids)
-                    .transform([uuid, limit](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> rows) -> std::vector<std::string> {
-                        std::vector<std::pair<std::string, std::string>> sorted;
-                        sorted.reserve(rows.size());
+            std::vector<std::pair<std::string, std::string>> sorted;
+            sorted.reserve(ids.size());
 
-                        for (const auto& [id, row] : rows) {
-                            std::string type = row.contains("type") ? row.at("type") : "";
-                            std::string fromName = row.contains("from_name") ? row.at("from_name") : "";
-                            std::string toName = row.contains("to_name") ? row.at("to_name") : "";
-                            std::string amount = row.contains("amount") ? row.at("amount") : "0";
-                            std::string fee = row.contains("fee") ? row.at("fee") : "0";
-                            std::string timeNs = row.contains("time_ns") ? row.at("time_ns") : "";
-                            std::string timeStr = row.contains("time") ? row.at("time") : "";
+            for (const auto& id : ids) {
+                auto row = this->mImpl->ledger->getRow(id);
+                if (!row.has_value())
+                    return ll::Unexpected(row.error());
 
-                            bool isOut = row.contains("from_uuid") && row.at("from_uuid") == uuid;
-                            std::string direction = tr({}, isOut ? "wallet.history.type.out" : "wallet.history.type.in");
+                const auto& fields = row.value();
 
-                            std::string display = fmt::format(fmt::runtime(tr({}, "wallet.history.row")),
-                                timeStr, direction, fromName, toName, amount, fee);
+                std::string type = fields.contains("type") ? fields.at("type") : "";
+                std::string fromName = fields.contains("from_name") ? fields.at("from_name") : "";
+                std::string toName = fields.contains("to_name") ? fields.at("to_name") : "";
+                std::string amount = fields.contains("amount") ? fields.at("amount") : "0";
+                std::string fee = fields.contains("fee") ? fields.at("fee") : "0";
+                std::string timeNs = fields.contains("time_ns") ? fields.at("time_ns") : "";
+                std::string timeStr = fields.contains("time") ? fields.at("time") : "";
 
-                            sorted.emplace_back(timeNs, display);
-                        }
+                bool isOut = fields.contains("from_uuid") && fields.at("from_uuid") == uuid;
+                std::string direction = tr({}, isOut ? "wallet.history.type.out" : "wallet.history.type.in");
 
-                        std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) {
-                            return a.first > b.first;
-                        });
+                std::string display = fmt::format(fmt::runtime(tr({}, "wallet.history.row")),
+                    timeStr, direction, fromName, toName, amount, fee);
 
-                        if (limit > 0 && sorted.size() > static_cast<size_t>(limit))
-                            sorted.resize(static_cast<size_t>(limit));
+                sorted.emplace_back(timeNs, display);
+            }
 
-                        std::vector<std::string> result;
-                        result.reserve(sorted.size());
-                        for (const auto& [t, d] : sorted)
-                            result.emplace_back(d);
-
-                        return result;
-                    });
+            std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) {
+                return a.first > b.first;
             });
+
+            if (limit > 0 && sorted.size() > static_cast<size_t>(limit))
+                sorted.resize(static_cast<size_t>(limit));
+
+            std::vector<std::string> result;
+            result.reserve(sorted.size());
+            for (const auto& [t, d] : sorted)
+                result.emplace_back(d);
+
+            return result;
+        });
     }
 
     ll::Expected<void> WalletLedger::sendHistory(Player& receiver, const std::string& uuid, const std::string& name, int limit) {
@@ -203,21 +208,16 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
-        return this->mImpl->db->get("WalletFee", "total", "amount", "0")
-            .transform([](const std::string& value) -> long long {
-                return SystemUtils::toLongLong(value, 0);
-            });
+        return this->mImpl->fee->get<long long>("total", WalletFeeCol::amount, 0);
     }
 
     ll::Expected<void> WalletLedger::accumulateFee(long long amount) {
         if (amount <= 0)
             return {};
 
-        return this->mImpl->db->get("WalletFee", "total", "amount", "0")
-            .and_then([this, amount](const std::string& value) -> ll::Expected<void> {
-                long long total = SystemUtils::toLongLong(value, 0);
-
-                return this->mImpl->db->set("WalletFee", "total", "amount", std::to_string(total + amount));
+        return this->mImpl->fee->get<long long>("total", WalletFeeCol::amount, 0)
+            .and_then([this, amount](long long total) -> ll::Expected<void> {
+                return this->mImpl->fee->set("total", WalletFeeCol::amount, total + amount);
             });
     }
 
@@ -230,23 +230,35 @@ namespace LOICollection::server::Plugins {
         auto nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         long long todayStartNs = (nowNs / NS_PER_DAY) * NS_PER_DAY;
 
-        auto ids = this->mImpl->db->find("WalletLedger", std::vector<std::pair<std::string, std::string>>{ { "from_uuid", uuid } }, BlockRepository::FindCondition::AND);
+        auto ids = this->mImpl->ledger->find(FindMode::And, {
+            { WalletLedgerCol::from_uuid, uuid }
+        });
         if (!ids.has_value())
             return ll::Unexpected(ids.error());
 
         long long total = 0;
         for (const auto& id : ids.value()) {
-            auto row = this->mImpl->db->get("WalletLedger", id);
-            if (!row.has_value())
+            auto type = this->mImpl->ledger->get<std::string>(id, WalletLedgerCol::type, "");
+            if (!type.has_value())
+                return ll::Unexpected(type.error());
+            if (type.value() != "transfer")
                 continue;
 
-            const auto& fields = row.value();
-            if (!fields.contains("type") || fields.at("type") != "transfer")
-                continue;
-            if (!fields.contains("time_ns") || SystemUtils::toLongLong(fields.at("time_ns"), 0) < todayStartNs)
+            auto timeNs = this->mImpl->ledger->get<long long>(id, WalletLedgerCol::time_ns, 0);
+            if (!timeNs.has_value())
+                return ll::Unexpected(timeNs.error());
+            if (timeNs.value() < todayStartNs)
                 continue;
 
-            total += SystemUtils::toLongLong(fields.at("amount"), 0) + SystemUtils::toLongLong(fields.at("fee"), 0);
+            auto amount = this->mImpl->ledger->get<long long>(id, WalletLedgerCol::amount, 0);
+            if (!amount.has_value())
+                return ll::Unexpected(amount.error());
+
+            auto fee = this->mImpl->ledger->get<long long>(id, WalletLedgerCol::fee, 0);
+            if (!fee.has_value())
+                return ll::Unexpected(fee.error());
+
+            total += amount.value() + fee.value();
         }
 
         return total;
@@ -262,9 +274,9 @@ namespace LOICollection::server::Plugins {
             std::chrono::system_clock::now().time_since_epoch()).count();
         long long todayStartNs = (nowNs / NS_PER_DAY) * NS_PER_DAY;
 
-        auto sendIds = this->mImpl->db->find("WalletLedger", {
-            { "type", "redenvelope_send" }
-        }, BlockRepository::FindCondition::AND);
+        auto sendIds = this->mImpl->ledger->find(FindMode::And, {
+            { WalletLedgerCol::type, "redenvelope_send" }
+        });
         if (!sendIds.has_value())
             return ll::Unexpected(sendIds.error());
 
@@ -273,40 +285,47 @@ namespace LOICollection::server::Plugins {
         std::unordered_map<std::string, long long> senderTotal;
 
         for (const auto& id : sendIds.value()) {
-            auto row = this->mImpl->db->get("WalletLedger", id);
-            if (!row.has_value())
+            auto timeNs = this->mImpl->ledger->get<long long>(id, WalletLedgerCol::time_ns, 0);
+            if (!timeNs.has_value())
+                return ll::Unexpected(timeNs.error());
+            if (timeNs.value() < todayStartNs)
                 continue;
 
-            const auto& fields = row.value();
-            if (!fields.contains("time_ns") || SystemUtils::toLongLong(fields.at("time_ns"), 0) < todayStartNs)
-                continue;
+            auto amount = this->mImpl->ledger->get<long long>(id, WalletLedgerCol::amount, 0);
+            if (!amount.has_value())
+                return ll::Unexpected(amount.error());
 
-            long long amount = SystemUtils::toLongLong(fields.contains("amount") ? fields.at("amount") : "0", 0);
             sendCount += 1;
-            sendTotal += amount;
+            sendTotal += amount.value();
 
-            std::string sender = fields.contains("from_name") ? fields.at("from_name") : "?";
-            senderTotal[sender] += amount;
+            auto sender = this->mImpl->ledger->get<std::string>(id, WalletLedgerCol::from_name, "?");
+            if (!sender.has_value())
+                return ll::Unexpected(sender.error());
+            senderTotal[sender.value()] += amount.value();
         }
 
-        auto grabIds = this->mImpl->db->find("WalletLedger", {
-            { "type", "redenvelope_grab" }
-        }, BlockRepository::FindCondition::AND);
+        auto grabIds = this->mImpl->ledger->find(FindMode::And, {
+            { WalletLedgerCol::type, "redenvelope_grab" }
+        });
         if (!grabIds.has_value())
             return ll::Unexpected(grabIds.error());
 
         std::unordered_map<std::string, long long> grabTotal;
         for (const auto& id : grabIds.value()) {
-            auto row = this->mImpl->db->get("WalletLedger", id);
-            if (!row.has_value())
+            auto timeNs = this->mImpl->ledger->get<long long>(id, WalletLedgerCol::time_ns, 0);
+            if (!timeNs.has_value())
+                return ll::Unexpected(timeNs.error());
+            if (timeNs.value() < todayStartNs)
                 continue;
 
-            const auto& fields = row.value();
-            if (!fields.contains("time_ns") || SystemUtils::toLongLong(fields.at("time_ns"), 0) < todayStartNs)
-                continue;
+            auto amount = this->mImpl->ledger->get<long long>(id, WalletLedgerCol::amount, 0);
+            if (!amount.has_value())
+                return ll::Unexpected(amount.error());
 
-            std::string grabber = fields.contains("to_name") ? fields.at("to_name") : "?";
-            grabTotal[grabber] += SystemUtils::toLongLong(fields.contains("amount") ? fields.at("amount") : "0", 0);
+            auto grabber = this->mImpl->ledger->get<std::string>(id, WalletLedgerCol::to_name, "?");
+            if (!grabber.has_value())
+                return ll::Unexpected(grabber.error());
+            grabTotal[grabber.value()] += amount.value();
         }
 
         std::vector<std::pair<std::string, long long>> topGrabbers(grabTotal.begin(), grabTotal.end());
@@ -355,7 +374,46 @@ namespace LOICollection::server::Plugins {
             std::chrono::system_clock::now().time_since_epoch()).count()
             - static_cast<long long>(this->mImpl->options.WalletHistoryRetentionDays) * 86400LL * 1000000000LL;
 
-        this->mImpl->db->exec(fmt::format("DELETE FROM {} WHERE time_ns < {}", "WalletLedger", cutoff))
+        auto ids = this->mImpl->ledger->list();
+        if (!ids.has_value()) {
+            ids.error().log(*this->mImpl->logger);
+            this->scheduleCleanup();
+            return;
+        }
+
+        auto tx = this->mImpl->ledger->tx();
+        if (!tx.has_value()) {
+            tx.error().log(*this->mImpl->logger);
+            this->scheduleCleanup();
+            return;
+        }
+
+        auto& batch = tx.value();
+
+        std::vector<std::string> expired;
+        expired.reserve(ids.value().size());
+
+        for (const auto& id : ids.value()) {
+            auto timeNs = this->mImpl->ledger->get<long long>(id, WalletLedgerCol::time_ns, 0);
+            if (!timeNs.has_value()) {
+                timeNs.error().log(*this->mImpl->logger);
+                continue;
+            }
+            if (timeNs.value() < cutoff)
+                expired.push_back(id);
+        }
+
+        for (const auto& id : expired) {
+            auto r = batch.del(id);
+            if (!r.has_value())
+                r.error().log(*this->mImpl->logger);
+        }
+
+        auto committed = batch.commit();
+        if (!committed.has_value())
+            committed.error().log(*this->mImpl->logger);
+
+        this->mImpl->db->exec("VACUUM;")
             .or_else([this](ll::Error e) -> ll::Expected<void> {
                 e.log(*this->mImpl->logger);
 
