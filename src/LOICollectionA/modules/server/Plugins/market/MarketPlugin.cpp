@@ -1357,17 +1357,17 @@ namespace LOICollection::server::Plugins {
             return false;
 
         return MarketTable::open(*this->mImpl->db2, "Market")
-            .and_then([this](MarketTable table) -> ll::Expected<void> {
+            .and_then([this](MarketTable table) -> ll::Expected<MarketTaxTable> {
                 this->mImpl->market.emplace(std::move(table));
 
                 return MarketTaxTable::open(*this->mImpl->db2, "MarketTax");
             })
-            .and_then([this](MarketTaxTable table) -> ll::Expected<void> {
+            .and_then([this](MarketTaxTable table) -> ll::Expected<ItemTable> {
                 this->mImpl->tax.emplace(std::move(table));
 
                 return ItemTable::open(*this->mImpl->db, "Item");
             })
-            .and_then([this](ItemTable table) -> ll::Expected<void> {
+            .and_then([this](ItemTable table) -> ll::Expected<MarketBlacklistTable> {
                 this->mImpl->item.emplace(std::move(table));
 
                 return MarketBlacklistTable::open(*this->mImpl->db, "Blacklist");
@@ -1379,17 +1379,17 @@ namespace LOICollection::server::Plugins {
             }).and_then([this]() -> ll::Expected<void> {
                 return this->mImpl->mWanted->createTables();
             }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->mAuction->createTables();
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->mQuote->start();
-        }).and_then([this]() -> ll::Expected<void> {
-            this->mImpl->mWanted->startSweep();
-            this->mImpl->mAuction->startSweep();
+                return this->mImpl->mAuction->createTables();
+            }).and_then([this]() -> ll::Expected<void> {
+                return this->mImpl->mQuote->start();
+            }).and_then([this]() -> ll::Expected<void> {
+                this->mImpl->mWanted->startSweep();
+                this->mImpl->mAuction->startSweep();
 
-            return {};
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->registeryUI();
-        }).transform([this]() -> bool {
+                return {};
+            }).and_then([this]() -> ll::Expected<void> {
+                return this->registeryUI();
+            }).transform([this]() -> bool {
             this->registeryCommand();
             this->listenEvent();
             this->startStoreRankRefresh();

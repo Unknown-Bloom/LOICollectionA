@@ -78,12 +78,12 @@ namespace LOICollection::server::Plugins {
 
     ll::Expected<void> WalletBank::createTables() {
         return WalletBankTable::open(*this->mImpl->db, "WalletBank")
-            .and_then([this](WalletBankTable table) -> ll::Expected<void> {
+            .and_then([this](WalletBankTable table) -> ll::Expected<WalletFeeTable> {
                 this->mImpl->bank.emplace(std::move(table));
 
                 return WalletFeeTable::open(*this->mImpl->db, "WalletFee");
             })
-            .and_then([this](WalletFeeTable table) -> ll::Expected<void> {
+            .and_then([this](WalletFeeTable table) -> ll::Expected<WalletTable> {
                 this->mImpl->fee.emplace(std::move(table));
 
                 return WalletTable::open(*this->mImpl->db, "Wallet");

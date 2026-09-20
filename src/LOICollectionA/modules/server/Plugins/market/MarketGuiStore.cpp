@@ -533,7 +533,7 @@ namespace LOICollection::server::Plugins {
                 {StoreReviewCol::status, "pending"}
             })
                 .and_then([index](const std::vector<std::string>& keys) -> ll::Expected<frontend::ArrayRef> {
-                    auto values = std::make_shared<frontend::ArrayRef>();
+                    auto values = std::make_shared<frontend::ArrayValue>();
 
                     if (index < 0 || index >= static_cast<int>(keys.size()))
                         return values;
@@ -567,7 +567,7 @@ namespace LOICollection::server::Plugins {
                 })
                 .or_else([&player](ll::Error e) -> ll::Expected<frontend::ArrayRef> {
                     if (e.isA<ll::ErrorCodeError>() && e.as<ll::ErrorCodeError>().ec == MarketPlugin::makeErrorCode(MarketPluginErrorCode::StoreReviewNotFound)) {
-                        auto values = std::make_shared<frontend::ArrayRef>();
+                        auto values = std::make_shared<frontend::ArrayValue>();
                         auto language = LanguagePlugin::getShared()->getLanguage(player);
 
                         if (language.has_value())
@@ -791,7 +791,7 @@ namespace LOICollection::server::Plugins {
             if (args->elements.size() != 1 || !std::holds_alternative<std::string>(args->elements[0]))
                 return ll::makeStringError("market.store.offshelf.submit: must take exactly one string parameter");
 
-            auto values = std::make_shared<frontend::ArrayRef>();
+            auto values = std::make_shared<frontend::ArrayValue>();
 
             return owner.offshelfStoreItem(player, std::get<std::string>(args->elements[0]), true)
                 .or_else([](ll::Error e) -> ll::Expected<bool> {
@@ -820,7 +820,7 @@ namespace LOICollection::server::Plugins {
             if (args->elements.size() != 1 || !std::holds_alternative<std::string>(args->elements[0]))
                 return ll::makeStringError("market.store.buy.submit: must take exactly one string parameter");
 
-            auto values = std::make_shared<frontend::ArrayRef>();
+            auto values = std::make_shared<frontend::ArrayValue>();
 
             return owner.buyStoreItem(player, std::get<std::string>(args->elements[0]))
                 .or_else([](ll::Error e) -> ll::Expected<bool> {
@@ -845,7 +845,7 @@ namespace LOICollection::server::Plugins {
                 (!std::holds_alternative<int>(args->elements[1]) && !std::holds_alternative<float>(args->elements[1])))
                 return ll::makeStringError("market.store.review.submit: must take one string, one number and one string parameter");
 
-            auto values = std::make_shared<frontend::ArrayRef>();
+            auto values = std::make_shared<frontend::ArrayValue>();
             std::string storeId = std::get<std::string>(args->elements[0]);
             double ratingIndex = std::holds_alternative<int>(args->elements[1])
                 ? static_cast<double>(std::get<int>(args->elements[1]))
@@ -879,7 +879,7 @@ namespace LOICollection::server::Plugins {
                 !std::holds_alternative<bool>(args->elements[1]))
                 return ll::makeStringError("market.store.review.audit: must take one string and one bool parameter");
 
-            auto values = std::make_shared<frontend::ArrayRef>();
+            auto values = std::make_shared<frontend::ArrayValue>();
 
             return owner.auditReview(player, std::get<std::string>(args->elements[0]), std::get<bool>(args->elements[1]))
                 .or_else([](ll::Error e) -> ll::Expected<bool> {

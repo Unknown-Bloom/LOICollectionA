@@ -99,15 +99,15 @@ namespace LOICollection::server::Plugins {
 
     ll::Expected<void> MarketStore::createTables() {
         return StoreTable::open(*this->mImpl->db, "Store")
-            .and_then([this](StoreTable table) -> ll::Expected<void> {
+            .and_then([this](StoreTable table) -> ll::Expected<StoreItemTable> {
                 this->mImpl->store.emplace(std::move(table));
                 return StoreItemTable::open(*this->mImpl->db, "StoreItem");
             })
-            .and_then([this](StoreItemTable table) -> ll::Expected<void> {
+            .and_then([this](StoreItemTable table) -> ll::Expected<StoreSaleTable> {
                 this->mImpl->item.emplace(std::move(table));
                 return StoreSaleTable::open(*this->mImpl->db, "StoreSale");
             })
-            .and_then([this](StoreSaleTable table) -> ll::Expected<void> {
+            .and_then([this](StoreSaleTable table) -> ll::Expected<StoreReviewTable> {
                 this->mImpl->sale.emplace(std::move(table));
                 return StoreReviewTable::open(*this->mImpl->db, "StoreReview");
             })

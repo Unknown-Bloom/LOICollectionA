@@ -91,12 +91,12 @@ namespace LOICollection::server::Plugins {
 
     ll::Expected<void> WalletRedEnvelope::createTables() {
         return RedEnvelopeTable::open(*this->mImpl->db, "RedEnvelope")
-            .and_then([this](RedEnvelopeTable table) -> ll::Expected<void> {
+            .and_then([this](RedEnvelopeTable table) -> ll::Expected<RedEnvelopeGrabTable> {
                 this->mImpl->envelope.emplace(std::move(table));
 
                 return RedEnvelopeGrabTable::open(*this->mImpl->db, "RedEnvelopeGrab");
             })
-            .and_then([this](RedEnvelopeGrabTable table) -> ll::Expected<void> {
+            .and_then([this](RedEnvelopeGrabTable table) -> ll::Expected<WalletTable> {
                 this->mImpl->grab.emplace(std::move(table));
 
                 return WalletTable::open(*this->mImpl->db, "Wallet");
