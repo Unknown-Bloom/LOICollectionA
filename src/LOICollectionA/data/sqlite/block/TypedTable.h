@@ -9,6 +9,7 @@
 #include <string_view>
 #include <type_traits>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <ll/api/Expected.h>
@@ -194,10 +195,7 @@ namespace LOICollection::data {
             E value;
 
             static consteval E parse(std::string_view s) {
-                auto opt = magic_enum::enum_cast<E>(s);
-                if (!opt)
-                    throw "unknown column name";
-                return *opt;
+                return *magic_enum::enum_cast<E>(s);
             }
 
             constexpr Key(E c) noexcept : value(c) {}
