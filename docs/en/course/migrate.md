@@ -65,3 +65,16 @@ Here, `data migration` refers to migrating the specified lower-version data in `
 4. Opening a script's own form (`GUIManager::open("wallet", ...)` inside `wallet`) is unaffected and needs no grant.
 5. 1.16.0 also introduces a bytecode cache: compiled scripts are stored next to the source as `.lcp` and reused on later starts to skip compilation. The plugin generates and invalidates it automatically; deleting one only causes a recompile on the next start and does not affect correctness.
 6. If the log shows `is not allowed for script` after upgrading, a capability is missing its grant — add the script id from the message to the matching allowlist.
+
+## For upgrading from version 1.16.0 to version 1.17.0
+
+> [!WARNING]
+> 1.17.0 replaces the data layer with block storage (`BlockRepository` + `TypedTable`, see [Architecture Overview](../dev/architecture.md#data-layer)). There is **no** automatic migration script: tables written by older versions are no longer read.
+
+1. Back up the whole `plugins/LOICollectionA/data` directory (and `config`, `gui`) before upgrading.
+2. On the first start after upgrading, the plugin creates the block-model system tables (`dict` / `block` / `prop` / `link` / `meta`) in every `.db` file and then runs on empty data.
+3. Your old data is not deleted — it stays in the legacy tables of each database file (tables named after the feature, such as `Wallet`, `Blacklist`, `Market`). To keep it, export those tables with a SQLite tool and re-enter the data through the in-game UI or commands.
+4. `notice.json`, `cdk.json` and `config.json` remain plain JSON files and are unaffected — no migration needed.
+
+> [!TIP]
+> If the history does not matter, you can delete the `.db` files under `plugins/LOICollectionA/data` and let the plugin rebuild empty databases — back them up first.

@@ -259,6 +259,22 @@ auto ids = this->mImpl->xxx->find(FindMode::Or, {
 > [!WARNING]
 > String columns only work as **literals** (`"time"`). For a `std::string` obtained at runtime, use `parseColumn()`.
 
+### Error Handling Conventions
+
+The data layer never throws (the build sets `set_exceptions("none")`); every step returns `ll::Expected<T>`:
+
+| Case | Form |
+| --- | --- |
+| Continue only with a value | `.and_then([](XxxTable::Row row) -> ll::Expected<U> { ... })` (the lambda takes no parameter for `Expected<void>`) |
+| Just reshape the value | `.transform([](const std::string& s) -> U { ... })` |
+| Log and swallow the error | `.or_else(modules::defaultErrorHandler<XxxPlugin>)` |
+| Handle it yourself | `.or_else([this](ll::Error e) -> ll::Expected<void> { e.log(*this->mImpl->logger); return {}; })` |
+
+`defaultErrorHandler<Module>` calls `e.log(...)` for you when the module exposes `getShared()->getLogger()`.
+
+> [!IMPORTANT]
+> The `or_else` result type must match the **current** value type of the chain. `Batch::commit()` yields `Expected<bool>`, so either let `or_else` return `Expected<bool>` or collapse it first with `.transform([](bool) {})` — otherwise the compiler reports "no matching function for call to `or_else`".
+
 ### JsonStorage (Simple JSON Files)
 
 Suitable for small-scale configuration data:

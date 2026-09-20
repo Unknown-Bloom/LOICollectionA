@@ -140,7 +140,46 @@ tests/                       # gtest 测试（common/ 跨平台、server/、clie
 
 ## 数据层
 
-所有持久化数据通过块存储门面 `BlockRepository`（基于 `BlockStore`/`WriteBatch` 的块模型，提供读写连接池与原子写事务；`open` 时自动将旧版 `SQLiteStorage` 数据库归档为 `<db>.<时间戳>.legacy` 并回放数据）或 `JsonStorage`（简单 JSON 文件）访问，二者都返回 `ll::Expected<T>` 以支持链式错误处理。用法详见 [模块开发指南](./module.md) 的"数据层"章节。
+数据层自下而上分四层，业务代码只会碰到最上面的 `TypedTable`：
+
+```txt
+TypedTable<E, Version>        # 编译期列名 + 版本化表结构（业务唯一入口）
+        |  读写 / 事务
+BlockRepository               # 门面：open / fromStore / store() / meta* / exec
+        |
+BlockStore                    # 块模型持久化（dict / block / prop / link / meta）
+WriteBatch                    # 原子写事务
+        |
+ConnectionPool               # SQLite 连接池（WAL 模式）
+```
+
+| 层 | 位置 | 职责 |
+| --- | --- | --- |
+| `ConnectionPool` | `data/sqlite/connection/` | SQLite 连接管理：`WAL` + `synchronous=NORMAL` + `busy_timeout=5s` |
+| `BlockStore` | `data/sqlite/block/` | 把数据拆成可寻址的"块"，按 key 增量读写，五张系统表：`dict` / `block` / `prop` / `link` / `meta` |
+| `WriteBatch` | 同上 | 一批修改在一次 `commit()` 中原子落盘，失败 `rollback()` |
+| `BlockRepository` | 同上 | 对外只剩：`open` / `fromStore` / `store()` / `metaGet\|Set\|Del` / `exec` |
+| `TypedTable` | 同上 | 把列名提升到编译期（列由 `enum class` 定义）；`open` 时把 `版本 + 类型名 + 列数` 写入 `schema:<表名>`，不一致返回 `SchemaMismatch` |
+
+所有方法统一返回 `ll::Expected<T>`，用 `and_then` / `transform` / `or_else` 链式处理，不使用异常。用法详见 [模块开发指南](./module.md) 的"数据层"章节。
+
+### 数据库文件
+
+| 文件 | 归属 | 说明 |
+| --- | --- | --- |
+| `data/settings.db` | 全局 | 以 `SettingsDB` 服务注册，Wallet、Language、PvP、Notice、Chat、Tpa、Market、Statistics 的公共表都落在这里 |
+| `data/blacklist.db` | Blacklist | 违规词与封禁名单 |
+| `data/mute.db` | Mute | 禁言名单 |
+| `data/chat.db` | Chat | 聊天记录与拦截规则 |
+| `data/market.db` | Market | 市场 / 商店 / 求购 / 拍卖 / 报价 |
+| `data/statistics.db` | Statistics | 玩家统计 |
+| `data/tpa.db` | Tpa | 传送请求 |
+| `data/behaviorevent.db` | BehaviorEvent | 行为事件日志 |
+
+`Config`、`Notice`（`notice.json`）与 `Cdk`（`cdk.json`）不走块存储，仍使用 `JsonStorage`，可直接编辑。
+
+> [!WARNING]
+> `BlockRepository::open` **不做任何数据迁移**：它只在目标 SQLite 文件里创建块模型的五张系统表，旧版本写入的数据表不会被读取或转换。跨版本升级见 [数据迁移](../course/migrate.md)。
 
 ## 脚本引擎 VM
 

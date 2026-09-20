@@ -259,6 +259,22 @@ auto ids = this->mImpl->xxx->find(FindMode::Or, {
 > [!WARNING]
 > 字符串列名只能写成**字面量**（`"time"`）；运行期得到的 `std::string` 请使用 `parseColumn()`。
 
+### 错误处理约定
+
+数据层不使用异常（构建选项 `set_exceptions("none")`），每一步都返回 `ll::Expected<T>`：
+
+| 场景 | 写法 |
+| --- | --- |
+| 有值才继续 | `.and_then([](XxxTable::Row row) -> ll::Expected<U> { ... })`（`Expected<void>` 的 lambda 不带参数） |
+| 只想转换形态 | `.transform([](const std::string& s) -> U { ... })` |
+| 记录日志后吞掉错误 | `.or_else(modules::defaultErrorHandler<XxxPlugin>)` |
+| 自己收尾 | `.or_else([this](ll::Error e) -> ll::Expected<void> { e.log(*this->mImpl->logger); return {}; })` |
+
+`defaultErrorHandler<Module>` 在模块提供 `getShared()->getLogger()` 时替你调用 `e.log(...)`。
+
+> [!IMPORTANT]
+> `or_else` 的返回类型必须与链条**当前**的值类型一致。`Batch::commit()` 返回 `Expected<bool>`，所以配到最后一步时要么让 `or_else` 返回 `Expected<bool>`，要么先用 `.transform([](bool) {})` 收成 `Expected<void>`——否则会报 "no matching function for call to `or_else`"。
+
 ### JsonStorage（简单 JSON 文件）
 
 适合小规模配置类数据：

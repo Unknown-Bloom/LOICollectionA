@@ -65,3 +65,16 @@
 4. 打开自身表单（`wallet` 内调用 `GUIManager::open("wallet", ...)`）不受此限制，无需授权。
 5. 1.16.0 同时引入了字节码缓存：脚本编译产物以 `.lcp` 形式存放在源文件旁，后续启动直接复用以跳过编译。它由插件自动生成与失效，删除后只会让下次启动重新编译，不影响正确性。
 6. 若升级后日志出现 `is not allowed for script` 提示，说明某项能力缺少授权，按提示中的脚本 id 与能力类型补进对应的白名单即可。
+
+## 对于 1.16.0 版本升至 1.17.0 版本
+
+> [!WARNING]
+> 1.17.0 将数据层换成块存储（`BlockRepository` + `TypedTable`，详见 [架构概览](../dev/architecture.md#数据层)）。**没有**自动迁移脚本：旧版本写入的数据表不再被读取。
+
+1. 升级前先备份整个 `plugins/LOICollectionA/data` 目录（以及 `config`、`gui` 目录）。
+2. 升级后首次启动时，插件会在每个 `.db` 文件中创建块模型的系统表（`dict` / `block` / `prop` / `link` / `meta`），随后从空数据开始运行。
+3. 旧数据并未被删除，只是保留在各自数据库文件的旧表里（例如 `Wallet`、`Blacklist`、`Market` 这类以业务名命名的表）。需要保留这些内容时，请用 SQLite 工具从旧表导出，再通过游戏内界面或命令重新录入。
+4. `notice.json`、`cdk.json`、`config.json` 仍是 JSON 文件，不受本次改动影响，无需迁移。
+
+> [!TIP]
+> 如果不需要历史数据，可以直接删除 `plugins/LOICollectionA/data` 下的 `.db` 文件让插件重建空库——但请先确认已备份。
