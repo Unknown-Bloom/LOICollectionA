@@ -16,6 +16,7 @@
 #include <mc/server/SimulatedPlayer.h>
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/include/server/Plugins/TableSchema.h"
 
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
@@ -33,6 +34,7 @@
 #include "server/TestSimulatedPlayer.h"
 
 using namespace LOICollection::server::Plugins;
+using LOICollection::data::FindMode;
 
 class WalletPluginTest : public testing::Test {
 protected:
@@ -261,6 +263,8 @@ TEST_F(WalletPluginTest, RedenvelopePersistRow) {
 
     auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
 
+    auto envelopes = RedEnvelopeTable::open(*storage, "RedEnvelope").value();
+
     Config::C_Wallet config = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Wallet;
 
     bool hasScoreboard = true;
@@ -277,13 +281,13 @@ TEST_F(WalletPluginTest, RedenvelopePersistRow) {
     EXPECT_TRUE(WalletPlugin::getShared()->setExecutor(executor).has_value());
     EXPECT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "test_key", 100, 5).has_value());
 
-    auto ids = storage->find("RedEnvelope", std::vector<std::pair<std::string, std::string>>{ { "chat_key", "test_key" } }, BlockRepository::FindCondition::AND);
+    auto ids = envelopes.find(FindMode::And, { { RedEnvelopeCol::chat_key, "test_key" } });
     EXPECT_TRUE(ids.has_value());
     ASSERT_EQ(ids.value().size(), 1u);
 
-    EXPECT_EQ(storage->get("RedEnvelope", ids.value().at(0), "capacity", "0").value(), "500");
-    EXPECT_EQ(storage->get("RedEnvelope", ids.value().at(0), "count", "0").value(), "5");
-    EXPECT_EQ(storage->get("RedEnvelope", ids.value().at(0), "people", "0").value(), "0");
+    EXPECT_EQ(envelopes.get<std::string>(ids.value().at(0), "capacity", "0").value(), "500");
+    EXPECT_EQ(envelopes.get<std::string>(ids.value().at(0), "count", "0").value(), "5");
+    EXPECT_EQ(envelopes.get<std::string>(ids.value().at(0), "people", "0").value(), "0");
 
     if (!hasScoreboard)
         ScoreboardUtils::remove(config.TargetScoreboard);
@@ -308,6 +312,8 @@ TEST_F(WalletPluginTest, RedenvelopeCrashRecovery) {
         std::chrono::system_clock::now().time_since_epoch()
     ).count() - 60000000000LL;
 
+    auto envelopes = RedEnvelopeTable::open(*storage, "RedEnvelope").value();
+
     std::unordered_map<std::string, std::string> env = {
         { "chat_key", "test_key" },
         { "sender_uuid", sp->getUuid().asString() },
@@ -315,17 +321,16 @@ TEST_F(WalletPluginTest, RedenvelopeCrashRecovery) {
         { "capacity", "300" },
         { "count", "3" },
         { "people", "0" },
-        { "created_at", SystemUtils::getNowTime() },
         { "expire_at", std::to_string(past) }
     };
 
     ScoreboardUtils::setScore(*sp, config.TargetScoreboard, 0);
-    EXPECT_TRUE(storage->set("RedEnvelope", "crash_id", env).has_value());
+    EXPECT_TRUE(envelopes.setRow("crash_id", env).has_value());
 
     EXPECT_TRUE(WalletPlugin::getShared()->sweepExpiredEnvelopes().has_value());
 
     EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), 300);
-    EXPECT_FALSE(storage->has("RedEnvelope", "crash_id").value());
+    EXPECT_FALSE(envelopes.has("crash_id").value());
 
     if (!hasScoreboard)
         ScoreboardUtils::remove(config.TargetScoreboard);
@@ -373,6 +378,8 @@ TEST_F(WalletPluginTest, LedgerRecordsTransfer) {
 
     auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
 
+    auto ledger = WalletLedgerTable::open(*storage, "WalletLedger").value();
+
     Config::C_Wallet config = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Wallet;
 
     bool hasScoreboard = true;
@@ -386,11 +393,11 @@ TEST_F(WalletPluginTest, LedgerRecordsTransfer) {
 
     EXPECT_TRUE(WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 200).has_value());
 
-    auto ids = storage->find("WalletLedger", std::vector<std::pair<std::string, std::string>>{ { "from_uuid", sp->getUuid().asString() } }, BlockRepository::FindCondition::AND);
+    auto ids = ledger.find(FindMode::And, { { WalletLedgerCol::from_uuid, sp->getUuid().asString() } });
     EXPECT_TRUE(ids.has_value());
     ASSERT_FALSE(ids.value().empty());
 
-    auto row = storage->get("WalletLedger", ids.value().at(0)).value();
+    auto row = ledger.getRow(ids.value().at(0)).value();
     EXPECT_EQ(row["type"], "transfer");
     EXPECT_EQ(row["to_uuid"], sp2.getPlayer()->getUuid().asString());
     EXPECT_EQ(SystemUtils::toInt(row["amount"], 0) + SystemUtils::toInt(row["fee"], 0), 200);
@@ -404,6 +411,7 @@ TEST_F(WalletPluginTest, LedgerHistoryVisibility) {
     EXPECT_TRUE(sp);
 
     auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
+    auto ledger = WalletLedgerTable::open(*storage, "WalletLedger").value();
 
     Config::C_Wallet config = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Wallet;
 
@@ -418,10 +426,10 @@ TEST_F(WalletPluginTest, LedgerHistoryVisibility) {
 
     EXPECT_TRUE(WalletPlugin::getShared()->forTransfer(*sp, sp->getUuid().asString(), sp->getRealName(), 100).has_value());
 
-    auto ids = storage->find("WalletLedger", {
-        { "from_uuid", sp->getUuid().asString() },
-        { "to_uuid", sp->getUuid().asString() }
-    }, BlockRepository::FindCondition::OR);
+    auto ids = ledger.find(FindMode::Or, {
+        { WalletLedgerCol::from_uuid, sp->getUuid().asString() },
+        { WalletLedgerCol::to_uuid, sp->getUuid().asString() }
+    });
     EXPECT_TRUE(ids.has_value());
     ASSERT_FALSE(ids.value().empty());
 
@@ -565,6 +573,7 @@ TEST_F(WalletPluginTest, BankDepositAndWithdraw) {
     EXPECT_TRUE(sp);
 
     auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
+    auto ledger = WalletLedgerTable::open(*storage, "WalletLedger").value();
 
     Config::C_Wallet config = GetWalletConfig();
 
@@ -580,10 +589,10 @@ TEST_F(WalletPluginTest, BankDepositAndWithdraw) {
     EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), 400);
     EXPECT_EQ(WalletPlugin::getShared()->getBankPrincipal(sp->getUuid().asString()).value(), 100);
 
-    auto ids = storage->find("WalletLedger", std::vector<std::pair<std::string, std::string>>{ { "from_uuid", sp->getUuid().asString() } }, BlockRepository::FindCondition::AND);
+    auto ids = ledger.find(FindMode::And, { { WalletLedgerCol::from_uuid, sp->getUuid().asString() } });
     EXPECT_TRUE(ids.has_value());
     ASSERT_FALSE(ids.value().empty());
-    EXPECT_EQ(storage->get("WalletLedger", ids.value().at(0)).value()["type"], "bank_deposit");
+    EXPECT_EQ(ledger.getRow(ids.value().at(0)).value()["type"], "bank_deposit");
 
     EXPECT_TRUE(WalletPlugin::getShared()->bankWithdraw(*sp).has_value());
     EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), 500);
@@ -665,6 +674,7 @@ TEST_F(WalletPluginTest, BankInterestCalculation) {
     EXPECT_TRUE(sp);
 
     auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
+    auto bank = WalletBankTable::open(*storage, "WalletBank").value();
 
     Config::C_Wallet config = GetWalletConfig();
 
@@ -676,11 +686,11 @@ TEST_F(WalletPluginTest, BankInterestCalculation) {
         std::chrono::system_clock::now().time_since_epoch()
     ).count();
 
-    EXPECT_TRUE(storage->set("WalletBank", uuid, { { "principal", "1000" }, { "deposit_at", std::to_string(now) } }).has_value());
+    EXPECT_TRUE(bank.setRow(uuid, { { "principal", "1000" }, { "deposit_at", std::to_string(now) } }).has_value());
     EXPECT_EQ(WalletPlugin::getShared()->getBankInterest(uuid).value(), 0);
 
     long long threeDaysAgo = now - 3LL * 86400LL * 1000000000LL;
-    EXPECT_TRUE(storage->set("WalletBank", uuid, { { "principal", "1000" }, { "deposit_at", std::to_string(threeDaysAgo) } }).has_value());
+    EXPECT_TRUE(bank.setRow(uuid, { { "principal", "1000" }, { "deposit_at", std::to_string(threeDaysAgo) } }).has_value());
     long long expected = static_cast<long long>(std::floor(
         1000.0 * config.WalletBankDailyRate * 3.0
     ));
@@ -692,6 +702,7 @@ TEST_F(WalletPluginTest, WealthRankingOrder) {
     EXPECT_TRUE(sp);
 
     auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
+    auto wallets = WalletTable::open(*storage, "Wallet").value();
 
     Config::C_Wallet config = GetWalletConfig();
 
@@ -707,9 +718,9 @@ TEST_F(WalletPluginTest, WealthRankingOrder) {
     std::string uuidB = "00000000-0000-0000-0000-0000000000bb";
     std::string uuidC = "00000000-0000-0000-0000-0000000000cc";
 
-    EXPECT_TRUE(storage->set("Wallet", uuidA, { { "name", sp->getRealName() }, { "balance", "999" } }).has_value());
-    EXPECT_TRUE(storage->set("Wallet", uuidB, { { "name", "Bob" }, { "balance", "200" } }).has_value());
-    EXPECT_TRUE(storage->set("Wallet", uuidC, { { "name", "Carol" }, { "balance", "150" } }).has_value());
+    EXPECT_TRUE(wallets.setRow(uuidA, { { "name", sp->getRealName() }, { "balance", "999" } }).has_value());
+    EXPECT_TRUE(wallets.setRow(uuidB, { { "name", "Bob" }, { "balance", "200" } }).has_value());
+    EXPECT_TRUE(wallets.setRow(uuidC, { { "name", "Carol" }, { "balance", "150" } }).has_value());
 
     EXPECT_TRUE(WalletPlugin::getShared()->rebuildWealthRanking().has_value());
 
@@ -781,6 +792,8 @@ TEST_F(WalletPluginTest, RedenvelopeTargetedOfflineByName) {
     EXPECT_TRUE(sp2.create());
 
     auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
+    auto wallets = WalletTable::open(*storage, "Wallet").value();
+    auto envelopes = RedEnvelopeTable::open(*storage, "RedEnvelope").value();
 
     Config::C_Wallet base = GetWalletConfig();
     base.RedEnvelopeTargetedEnabled = true;
@@ -797,15 +810,15 @@ TEST_F(WalletPluginTest, RedenvelopeTargetedOfflineByName) {
     MockExecutor executor;
     EXPECT_TRUE(WalletPlugin::getShared()->setExecutor(executor).has_value());
 
-    EXPECT_TRUE(storage->set("Wallet", "00000000-0000-0000-0000-00000000ffff", { { "name", "OfflineBob" } }).has_value());
+    EXPECT_TRUE(wallets.setRow("00000000-0000-0000-0000-00000000ffff", { { "name", "OfflineBob" } }).has_value());
 
     EXPECT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "test_key", 100, 5, { "OfflineBob" }).has_value());
 
-    auto ids = storage->find("RedEnvelope", std::vector<std::pair<std::string, std::string>>{ { "chat_key", "test_key" } }, BlockRepository::FindCondition::AND);
+    auto ids = envelopes.find(FindMode::And, { { RedEnvelopeCol::chat_key, "test_key" } });
     ASSERT_TRUE(ids.has_value());
     ASSERT_EQ(ids.value().size(), 1u);
 
-    EXPECT_EQ(storage->get("RedEnvelope", ids.value().at(0), "targets", "").value(), "00000000-0000-0000-0000-00000000ffff");
+    EXPECT_EQ(envelopes.get<std::string>(ids.value().at(0), "targets", "").value(), "00000000-0000-0000-0000-00000000ffff");
 
     WalletPlugin::getShared()->setOptionsForTest(GetWalletConfig());
 
@@ -852,6 +865,7 @@ TEST_F(WalletPluginTest, EnvelopeStatsDetails) {
     EXPECT_TRUE(sp2.create());
 
     auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
+    auto envelopes = RedEnvelopeTable::open(*storage, "RedEnvelope").value();
 
     Config::C_Wallet config = GetWalletConfig();
 
@@ -867,7 +881,7 @@ TEST_F(WalletPluginTest, EnvelopeStatsDetails) {
     EXPECT_TRUE(WalletPlugin::getShared()->setExecutor(executor).has_value());
     EXPECT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "test_key", 100, 5).has_value());
 
-    auto ids = storage->find("RedEnvelope", std::vector<std::pair<std::string, std::string>>{ { "chat_key", "test_key" } }, BlockRepository::FindCondition::AND);
+    auto ids = envelopes.find(FindMode::And, { { RedEnvelopeCol::chat_key, "test_key" } });
     ASSERT_TRUE(ids.has_value());
     ASSERT_EQ(ids.value().size(), 1u);
 

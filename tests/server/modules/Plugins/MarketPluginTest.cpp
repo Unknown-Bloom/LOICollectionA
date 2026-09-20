@@ -40,6 +40,7 @@
 #include "server/TestSimulatedPlayer.h"
 
 using namespace LOICollection::server::Plugins;
+using LOICollection::data::FindMode;
 
 class MarketPluginTest : public testing::Test {
 protected:
@@ -793,7 +794,7 @@ TEST_F(MarketPluginTest, StoreDissolveRequiresEmpty) {
     ASSERT_TRUE(dissolve.has_value());
     EXPECT_TRUE(dissolve.value());
 
-    auto has = MarketPlugin::getShared()->getDatabase()->has("Store", sp->getUuid().asString());
+    auto has = MarketPlugin::getShared()->stores().has(sp->getUuid().asString());
     ASSERT_TRUE(has.has_value());
     EXPECT_FALSE(has.value());
 }
@@ -869,14 +870,14 @@ TEST_F(MarketPluginTest, StoreBuyOnlineOwner) {
     EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), 100);
     EXPECT_TRUE(InventoryUtils::isItemInInventory(*buyer.getPlayer(), "minecraft:grass_block", 1));
 
-    auto sales = MarketPlugin::getShared()->getDatabase()->find("StoreSale", {
-        { "store_id", sp->getUuid().asString() },
-        { "buyer_uuid", buyer.getPlayer()->getUuid().asString() }
-    }, BlockRepository::FindCondition::AND);
+    auto sales = MarketPlugin::getShared()->sales().find(FindMode::And, {
+        { StoreSaleCol::store_id, sp->getUuid().asString() },
+        { StoreSaleCol::buyer_uuid, buyer.getPlayer()->getUuid().asString() }
+    });
     ASSERT_TRUE(sales.has_value());
     EXPECT_FALSE(sales.value().empty());
 
-    auto has = MarketPlugin::getShared()->getDatabase()->has("StoreItem", items.value().front());
+    auto has = MarketPlugin::getShared()->items().has(items.value().front());
     ASSERT_TRUE(has.has_value());
     EXPECT_FALSE(has.value());
 
@@ -920,7 +921,8 @@ TEST_F(MarketPluginTest, StoreBuyOfflineOwner) {
     EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), 900);
     EXPECT_TRUE(InventoryUtils::isItemInInventory(*sp, "minecraft:grass_block", 1));
 
-    auto stored = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB")->get("Market", ownerUuid, "Score", "0");
+    auto market = MarketTable::open(*ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB"), "Market").value();
+    auto stored = market.get<std::string>(ownerUuid, "score", "0");
     ASSERT_TRUE(stored.has_value());
     EXPECT_EQ(SystemUtils::toInt(stored.value(), -1), 100);
 
@@ -1311,7 +1313,8 @@ TEST_F(MarketPluginTest, RuntimeTaxRatePersist) {
     ASSERT_TRUE(rate.has_value());
     EXPECT_DOUBLE_EQ(rate.value(), 0.05);
 
-    auto stored = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB")->get("MarketTax", "rate", "rate", "");
+    auto tax = MarketTaxTable::open(*ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB"), "MarketTax").value();
+    auto stored = tax.get<std::string>("rate", "rate", "");
     ASSERT_TRUE(stored.has_value());
     EXPECT_DOUBLE_EQ(SystemUtils::toDouble(stored.value(), -1.0), 0.05);
 
@@ -1495,7 +1498,8 @@ TEST_F(MarketPluginTest, StoreWantedFill) {
     EXPECT_FALSE(InventoryUtils::isItemInInventory(*seller.getPlayer(), "minecraft:grass_block", 1));
     EXPECT_TRUE(InventoryUtils::isItemInInventory(*buyer, "minecraft:grass_block", amount));
 
-    auto has = MarketPlugin::getShared()->getDatabase()->has("StoreWanted", id);
+    auto wanted = StoreWantedTable::open(*MarketPlugin::getShared()->getDatabase(), "StoreWanted").value();
+    auto has = wanted.has(id);
     ASSERT_TRUE(has.has_value());
     EXPECT_FALSE(has.value());
 

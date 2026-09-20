@@ -206,7 +206,7 @@ namespace LOICollection::server::Plugins {
             auto values = std::make_shared<frontend::ArrayValue>();
 
             return LanguagePlugin::getShared()->getLanguage(player)
-                .transform([&owner, values](const std::string& language) -> frontend::ArrayRef> {
+                .transform([&owner, values](const std::string& language) -> frontend::ArrayRef {
                     int cost = owner.getOptions().StoreCreationCost;
 
                     if (cost <= 0)
@@ -222,7 +222,7 @@ namespace LOICollection::server::Plugins {
             auto values = std::make_shared<frontend::ArrayValue>();
 
             return owner.stores().has(player.getUuid().asString())
-                .transform([values](bool exists) -> frontend::ArrayRef> {
+                .transform([values](bool exists) -> frontend::ArrayRef {
                     values->elements.emplace_back(exists);
 
                     return values;
@@ -322,7 +322,7 @@ namespace LOICollection::server::Plugins {
             std::string storeId = std::get<std::string>(args->elements[0]);
 
             return listVisibleStoreItems(player, storeId)
-                .transform([](const std::vector<std::pair<std::string, std::string>>& items) -> frontend::ArrayRef> {
+                .transform([](const std::vector<std::pair<std::string, std::string>>& items) -> frontend::ArrayRef {
                     auto values = std::make_shared<frontend::ArrayValue>();
 
                     for (const auto& [name, id] : items)
@@ -371,7 +371,7 @@ namespace LOICollection::server::Plugins {
                     return owner.getStore(data.at("store_id"))
                         .and_then([&player, data](std::unordered_map<std::string, std::string> store) -> ll::Expected<frontend::ArrayRef> {
                             return LanguagePlugin::getShared()->getLanguage(player)
-                                .transform([store, data](const std::string& language) -> frontend::ArrayRef> {
+                                .transform([store, data](const std::string& language) -> frontend::ArrayRef {
                                     auto values = std::make_shared<frontend::ArrayValue>();
                                     values->elements.emplace_back(fmt::format(fmt::runtime(tr(language, "market.gui.store.item.info")),
                                         data.at("introduce"),
@@ -419,7 +419,7 @@ namespace LOICollection::server::Plugins {
                     }
 
                     return LanguagePlugin::getShared()->getLanguage(player)
-                        .transform([keys, data](const std::string& language) -> frontend::ArrayRef> {
+                        .transform([keys, data](const std::string& language) -> frontend::ArrayRef {
                             auto values = std::make_shared<frontend::ArrayValue>();
 
                             for (const std::string& key : keys) {
@@ -474,7 +474,7 @@ namespace LOICollection::server::Plugins {
                                 {StoreReviewCol::store_id, storeId},
                                 {StoreReviewCol::buyer_uuid, player.getUuid().asString()}
                             })
-                                .transform([values](const std::vector<std::string>& reviews) -> frontend::ArrayRef> {
+                                .transform([values](const std::vector<std::string>& reviews) -> frontend::ArrayRef {
                                     values->elements.emplace_back(reviews.empty());
 
                                     return values;
@@ -503,7 +503,7 @@ namespace LOICollection::server::Plugins {
                     }
 
                     return LanguagePlugin::getShared()->getLanguage(player)
-                        .transform([keys, data, values](const std::string& language) -> frontend::ArrayRef> {
+                        .transform([keys, data, values](const std::string& language) -> frontend::ArrayRef {
                             for (const std::string& key : keys) {
                                 auto it = data.find(key);
                                 if (it == data.end())
@@ -553,7 +553,7 @@ namespace LOICollection::server::Plugins {
             return owner.getReviewData(reviewId)
                 .and_then([&player](std::unordered_map<std::string, std::string> data) -> ll::Expected<frontend::ArrayRef> {
                     return LanguagePlugin::getShared()->getLanguage(player)
-                        .transform([data](const std::string& language) -> frontend::ArrayRef> {
+                        .transform([data](const std::string& language) -> frontend::ArrayRef {
                             auto values = std::make_shared<frontend::ArrayValue>();
                             values->elements.emplace_back(fmt::format(fmt::runtime(tr(language, "market.gui.store.audit.label")),
                                 data.at("buyer_name"),
@@ -648,7 +648,7 @@ namespace LOICollection::server::Plugins {
 
                     return ll::Unexpected(e);
                 })
-                .transform([&player, values](bool ok) -> frontend::ArrayRef> {
+                .transform([&player, values](bool ok) -> frontend::ArrayRef {
                     if (!ok) {
                         auto language = LanguagePlugin::getShared()->getLanguage(player);
 
@@ -672,7 +672,7 @@ namespace LOICollection::server::Plugins {
 
                     return ll::Unexpected(e);
                 })
-                .transform([&player, values](bool ok) -> frontend::ArrayRef> {
+                .transform([&player, values](bool ok) -> frontend::ArrayRef {
                     if (!ok) {
                         auto language = LanguagePlugin::getShared()->getLanguage(player);
 
@@ -773,7 +773,7 @@ namespace LOICollection::server::Plugins {
 
                     return ll::Unexpected(e);
                 })
-                .transform([&player, values](bool ok) -> frontend::ArrayRef> {
+                .transform([&player, values](bool ok) -> frontend::ArrayRef {
                     if (!ok) {
                         auto language = LanguagePlugin::getShared()->getLanguage(player);
 
@@ -802,7 +802,7 @@ namespace LOICollection::server::Plugins {
 
                     return ll::Unexpected(e);
                 })
-                .transform([&player, values](bool ok) -> frontend::ArrayRef> {
+                .transform([&player, values](bool ok) -> frontend::ArrayRef {
                     if (!ok) {
                         auto language = LanguagePlugin::getShared()->getLanguage(player);
 
@@ -831,7 +831,7 @@ namespace LOICollection::server::Plugins {
 
                     return ll::Unexpected(e);
                 })
-                .transform([values](bool ok) -> frontend::ArrayRef> {
+                .transform([values](bool ok) -> frontend::ArrayRef {
                     values->elements.emplace_back(ok);
 
                     return values;
@@ -859,7 +859,7 @@ namespace LOICollection::server::Plugins {
 
                     return ll::Unexpected(e);
                 })
-                .transform([&player, values](bool ok) -> frontend::ArrayRef> {
+                .transform([&player, values](bool ok) -> frontend::ArrayRef {
                     if (ok) {
                         auto language = LanguagePlugin::getShared()->getLanguage(player);
 
@@ -888,7 +888,7 @@ namespace LOICollection::server::Plugins {
 
                     return ll::Unexpected(e);
                 })
-                .transform([&player, values](bool ok) -> frontend::ArrayRef> {
+                .transform([&player, values](bool ok) -> frontend::ArrayRef {
                     if (!ok) {
                         auto language = LanguagePlugin::getShared()->getLanguage(player);
 

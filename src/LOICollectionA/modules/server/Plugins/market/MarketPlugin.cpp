@@ -953,6 +953,22 @@ namespace LOICollection::server::Plugins {
         return this->mImpl->mStore->getReviewData(id);
     }
 
+    StoreTable& MarketPlugin::stores() {
+        return this->mImpl->mStore->stores();
+    }
+
+    StoreItemTable& MarketPlugin::items() {
+        return this->mImpl->mStore->items();
+    }
+
+    StoreSaleTable& MarketPlugin::sales() {
+        return this->mImpl->mStore->sales();
+    }
+
+    StoreReviewTable& MarketPlugin::reviews() {
+        return this->mImpl->mStore->reviews();
+    }
+
     ll::Expected<bool> MarketPlugin::createStore(Player& player, const std::string& name, const std::string& icon, const std::string& introduce) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(MarketPluginErrorCode::Invalid));
