@@ -58,7 +58,8 @@ namespace LOICollection::server::Plugins {
 // modules/server/Plugins/XxxPlugin.cpp
 namespace LOICollection::server::Plugins {
     struct XxxPlugin::Impl {
-        std::shared_ptr<SQLiteStorage> db;
+        std::shared_ptr<BlockRepository> db;
+        std::optional<XxxTable> xxx;              // 类型化数据表句柄
         std::shared_ptr<ll::io::Logger> logger;
         ReadOnlyWrapper<Config::C_Xxx> options;   // 模块配置（只读）
         std::filesystem::path dataPath;
@@ -86,8 +87,11 @@ namespace LOICollection::server::Plugins {
         this->mImpl->logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
         this->mImpl->options = config.ServerConfig.Plugins.Xxx;  // 拷贝模块配置（只读）
 
-        // 初始化模块自己的数据库
-        this->mImpl->db = std::make_shared<SQLiteStorage>((mDataPath / "xxx.db").string());
+        // 初始化模块自己的数据库（块存储）
+        auto localDb = BlockRepository::open((mDataPath / "xxx.db").string(), 4);
+        if (!localDb)
+            return ll::makeStringError(localDb.error().message());
+        this->mImpl->db = std::move(localDb.value());
         return true;
     }
 
@@ -96,18 +100,17 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->options.ModuleEnabled)
             return false;
 
-        // 建表 -> 注册 UI -> 注册命令与事件
-        return this->mImpl->db->create("Xxx", [](SQLiteStorage::ColumnCallback ctor) -> void {
-            ctor("id");
-            ctor("name");
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->registeryUI();
-        }).transform([this]() -> bool {
-            this->registeryCommand();
-            this->listenEvent();
-            this->mImpl->mRegistered.store(true, std::memory_order_release);
-            return true;
-        });
+        // 打开表 -> 注册 UI -> 注册命令与事件
+        return XxxTable::open(*this->mImpl->db, "Xxx")
+            .and_then([this](XxxTable table) -> ll::Expected<void> {
+                this->mImpl->xxx.emplace(std::move(table));
+                return this->registeryUI();
+            }).transform([this]() -> bool {
+                this->registeryCommand();
+                this->listenEvent();
+                this->mImpl->mRegistered.store(true, std::memory_order_release);
+                return true;
+            });
     }
 
     ll::Expected<bool> XxxPlugin::unregistry() {
@@ -123,6 +126,7 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<bool> XxxPlugin::unload() {
+        this->mImpl->xxx.reset();
         this->mImpl->db.reset();
         this->mImpl->logger.reset();
         this->mImpl->options = {};
@@ -138,7 +142,7 @@ namespace LOICollection::server::Plugins {
 | 阶段 | 职责 | 注意事项 |
 | --- | --- | --- |
 | `load` | 获取服务、初始化数据库与日志、缓存路径 | 只做资源准备，不注册任何运行时行为 |
-| `registry` | 检查 `ModuleEnabled` → 建表 → 注册 UI/命令/事件 | 插件未启用时返回 `false` 跳过 |
+| `registry` | 检查 `ModuleEnabled` → 打开表 → 注册 UI/命令/事件 | 插件未启用时返回 `false` 跳过 |
 | `unregistry` | 注销事件、清理数据库（如 `VACUUM`） | 与 registry 严格对应 |
 | `unload` | 释放所有资源 | 若仍处于注册状态需先注销 |
 
@@ -177,46 +181,83 @@ struct C_Xxx {
 
 ## 数据层
 
-### SQLiteStorage（推荐）
+模块的持久化入口是 `BlockRepository`（块存储门面，见 [架构总览](./architecture.md)），业务代码不直接操作它——列名属于**编译期**信息，统一用 `TypedTable` 表达。
 
-基于 SQLite 的连接池封装，所有方法返回 `ll::Expected<T>`：
+### 声明一张表
+
+所有表的列集中声明在 `src/LOICollectionA/include/server/Plugins/TableSchema.h`，列名只能增删，不能拼写错：
+
+```cpp
+namespace LOICollection::server::Plugins {
+    enum class XxxCol { id, name, time };
+    using XxxTable = TypedTable<XxxCol, 1>;   // 第二个参数是 schema 版本号
+}
+```
+
+`TypedTable` 用枚举顺序作为列的物理编号，因此：
+
+- **新增列只能追加在枚举末尾**，否则会与已落盘的数据错位。
+- 结构变更时递增版本号，`open` 会写入 `schema:<表名>` 元信息；版本号、类型名或列数与存量数据不一致时返回 `BlockError::SchemaMismatch`。
+
+### BlockRepository
+
+```cpp
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+
+auto db = BlockRepository::open((dataPath / "xxx.db").string(), 4);
+if (!db)
+    return ll::makeStringError(db.error().message());
+this->mImpl->db = std::move(db.value());
+```
 
 | 方法 | 说明 |
 | --- | --- |
-| `create(table, callback)` | 建表，回调中逐个调用 `ctor("列名")` 声明列 |
-| `set(table, key, values)` | 写入一行（key 为主键，values 为列名→值映射） |
-| `get(table, key)` | 读取一行，返回 `列名→值` 映射 |
-| `get(table, key, column, default)` | 读取单列 |
-| `find(table, conditions, match)` | 按条件查询，返回匹配的 key 列表（`FindCondition::AND/OR`） |
-| `has(table, key)` | 判断是否存在 |
-| `del(table, key)` | 删除一行 |
-| `list(table)` | 列出所有 key |
+| `open(path, connections)` | 打开（或新建）数据库，返回 `shared_ptr<BlockRepository>` |
 | `exec(sql)` | 执行原生 SQL（如 `"VACUUM;"`） |
+| `store()` | 返回底层 `BlockStore`，`TypedTable` 与 `WriteBatch` 直接基于它工作 |
+| `metaGet/metaSet/metaDel` | 读写库级元信息（`TypedTable` 用它保存 schema 指纹） |
+
+### TypedTable（推荐）
+
+`get` / `set` 是模板方法，单元格支持 `string`、整型、浮点与 `bool`；列参数既可以是枚举值也可以是字符串字面量（字面量在**编译期**解析成枚举，拼错即报错）：
+
+| 方法 | 说明 |
+| --- | --- |
+| `open(repo, name)` | 打开（或新建）表并返回句柄，句柄只持有 `repo` 引用，可随意移动 |
+| `get<T>(row, col, def)` | 读单列，行不存在时返回 `def` |
+| `set<T>(row, col, value)` | 写单列，行不存在时自动创建 |
+| `getRow(row)` / `setRow(row, map)` | 整行读写（`列名→值` 映射） |
+| `has(row)` / `del(row)` / `list()` | 判断存在、删除、列出所有 key |
+| `find(FindMode, conds)` | 按条件查询匹配的 key 列表（`FindMode::And` / `FindMode::Or`） |
+| `findFirst(FindMode, conds)` | 同上，只取第一个 |
+| `findValues<T>(col, FindMode, conds)` | 投影出某列的值列表 |
+| `tx()` | 开启批写事务，见下文 |
 
 ```cpp
 // 写入
-this->db->set("Xxx", uuid, {
-    { "name", player.getRealName() },
-    { "time", std::to_string(time) }
-});
+this->mImpl->xxx->set(uuid, XxxCol::name, player.getRealName());
+this->mImpl->xxx->set(uuid, "time", time);
 
-// 查询（OR 条件）
-auto id = this->db->find("Xxx", {
-    { "data_uuid", uuid },
-    { "data_ip", ip }
-}, "", SQLiteStorage::FindCondition::OR);
-
-// 链式处理错误
-this->db->get("Xxx", id)
-    .and_then([this](std::unordered_map<std::string, std::string> data) -> ll::Expected<void> {
+// 读取 + 链式处理错误
+this->mImpl->xxx->get<std::string>(uuid, XxxCol::name, "")
+    .and_then([this, uuid](const std::string& name) -> ll::Expected<void> {
         // ...
         return {};
     })
     .or_else(modules::defaultErrorHandler<XxxPlugin>);
+
+// 查询（And / Or 条件，列用枚举值）
+auto ids = this->mImpl->xxx->find(FindMode::Or, {
+    { XxxCol::name, name },
+    { XxxCol::id, uuid }
+});
 ```
 
 > [!TIP]
-> 需要事务时使用 `SQLiteStorageTransaction::create(storage)`，通过 `commit()` / `rollback()` 控制。
+> 需要原子地改动多行时，用 `tx()` 取 `Batch`：`auto batch = table.tx()`，然后 `batch->set/get/has/del`，最后 `commit()` 或 `rollback()`。
+
+> [!WARNING]
+> 字符串列名只能写成**字面量**（`"time"`）；运行期得到的 `std::string` 请使用 `parseColumn()`。
 
 ### JsonStorage（简单 JSON 文件）
 
