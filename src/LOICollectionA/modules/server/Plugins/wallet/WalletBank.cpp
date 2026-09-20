@@ -218,7 +218,7 @@ namespace LOICollection::server::Plugins {
 
         std::string playerName = player.getRealName();
 
-        this->mImpl->ledger.record(uuid, playerName, "", "", principal, 0, "bank_withdraw");
+        this->mImpl->ledger.record(uuid, playerName, "", "", principal.value(), 0, "bank_withdraw");
 
         if (paidInterest > 0)
             this->mImpl->ledger.record("", "", uuid, playerName, paidInterest, interestTax, "bank_interest");

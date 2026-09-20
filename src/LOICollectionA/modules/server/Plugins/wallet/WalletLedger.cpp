@@ -124,7 +124,7 @@ namespace LOICollection::server::Plugins {
             .and_then([&]() { return batch.set(id, WalletLedgerCol::type, type); })
             .and_then([&]() { return batch.set(id, WalletLedgerCol::time_ns, nowNs); })
             .and_then([&]() { return batch.set(id, WalletLedgerCol::time, SystemUtils::getNowTime()); })
-            .and_then([&]() { return batch.commit(); })
+            .and_then([&]() { return batch.commit().transform([](bool) {}); })
             .or_else([this](ll::Error e) -> ll::Expected<void> {
                 e.log(*this->mImpl->logger);
 
