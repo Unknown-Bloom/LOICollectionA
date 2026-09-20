@@ -7,6 +7,8 @@
 #include <string>
 #include <utility>
 
+#include <sqlite3.h>
+
 #include <SQLiteCpp/SQLiteCpp.h>
 
 #include "LOICollectionA/data/sqlite/block/BlockError.h"
@@ -32,7 +34,7 @@ namespace {
                           : static_cast<std::int64_t>(limit);
     }
 
-    ll::Expected<void> sqlError(SQLiteConnection& conn) {
+    ll::Unexpected sqlError(SQLiteConnection& conn) {
         return ll::makeStringError(std::string(conn.database().getErrorMsg()));
     }
 
@@ -84,6 +86,9 @@ namespace {
         SQLiteConnection* operator->() noexcept { return conn.get(); }
         SQLiteConnection& operator*() noexcept { return *conn; }
         operator SQLiteConnection&() noexcept { return *conn; }
+
+        decltype(auto) statements() noexcept { return conn->statements(); }
+        decltype(auto) database() noexcept { return conn->database(); }
     };
 
     ll::Expected<DbGuard> acquireConnection(std::shared_ptr<ConnectionPool> pool) {
