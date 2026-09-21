@@ -10,6 +10,10 @@ namespace {
     constexpr auto kCatalog = std::to_array<StatementSpec>({
         { "insertBlock",
             "INSERT INTO block(parent,name,kind,state,payload,created,updated) VALUES(?,?,?,?,?,?,?)" },
+        { "upsertRow",
+            "INSERT INTO block(parent,name,kind,state,payload,created,updated) VALUES(?,?,?,?,?,?,?) "
+            "ON CONFLICT(parent,name) WHERE kind=1000000000 "
+            "DO UPDATE SET payload=excluded.payload,state=excluded.state,updated=excluded.updated" },
         { "getBlockById",
             "SELECT parent,name,kind,state,created,updated,payload FROM block WHERE id=?" },
         { "getBlockByName",

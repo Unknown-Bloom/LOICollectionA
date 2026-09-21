@@ -9,6 +9,7 @@
 #include <string_view>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -75,6 +76,67 @@ namespace LOICollection::data {
         static ll::Expected<std::string> encode(bool v) { return v ? std::string("1") : std::string("0"); }
         static ll::Expected<bool> decode(std::string const& s) { return s == "1" || s == "true"; }
     };
+
+    using RowCells = std::unordered_map<PropKey, BlockProp>;
+
+    namespace {
+        std::string_view asByteView(std::vector<std::byte> const& b) noexcept {
+            return std::string_view(reinterpret_cast<char const*>(b.data()), b.size());
+        }
+
+        std::vector<std::byte> encodeRow(RowCells const& cells) {
+            PayloadWriter w;
+            for (auto const& [k, c] : cells) {
+                PayloadField f;
+                f.key = c.key;
+                f.type = c.type;
+                f.intValue = c.intValue;
+                f.realValue = c.realValue;
+                f.textValue = c.textValue;
+                w.write(f);
+            }
+            return w.data();
+        }
+
+        RowCells decodeRow(std::string_view blob) {
+            RowCells cells;
+            if (blob.empty())
+                return cells;
+            PayloadReader reader(blob);
+            reader.forEach([&](PayloadField const& f) {
+                BlockProp p;
+                p.key = f.key;
+                p.type = f.type;
+                p.intValue = f.intValue;
+                p.realValue = f.realValue;
+                p.textValue = std::string(f.textValue);
+                cells[p.key] = std::move(p);
+            });
+            return cells;
+        }
+
+        RowCells cellsOf(BlockRecord const& rec) {
+            if (!rec.payload.empty())
+                return decodeRow(asByteView(rec.payload));
+            RowCells cells;
+            for (auto const& p : rec.props)
+                cells[p.key] = p;
+            return cells;
+        }
+
+        std::string cellToString(BlockProp const& p) {
+            switch (p.type) {
+                case PayloadType::Int: return std::to_string(p.intValue);
+                case PayloadType::Double: {
+                    char buf[64];
+                    auto [q, ec] = std::to_chars(buf, buf + sizeof(buf), p.realValue);
+                    return std::string(buf, q);
+                }
+                case PayloadType::Text: return p.textValue;
+                default: return std::string{};
+            }
+        }
+    }
 
     template <class E, std::uint32_t Version = 1>
         requires std::is_enum_v<E>
@@ -174,19 +236,6 @@ namespace LOICollection::data {
             return mRoot;
         }
 
-        [[nodiscard]] ll::Expected<BlockId> row(std::string_view rowKey) {
-            auto rid = root();
-            if (!rid.has_value())
-                return ll::makeStringError(rid.error().message());
-            auto rec = mRepo.store().load(rid.value(), rowKey);
-            if (rec.has_value() && rec.value().state != BlockLifecycle::Deleted)
-                return rec.value().id;
-            auto c = mRepo.store().createBlock(rid.value(), 0, rowKey);
-            if (!c.has_value())
-                return ll::makeStringError(c.error().message());
-            return c.value();
-        }
-
         explicit TypedTable(BlockRepository& repo, std::string name, BlockId root)
             : mRepo(repo), mName(std::move(name)), mRoot(root) {}
 
@@ -245,15 +294,24 @@ namespace LOICollection::data {
 
         template <class T>
         [[nodiscard]] ll::Expected<void> set(std::string_view rowKey, Key col, T const& v) {
-            auto rid = row(rowKey);
+            auto rid = root();
             if (!rid.has_value())
                 return ll::makeStringError(rid.error().message());
+
             auto cell = makeCell(colKey(col.value), v);
             if (!cell.has_value())
                 return ll::makeStringError(cell.error().message());
-            return mRepo.store().setProp(
-                rid.value(), cell.value().key, cell.value().type, cell.value().intValue,
-                cell.value().realValue, cell.value().textValue);
+
+            RowCells cells;
+            auto rec = mRepo.store().load(rid.value(), rowKey);
+            if (rec.has_value() && rec.value().state != BlockLifecycle::Deleted)
+                cells = cellsOf(rec.value());
+            cells[colKey(col.value)] = std::move(cell.value());
+
+            auto blob = encodeRow(cells);
+            if (rec.has_value() && rec.value().state != BlockLifecycle::Deleted)
+                return mRepo.store().setPayload(rec.value().id, asByteView(blob));
+            return mRepo.store().upsertRow(rid.value(), rowKey, asByteView(blob));
         }
         template <class T>
         [[nodiscard]] ll::Expected<void> set(std::string_view rowKey, E col, T const& v) {
@@ -268,16 +326,14 @@ namespace LOICollection::data {
             auto rec = mRepo.store().load(rid.value(), rowKey);
             if (!rec.has_value() || rec.value().state == BlockLifecycle::Deleted)
                 return def;
-            PropKey k = colKey(col.value);
-            for (auto const& p : rec.value().props) {
-                if (p.key == k) {
-                    auto v = readCell<T>(p);
-                    if (!v.has_value())
-                        return ll::makeStringError(v.error().message());
-                    return std::move(v.value());
-                }
-            }
-            return def;
+            auto cells = cellsOf(rec.value());
+            auto it = cells.find(colKey(col.value));
+            if (it == cells.end())
+                return def;
+            auto v = readCell<T>(it->second);
+            if (!v.has_value())
+                return ll::makeStringError(v.error().message());
+            return std::move(v.value());
         }
         template <class T>
         [[nodiscard]] ll::Expected<T> get(std::string_view rowKey, E col, T const& def = T{}) {
@@ -337,42 +393,49 @@ namespace LOICollection::data {
                 return ll::makeStringError(rid.error().message());
             if (conds.empty())
                 return list();
-            std::vector<std::vector<BlockId>> groups;
+
+            auto ch = mRepo.store().children(rid.value(), -1);
+            if (!ch.has_value())
+                return ll::makeStringError(ch.error().message());
+
+            std::vector<std::vector<std::string>> groups;
             groups.reserve(conds.size());
             for (auto const& [col, val] : conds) {
-                auto ids = mRepo.store().queryText(rid.value(), colKey(col.value), val);
-                if (!ids.has_value())
-                    return ll::makeStringError(ids.error().message());
-                groups.push_back(std::move(*ids));
+                PropKey k = colKey(col.value);
+                std::vector<std::string> matched;
+                matched.reserve(ch.value().size());
+                for (auto id : ch.value()) {
+                    auto rec = mRepo.store().load(id);
+                    if (!rec.has_value() || rec.value().state == BlockLifecycle::Deleted)
+                        continue;
+                    auto cells = cellsOf(rec.value());
+                    auto it = cells.find(k);
+                    if (it != cells.end() && cellToString(it->second) == val)
+                        matched.push_back(rec.value().name);
+                }
+                std::ranges::sort(matched);
+                groups.push_back(std::move(matched));
             }
-            std::vector<BlockId> matched;
+
+            std::vector<std::string> matched;
             if (mode == FindMode::And) {
                 std::ranges::sort(groups, [](auto const& a, auto const& b) { return a.size() < b.size(); });
-                std::vector<BlockId> acc = groups.front();
+                std::vector<std::string> acc = groups.front();
                 for (size_t i = 1; i < groups.size(); ++i) {
-                    std::vector<BlockId> next;
+                    std::vector<std::string> next;
                     std::ranges::set_intersection(acc, groups[i], std::back_inserter(next));
                     acc = std::move(next);
                 }
                 matched = std::move(acc);
             } else {
-                std::vector<BlockId> acc;
+                std::vector<std::string> acc;
                 for (auto& g : groups)
                     acc.insert(acc.end(), g.begin(), g.end());
                 std::ranges::sort(acc);
                 acc.erase(std::unique(acc.begin(), acc.end()), acc.end());
                 matched = std::move(acc);
             }
-            std::vector<std::string> keys;
-            keys.reserve(matched.size());
-            for (auto id : matched) {
-                auto rec = mRepo.store().load(id);
-                if (!rec.has_value())
-                    return ll::makeStringError(rec.error().message());
-                if (rec.value().state != BlockLifecycle::Deleted)
-                    keys.push_back(rec.value().name);
-            }
-            return keys;
+            return matched;
         }
 
         [[nodiscard]] ll::Expected<std::string> findFirst(
@@ -410,9 +473,10 @@ namespace LOICollection::data {
             std::unordered_map<std::string, std::string> out;
             if (rec.value().id == 0 || rec.value().state == BlockLifecycle::Deleted)
                 return out;
+            auto cells = cellsOf(rec.value());
             auto names = magic_enum::enum_names<E>();
-            for (auto const& p : rec.value().props) {
-                if (static_cast<std::size_t>(p.key) >= names.size())
+            for (auto const& [k, p] : cells) {
+                if (static_cast<std::size_t>(k) >= names.size())
                     continue;
                 std::string v;
                 switch (p.type) {
@@ -426,7 +490,7 @@ namespace LOICollection::data {
                     case PayloadType::Text: v = p.textValue; break;
                     default: break;
                 }
-                out[std::string(names[p.key])] = std::move(v);
+                out[std::string(names[k])] = std::move(v);
             }
             return out;
         }
@@ -448,16 +512,8 @@ namespace LOICollection::data {
             BlockRepository& mRepo;
             std::unique_ptr<WriteBatch> mTx;
             BlockId mRoot;
-
-            [[nodiscard]] ll::Expected<BlockId> rowId(std::string_view rowKey) {
-                auto r = mRepo.store().load(mRoot, rowKey);
-                if (r.has_value() && r.value().id != 0 && r.value().state != BlockLifecycle::Deleted)
-                    return r.value().id;
-                auto a = mTx->append(mRoot, 0, rowKey);
-                if (!a.has_value())
-                    return ll::makeStringError(a.error().message());
-                return a.value();
-            }
+            std::unordered_map<std::string, RowCells> mPending;
+            std::unordered_set<std::string> mDeleted;
 
         public:
             Batch(BlockRepository& repo, std::unique_ptr<WriteBatch> tx, BlockId root)
@@ -465,15 +521,11 @@ namespace LOICollection::data {
 
             template <class T>
             [[nodiscard]] ll::Expected<void> set(std::string_view rowKey, Key col, T const& v) {
-                auto id = rowId(rowKey);
-                if (!id.has_value())
-                    return ll::makeStringError(id.error().message());
                 auto cell = makeCell(colKey(col.value), v);
                 if (!cell.has_value())
                     return ll::makeStringError(cell.error().message());
-                auto& c = cell.value();
-                return mTx->setProp(
-                    id.value(), c.key, c.type, c.intValue, c.realValue, std::string_view(c.textValue));
+                mPending[std::string(rowKey)][colKey(col.value)] = std::move(cell.value());
+                return {};
             }
             template <class T>
             [[nodiscard]] ll::Expected<void> set(std::string_view rowKey, E col, T const& v) {
@@ -482,19 +534,30 @@ namespace LOICollection::data {
 
             template <class T>
             [[nodiscard]] ll::Expected<T> get(std::string_view rowKey, Key col, T const& def = T{}) {
-                auto rec = mRepo.store().load(mRoot, rowKey);
-                if (!rec.has_value() || rec.value().state == BlockLifecycle::Deleted)
+                std::string key(rowKey);
+                if (mDeleted.contains(key))
                     return def;
-                PropKey k = colKey(col.value);
-                for (auto const& p : rec.value().props) {
-                    if (p.key == k) {
-                        auto v = readCell<T>(p);
+                auto pit = mPending.find(key);
+                if (pit != mPending.end()) {
+                    auto it = pit->second.find(colKey(col.value));
+                    if (it != pit->second.end()) {
+                        auto v = readCell<T>(it->second);
                         if (!v.has_value())
                             return ll::makeStringError(v.error().message());
                         return std::move(v.value());
                     }
                 }
-                return def;
+                auto rec = mRepo.store().load(mRoot, rowKey);
+                if (!rec.has_value() || rec.value().state == BlockLifecycle::Deleted)
+                    return def;
+                auto cells = cellsOf(rec.value());
+                auto it = cells.find(colKey(col.value));
+                if (it == cells.end())
+                    return def;
+                auto v = readCell<T>(it->second);
+                if (!v.has_value())
+                    return ll::makeStringError(v.error().message());
+                return std::move(v.value());
             }
             template <class T>
             [[nodiscard]] ll::Expected<T> get(std::string_view rowKey, E col, T const& def = T{}) {
@@ -502,18 +565,50 @@ namespace LOICollection::data {
             }
 
             [[nodiscard]] ll::Expected<bool> has(std::string_view rowKey) {
+                std::string key(rowKey);
+                if (mDeleted.contains(key))
+                    return false;
+                if (mPending.contains(key))
+                    return true;
                 auto r = mRepo.store().load(mRoot, rowKey);
                 return r.has_value() && r.value().state != BlockLifecycle::Deleted;
             }
 
             [[nodiscard]] ll::Expected<void> del(std::string_view rowKey) {
-                auto r = mRepo.store().load(mRoot, rowKey);
-                if (!r.has_value() || r.value().state == BlockLifecycle::Deleted)
-                    return {};
-                return mTx->control(r.value().id, BlockLifecycle::Deleted);
+                std::string key(rowKey);
+                mDeleted.insert(std::move(key));
+                mPending.erase(key);
+                return {};
             }
 
-            [[nodiscard]] ll::Expected<bool> commit() { return mTx->commit(); }
+            [[nodiscard]] ll::Expected<bool> commit() {
+                for (auto& [rowKey, cells] : mPending) {
+                    if (mDeleted.contains(rowKey))
+                        continue;
+                    if (cells.size() != N) {
+                        auto rec = mRepo.store().load(mRoot, rowKey);
+                        if (rec.has_value() && rec.value().state != BlockLifecycle::Deleted) {
+                            RowCells merged = cellsOf(rec.value());
+                            for (auto& [k, p] : cells)
+                                merged[k] = p;
+                            cells = std::move(merged);
+                        }
+                    }
+                    auto blob = encodeRow(cells);
+                    auto r = mTx->upsertRow(mRoot, rowKey, asByteView(blob));
+                    if (!r.has_value())
+                        return ll::makeStringError(r.error().message());
+                }
+                for (auto& rowKey : mDeleted) {
+                    auto rec = mRepo.store().load(mRoot, rowKey);
+                    if (rec.has_value() && rec.value().state != BlockLifecycle::Deleted) {
+                        auto r = mTx->control(rec.value().id, BlockLifecycle::Deleted);
+                        if (!r.has_value())
+                            return ll::makeStringError(r.error().message());
+                    }
+                }
+                return mTx->commit();
+            }
             [[nodiscard]] ll::Expected<bool> rollback() { return mTx->rollback(); }
         };
 

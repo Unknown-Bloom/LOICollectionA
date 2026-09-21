@@ -143,6 +143,7 @@ ll::Expected<void> BlockStore::ensureSchema(SQLiteConnection& conn) {
         "created INTEGER NOT NULL, updated INTEGER NOT NULL)",
         "CREATE INDEX IF NOT EXISTS idx_block_parent ON block(parent)",
         "CREATE INDEX IF NOT EXISTS idx_block_parent_name ON block(parent, name)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_block_parent_name_row ON block(parent, name) WHERE kind=1000000000",
         "CREATE TABLE IF NOT EXISTS prop("
         "block_id INTEGER NOT NULL, key INTEGER NOT NULL, type INTEGER NOT NULL,"
         "ival INTEGER NOT NULL DEFAULT 0, rval REAL NOT NULL DEFAULT 0, tval TEXT,"
@@ -220,6 +221,38 @@ ll::Expected<void> BlockStore::implCreateBlock(
     }
     mBlockCache.put(id, std::make_shared<BlockRecord>(std::move(rec)));
     mNameCache.put(nameKey(parent, name), id);
+    return {};
+}
+
+ll::Expected<void> BlockStore::upsertRow(
+    BlockId parent, std::string_view name, std::string_view payload) {
+    auto guard = acquireConnection(this->mPool);
+    if (!guard)
+        return ll::makeStringError(guard.error().message());
+    if (auto err = this->ensureSchema(*guard); !err)
+        return ll::makeStringError(err.error().message());
+    return this->implUpsertRow(*guard, parent, name, payload);
+}
+
+ll::Expected<void> BlockStore::implUpsertRow(
+    SQLiteConnection& conn, BlockId parent, std::string_view name, std::string_view payload) {
+    auto& stmt = conn.statements().get("upsertRow");
+    stmt.reset();
+    stmt.bind(1, static_cast<std::int64_t>(parent));
+    stmt.bind(2, std::string(name));
+    stmt.bind(3, kTypedRowKind);
+    stmt.bind(4, static_cast<std::int64_t>(BlockLifecycle::Active));
+    bindPayload(stmt, 5, payload);
+    const std::int64_t ts = nowMs();
+    stmt.bind(6, ts);
+    stmt.bind(7, ts);
+    int rc = stmt.tryExecuteStep();
+    if (rc != SQLITE_DONE)
+        return sqlError(conn);
+
+    auto key = nameKey(parent, name);
+    if (auto cached = mNameCache.get(key); cached.has_value())
+        mBlockCache.erase(*cached.value());
     return {};
 }
 

@@ -46,6 +46,13 @@ ll::Expected<std::vector<BlockId>> WriteBatch::appendMany(
     return ids;
 }
 
+ll::Expected<void> WriteBatch::upsertRow(
+    BlockId parent, std::string_view name, std::string_view payload) {
+    if (mFinished)
+        return ll::makeStringError("write batch already finished");
+    return mStore->implUpsertRow(*mTxn->connection(), parent, name, payload);
+}
+
 ll::Expected<void> WriteBatch::setPayload(BlockId id, std::string_view payload) {
     if (mFinished)
         return ll::makeStringError("write batch already finished");

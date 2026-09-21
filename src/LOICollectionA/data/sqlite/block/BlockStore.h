@@ -21,6 +21,8 @@ class SQLiteConnection;
 
 using BlockId = std::int64_t;
 
+inline constexpr std::int32_t kTypedRowKind = 1000000000;
+
 enum class BlockLifecycle : std::uint32_t {
     None = 0,
     Active = 1u << 0,
@@ -80,6 +82,9 @@ public:
     [[nodiscard]] ll::Expected<BlockId> createBlock(
         BlockId parent, std::int32_t kind, std::string_view name, std::string_view payload = {});
 
+    [[nodiscard]] ll::Expected<void> upsertRow(
+        BlockId parent, std::string_view name, std::string_view payload = {});
+
     [[nodiscard]] ll::Expected<BlockRecord> load(BlockId id);
     [[nodiscard]] ll::Expected<BlockRecord> load(BlockId parent, std::string_view name);
 
@@ -129,6 +134,8 @@ private:
     [[nodiscard]] ll::Expected<void> implCreateBlock(
         SQLiteConnection& conn, BlockId parent, std::int32_t kind, std::string_view name,
         std::string_view payload, BlockId& id);
+    [[nodiscard]] ll::Expected<void> implUpsertRow(
+        SQLiteConnection& conn, BlockId parent, std::string_view name, std::string_view payload);
     [[nodiscard]] ll::Expected<void> implSetPayload(SQLiteConnection& conn, BlockId id, std::string_view payload);
     [[nodiscard]] ll::Expected<void> implControl(SQLiteConnection& conn, BlockId id, BlockLifecycle to);
     [[nodiscard]] ll::Expected<void> implSetProp(SQLiteConnection& conn, BlockId id, PropKey key, PayloadType type, std::int64_t ival, double rval, std::string_view tval);
