@@ -92,8 +92,8 @@
 
 #include "LOICollectionA/ConfigPlugin.h"
 
-#include "LOICollectionA/include/server/Plugins/BehaviorEvent/BehaviorEventPlugin.h"
-#include "LOICollectionA/include/server/Plugins/BehaviorEvent/BehaviorEventLog.h"
+#include "LOICollectionA/include/server/Plugins/behaviorevent/BehaviorEventPlugin.h"
+#include "LOICollectionA/include/server/Plugins/behaviorevent/BehaviorEventLog.h"
 
 namespace {
     std::int64_t epochSeconds() {

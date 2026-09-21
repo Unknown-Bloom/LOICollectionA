@@ -1,4 +1,4 @@
-#include "LOICollectionA/include/server/Plugins/BehaviorEvent/BehaviorEventLog.h"
+#include "LOICollectionA/include/server/Plugins/behaviorevent/BehaviorEventLog.h"
 
 #include <algorithm>
 #include <limits>

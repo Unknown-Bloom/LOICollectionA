@@ -9,7 +9,7 @@
 #include "LOICollectionA/data/sqlite/block/BlockStore.h"
 #include "LOICollectionA/data/sqlite/connection/ConnectionPool.h"
 
-#include "LOICollectionA/include/server/Plugins/BehaviorEvent/BehaviorEventLog.h"
+#include "LOICollectionA/include/server/Plugins/behaviorevent/BehaviorEventLog.h"
 
 class BehaviorEventLogTest : public testing::Test {
 protected:

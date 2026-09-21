@@ -10,7 +10,7 @@
 
 #include <mc/server/SimulatedPlayer.h>
 
-#include "LOICollectionA/include/server/Plugins/BehaviorEvent/BehaviorEventPlugin.h"
+#include "LOICollectionA/include/server/Plugins/behaviorevent/BehaviorEventPlugin.h"
 
 using namespace LOICollection::server::Plugins;
 
