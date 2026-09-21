@@ -97,6 +97,11 @@ namespace {
             return ll::makeStringError(conn.error().message());
         return DbGuard{std::move(pool), std::move(*conn)};
     }
+
+    // Composite cache key for the name -> id mapping: "parent\x1fname".
+    std::string nameKey(BlockId parent, std::string_view name) {
+        return std::to_string(parent) + '\x1f' + std::string(name);
+    }
 }
 
 BlockStore::BlockStore(std::shared_ptr<ConnectionPool> pool) : mPool(std::move(pool)) {}
@@ -214,6 +219,7 @@ ll::Expected<void> BlockStore::implCreateBlock(
         std::memcpy(rec.payload.data(), payload.data(), payload.size());
     }
     mBlockCache.put(id, std::make_shared<BlockRecord>(std::move(rec)));
+    mNameCache.put(nameKey(parent, name), id);
     return {};
 }
 
@@ -234,6 +240,18 @@ ll::Expected<BlockRecord> BlockStore::load(BlockId id) {
 }
 
 ll::Expected<BlockRecord> BlockStore::load(BlockId parent, std::string_view name) {
+    std::string key = nameKey(parent, name);
+    if (auto cached = mNameCache.get(key); cached.has_value()) {
+        auto rec = this->load(*cached.value());
+        if (rec.has_value()) {
+            if (rec.value().state != BlockLifecycle::Deleted)
+                return rec.value();
+            mNameCache.erase(key);  // cached id points to a deleted block; refresh from DB
+        } else {
+            mNameCache.erase(key);  // cached id is stale (e.g. rolled-back tx); refresh from DB
+        }
+    }
+
     auto guard = acquireConnection(this->mPool);
     if (!guard)
         return ll::makeStringError(guard.error().message());
@@ -253,6 +271,8 @@ ll::Expected<BlockRecord> BlockStore::load(BlockId parent, std::string_view name
         return ll::makeStringError(r.error().message());
     stmt.reset();
     mBlockCache.put(record.id, std::make_shared<BlockRecord>(record));
+    if (record.state != BlockLifecycle::Deleted)
+        mNameCache.put(key, record.id);
     return record;
 }
 

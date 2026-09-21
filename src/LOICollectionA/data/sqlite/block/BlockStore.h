@@ -140,4 +140,8 @@ private:
 
     std::shared_ptr<ConnectionPool> mPool;
     LRUCache<BlockId, BlockRecord> mBlockCache{2048};
+    // name -> block id, keyed by "parent\x1fname". Cuts the repeated
+    // getBlockByName round-trips that load(parent, name) would otherwise
+    // issue on every cell of a row.
+    LRUKCache<std::string, BlockId> mNameCache{2048, 512, 2};
 };
