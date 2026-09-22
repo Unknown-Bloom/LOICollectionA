@@ -13,7 +13,8 @@ namespace {
         { "upsertRow",
             "INSERT INTO block(parent,name,kind,state,payload,created,updated) VALUES(?,?,?,?,?,?,?) "
             "ON CONFLICT(parent,name) WHERE kind=1000000000 "
-            "DO UPDATE SET payload=excluded.payload,state=excluded.state,updated=excluded.updated" },
+            "DO UPDATE SET payload=excluded.payload,state=excluded.state,updated=excluded.updated "
+            "RETURNING id" },
         { "getBlockById",
             "SELECT parent,name,kind,state,created,updated,payload FROM block WHERE id=?" },
         { "getBlockByName",
@@ -27,6 +28,8 @@ namespace {
         { "getChildrenFull",
             "SELECT id,parent,name,kind,state,created,updated,payload FROM block "
             "WHERE parent=? AND (state & 24)=0 AND (?=-1 OR kind=?) ORDER BY id LIMIT ?" },
+        { "listChildNames",
+            "SELECT id,name FROM block WHERE parent=? AND (state & 24)=0 ORDER BY id" },
         { "getState", "SELECT state FROM block WHERE id=?" },
         { "countChildren",
             "SELECT COUNT(*) FROM block WHERE parent=? AND (state & 24)=0 AND (?=-1 OR kind=?)" },
@@ -47,6 +50,9 @@ namespace {
             "WHERE p.key=? AND p.ival>=? AND p.ival<=? AND b.parent=? AND (b.state & 24)=0 ORDER BY b.id LIMIT ?" },
         { "queryPropTextUnder",
             "SELECT DISTINCT b.id FROM block b JOIN prop p ON p.block_id=b.id "
+            "WHERE p.key=? AND p.tval=? AND b.parent=? AND (b.state & 24)=0 ORDER BY b.id LIMIT ?" },
+        { "queryPropTextUnderNames",
+            "SELECT b.id, b.name FROM block b JOIN prop p ON p.block_id=b.id "
             "WHERE p.key=? AND p.tval=? AND b.parent=? AND (b.state & 24)=0 ORDER BY b.id LIMIT ?" },
         { "insertDict", "INSERT INTO dict(name) VALUES(?) ON CONFLICT(name) DO NOTHING" },
         { "getDictId", "SELECT id FROM dict WHERE name=?" },

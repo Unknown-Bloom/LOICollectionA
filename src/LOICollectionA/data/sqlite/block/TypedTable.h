@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cstdint>
 #include <optional>
@@ -25,6 +26,18 @@
 namespace LOICollection::data {
 
     enum class FindMode { And, Or };
+
+    template <class E, E... Cols>
+    constexpr std::array<bool, magic_enum::enum_count<E>()> makeIndexed() {
+        std::array<bool, magic_enum::enum_count<E>()> a{};
+        ((a[*magic_enum::enum_index(Cols)] = true), ...);
+        return a;
+    }
+
+    template <class E>
+    struct TypedIndexPolicy {
+        static constexpr auto kIndexed = std::array<bool, magic_enum::enum_count<E>()>{};
+    };
 
     template <class T>
     struct CellCodec;
@@ -148,6 +161,26 @@ namespace LOICollection::data {
             return static_cast<PropKey>(magic_enum::enum_index(c).value());
         }
 
+        static constexpr auto kIndexed = TypedIndexPolicy<E>::kIndexed;
+
+        static constexpr bool indexedAt(PropKey k) {
+            return static_cast<std::size_t>(k) < N && kIndexed[static_cast<std::size_t>(k)];
+        }
+        static constexpr bool indexed(E c) {
+            return kIndexed[static_cast<std::size_t>(colKey(c))];
+        }
+        static std::string indexMask() {
+            std::string s;
+            for (std::size_t i = 0; i < N; i += 4) {
+                int v = 0;
+                for (std::size_t j = 0; j < 4; ++j)
+                    if (i + j < N && kIndexed[i + j])
+                        v |= (1 << j);
+                s.push_back("0123456789abcdef"[v]);
+            }
+            return s;
+        }
+
         static ll::Expected<BlockProp> makeCell(PropKey key, std::string const& v) {
             BlockProp p;
             p.key = key;
@@ -236,6 +269,45 @@ namespace LOICollection::data {
             return mRoot;
         }
 
+        ll::Expected<void> mirrorProps(BlockId id, RowCells const& cells) {
+            for (auto const& [k, p] : cells) {
+                if (!indexedAt(k))
+                    continue;
+                auto tv = cellToString(p);
+                auto r = mRepo.store().setProp(id, k, p.type, p.intValue, p.realValue, tv);
+                if (!r.has_value())
+                    return ll::makeStringError(r.error().message());
+            }
+            return {};
+        }
+
+        ll::Expected<void> backfillIndexes() {
+            auto ch = mRepo.store().children(mRoot, -1);
+            if (!ch.has_value())
+                return ll::makeStringError(ch.error().message());
+            auto b = WriteBatch::begin(mRepo.store());
+            if (!b.has_value())
+                return ll::makeStringError(b.error().message());
+            for (auto id : ch.value()) {
+                auto rec = mRepo.store().load(id);
+                if (!rec.has_value() || rec.value().state == BlockLifecycle::Deleted)
+                    continue;
+                auto cells = cellsOf(rec.value());
+                for (auto const& [k, p] : cells) {
+                    if (!indexedAt(k))
+                        continue;
+                    auto tv = cellToString(p);
+                    auto r = (*b)->setProp(id, k, p.type, p.intValue, p.realValue, tv);
+                    if (!r.has_value())
+                        return ll::makeStringError(r.error().message());
+                }
+            }
+            auto c = (*b)->commit();
+            if (!c.has_value())
+                return ll::makeStringError(c.error().message());
+            return {};
+        }
+
         explicit TypedTable(BlockRepository& repo, std::string name, BlockId root)
             : mRepo(repo), mName(std::move(name)), mRoot(root) {}
 
@@ -265,12 +337,16 @@ namespace LOICollection::data {
             }
 
             std::string metaKey = std::string("schema:") + std::string(name);
+            std::string mask = indexMask();
             std::string want = std::to_string(Version);
             want.push_back('\x1e');
             want += std::string(magic_enum::enum_type_name<E>());
             want.push_back('\x1e');
             want += std::to_string(N);
+            want.push_back('\x1e');
+            want += mask;
 
+            bool needBackfill = false;
             auto stored = repo.metaGet(metaKey);
             if (!stored.has_value())
                 return ll::makeStringError(stored.error().message());
@@ -278,18 +354,36 @@ namespace LOICollection::data {
                 std::string_view s = *stored.value();
                 auto a = s.find('\x1e');
                 auto b = (a == std::string_view::npos) ? std::string_view::npos : s.find('\x1e', a + 1);
+                auto c = (b == std::string_view::npos) ? std::string_view::npos : s.find('\x1e', b + 1);
+                std::string_view storedN = (c == std::string_view::npos)
+                    ? s.substr(b + 1)
+                    : s.substr(b + 1, c - b - 1);
+                std::string_view storedMask = (c == std::string_view::npos)
+                    ? std::string_view{}
+                    : s.substr(c + 1);
                 if (a == std::string_view::npos || b == std::string_view::npos
                     || s.substr(0, a) != std::to_string(Version)
                     || s.substr(a + 1, b - a - 1) != magic_enum::enum_type_name<E>()
-                    || s.substr(b + 1) != std::to_string(N))
+                    || storedN != std::to_string(N))
                     return ll::makeErrorCodeError(
                         BlockError::makeErrorCode(BlockError::BlockErrorCode::SchemaMismatch));
+                needBackfill = (storedMask != mask);
             } else {
                 auto w = repo.metaSet(metaKey, want);
                 if (!w.has_value())
                     return ll::makeStringError(w.error().message());
             }
-            return TypedTable(repo, std::string(name), rootId);
+
+            TypedTable table(repo, std::string(name), rootId);
+            if (needBackfill) {
+                auto bf = table.backfillIndexes();
+                if (!bf.has_value())
+                    return ll::makeStringError(bf.error().message());
+                auto w = repo.metaSet(metaKey, want);
+                if (!w.has_value())
+                    return ll::makeStringError(w.error().message());
+            }
+            return table;
         }
 
         template <class T>
@@ -309,9 +403,19 @@ namespace LOICollection::data {
             cells[colKey(col.value)] = std::move(cell.value());
 
             auto blob = encodeRow(cells);
-            if (rec.has_value() && rec.value().state != BlockLifecycle::Deleted)
-                return mRepo.store().setPayload(rec.value().id, asByteView(blob));
-            return mRepo.store().upsertRow(rid.value(), rowKey, asByteView(blob));
+            if (rec.has_value() && rec.value().state != BlockLifecycle::Deleted) {
+                auto w = mRepo.store().setPayload(rec.value().id, asByteView(blob));
+                if (!w.has_value())
+                    return ll::makeStringError(w.error().message());
+                return mirrorProps(rec.value().id, cells);
+            }
+            auto id = mRepo.store().upsertRow(rid.value(), rowKey, asByteView(blob));
+            if (!id.has_value())
+                return ll::makeStringError(id.error().message());
+            auto m = mirrorProps(id.value(), cells);
+            if (!m.has_value())
+                return ll::makeStringError(m.error().message());
+            return {};
         }
         template <class T>
         [[nodiscard]] ll::Expected<void> set(std::string_view rowKey, E col, T const& v) {
@@ -386,6 +490,24 @@ namespace LOICollection::data {
             return *opt;
         }
 
+        static bool matchesAll(RowCells const& cells, std::vector<std::pair<Key, std::string>> const& conds) {
+            for (auto const& [col, val] : conds) {
+                auto it = cells.find(colKey(col.value));
+                if (it == cells.end() || cellToString(it->second) != val)
+                    return false;
+            }
+            return true;
+        }
+
+        static bool matchesAny(RowCells const& cells, std::vector<std::pair<Key, std::string>> const& conds) {
+            for (auto const& [col, val] : conds) {
+                auto it = cells.find(colKey(col.value));
+                if (it != cells.end() && cellToString(it->second) == val)
+                    return true;
+            }
+            return false;
+        }
+
         [[nodiscard]] ll::Expected<std::vector<std::string>> find(
             FindMode mode, std::vector<std::pair<Key, std::string>> const& conds) {
             auto rid = root();
@@ -394,48 +516,110 @@ namespace LOICollection::data {
             if (conds.empty())
                 return list();
 
-            auto ch = mRepo.store().children(rid.value(), -1);
-            if (!ch.has_value())
-                return ll::makeStringError(ch.error().message());
-
-            std::vector<std::vector<std::string>> groups;
-            groups.reserve(conds.size());
-            for (auto const& [col, val] : conds) {
-                PropKey k = colKey(col.value);
-                std::vector<std::string> matched;
-                matched.reserve(ch.value().size());
-                for (auto id : ch.value()) {
-                    auto rec = mRepo.store().load(id);
-                    if (!rec.has_value() || rec.value().state == BlockLifecycle::Deleted)
-                        continue;
-                    auto cells = cellsOf(rec.value());
-                    auto it = cells.find(k);
-                    if (it != cells.end() && cellToString(it->second) == val)
-                        matched.push_back(rec.value().name);
-                }
-                std::ranges::sort(matched);
-                groups.push_back(std::move(matched));
+            std::vector<std::pair<Key, std::string>> idxConds, scanConds;
+            idxConds.reserve(conds.size());
+            scanConds.reserve(conds.size());
+            for (auto const& c : conds) {
+                if (indexed(c.first.value))
+                    idxConds.push_back(c);
+                else
+                    scanConds.push_back(c);
             }
 
-            std::vector<std::string> matched;
-            if (mode == FindMode::And) {
-                std::ranges::sort(groups, [](auto const& a, auto const& b) { return a.size() < b.size(); });
-                std::vector<std::string> acc = groups.front();
-                for (size_t i = 1; i < groups.size(); ++i) {
-                    std::vector<std::string> next;
-                    std::ranges::set_intersection(acc, groups[i], std::back_inserter(next));
-                    acc = std::move(next);
+            if (scanConds.empty()) {
+                std::vector<std::vector<std::pair<BlockId, std::string>>> groups;
+                groups.reserve(idxConds.size());
+                for (auto const& [col, val] : idxConds) {
+                    auto r = mRepo.store().queryTextNames(rid.value(), colKey(col.value), val, 0);
+                    if (!r.has_value())
+                        return ll::makeStringError(r.error().message());
+                    groups.push_back(std::move(r.value()));
                 }
-                matched = std::move(acc);
+                using Row = std::pair<BlockId, std::string>;
+                auto byId = [](Row const& a, Row const& b) { return a.first < b.first; };
+                std::vector<Row> acc;
+                if (mode == FindMode::And) {
+                    std::ranges::sort(groups, [](auto const& a, auto const& b) { return a.size() < b.size(); });
+                    acc = groups.front();
+                    for (std::size_t i = 1; i < groups.size(); ++i) {
+                        std::vector<Row> next;
+                        std::ranges::set_intersection(acc, groups[i], std::back_inserter(next), byId);
+                        acc = std::move(next);
+                    }
+                } else {
+                    for (auto& g : groups)
+                        acc.insert(acc.end(), g.begin(), g.end());
+                    std::ranges::sort(acc, byId);
+                    acc.erase(std::unique(acc.begin(), acc.end(),
+                                  [](Row const& a, Row const& b) { return a.first == b.first; }),
+                        acc.end());
+                }
+                std::vector<std::string> out;
+                out.reserve(acc.size());
+                for (auto& row : acc)
+                    out.emplace_back(std::move(row.second));
+                return out;
+            }
+
+            std::vector<BlockId> hits;
+            if (!idxConds.empty()) {
+                std::vector<std::vector<BlockId>> groups;
+                groups.reserve(idxConds.size());
+                for (auto const& [col, val] : idxConds) {
+                    auto r = mRepo.store().queryText(rid.value(), colKey(col.value), val, 0);
+                    if (!r.has_value())
+                        return ll::makeStringError(r.error().message());
+                    groups.push_back(std::move(r.value()));
+                }
+                if (mode == FindMode::And) {
+                    std::ranges::sort(groups, [](auto const& a, auto const& b) { return a.size() < b.size(); });
+                    hits = groups.front();
+                    for (std::size_t i = 1; i < groups.size(); ++i) {
+                        std::vector<BlockId> next;
+                        std::ranges::set_intersection(hits, groups[i], std::back_inserter(next));
+                        hits = std::move(next);
+                    }
+                } else {
+                    for (auto& g : groups)
+                        hits.insert(hits.end(), g.begin(), g.end());
+                    std::ranges::sort(hits);
+                    hits.erase(std::unique(hits.begin(), hits.end()), hits.end());
+                }
+            }
+
+            std::vector<std::string> out;
+
+            std::vector<BlockId> pool;
+            if (mode == FindMode::And && !idxConds.empty()) {
+                pool = std::move(hits);
             } else {
-                std::vector<std::string> acc;
-                for (auto& g : groups)
-                    acc.insert(acc.end(), g.begin(), g.end());
-                std::ranges::sort(acc);
-                acc.erase(std::unique(acc.begin(), acc.end()), acc.end());
-                matched = std::move(acc);
+                auto ch = mRepo.store().children(rid.value(), -1);
+                if (!ch.has_value())
+                    return ll::makeStringError(ch.error().message());
+                pool = std::move(ch.value());
             }
-            return matched;
+
+            std::unordered_set<BlockId> hitSet;
+            if (mode == FindMode::Or && !idxConds.empty())
+                hitSet.insert(hits.begin(), hits.end());
+
+            out.reserve(pool.size());
+            for (auto id : pool) {
+                auto rec = mRepo.store().load(id);
+                if (!rec.has_value())
+                    return ll::makeStringError(rec.error().message());
+                if (rec.value().state == BlockLifecycle::Deleted)
+                    continue;
+                if (mode == FindMode::Or && hitSet.contains(id)) {
+                    out.emplace_back(rec.value().name);
+                    continue;
+                }
+                auto cells = cellsOf(rec.value());
+                bool ok = (mode == FindMode::And) ? matchesAll(cells, scanConds) : matchesAny(cells, scanConds);
+                if (ok)
+                    out.emplace_back(rec.value().name);
+            }
+            return out;
         }
 
         [[nodiscard]] ll::Expected<std::string> findFirst(
@@ -595,9 +779,17 @@ namespace LOICollection::data {
                         }
                     }
                     auto blob = encodeRow(cells);
-                    auto r = mTx->upsertRow(mRoot, rowKey, asByteView(blob));
-                    if (!r.has_value())
-                        return ll::makeStringError(r.error().message());
+                    auto rid = mTx->upsertRow(mRoot, rowKey, asByteView(blob));
+                    if (!rid.has_value())
+                        return ll::makeStringError(rid.error().message());
+                    for (auto const& [k, p] : cells) {
+                        if (!indexedAt(k))
+                            continue;
+                        auto tv = cellToString(p);
+                        auto pr = mTx->setProp(rid.value(), k, p.type, p.intValue, p.realValue, tv);
+                        if (!pr.has_value())
+                            return ll::makeStringError(pr.error().message());
+                    }
                 }
                 for (auto& rowKey : mDeleted) {
                     auto rec = mRepo.store().load(mRoot, rowKey);

@@ -82,7 +82,7 @@ public:
     [[nodiscard]] ll::Expected<BlockId> createBlock(
         BlockId parent, std::int32_t kind, std::string_view name, std::string_view payload = {});
 
-    [[nodiscard]] ll::Expected<void> upsertRow(
+    [[nodiscard]] ll::Expected<BlockId> upsertRow(
         BlockId parent, std::string_view name, std::string_view payload = {});
 
     [[nodiscard]] ll::Expected<BlockRecord> load(BlockId id);
@@ -97,6 +97,7 @@ public:
 
     [[nodiscard]] ll::Expected<std::vector<BlockId>> children(BlockId parent, std::int32_t kind = -1, size_t limit = 0);
     [[nodiscard]] ll::Expected<std::vector<BlockRecord>> records(BlockId parent, std::int32_t kind = -1, size_t limit = 0);
+    [[nodiscard]] ll::Expected<std::vector<std::pair<BlockId, std::string>>> childNames(BlockId parent);
 
     [[nodiscard]] ll::Expected<void> setProp(BlockId id, PropKey key, std::int64_t value);
     [[nodiscard]] ll::Expected<void> setProp(BlockId id, PropKey key, double value);
@@ -109,6 +110,8 @@ public:
         BlockId parent, PropKey key, std::int64_t min, std::int64_t max, size_t limit = 0);
     [[nodiscard]] ll::Expected<std::vector<BlockId>> queryText(PropKey key, std::string_view value, size_t limit = 0);
     [[nodiscard]] ll::Expected<std::vector<BlockId>> queryText(
+        BlockId parent, PropKey key, std::string_view value, size_t limit = 0);
+    [[nodiscard]] ll::Expected<std::vector<std::pair<BlockId, std::string>>> queryTextNames(
         BlockId parent, PropKey key, std::string_view value, size_t limit = 0);
 
     [[nodiscard]] ll::Expected<void> exec(std::string_view sql);
@@ -134,7 +137,7 @@ private:
     [[nodiscard]] ll::Expected<void> implCreateBlock(
         SQLiteConnection& conn, BlockId parent, std::int32_t kind, std::string_view name,
         std::string_view payload, BlockId& id);
-    [[nodiscard]] ll::Expected<void> implUpsertRow(
+    [[nodiscard]] ll::Expected<BlockId> implUpsertRow(
         SQLiteConnection& conn, BlockId parent, std::string_view name, std::string_view payload);
     [[nodiscard]] ll::Expected<void> implSetPayload(SQLiteConnection& conn, BlockId id, std::string_view payload);
     [[nodiscard]] ll::Expected<void> implControl(SQLiteConnection& conn, BlockId id, BlockLifecycle to);
@@ -147,8 +150,5 @@ private:
 
     std::shared_ptr<ConnectionPool> mPool;
     LRUCache<BlockId, BlockRecord> mBlockCache{2048};
-    // name -> block id, keyed by "parent\x1fname". Cuts the repeated
-    // getBlockByName round-trips that load(parent, name) would otherwise
-    // issue on every cell of a row.
     LRUKCache<std::string, BlockId> mNameCache{2048, 512, 2};
 };

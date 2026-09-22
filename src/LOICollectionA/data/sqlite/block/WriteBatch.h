@@ -36,7 +36,7 @@ public:
         std::int32_t kind,
         std::span<const std::pair<std::string_view, std::string_view>> namePayloads);
 
-    [[nodiscard]] ll::Expected<void> upsertRow(
+    [[nodiscard]] ll::Expected<BlockId> upsertRow(
         BlockId parent, std::string_view name, std::string_view payload = {});
 
     [[nodiscard]] ll::Expected<void> setPayload(BlockId id, std::string_view payload);

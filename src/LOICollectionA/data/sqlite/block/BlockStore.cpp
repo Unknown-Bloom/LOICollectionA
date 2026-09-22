@@ -98,7 +98,6 @@ namespace {
         return DbGuard{std::move(pool), std::move(*conn)};
     }
 
-    // Composite cache key for the name -> id mapping: "parent\x1fname".
     std::string nameKey(BlockId parent, std::string_view name) {
         return std::to_string(parent) + '\x1f' + std::string(name);
     }
@@ -224,7 +223,7 @@ ll::Expected<void> BlockStore::implCreateBlock(
     return {};
 }
 
-ll::Expected<void> BlockStore::upsertRow(
+ll::Expected<BlockId> BlockStore::upsertRow(
     BlockId parent, std::string_view name, std::string_view payload) {
     auto guard = acquireConnection(this->mPool);
     if (!guard)
@@ -234,7 +233,7 @@ ll::Expected<void> BlockStore::upsertRow(
     return this->implUpsertRow(*guard, parent, name, payload);
 }
 
-ll::Expected<void> BlockStore::implUpsertRow(
+ll::Expected<BlockId> BlockStore::implUpsertRow(
     SQLiteConnection& conn, BlockId parent, std::string_view name, std::string_view payload) {
     auto& stmt = conn.statements().get("upsertRow");
     stmt.reset();
@@ -247,13 +246,15 @@ ll::Expected<void> BlockStore::implUpsertRow(
     stmt.bind(6, ts);
     stmt.bind(7, ts);
     int rc = stmt.tryExecuteStep();
-    if (rc != SQLITE_DONE)
+    if (rc != SQLITE_ROW)
         return sqlError(conn);
+    BlockId id = static_cast<BlockId>(stmt.getColumn(0).getInt64());
+    stmt.reset();
 
     auto key = nameKey(parent, name);
     if (auto cached = mNameCache.get(key); cached.has_value())
         mBlockCache.erase(*cached.value());
-    return {};
+    return id;
 }
 
 ll::Expected<BlockRecord> BlockStore::load(BlockId id) {
@@ -279,9 +280,9 @@ ll::Expected<BlockRecord> BlockStore::load(BlockId parent, std::string_view name
         if (rec.has_value()) {
             if (rec.value().state != BlockLifecycle::Deleted)
                 return rec.value();
-            mNameCache.erase(key);  // cached id points to a deleted block; refresh from DB
+            mNameCache.erase(key);
         } else {
-            mNameCache.erase(key);  // cached id is stale (e.g. rolled-back tx); refresh from DB
+            mNameCache.erase(key);
         }
     }
 
@@ -457,6 +458,24 @@ ll::Expected<std::vector<BlockId>> BlockStore::children(BlockId parent, std::int
     return ids;
 }
 
+ll::Expected<std::vector<std::pair<BlockId, std::string>>> BlockStore::childNames(BlockId parent) {
+    auto guard = acquireConnection(this->mPool);
+    if (!guard)
+        return ll::makeStringError(guard.error().message());
+
+    auto& stmt = (*guard).statements().get("listChildNames");
+    stmt.reset();
+    stmt.bind(1, static_cast<std::int64_t>(parent));
+
+    std::vector<std::pair<BlockId, std::string>> out;
+    int rc = 0;
+    while ((rc = stmt.tryExecuteStep()) == SQLITE_ROW)
+        out.emplace_back(static_cast<BlockId>(stmt.getColumn(0).getInt64()), stmt.getColumn(1).getString());
+    if (rc != SQLITE_DONE)
+        return sqlError(*guard);
+    return out;
+}
+
 ll::Expected<std::vector<BlockRecord>> BlockStore::records(BlockId parent, std::int32_t kind, size_t limit) {
     auto guard = acquireConnection(this->mPool);
     if (!guard)
@@ -570,6 +589,29 @@ ll::Expected<std::vector<BlockId>> BlockStore::queryInt(
     if (rc != SQLITE_DONE)
         return sqlError(*guard);
     return ids;
+}
+
+ll::Expected<std::vector<std::pair<BlockId, std::string>>> BlockStore::queryTextNames(
+    BlockId parent, PropKey key, std::string_view value, size_t limit) {
+    auto guard = acquireConnection(this->mPool);
+    if (!guard)
+        return ll::makeStringError(guard.error().message());
+
+    auto& stmt = (*guard).statements().get("queryPropTextUnderNames");
+    stmt.reset();
+    stmt.bind(1, key);
+    stmt.bind(2, std::string(value));
+    stmt.bind(3, static_cast<std::int64_t>(parent));
+    stmt.bind(4, liveLimit(limit));
+
+    std::vector<std::pair<BlockId, std::string>> out;
+    int rc = 0;
+    while ((rc = stmt.tryExecuteStep()) == SQLITE_ROW)
+        out.emplace_back(
+            static_cast<BlockId>(stmt.getColumn(0).getInt64()), stmt.getColumn(1).getString());
+    if (rc != SQLITE_DONE)
+        return sqlError(*guard);
+    return out;
 }
 
 ll::Expected<std::vector<BlockId>> BlockStore::queryText(PropKey key, std::string_view value, size_t limit) {

@@ -46,7 +46,7 @@ ll::Expected<std::vector<BlockId>> WriteBatch::appendMany(
     return ids;
 }
 
-ll::Expected<void> WriteBatch::upsertRow(
+ll::Expected<BlockId> WriteBatch::upsertRow(
     BlockId parent, std::string_view name, std::string_view payload) {
     if (mFinished)
         return ll::makeStringError("write batch already finished");
