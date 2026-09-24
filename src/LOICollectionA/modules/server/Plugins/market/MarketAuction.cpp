@@ -40,7 +40,7 @@
 
 #include "LOICollectionA/ConfigPlugin.h"
 
-#include "LOICollectionA/include/server/Plugins/TableSchema.h"
+#include "LOICollectionA/include/server/Plugins/types/market/MarketSchema.h"
 #include "LOICollectionA/include/server/Plugins/market/MarketAuction.h"
 #include "LOICollectionA/include/server/Plugins/market/MarketPlugin.h"
 

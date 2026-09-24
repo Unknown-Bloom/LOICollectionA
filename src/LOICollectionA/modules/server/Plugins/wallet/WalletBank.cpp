@@ -22,13 +22,13 @@
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
-#include "LOICollectionA/include/server/Plugins/TableSchema.h"
+#include "LOICollectionA/include/server/Plugins/types/wallet/WalletSchema.h"
 
 #include "LOICollectionA/ConfigPlugin.h"
 
 #include "LOICollectionA/include/server/Plugins/wallet/WalletBank.h"
 #include "LOICollectionA/include/server/Plugins/wallet/WalletLedger.h"
-#include "LOICollectionA/include/server/Plugins/wallet/WalletType.h"
+#include "LOICollectionA/include/server/Plugins/types/wallet/WalletCommonType.h"
 #include "LOICollectionA/include/server/Plugins/wallet/WalletPlugin.h"
 
 namespace LOICollection::server::Plugins {

@@ -26,7 +26,7 @@
 
 #include "LOICollectionA/ConfigPlugin.h"
 
-#include "LOICollectionA/include/server/Plugins/TableSchema.h"
+#include "LOICollectionA/include/server/Plugins/types/wallet/WalletSchema.h"
 
 #include "LOICollectionA/include/server/Plugins/wallet/WalletLedger.h"
 #include "LOICollectionA/include/server/Plugins/wallet/WalletPlugin.h"

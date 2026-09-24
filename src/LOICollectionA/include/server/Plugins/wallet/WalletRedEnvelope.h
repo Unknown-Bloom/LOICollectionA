@@ -9,7 +9,7 @@
 
 #include "LOICollectionA/base/Macro.h"
 
-#include "LOICollectionA/include/server/Plugins/wallet/WalletType.h"
+#include "LOICollectionA/include/server/Plugins/types/wallet/WalletCommonType.h"
 
 class Player;
 class BlockRepository;

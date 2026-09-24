@@ -25,7 +25,7 @@
 #include "LOICollectionA/utils/I18nUtils.h"
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
-#include "LOICollectionA/include/server/Plugins/TableSchema.h"
+#include "LOICollectionA/include/server/Plugins/types/language/LanguageSchema.h"
 
 #include "LOICollectionA/frontend/AST.h"
 

@@ -10,7 +10,7 @@
 
 #include "LOICollectionA/base/Macro.h"
 
-#include "LOICollectionA/include/server/Plugins/market/MarketType.h"
+#include "LOICollectionA/include/server/Plugins/types/market/MarketCommonType.h"
 
 class BlockRepository;
 class TimerManager;

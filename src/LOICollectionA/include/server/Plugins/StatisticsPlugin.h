@@ -11,7 +11,7 @@
 #include "LOICollectionA/include/ModuleBase.h"
 #include "LOICollectionA/include/ModManager.h"
 
-#include "LOICollectionA/include/server/Plugins/types/StatisticType.h"
+#include "LOICollectionA/include/server/Plugins/types/statistic/StatisticCommonType.h"
 
 class Player;
 class BlockRepository;

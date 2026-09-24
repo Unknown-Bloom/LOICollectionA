@@ -12,7 +12,7 @@
 #include "LOICollectionA/include/ModuleBase.h"
 #include "LOICollectionA/include/ModManager.h"
 
-#include "LOICollectionA/include/server/Plugins/types/TpaType.h"
+#include "LOICollectionA/include/server/Plugins/types/tpa/TpaCommonType.h"
 
 class Player;
 class BlockRepository;

@@ -10,8 +10,8 @@
 
 #include "LOICollectionA/base/Macro.h"
 
-#include "LOICollectionA/include/server/Plugins/TableSchema.h"
-#include "LOICollectionA/include/server/Plugins/market/MarketType.h"
+#include "LOICollectionA/include/server/Plugins/types/market/MarketSchema.h"
+#include "LOICollectionA/include/server/Plugins/types/market/MarketCommonType.h"
 
 class Player;
 class BlockRepository;

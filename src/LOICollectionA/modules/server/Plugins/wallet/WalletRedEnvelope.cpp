@@ -31,13 +31,13 @@
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
-#include "LOICollectionA/include/server/Plugins/TableSchema.h"
+#include "LOICollectionA/include/server/Plugins/types/wallet/WalletSchema.h"
 
 #include "LOICollectionA/ConfigPlugin.h"
 
 #include "LOICollectionA/include/server/Plugins/wallet/WalletRedEnvelope.h"
 #include "LOICollectionA/include/server/Plugins/wallet/WalletLedger.h"
-#include "LOICollectionA/include/server/Plugins/wallet/WalletType.h"
+#include "LOICollectionA/include/server/Plugins/types/wallet/WalletCommonType.h"
 #include "LOICollectionA/include/server/Plugins/wallet/WalletPlugin.h"
 
 using I18nUtilsTools::tr;

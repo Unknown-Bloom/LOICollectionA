@@ -3,6 +3,11 @@
 #include <string>
 
 namespace LOICollection::server::Plugins {
+    enum class WalletTransferType {
+        online,
+        offline
+    };
+
     struct RedEnvelopeEntry {
         std::string id;
         std::string chatKey;
