@@ -38,6 +38,24 @@ namespace {
         return ll::makeStringError(std::string(conn.database().getErrorMsg()));
     }
 
+    struct IndexSpec {
+        std::string_view name;
+        std::string_view ddl;
+        std::string_view columns;
+    };
+
+    bool indexColumnsMatch(SQLite::Database& db, std::string_view name, std::string_view columns) {
+        SQLite::Statement query(db, "SELECT name FROM pragma_index_info(?)");
+        query.bind(1, std::string(name));
+        std::string actual;
+        while (query.tryExecuteStep() == SQLITE_ROW) {
+            if (!actual.empty())
+                actual.push_back(',');
+            actual += query.getColumn(0).getString();
+        }
+        return actual == columns;
+    }
+
     ll::Expected<void> readBlockRow(SQLite::Statement& stmt, bool withId, BlockRecord& out, SQLiteConnection& conn) {
         size_t col = 0;
         if (withId) out.id = stmt.getColumn(static_cast<int>(col++)).getInt64();
@@ -132,7 +150,7 @@ void BlockStore::release(std::shared_ptr<SQLiteConnection> conn) {
 }
 
 ll::Expected<void> BlockStore::ensureSchema(SQLiteConnection& conn) {
-    constexpr std::string_view kSchema[] = {
+    constexpr std::string_view kTables[] = {
         "CREATE TABLE IF NOT EXISTS dict("
         "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE)",
         "CREATE TABLE IF NOT EXISTS block("
@@ -140,24 +158,54 @@ ll::Expected<void> BlockStore::ensureSchema(SQLiteConnection& conn) {
         "name TEXT NOT NULL, kind INTEGER NOT NULL DEFAULT 0,"
         "state INTEGER NOT NULL DEFAULT 1, payload BLOB,"
         "created INTEGER NOT NULL, updated INTEGER NOT NULL)",
-        "CREATE INDEX IF NOT EXISTS idx_block_parent ON block(parent)",
-        "CREATE INDEX IF NOT EXISTS idx_block_parent_name ON block(parent, name)",
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_block_parent_name_row ON block(parent, name) WHERE kind=1000000000",
         "CREATE TABLE IF NOT EXISTS prop("
         "block_id INTEGER NOT NULL, key INTEGER NOT NULL, type INTEGER NOT NULL,"
         "ival INTEGER NOT NULL DEFAULT 0, rval REAL NOT NULL DEFAULT 0, tval TEXT,"
         "PRIMARY KEY(block_id,key))",
-        "CREATE INDEX IF NOT EXISTS idx_prop_key_ival ON prop(key, ival)",
-        "CREATE INDEX IF NOT EXISTS idx_prop_key_tval ON prop(key, tval)",
         "CREATE TABLE IF NOT EXISTS link("
         "src INTEGER NOT NULL, dst INTEGER NOT NULL, kind INTEGER NOT NULL DEFAULT 0,"
         "PRIMARY KEY(src,dst,kind))",
-        "CREATE INDEX IF NOT EXISTS idx_link_dst_kind ON link(dst, kind)",
         "CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT)",
     };
 
-    for (auto const& sql : kSchema) {
+    constexpr IndexSpec kIndexes[] = {
+        { "idx_block_parent",
+            "CREATE INDEX IF NOT EXISTS idx_block_parent ON block(parent)",
+            "parent" },
+        { "idx_block_parent_kind",
+            "CREATE INDEX IF NOT EXISTS idx_block_parent_kind ON block(parent, kind)",
+            "parent,kind" },
+        { "idx_block_parent_name",
+            "CREATE INDEX IF NOT EXISTS idx_block_parent_name ON block(parent, name)",
+            "parent,name" },
+        { "idx_block_parent_name_row",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_block_parent_name_row ON block(parent, name) "
+            "WHERE kind=1000000000",
+            "parent,name" },
+        { "idx_prop_key_ival",
+            "CREATE INDEX IF NOT EXISTS idx_prop_key_ival ON prop(key, ival, block_id)",
+            "key,ival,block_id" },
+        { "idx_prop_key_tval",
+            "CREATE INDEX IF NOT EXISTS idx_prop_key_tval ON prop(key, tval, block_id)",
+            "key,tval,block_id" },
+        { "idx_link_dst_kind",
+            "CREATE INDEX IF NOT EXISTS idx_link_dst_kind ON link(dst, kind)",
+            "dst,kind" },
+    };
+
+    for (auto const& sql : kTables) {
         int rc = conn.database().tryExec(sql.data());
+        if (rc != SQLITE_OK)
+            return sqlError(conn);
+    }
+
+    for (auto const& spec : kIndexes) {
+        if (indexColumnsMatch(conn.database(), spec.name, spec.columns))
+            continue;
+        int rc = conn.database().tryExec(("DROP INDEX IF EXISTS " + std::string(spec.name)).c_str());
+        if (rc != SQLITE_OK)
+            return sqlError(conn);
+        rc = conn.database().tryExec(spec.ddl.data());
         if (rc != SQLITE_OK)
             return sqlError(conn);
     }
@@ -442,12 +490,15 @@ ll::Expected<std::vector<BlockId>> BlockStore::children(BlockId parent, std::int
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    auto& stmt = (*guard).statements().get("listChildren");
+    auto& stmt = (*guard).statements().get(kind < 0 ? "listChildren" : "listChildrenKind");
     stmt.reset();
     stmt.bind(1, static_cast<std::int64_t>(parent));
-    stmt.bind(2, kind);
-    stmt.bind(3, kind);
-    stmt.bind(4, liveLimit(limit));
+    if (kind < 0) {
+        stmt.bind(2, liveLimit(limit));
+    } else {
+        stmt.bind(2, kind);
+        stmt.bind(3, liveLimit(limit));
+    }
 
     std::vector<BlockId> ids;
     int rc = 0;
@@ -481,12 +532,15 @@ ll::Expected<std::vector<BlockRecord>> BlockStore::records(BlockId parent, std::
     if (!guard)
         return ll::makeStringError(guard.error().message());
 
-    auto& stmt = (*guard).statements().get("getChildrenFull");
+    auto& stmt = (*guard).statements().get(kind < 0 ? "getChildrenFull" : "getChildrenFullKind");
     stmt.reset();
     stmt.bind(1, static_cast<std::int64_t>(parent));
-    stmt.bind(2, kind);
-    stmt.bind(3, kind);
-    stmt.bind(4, liveLimit(limit));
+    if (kind < 0) {
+        stmt.bind(2, liveLimit(limit));
+    } else {
+        stmt.bind(2, kind);
+        stmt.bind(3, liveLimit(limit));
+    }
 
     std::vector<BlockRecord> out;
     int rc = 0;
@@ -603,6 +657,58 @@ ll::Expected<std::vector<std::pair<BlockId, std::string>>> BlockStore::queryText
     stmt.bind(2, std::string(value));
     stmt.bind(3, static_cast<std::int64_t>(parent));
     stmt.bind(4, liveLimit(limit));
+
+    std::vector<std::pair<BlockId, std::string>> out;
+    int rc = 0;
+    while ((rc = stmt.tryExecuteStep()) == SQLITE_ROW)
+        out.emplace_back(
+            static_cast<BlockId>(stmt.getColumn(0).getInt64()), stmt.getColumn(1).getString());
+    if (rc != SQLITE_DONE)
+        return sqlError(*guard);
+    return out;
+}
+
+ll::Expected<std::vector<std::pair<BlockId, std::string>>> BlockStore::queryTextNamesAll(
+    BlockId parent, std::vector<PropMatch> const& conds, size_t limit) {
+    if (conds.empty())
+        return std::vector<std::pair<BlockId, std::string>>{};
+    if (conds.size() == 1)
+        return this->queryTextNames(parent, conds.front().key, conds.front().value, limit);
+
+    auto guard = acquireConnection(this->mPool);
+    if (!guard)
+        return ll::makeStringError(guard.error().message());
+
+    std::size_t const n = conds.size();
+    std::string sql = "SELECT b.id, b.name FROM prop p0";
+    for (std::size_t i = 1; i < n; ++i) {
+        sql += " CROSS JOIN prop p";
+        sql += std::to_string(i);
+        sql += " ON p";
+        sql += std::to_string(i);
+        sql += ".block_id=p0.block_id";
+    }
+    sql += " CROSS JOIN block b ON b.id=p0.block_id";
+    sql += " WHERE p0.key=? AND p0.tval=?";
+    for (std::size_t i = 1; i < n; ++i) {
+        sql += " AND p";
+        sql += std::to_string(i);
+        sql += ".key=? AND p";
+        sql += std::to_string(i);
+        sql += ".tval=?";
+    }
+    sql += " AND b.parent=? AND (b.state & 24)=0";
+    sql += " ORDER BY b.id LIMIT ?";
+
+    auto& stmt = (*guard).statements().ensure("queryTextNamesAll" + std::to_string(n), sql);
+    stmt.reset();
+    int idx = 1;
+    for (auto const& c : conds) {
+        stmt.bind(idx++, static_cast<int>(c.key));
+        stmt.bind(idx++, c.value);
+    }
+    stmt.bind(idx++, static_cast<std::int64_t>(parent));
+    stmt.bind(idx++, liveLimit(limit));
 
     std::vector<std::pair<BlockId, std::string>> out;
     int rc = 0;

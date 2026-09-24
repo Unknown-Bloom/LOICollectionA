@@ -527,6 +527,21 @@ namespace LOICollection::data {
             }
 
             if (scanConds.empty()) {
+                if (mode == FindMode::And && idxConds.size() > 1) {
+                    std::vector<PropMatch> all;
+                    all.reserve(idxConds.size());
+                    for (auto const& [col, val] : idxConds)
+                        all.push_back({colKey(col.value), val});
+                    auto r = mRepo.store().queryTextNamesAll(rid.value(), all, 0);
+                    if (!r.has_value())
+                        return ll::makeStringError(r.error().message());
+                    std::vector<std::string> out;
+                    out.reserve(r.value().size());
+                    for (auto& row : r.value())
+                        out.emplace_back(std::move(row.second));
+                    return out;
+                }
+
                 std::vector<std::vector<std::pair<BlockId, std::string>>> groups;
                 groups.reserve(idxConds.size());
                 for (auto const& [col, val] : idxConds) {

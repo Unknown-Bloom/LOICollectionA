@@ -40,6 +40,11 @@ struct BlockProp {
     std::string textValue;
 };
 
+struct PropMatch {
+    PropKey key = 0;
+    std::string value;
+};
+
 struct BlockView {
     BlockId id = 0;
     BlockId parent = 0;
@@ -113,6 +118,8 @@ public:
         BlockId parent, PropKey key, std::string_view value, size_t limit = 0);
     [[nodiscard]] ll::Expected<std::vector<std::pair<BlockId, std::string>>> queryTextNames(
         BlockId parent, PropKey key, std::string_view value, size_t limit = 0);
+    [[nodiscard]] ll::Expected<std::vector<std::pair<BlockId, std::string>>> queryTextNamesAll(
+        BlockId parent, std::vector<PropMatch> const& conds, size_t limit = 0);
 
     [[nodiscard]] ll::Expected<void> exec(std::string_view sql);
 
