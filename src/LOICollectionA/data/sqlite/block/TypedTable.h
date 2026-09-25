@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <mutex>
 #include <vector>
 
 #include <SQLiteCpp/SQLiteCpp.h>
@@ -312,6 +313,9 @@ namespace LOICollection::data {
         BlockId mRoot = 0;
         std::string mSide;
 
+        mutable std::unordered_set<std::size_t> mIndexedColumns;
+        static inline std::mutex sIndexMutex;
+
         static std::string sideNameOf(BlockId root) { return "col_" + std::to_string(root); }
 
         static std::string affinityName(CellAffinity a) {
@@ -355,6 +359,17 @@ namespace LOICollection::data {
         std::string sideIndexDdl(std::size_t i) const {
             return "CREATE INDEX IF NOT EXISTS \"" + mSide + "_" + std::to_string(i) + "\" ON \"" + mSide
                  + "\"(" + quoted(i) + ")";
+        }
+
+        void ensureColumnIndex(std::size_t i) {
+            if (!indexedAt(static_cast<PropKey>(i)))
+                return;
+            std::lock_guard<std::mutex> lk(sIndexMutex);
+            if (mIndexedColumns.contains(i))
+                return;
+            auto r = mRepo.store().exec(sideIndexDdl(i));
+            if (r.has_value())
+                mIndexedColumns.insert(i);
         }
 
         std::string cellSql(std::size_t i) const {
@@ -517,13 +532,6 @@ namespace LOICollection::data {
             auto made = (*b)->exec(sideDdl());
             if (!made.has_value())
                 return ll::makeStringError(made.error().message());
-            for (std::size_t i = 0; i < N; ++i) {
-                if (!indexedAt(static_cast<PropKey>(i)))
-                    continue;
-                auto idx = (*b)->exec(sideIndexDdl(i));
-                if (!idx.has_value())
-                    return ll::makeStringError(idx.error().message());
-            }
 
             std::string insert = "INSERT OR REPLACE INTO \"" + mSide + "\"(id";
             for (std::size_t i = 0; i < N; ++i)
@@ -899,6 +907,9 @@ namespace LOICollection::data {
                 params.push_back(condProp(slot, val));
             }
             sql += ")";
+
+            for (auto const& [col, val] : conds)
+                ensureColumnIndex(static_cast<std::size_t>(colKey(col.value)));
 
             std::vector<std::string> out;
             std::string fkey = "sideFind:" + mSide + (mode == FindMode::And ? ":A:" : ":O:");
