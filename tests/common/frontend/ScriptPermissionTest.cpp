@@ -9,6 +9,8 @@
 #include <nlohmann/json.hpp>
 
 #include "LOICollectionA/LOICollectionA.h"
+#include "LOICollectionA/base/ServiceProvider.h"
+#include "LOICollectionA/base/Wrapper.h"
 #include "LOICollectionA/frontend/sandbox/ScriptPermission.h"
 
 using namespace LOICollection::frontend::sandbox;
@@ -51,7 +53,8 @@ namespace {
     };
 
     std::filesystem::path locateProductionPermissionJson() {
-        return LOICollection::A::getInstance().getSelf().getModDir() / "gui" / "permission.json";
+        const auto config = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config");
+        return LOICollection::A::getInstance().getSelf().getModDir() / config->ScriptPermission.PermissionFilePath;
     }
 }
 
