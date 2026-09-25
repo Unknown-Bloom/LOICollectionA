@@ -523,6 +523,46 @@ namespace LOICollection::data {
             if (stored.value().has_value() && stored.value().value() == want)
                 return {};
 
+            // Snapshot the existing side table (if any) before rebuilding it. On the block
+            // model set() writes ONLY the side table and never a payload, so the side table
+            // is the sole copy of the data; dropping it without reading it first would
+            // silently lose every row on a column-addition self-heal. When the side table
+            // does not exist yet (initial migration) this map stays empty and the
+            // payload/props path below is used instead.
+            std::unordered_map<BlockId, RowCells> oldSide;
+            {
+                std::vector<std::string> oldCols;
+                auto info = mRepo.store().withQuery(
+                    "sideInfo:" + mSide, "PRAGMA table_info(\"" + mSide + "\")",
+                    std::span<const BlockProp>(),
+                    [&](SQLite::Statement& stmt) { oldCols.emplace_back(stmt.getColumn(1).getString()); });
+                if (!info.has_value())
+                    return ll::makeStringError(info.error().message());
+                if (oldCols.size() > 1) {
+                    std::string sel = "SELECT \"id\"";
+                    for (std::size_t j = 1; j < oldCols.size(); ++j)
+                        sel += ",\"" + oldCols[j] + "\"";
+                    sel += " FROM \"" + mSide + "\"";
+                    auto snap = mRepo.store().withQuery(
+                        "sideSnap:" + mSide, sel, std::span<const BlockProp>(),
+                        [&](SQLite::Statement& stmt) {
+                            BlockId id = stmt.getColumn(0).getInt64();
+                            RowCells cells;
+                            for (std::size_t j = 1; j < oldCols.size(); ++j) {
+                                PropKey k = static_cast<PropKey>(j - 1);
+                                BlockProp p;
+                                p.key = k;
+                                p.type = PayloadType::Text;
+                                p.textValue = stmt.getColumn(static_cast<int>(j)).getString();
+                                cells[k] = std::move(p);
+                            }
+                            oldSide[id] = std::move(cells);
+                        });
+                    if (!snap.has_value())
+                        return ll::makeStringError(snap.error().message());
+                }
+            }
+
             auto b = WriteBatch::begin(mRepo.store());
             if (!b.has_value())
                 return ll::makeStringError(b.error().message());
@@ -553,19 +593,25 @@ namespace LOICollection::data {
                 idParam.type = PayloadType::Int;
                 idParam.intValue = rec.id;
                 params.push_back(idParam);
+                // Start from the legacy payload/props (initial migration), then overlay the
+                // current side-table values, which are authoritative for existing rows.
                 RowCells cells = cellsOf(rec);
+                auto it = oldSide.find(rec.id);
+                if (it != oldSide.end())
+                    for (auto const& [k, p] : it->second)
+                        cells[k] = p;
                 bool any = false;
                 for (std::size_t i = 0; i < N; ++i) {
-                    auto it = cells.find(static_cast<PropKey>(i));
+                    auto cit = cells.find(static_cast<PropKey>(i));
                     BlockProp v;
                     v.key = static_cast<PropKey>(i);
-                    if (it == cells.end()) {
+                    if (cit == cells.end()) {
                         v.type = PayloadType::Null;
                         params.push_back(v);
                         continue;
                     }
                     any = true;
-                    params.push_back(serializeCell(it->second, kAffinity[i]));
+                    params.push_back(serializeCell(cit->second, kAffinity[i]));
                 }
                 if (!any)
                     continue;
@@ -675,7 +721,15 @@ namespace LOICollection::data {
             want.push_back('\x1e');
             want += mask;
 
-            bool needBackfill = false;
+            // The schema: meta encodes "version \x1e type_name \x1e column-count \x1e index-mask".
+            // A changed version or enum *type name* is a structural break that cannot be migrated
+            // automatically, so we refuse to open rather than risk corrupting data. A change in the
+            // column count (add/remove a column) or the index mask is NOT a hard error: ensureSide()
+            // rebuilds the side table from the column fingerprint, and we refresh the schema marker
+            // afterwards. This lets a schema upgrade self-heal on the next open instead of failing
+            // outright (the old code bailed at the column-count check before ensureSide() ran).
+            bool schemaDirty = false;
+            bool needIndexBackfill = false;
             auto stored = repo.metaGet(metaKey);
             if (!stored.has_value())
                 return ll::makeStringError(stored.error().message());
@@ -692,29 +746,31 @@ namespace LOICollection::data {
                     : s.substr(c + 1);
                 if (a == std::string_view::npos || b == std::string_view::npos
                     || s.substr(0, a) != std::to_string(Version)
-                    || s.substr(a + 1, b - a - 1) != magic_enum::enum_type_name<E>()
-                    || storedN != std::to_string(N))
+                    || s.substr(a + 1, b - a - 1) != magic_enum::enum_type_name<E>())
                     return ll::makeErrorCodeError(
                         BlockError::makeErrorCode(BlockError::BlockErrorCode::SchemaMismatch));
-                needBackfill = (storedMask != mask);
+                if (storedN != std::to_string(N) || storedMask != mask)
+                    schemaDirty = true;
+                if (storedMask != mask)
+                    needIndexBackfill = true;
             } else {
-                auto w = repo.metaSet(metaKey, want);
-                if (!w.has_value())
-                    return ll::makeStringError(w.error().message());
+                schemaDirty = true;
             }
 
             TypedTable table(repo, std::string(name), rootId);
-            if (needBackfill) {
+            if (needIndexBackfill) {
                 auto bf = table.backfillIndexes();
                 if (!bf.has_value())
                     return ll::makeStringError(bf.error().message());
-                auto w = repo.metaSet(metaKey, want);
-                if (!w.has_value())
-                    return ll::makeStringError(w.error().message());
             }
             auto side = table.ensureSide();
             if (!side.has_value())
                 return ll::makeStringError(side.error().message());
+            if (schemaDirty) {
+                auto w = repo.metaSet(metaKey, want);
+                if (!w.has_value())
+                    return ll::makeStringError(w.error().message());
+            }
             return table;
         }
 
