@@ -1,7 +1,14 @@
 #include "LOICollectionA/data/sqlite/block/WriteBatch.h"
 
+#include <string>
 #include <utility>
 
+#include <sqlite3.h>
+
+#include <SQLiteCpp/SQLiteCpp.h>
+
+#include "LOICollectionA/data/sqlite/connection/ConnectionPool.h"
+#include "LOICollectionA/data/sqlite/connection/PreparedStatements.h"
 #include "LOICollectionA/data/sqlite/connection/StorageTransaction.h"
 
 ll::Expected<std::unique_ptr<WriteBatch>> WriteBatch::begin(BlockStore& store) {
@@ -89,6 +96,41 @@ ll::Expected<void> WriteBatch::setProp(
     if (mFinished)
         return ll::makeStringError("write batch already finished");
     return mStore->implSetProp(*mTxn->connection(), id, key, type, ival, rval, tval);
+}
+
+ll::Expected<void> WriteBatch::exec(std::string_view sql) {
+    if (mFinished)
+        return ll::makeStringError("write batch already finished");
+
+    auto& db = mTxn->connection()->database();
+    int rc = db.tryExec(std::string(sql));
+    if (rc != SQLITE_OK)
+        return ll::makeStringError(std::string(db.getErrorMsg()));
+    return {};
+}
+
+ll::Expected<void> WriteBatch::execCells(
+    std::string_view key, std::string_view sql, std::span<const BlockProp> params) {
+    if (mFinished)
+        return ll::makeStringError("write batch already finished");
+
+    auto& conn = *mTxn->connection();
+    auto& stmt = conn.statements().ensure(key, sql);
+    stmt.reset();
+    int idx = 1;
+    for (auto const& p : params) {
+        if (p.type == PayloadType::Int)
+            stmt.bind(idx++, static_cast<std::int64_t>(p.intValue));
+        else if (p.type == PayloadType::Double)
+            stmt.bind(idx++, static_cast<double>(p.realValue));
+        else
+            stmt.bind(idx++, p.textValue);
+    }
+    int rc = stmt.tryExecuteStep();
+    stmt.reset();
+    if (rc != SQLITE_DONE)
+        return ll::makeStringError(std::string(conn.database().getErrorMsg()));
+    return {};
 }
 
 ll::Expected<std::int32_t> WriteBatch::intern(std::string_view name) {

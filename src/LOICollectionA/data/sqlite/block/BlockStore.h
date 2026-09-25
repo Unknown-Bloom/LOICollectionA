@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -15,6 +16,10 @@
 #include "LOICollectionA/data/sqlite/block/Payload.h"
 
 using LOICollection::PropKey;
+
+namespace SQLite {
+    class Statement;
+}
 
 class ConnectionPool;
 class SQLiteConnection;
@@ -93,6 +98,8 @@ public:
     [[nodiscard]] ll::Expected<BlockRecord> load(BlockId id);
     [[nodiscard]] ll::Expected<BlockRecord> load(BlockId parent, std::string_view name);
 
+    [[nodiscard]] ll::Expected<std::optional<BlockId>> idOf(BlockId parent, std::string_view name);
+
     [[nodiscard]] ll::Expected<void> withBlock(BlockId id, std::function<void(BlockView const&)> const& consumer);
 
     [[nodiscard]] ll::Expected<void> setPayload(BlockId id, std::string_view payload);
@@ -103,6 +110,8 @@ public:
     [[nodiscard]] ll::Expected<std::vector<BlockId>> children(BlockId parent, std::int32_t kind = -1, size_t limit = 0);
     [[nodiscard]] ll::Expected<std::vector<BlockRecord>> records(BlockId parent, std::int32_t kind = -1, size_t limit = 0);
     [[nodiscard]] ll::Expected<std::vector<std::pair<BlockId, std::string>>> childNames(BlockId parent);
+    [[nodiscard]] ll::Expected<std::vector<BlockRecord>> rowsByIds(
+        std::span<const BlockId> ids, bool withProps = false);
 
     [[nodiscard]] ll::Expected<void> setProp(BlockId id, PropKey key, std::int64_t value);
     [[nodiscard]] ll::Expected<void> setProp(BlockId id, PropKey key, double value);
@@ -122,6 +131,12 @@ public:
         BlockId parent, std::vector<PropMatch> const& conds, size_t limit = 0);
 
     [[nodiscard]] ll::Expected<void> exec(std::string_view sql);
+
+    [[nodiscard]] ll::Expected<void> withQuery(
+        std::string_view key,
+        std::string_view sql,
+        std::span<const BlockProp> params,
+        std::function<void(SQLite::Statement&)> const& consumer);
 
     [[nodiscard]] ll::Expected<void> link(BlockId src, BlockId dst, std::int32_t kind);
     [[nodiscard]] ll::Expected<void> unlink(BlockId src, BlockId dst, std::int32_t kind);

@@ -8,11 +8,14 @@
 #include <ranges>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
+
+#include <SQLiteCpp/SQLiteCpp.h>
 
 #include <ll/api/Expected.h>
 #include <magic_enum/magic_enum.hpp>
@@ -27,6 +30,18 @@ namespace LOICollection::data {
 
     enum class FindMode { And, Or };
 
+    enum class CellAffinity { Text, Integer, Real };
+
+    template <class T>
+    constexpr CellAffinity affinityOf() {
+        if constexpr (std::is_floating_point_v<T>)
+            return CellAffinity::Real;
+        else if constexpr (std::is_integral_v<T>)
+            return CellAffinity::Integer;
+        else
+            return CellAffinity::Text;
+    }
+
     template <class E, E... Cols>
     constexpr std::array<bool, magic_enum::enum_count<E>()> makeIndexed() {
         std::array<bool, magic_enum::enum_count<E>()> a{};
@@ -36,7 +51,16 @@ namespace LOICollection::data {
 
     template <class E>
     struct TypedIndexPolicy {
-        static constexpr auto kIndexed = std::array<bool, magic_enum::enum_count<E>()>{};
+        static constexpr auto kIndexed = [] {
+            std::array<bool, magic_enum::enum_count<E>()> a{};
+            a.fill(true);
+            return a;
+        }();
+    };
+
+    template <class E>
+    struct TypedColumn {
+        using Types = void;
     };
 
     template <class T>
@@ -163,6 +187,23 @@ namespace LOICollection::data {
 
         static constexpr auto kIndexed = TypedIndexPolicy<E>::kIndexed;
 
+        using ColumnTypes = typename TypedColumn<E>::Types;
+        static constexpr bool kTypedColumns = !std::is_void_v<ColumnTypes>;
+
+        static constexpr auto kAffinity = [] {
+            std::array<CellAffinity, N> a{};
+            if constexpr (!std::is_void_v<ColumnTypes>) {
+                static_assert(
+                    std::tuple_size_v<ColumnTypes> == N, "TypedColumn::Types must list every column");
+                [&]<std::size_t... I>(std::index_sequence<I...>) {
+                    ((a[I] = affinityOf<std::tuple_element_t<I, ColumnTypes>>()), ...);
+                }(std::make_index_sequence<N>{});
+            } else {
+                a.fill(CellAffinity::Text);
+            }
+            return a;
+        }();
+
         static constexpr bool indexedAt(PropKey k) {
             return static_cast<std::size_t>(k) < N && kIndexed[static_cast<std::size_t>(k)];
         }
@@ -240,10 +281,26 @@ namespace LOICollection::data {
             if constexpr (std::is_same_v<T, std::string>) {
                 return p.textValue;
             } else if constexpr (std::is_same_v<T, bool>) {
+                if (p.type == PayloadType::Text)
+                    return p.textValue == "1" || p.textValue == "true";
                 return p.intValue != 0;
             } else if constexpr (std::is_integral_v<T>) {
+                if (p.type == PayloadType::Text) {
+                    T v{};
+                    auto [ptr, ec] = std::from_chars(p.textValue.data(), p.textValue.data() + p.textValue.size(), v);
+                    if (ec != std::errc() || ptr != p.textValue.data() + p.textValue.size())
+                        return ll::makeStringError("cell decode integer failed");
+                    return v;
+                }
                 return static_cast<T>(p.intValue);
             } else if constexpr (std::is_floating_point_v<T>) {
+                if (p.type == PayloadType::Text) {
+                    double v{};
+                    auto [ptr, ec] = std::from_chars(p.textValue.data(), p.textValue.data() + p.textValue.size(), v);
+                    if (ec != std::errc())
+                        return ll::makeStringError("cell decode float failed");
+                    return static_cast<T>(v);
+                }
                 return static_cast<T>(p.realValue);
             } else {
                 return CellCodec<T>::decode(p.textValue);
@@ -253,6 +310,270 @@ namespace LOICollection::data {
         BlockRepository& mRepo;
         std::string mName;
         BlockId mRoot = 0;
+        std::string mSide;
+
+        static std::string sideNameOf(BlockId root) { return "col_" + std::to_string(root); }
+
+        static std::string affinityName(CellAffinity a) {
+            switch (a) {
+                case CellAffinity::Integer: return "INTEGER";
+                case CellAffinity::Real: return "REAL";
+                default: return "TEXT";
+            }
+        }
+
+        std::string quoted(std::size_t i) const {
+            auto names = magic_enum::enum_names<E>();
+            return "\"" + std::string(names[i]) + "\"";
+        }
+
+        std::string sideFingerprint() const {
+            auto names = magic_enum::enum_names<E>();
+            std::string fp;
+            for (std::size_t i = 0; i < N; ++i) {
+                if (i)
+                    fp.push_back(',');
+                fp.append(names[i]);
+                fp.push_back(':');
+                fp.append(affinityName(kAffinity[i]));
+            }
+            return fp;
+        }
+
+        std::string sideDdl() const {
+            std::string sql = "CREATE TABLE IF NOT EXISTS \"" + mSide + "\"(id INTEGER PRIMARY KEY";
+            for (std::size_t i = 0; i < N; ++i) {
+                sql += ",";
+                sql += quoted(i);
+                sql += " ";
+                sql += affinityName(kAffinity[i]);
+            }
+            sql += ")";
+            return sql;
+        }
+
+        std::string sideIndexDdl(std::size_t i) const {
+            return "CREATE INDEX IF NOT EXISTS \"" + mSide + "_" + std::to_string(i) + "\" ON \"" + mSide
+                 + "\"(" + quoted(i) + ")";
+        }
+
+        std::string cellSql(std::size_t i) const {
+            std::string q = quoted(i);
+            return "INSERT INTO \"" + mSide + "\"(id," + q + ") VALUES(?,?) ON CONFLICT(id) DO UPDATE SET "
+                 + q + "=?";
+        }
+
+        std::string cellKey(std::size_t i) const { return "sideSet:" + mSide + ":" + std::to_string(i); }
+
+        static BlockProp serializeCell(BlockProp const& p, CellAffinity a) {
+            BlockProp out;
+            out.key = p.key;
+            if (a == CellAffinity::Integer) {
+                out.type = PayloadType::Int;
+                if (p.type == PayloadType::Int) {
+                    out.intValue = p.intValue;
+                } else {
+                    std::int64_t v = 0;
+                    auto [ptr, ec] = std::from_chars(p.textValue.data(),
+                        p.textValue.data() + p.textValue.size(), v);
+                    out.intValue = (ec == std::errc()) ? v : 0;
+                }
+                out.textValue = std::to_string(out.intValue);
+            } else if (a == CellAffinity::Real) {
+                out.type = PayloadType::Double;
+                if (p.type == PayloadType::Double) {
+                    out.realValue = p.realValue;
+                } else {
+                    double v = 0.0;
+                    auto [ptr, ec] = std::from_chars(p.textValue.data(),
+                        p.textValue.data() + p.textValue.size(), v);
+                    out.realValue = (ec == std::errc()) ? v : 0.0;
+                }
+                char buf[64];
+                auto [q, ec] = std::to_chars(buf, buf + sizeof(buf), out.realValue);
+                out.textValue.assign(buf, q);
+            } else {
+                out.type = PayloadType::Text;
+                out.textValue = cellToString(p);
+            }
+            return out;
+        }
+
+        static std::optional<BlockProp> readColumn(
+            SQLite::Statement& stmt, int col, PropKey key, CellAffinity a) {
+            if (stmt.getColumn(col).isNull())
+                return std::nullopt;
+            BlockProp p;
+            p.key = key;
+            if (a == CellAffinity::Integer) {
+                p.type = PayloadType::Int;
+                p.intValue = stmt.getColumn(col).getInt64();
+                p.textValue = std::to_string(p.intValue);
+            } else if (a == CellAffinity::Real) {
+                p.type = PayloadType::Double;
+                p.realValue = stmt.getColumn(col).getDouble();
+                char buf[64];
+                auto [q, ec] = std::to_chars(buf, buf + sizeof(buf), p.realValue);
+                p.textValue.assign(buf, q);
+            } else {
+                p.type = PayloadType::Text;
+                p.textValue = stmt.getColumn(col).getString();
+            }
+            return p;
+        }
+
+        ll::Expected<void> writeCell(BlockId id, std::size_t i, BlockProp const& cell) {
+            BlockProp idParam;
+            idParam.type = PayloadType::Int;
+            idParam.intValue = id;
+            BlockProp value = serializeCell(cell, kAffinity[i]);
+            BlockProp params[3] = {idParam, value, value};
+            auto b = WriteBatch::begin(mRepo.store());
+            if (!b.has_value())
+                return ll::makeStringError(b.error().message());
+            auto r = (*b)->execCells(cellKey(i), cellSql(i), params);
+            if (!r.has_value())
+                return ll::makeStringError(r.error().message());
+            auto c = (*b)->commit();
+            if (!c.has_value())
+                return ll::makeStringError(c.error().message());
+            return {};
+        }
+
+        [[nodiscard]] ll::Expected<RowCells> readSideCells(BlockId id) {
+            std::string sql = "SELECT ";
+            for (std::size_t i = 0; i < N; ++i) {
+                if (i)
+                    sql += ",";
+                sql += quoted(i);
+            }
+            sql += " FROM \"" + mSide + "\" WHERE id=?";
+
+            RowCells cells;
+            bool found = false;
+            BlockProp idParam;
+            idParam.type = PayloadType::Int;
+            idParam.intValue = id;
+            auto r = mRepo.store().withQuery(
+                "sideRow:" + mSide, sql, std::span<const BlockProp>(&idParam, 1),
+                [&](SQLite::Statement& stmt) {
+                    found = true;
+                    for (std::size_t i = 0; i < N; ++i) {
+                        auto p = readColumn(stmt, static_cast<int>(i), static_cast<PropKey>(i), kAffinity[i]);
+                        if (p.has_value())
+                            cells[static_cast<PropKey>(i)] = std::move(*p);
+                    }
+                });
+            if (!r.has_value())
+                return ll::makeStringError(r.error().message());
+            if (found)
+                return cells;
+
+            auto rec = mRepo.store().load(id);
+            if (!rec.has_value())
+                return ll::makeStringError(rec.error().message());
+            return cellsOf(rec.value());
+        }
+
+        BlockProp condProp(std::size_t slot, std::string const& val) const {
+            BlockProp p;
+            p.key = static_cast<PropKey>(slot);
+            p.textValue = val;
+            if (kAffinity[slot] == CellAffinity::Integer) {
+                std::int64_t v{};
+                auto [ptr, ec] = std::from_chars(val.data(), val.data() + val.size(), v);
+                if (ec == std::errc() && ptr == val.data() + val.size()) {
+                    p.type = PayloadType::Int;
+                    p.intValue = v;
+                    return p;
+                }
+            } else if (kAffinity[slot] == CellAffinity::Real) {
+                double v{};
+                auto [ptr, ec] = std::from_chars(val.data(), val.data() + val.size(), v);
+                if (ec == std::errc() && ptr == val.data() + val.size()) {
+                    p.type = PayloadType::Double;
+                    p.realValue = v;
+                    return p;
+                }
+            }
+            p.type = PayloadType::Text;
+            return p;
+        }
+
+        ll::Expected<void> ensureSide() {
+            std::string want = sideFingerprint();
+            auto stored = mRepo.metaGet("sidecol:" + mName);
+            if (!stored.has_value())
+                return ll::makeStringError(stored.error().message());
+            if (stored.value().has_value() && stored.value().value() == want)
+                return {};
+
+            auto b = WriteBatch::begin(mRepo.store());
+            if (!b.has_value())
+                return ll::makeStringError(b.error().message());
+            auto dropped = (*b)->exec("DROP TABLE IF EXISTS \"" + mSide + "\"");
+            if (!dropped.has_value())
+                return ll::makeStringError(dropped.error().message());
+            auto made = (*b)->exec(sideDdl());
+            if (!made.has_value())
+                return ll::makeStringError(made.error().message());
+            for (std::size_t i = 0; i < N; ++i) {
+                if (!indexedAt(static_cast<PropKey>(i)))
+                    continue;
+                auto idx = (*b)->exec(sideIndexDdl(i));
+                if (!idx.has_value())
+                    return ll::makeStringError(idx.error().message());
+            }
+
+            std::string insert = "INSERT OR REPLACE INTO \"" + mSide + "\"(id";
+            for (std::size_t i = 0; i < N; ++i)
+                insert += "," + quoted(i);
+            insert += ") VALUES(?";
+            for (std::size_t i = 0; i < N; ++i)
+                insert += ",?";
+            insert += ")";
+
+            auto rows = mRepo.store().records(mRoot, kTypedRowKind, 0);
+            if (!rows.has_value())
+                return ll::makeStringError(rows.error().message());
+            for (auto const& rec : rows.value()) {
+                if (rec.state == BlockLifecycle::Deleted)
+                    continue;
+                std::vector<BlockProp> params;
+                params.reserve(N + 1);
+                BlockProp idParam;
+                idParam.type = PayloadType::Int;
+                idParam.intValue = rec.id;
+                params.push_back(idParam);
+                RowCells cells = cellsOf(rec);
+                bool any = false;
+                for (std::size_t i = 0; i < N; ++i) {
+                    auto it = cells.find(static_cast<PropKey>(i));
+                    BlockProp v;
+                    v.key = static_cast<PropKey>(i);
+                    if (it == cells.end()) {
+                        v.type = PayloadType::Null;
+                        params.push_back(v);
+                        continue;
+                    }
+                    any = true;
+                    params.push_back(serializeCell(it->second, kAffinity[i]));
+                }
+                if (!any)
+                    continue;
+                auto r = (*b)->execCells("sideBackfill:" + mSide, insert, params);
+                if (!r.has_value())
+                    return ll::makeStringError(r.error().message());
+            }
+
+            auto c = (*b)->commit();
+            if (!c.has_value())
+                return ll::makeStringError(c.error().message());
+            auto w = mRepo.metaSet("sidecol:" + mName, want);
+            if (!w.has_value())
+                return ll::makeStringError(w.error().message());
+            return {};
+        }
 
         [[nodiscard]] ll::Expected<BlockId> root() {
             if (mRoot != 0)
@@ -309,7 +630,7 @@ namespace LOICollection::data {
         }
 
         explicit TypedTable(BlockRepository& repo, std::string name, BlockId root)
-            : mRepo(repo), mName(std::move(name)), mRoot(root) {}
+            : mRepo(repo), mName(std::move(name)), mRoot(root), mSide(sideNameOf(root)) {}
 
     public:
         struct Key {
@@ -383,6 +704,9 @@ namespace LOICollection::data {
                 if (!w.has_value())
                     return ll::makeStringError(w.error().message());
             }
+            auto side = table.ensureSide();
+            if (!side.has_value())
+                return ll::makeStringError(side.error().message());
             return table;
         }
 
@@ -395,26 +719,31 @@ namespace LOICollection::data {
             auto cell = makeCell(colKey(col.value), v);
             if (!cell.has_value())
                 return ll::makeStringError(cell.error().message());
+            std::size_t slot = static_cast<std::size_t>(colKey(col.value));
 
-            RowCells cells;
-            auto rec = mRepo.store().load(rid.value(), rowKey);
-            if (rec.has_value() && rec.value().state != BlockLifecycle::Deleted)
-                cells = cellsOf(rec.value());
-            cells[colKey(col.value)] = std::move(cell.value());
+            auto found = mRepo.store().idOf(rid.value(), rowKey);
+            if (!found.has_value())
+                return ll::makeStringError(found.error().message());
+            if (found.value().has_value())
+                return writeCell(*found.value(), slot, cell.value());
 
-            auto blob = encodeRow(cells);
-            if (rec.has_value() && rec.value().state != BlockLifecycle::Deleted) {
-                auto w = mRepo.store().setPayload(rec.value().id, asByteView(blob));
-                if (!w.has_value())
-                    return ll::makeStringError(w.error().message());
-                return mirrorProps(rec.value().id, cells);
-            }
-            auto id = mRepo.store().upsertRow(rid.value(), rowKey, asByteView(blob));
-            if (!id.has_value())
-                return ll::makeStringError(id.error().message());
-            auto m = mirrorProps(id.value(), cells);
-            if (!m.has_value())
-                return ll::makeStringError(m.error().message());
+            auto b = WriteBatch::begin(mRepo.store());
+            if (!b.has_value())
+                return ll::makeStringError(b.error().message());
+            auto made = (*b)->upsertRow(rid.value(), rowKey);
+            if (!made.has_value())
+                return ll::makeStringError(made.error().message());
+            BlockProp idParam;
+            idParam.type = PayloadType::Int;
+            idParam.intValue = *made;
+            BlockProp value = serializeCell(cell.value(), kAffinity[slot]);
+            BlockProp params[3] = {idParam, value, value};
+            auto r = (*b)->execCells(cellKey(slot), cellSql(slot), params);
+            if (!r.has_value())
+                return ll::makeStringError(r.error().message());
+            auto c = (*b)->commit();
+            if (!c.has_value())
+                return ll::makeStringError(c.error().message());
             return {};
         }
         template <class T>
@@ -427,10 +756,50 @@ namespace LOICollection::data {
             auto rid = root();
             if (!rid.has_value())
                 return ll::makeStringError(rid.error().message());
-            auto rec = mRepo.store().load(rid.value(), rowKey);
-            if (!rec.has_value() || rec.value().state == BlockLifecycle::Deleted)
+
+            auto id = mRepo.store().idOf(rid.value(), rowKey);
+            if (!id.has_value())
+                return ll::makeStringError(id.error().message());
+            if (!id.value().has_value())
                 return def;
-            auto cells = cellsOf(rec.value());
+
+            std::size_t slot = static_cast<std::size_t>(colKey(col.value));
+            std::optional<BlockProp> got;
+            BlockProp idParam;
+            idParam.type = PayloadType::Int;
+            idParam.intValue = *id.value();
+            auto queried = mRepo.store().withQuery(
+                "sideGet:" + mSide + ":" + std::to_string(slot),
+                "SELECT " + quoted(slot) + " FROM \"" + mSide + "\" WHERE id=?",
+                std::span<const BlockProp>(&idParam, 1),
+                [&](SQLite::Statement& stmt) { got = readColumn(stmt, 0, colKey(col.value), kAffinity[slot]); });
+            if (!queried.has_value())
+                return ll::makeStringError(queried.error().message());
+
+            if (got.has_value()) {
+                auto v = readCell<T>(*got);
+                if (!v.has_value())
+                    return ll::makeStringError(v.error().message());
+                return std::move(v.value());
+            }
+
+            RowCells cells;
+            bool fromPayload = false;
+            auto viewed = mRepo.store().withBlock(*id.value(), [&](BlockView const& view) {
+                if (view.payload.empty())
+                    return;
+                cells = decodeRow(view.payload);
+                fromPayload = true;
+            });
+            if (!viewed.has_value())
+                return ll::makeStringError(viewed.error().message());
+            if (!fromPayload) {
+                auto rec = mRepo.store().load(*id.value());
+                if (!rec.has_value() || rec.value().state == BlockLifecycle::Deleted)
+                    return def;
+                cells = cellsOf(rec.value());
+            }
+
             auto it = cells.find(colKey(col.value));
             if (it == cells.end())
                 return def;
@@ -448,35 +817,35 @@ namespace LOICollection::data {
             auto rid = root();
             if (!rid.has_value())
                 return ll::makeStringError(rid.error().message());
-            auto rec = mRepo.store().load(rid.value(), rowKey);
-            if (!rec.has_value() || rec.value().id == 0 || rec.value().state == BlockLifecycle::Deleted)
+            auto id = mRepo.store().idOf(rid.value(), rowKey);
+            if (!id.has_value())
+                return ll::makeStringError(id.error().message());
+            if (!id.value().has_value())
                 return {};
-            return mRepo.store().control(rec.value().id, BlockLifecycle::Deleted);
+            return mRepo.store().control(*id.value(), BlockLifecycle::Deleted);
         }
 
         [[nodiscard]] ll::Expected<bool> has(std::string_view rowKey) {
             auto rid = root();
             if (!rid.has_value())
                 return ll::makeStringError(rid.error().message());
-            auto rec = mRepo.store().load(rid.value(), rowKey);
-            return rec.has_value() && rec.value().state != BlockLifecycle::Deleted;
+            auto id = mRepo.store().idOf(rid.value(), rowKey);
+            if (!id.has_value())
+                return ll::makeStringError(id.error().message());
+            return id.value().has_value();
         }
 
         [[nodiscard]] ll::Expected<std::vector<std::string>> list() {
             auto rid = root();
             if (!rid.has_value())
                 return ll::makeStringError(rid.error().message());
-            auto ch = mRepo.store().children(rid.value(), -1);
+            auto ch = mRepo.store().childNames(rid.value());
             if (!ch.has_value())
                 return ll::makeStringError(ch.error().message());
             std::vector<std::string> keys;
-            for (auto id : ch.value()) {
-                auto rec = mRepo.store().load(id);
-                if (!rec.has_value())
-                    return ll::makeStringError(rec.error().message());
-                if (rec.value().state != BlockLifecycle::Deleted)
-                    keys.emplace_back(rec.value().name);
-            }
+            keys.reserve(ch.value().size());
+            for (auto const& entry : ch.value())
+                keys.emplace_back(entry.second);
             return keys;
         }
 
@@ -516,124 +885,30 @@ namespace LOICollection::data {
             if (conds.empty())
                 return list();
 
-            std::vector<std::pair<Key, std::string>> idxConds, scanConds;
-            idxConds.reserve(conds.size());
-            scanConds.reserve(conds.size());
-            for (auto const& c : conds) {
-                if (indexed(c.first.value))
-                    idxConds.push_back(c);
-                else
-                    scanConds.push_back(c);
+            std::string sql = "SELECT b.name FROM \"" + mSide
+                            + "\" s JOIN block b ON b.id = s.id WHERE b.state < 8 AND (";
+            std::vector<BlockProp> params;
+            params.reserve(conds.size());
+            for (std::size_t i = 0; i < conds.size(); ++i) {
+                auto const& [col, val] = conds[i];
+                std::size_t slot = static_cast<std::size_t>(colKey(col.value));
+                if (i)
+                    sql += (mode == FindMode::Or ? " OR " : " AND ");
+                sql += "s." + quoted(slot);
+                sql += " = ?";
+                params.push_back(condProp(slot, val));
             }
-
-            if (scanConds.empty()) {
-                if (mode == FindMode::And && idxConds.size() > 1) {
-                    std::vector<PropMatch> all;
-                    all.reserve(idxConds.size());
-                    for (auto const& [col, val] : idxConds)
-                        all.push_back({colKey(col.value), val});
-                    auto r = mRepo.store().queryTextNamesAll(rid.value(), all, 0);
-                    if (!r.has_value())
-                        return ll::makeStringError(r.error().message());
-                    std::vector<std::string> out;
-                    out.reserve(r.value().size());
-                    for (auto& row : r.value())
-                        out.emplace_back(std::move(row.second));
-                    return out;
-                }
-
-                std::vector<std::vector<std::pair<BlockId, std::string>>> groups;
-                groups.reserve(idxConds.size());
-                for (auto const& [col, val] : idxConds) {
-                    auto r = mRepo.store().queryTextNames(rid.value(), colKey(col.value), val, 0);
-                    if (!r.has_value())
-                        return ll::makeStringError(r.error().message());
-                    groups.push_back(std::move(r.value()));
-                }
-                using Row = std::pair<BlockId, std::string>;
-                auto byId = [](Row const& a, Row const& b) { return a.first < b.first; };
-                std::vector<Row> acc;
-                if (mode == FindMode::And) {
-                    std::ranges::sort(groups, [](auto const& a, auto const& b) { return a.size() < b.size(); });
-                    acc = groups.front();
-                    for (std::size_t i = 1; i < groups.size(); ++i) {
-                        std::vector<Row> next;
-                        std::ranges::set_intersection(acc, groups[i], std::back_inserter(next), byId);
-                        acc = std::move(next);
-                    }
-                } else {
-                    for (auto& g : groups)
-                        acc.insert(acc.end(), g.begin(), g.end());
-                    std::ranges::sort(acc, byId);
-                    acc.erase(std::unique(acc.begin(), acc.end(),
-                                  [](Row const& a, Row const& b) { return a.first == b.first; }),
-                        acc.end());
-                }
-                std::vector<std::string> out;
-                out.reserve(acc.size());
-                for (auto& row : acc)
-                    out.emplace_back(std::move(row.second));
-                return out;
-            }
-
-            std::vector<BlockId> hits;
-            if (!idxConds.empty()) {
-                std::vector<std::vector<BlockId>> groups;
-                groups.reserve(idxConds.size());
-                for (auto const& [col, val] : idxConds) {
-                    auto r = mRepo.store().queryText(rid.value(), colKey(col.value), val, 0);
-                    if (!r.has_value())
-                        return ll::makeStringError(r.error().message());
-                    groups.push_back(std::move(r.value()));
-                }
-                if (mode == FindMode::And) {
-                    std::ranges::sort(groups, [](auto const& a, auto const& b) { return a.size() < b.size(); });
-                    hits = groups.front();
-                    for (std::size_t i = 1; i < groups.size(); ++i) {
-                        std::vector<BlockId> next;
-                        std::ranges::set_intersection(hits, groups[i], std::back_inserter(next));
-                        hits = std::move(next);
-                    }
-                } else {
-                    for (auto& g : groups)
-                        hits.insert(hits.end(), g.begin(), g.end());
-                    std::ranges::sort(hits);
-                    hits.erase(std::unique(hits.begin(), hits.end()), hits.end());
-                }
-            }
+            sql += ")";
 
             std::vector<std::string> out;
-
-            std::vector<BlockId> pool;
-            if (mode == FindMode::And && !idxConds.empty()) {
-                pool = std::move(hits);
-            } else {
-                auto ch = mRepo.store().children(rid.value(), -1);
-                if (!ch.has_value())
-                    return ll::makeStringError(ch.error().message());
-                pool = std::move(ch.value());
-            }
-
-            std::unordered_set<BlockId> hitSet;
-            if (mode == FindMode::Or && !idxConds.empty())
-                hitSet.insert(hits.begin(), hits.end());
-
-            out.reserve(pool.size());
-            for (auto id : pool) {
-                auto rec = mRepo.store().load(id);
-                if (!rec.has_value())
-                    return ll::makeStringError(rec.error().message());
-                if (rec.value().state == BlockLifecycle::Deleted)
-                    continue;
-                if (mode == FindMode::Or && hitSet.contains(id)) {
-                    out.emplace_back(rec.value().name);
-                    continue;
-                }
-                auto cells = cellsOf(rec.value());
-                bool ok = (mode == FindMode::And) ? matchesAll(cells, scanConds) : matchesAny(cells, scanConds);
-                if (ok)
-                    out.emplace_back(rec.value().name);
-            }
+            std::string fkey = "sideFind:" + mSide + (mode == FindMode::And ? ":A:" : ":O:");
+            for (auto const& [col, val] : conds)
+                fkey += std::to_string(colKey(col.value)) + ",";
+            auto r = mRepo.store().withQuery(
+                fkey, sql, params,
+                [&](SQLite::Statement& stmt) { out.emplace_back(stmt.getColumn(0).getString()); });
+            if (!r.has_value())
+                return ll::makeStringError(r.error().message());
             return out;
         }
 
@@ -666,15 +941,17 @@ namespace LOICollection::data {
             auto rid = root();
             if (!rid.has_value())
                 return ll::makeStringError(rid.error().message());
-            auto rec = mRepo.store().load(rid.value(), rowKey);
-            if (!rec.has_value())
-                return ll::makeStringError(rec.error().message());
+            auto id = mRepo.store().idOf(rid.value(), rowKey);
+            if (!id.has_value())
+                return ll::makeStringError(id.error().message());
             std::unordered_map<std::string, std::string> out;
-            if (rec.value().id == 0 || rec.value().state == BlockLifecycle::Deleted)
+            if (!id.value().has_value())
                 return out;
-            auto cells = cellsOf(rec.value());
+            auto cells = readSideCells(*id.value());
+            if (!cells.has_value())
+                return ll::makeStringError(cells.error().message());
             auto names = magic_enum::enum_names<E>();
-            for (auto const& [k, p] : cells) {
+            for (auto const& [k, p] : cells.value()) {
                 if (static_cast<std::size_t>(k) >= names.size())
                     continue;
                 std::string v;
@@ -708,6 +985,7 @@ namespace LOICollection::data {
         }
 
         class Batch {
+            TypedTable& mOwner;
             BlockRepository& mRepo;
             std::unique_ptr<WriteBatch> mTx;
             BlockId mRoot;
@@ -715,8 +993,8 @@ namespace LOICollection::data {
             std::unordered_set<std::string> mDeleted;
 
         public:
-            Batch(BlockRepository& repo, std::unique_ptr<WriteBatch> tx, BlockId root)
-                : mRepo(repo), mTx(std::move(tx)), mRoot(root) {}
+            Batch(TypedTable& owner, BlockRepository& repo, std::unique_ptr<WriteBatch> tx, BlockId root)
+                : mOwner(owner), mRepo(repo), mTx(std::move(tx)), mRoot(root) {}
 
             template <class T>
             [[nodiscard]] ll::Expected<void> set(std::string_view rowKey, Key col, T const& v) {
@@ -746,12 +1024,16 @@ namespace LOICollection::data {
                         return std::move(v.value());
                     }
                 }
-                auto rec = mRepo.store().load(mRoot, rowKey);
-                if (!rec.has_value() || rec.value().state == BlockLifecycle::Deleted)
+                auto id = mRepo.store().idOf(mRoot, rowKey);
+                if (!id.has_value())
+                    return ll::makeStringError(id.error().message());
+                if (!id.value().has_value())
                     return def;
-                auto cells = cellsOf(rec.value());
-                auto it = cells.find(colKey(col.value));
-                if (it == cells.end())
+                auto cells = mOwner.readSideCells(*id.value());
+                if (!cells.has_value())
+                    return ll::makeStringError(cells.error().message());
+                auto it = cells.value().find(colKey(col.value));
+                if (it == cells.value().end())
                     return def;
                 auto v = readCell<T>(it->second);
                 if (!v.has_value())
@@ -784,27 +1066,37 @@ namespace LOICollection::data {
                 for (auto& [rowKey, cells] : mPending) {
                     if (mDeleted.contains(rowKey))
                         continue;
-                    if (cells.size() != N) {
-                        auto rec = mRepo.store().load(mRoot, rowKey);
-                        if (rec.has_value() && rec.value().state != BlockLifecycle::Deleted) {
-                            RowCells merged = cellsOf(rec.value());
-                            for (auto& [k, p] : cells)
-                                merged[k] = p;
-                            cells = std::move(merged);
-                        }
-                    }
-                    auto blob = encodeRow(cells);
-                    auto rid = mTx->upsertRow(mRoot, rowKey, asByteView(blob));
+                    auto rid = mTx->upsertRow(mRoot, rowKey);
                     if (!rid.has_value())
                         return ll::makeStringError(rid.error().message());
-                    for (auto const& [k, p] : cells) {
-                        if (!indexedAt(k))
-                            continue;
-                        auto tv = cellToString(p);
-                        auto pr = mTx->setProp(rid.value(), k, p.type, p.intValue, p.realValue, tv);
-                        if (!pr.has_value())
-                            return ll::makeStringError(pr.error().message());
+                    BlockId id = *rid;
+
+                    RowCells merged = std::move(cells);
+                    if (merged.size() < N) {
+                        auto existing = mOwner.readSideCells(id);
+                        if (existing.has_value())
+                            for (auto const& [k, p] : existing.value())
+                                if (!merged.contains(k))
+                                    merged[k] = p;
                     }
+
+                    std::string cols = "id";
+                    std::vector<BlockProp> params;
+                    BlockProp idParam;
+                    idParam.type = PayloadType::Int;
+                    idParam.intValue = id;
+                    params.push_back(idParam);
+                    for (auto const& [k, p] : merged) {
+                        cols += "," + mOwner.quoted(static_cast<std::size_t>(k));
+                        params.push_back(serializeCell(p, kAffinity[static_cast<std::size_t>(k)]));
+                    }
+                    std::string insert = "INSERT OR REPLACE INTO \"" + mOwner.mSide + "\"(" + cols + ") VALUES(?";
+                    for (std::size_t i = 1; i < params.size(); ++i)
+                        insert += ",?";
+                    insert += ")";
+                    auto pr = mTx->execCells("sideBatch:" + mOwner.mSide, insert, params);
+                    if (!pr.has_value())
+                        return ll::makeStringError(pr.error().message());
                 }
                 for (auto& rowKey : mDeleted) {
                     auto rec = mRepo.store().load(mRoot, rowKey);
@@ -826,7 +1118,7 @@ namespace LOICollection::data {
             auto rid = root();
             if (!rid.has_value())
                 return ll::makeStringError(rid.error().message());
-            return Batch(mRepo, std::move(*b), rid.value());
+            return Batch(*this, mRepo, std::move(*b), rid.value());
         }
     };
 

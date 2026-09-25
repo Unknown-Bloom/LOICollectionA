@@ -50,6 +50,11 @@ public:
         BlockId id, PropKey key, PayloadType type,
         std::int64_t ival, double rval, std::string_view tval);
 
+    [[nodiscard]] ll::Expected<void> exec(std::string_view sql);
+
+    [[nodiscard]] ll::Expected<void> execCells(
+        std::string_view key, std::string_view sql, std::span<const BlockProp> params);
+
     [[nodiscard]] ll::Expected<std::int32_t> intern(std::string_view name);
 
     [[nodiscard]] ll::Expected<void> link(BlockId src, BlockId dst, std::int32_t kind);

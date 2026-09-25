@@ -1,10 +1,12 @@
 #include "LOICollectionA/data/sqlite/block/BlockStore.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <limits>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 #include <sqlite3.h>
@@ -42,9 +44,10 @@ namespace {
         std::string_view name;
         std::string_view ddl;
         std::string_view columns;
+        std::string_view where = {};
     };
 
-    bool indexColumnsMatch(SQLite::Database& db, std::string_view name, std::string_view columns) {
+    std::string indexColumns(SQLite::Database& db, std::string_view name) {
         SQLite::Statement query(db, "SELECT name FROM pragma_index_info(?)");
         query.bind(1, std::string(name));
         std::string actual;
@@ -53,10 +56,31 @@ namespace {
                 actual.push_back(',');
             actual += query.getColumn(0).getString();
         }
-        return actual == columns;
+        return actual;
     }
 
-    ll::Expected<void> readBlockRow(SQLite::Statement& stmt, bool withId, BlockRecord& out, SQLiteConnection& conn) {
+    std::string indexWhereClause(SQLite::Database& db, std::string_view name) {
+        SQLite::Statement query(db, "SELECT sql FROM sqlite_master WHERE type='index' AND name=?");
+        query.bind(1, std::string(name));
+        if (query.tryExecuteStep() != SQLITE_ROW)
+            return {};
+        if (query.getColumn(0).isNull())
+            return {};
+        std::string sql = query.getColumn(0).getString();
+        auto pos = sql.find(" WHERE ");
+        if (pos == std::string::npos)
+            return {};
+        return sql.substr(pos + 7);
+    }
+
+    bool indexMatches(SQLite::Database& db, IndexSpec const& spec) {
+        if (indexColumns(db, spec.name) != spec.columns)
+            return false;
+        return indexWhereClause(db, spec.name) == spec.where;
+    }
+
+    ll::Expected<void> readBlockRow(
+        SQLite::Statement& stmt, bool withId, BlockRecord& out, SQLiteConnection& conn, bool withProps = true) {
         size_t col = 0;
         if (withId) out.id = stmt.getColumn(static_cast<int>(col++)).getInt64();
         out.parent = stmt.getColumn(static_cast<int>(col++)).getInt64();
@@ -71,6 +95,9 @@ namespace {
             out.payload.resize(n);
             std::memcpy(out.payload.data(), payloadCol.getBlob(), n);
         }
+
+        if (!withProps)
+            return {};
 
         auto& props = conn.statements().get("getPropsByBlock");
         props.reset();
@@ -89,6 +116,51 @@ namespace {
         props.reset();
         if (prc != SQLITE_DONE)
             return sqlError(conn);
+        return {};
+    }
+
+    constexpr std::size_t kPropChunk = 500;
+
+    ll::Expected<void> fillPropsBatch(SQLiteConnection& conn, std::vector<BlockRecord>& rows) {
+        if (rows.empty())
+            return {};
+
+        std::unordered_map<BlockId, BlockRecord*> byId;
+        byId.reserve(rows.size());
+        for (auto& r : rows)
+            byId.emplace(r.id, &r);
+
+        for (std::size_t off = 0; off < rows.size(); off += kPropChunk) {
+            std::size_t cnt = std::min(kPropChunk, rows.size() - off);
+            std::string sql = "SELECT block_id,key,type,ival,rval,tval FROM prop WHERE block_id IN (";
+            for (std::size_t i = 0; i < cnt; ++i) {
+                if (i)
+                    sql.push_back(',');
+                sql.push_back('?');
+            }
+            sql += ")";
+            auto& stmt = conn.statements().ensure("propsBatch" + std::to_string(cnt), sql);
+            stmt.reset();
+            for (std::size_t i = 0; i < cnt; ++i)
+                stmt.bind(static_cast<int>(i + 1), static_cast<std::int64_t>(rows[off + i].id));
+
+            int rc = 0;
+            while ((rc = stmt.tryExecuteStep()) == SQLITE_ROW) {
+                auto it = byId.find(stmt.getColumn(0).getInt64());
+                if (it == byId.end())
+                    continue;
+                BlockProp prop;
+                prop.key = stmt.getColumn(1).getInt();
+                prop.type = static_cast<PayloadType>(stmt.getColumn(2).getInt());
+                prop.intValue = stmt.getColumn(3).getInt64();
+                prop.realValue = stmt.getColumn(4).getDouble();
+                prop.textValue = stmt.getColumn(5).isNull() ? "" : stmt.getColumn(5).getString();
+                it->second->props.push_back(std::move(prop));
+            }
+            stmt.reset();
+            if (rc != SQLITE_DONE)
+                return sqlError(conn);
+        }
         return {};
     }
 
@@ -181,7 +253,13 @@ ll::Expected<void> BlockStore::ensureSchema(SQLiteConnection& conn) {
         { "idx_block_parent_name_row",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_block_parent_name_row ON block(parent, name) "
             "WHERE kind=1000000000",
-            "parent,name" },
+            "parent,name", "kind=1000000000" },
+        { "idx_block_parent_live",
+            "CREATE INDEX IF NOT EXISTS idx_block_parent_live ON block(parent) WHERE state < 8",
+            "parent", "state < 8" },
+        { "idx_block_parent_kind_live",
+            "CREATE INDEX IF NOT EXISTS idx_block_parent_kind_live ON block(parent, kind) WHERE state < 8",
+            "parent,kind", "state < 8" },
         { "idx_prop_key_ival",
             "CREATE INDEX IF NOT EXISTS idx_prop_key_ival ON prop(key, ival, block_id)",
             "key,ival,block_id" },
@@ -200,7 +278,7 @@ ll::Expected<void> BlockStore::ensureSchema(SQLiteConnection& conn) {
     }
 
     for (auto const& spec : kIndexes) {
-        if (indexColumnsMatch(conn.database(), spec.name, spec.columns))
+        if (indexMatches(conn.database(), spec))
             continue;
         int rc = conn.database().tryExec(("DROP INDEX IF EXISTS " + std::string(spec.name)).c_str());
         if (rc != SQLITE_OK)
@@ -356,6 +434,29 @@ ll::Expected<BlockRecord> BlockStore::load(BlockId parent, std::string_view name
     if (record.state != BlockLifecycle::Deleted)
         mNameCache.put(key, record.id);
     return record;
+}
+
+ll::Expected<std::optional<BlockId>> BlockStore::idOf(BlockId parent, std::string_view name) {
+    auto guard = acquireConnection(this->mPool);
+    if (!guard)
+        return ll::makeStringError(guard.error().message());
+
+    auto& stmt = (*guard).statements().get("getIdByName");
+    stmt.reset();
+    stmt.bind(1, static_cast<std::int64_t>(parent));
+    stmt.bind(2, std::string(name));
+    int rc = stmt.tryExecuteStep();
+    if (rc == SQLITE_DONE) {
+        stmt.reset();
+        return std::optional<BlockId>{};
+    }
+    if (rc != SQLITE_ROW)
+        return sqlError(*guard);
+
+    BlockId id = stmt.getColumn(0).getInt64();
+    stmt.reset();
+    mNameCache.put(nameKey(parent, name), id);
+    return id;
 }
 
 ll::Expected<void> BlockStore::withBlock(
@@ -546,12 +647,59 @@ ll::Expected<std::vector<BlockRecord>> BlockStore::records(BlockId parent, std::
     int rc = 0;
     while ((rc = stmt.tryExecuteStep()) == SQLITE_ROW) {
         BlockRecord record;
-        if (auto r = readBlockRow(stmt, true, record, *guard); !r)
+        if (auto r = readBlockRow(stmt, true, record, *guard, false); !r)
             return ll::makeStringError(r.error().message());
         out.push_back(std::move(record));
     }
+    stmt.reset();
     if (rc != SQLITE_DONE)
         return sqlError(*guard);
+
+    if (auto r = fillPropsBatch(*guard, out); !r)
+        return ll::makeStringError(r.error().message());
+    return out;
+}
+
+ll::Expected<std::vector<BlockRecord>> BlockStore::rowsByIds(std::span<const BlockId> ids, bool withProps) {
+    auto guard = acquireConnection(this->mPool);
+    if (!guard)
+        return ll::makeStringError(guard.error().message());
+
+    std::vector<BlockRecord> out;
+    if (ids.empty())
+        return out;
+    out.reserve(ids.size());
+
+    for (std::size_t off = 0; off < ids.size(); off += kPropChunk) {
+        std::size_t cnt = std::min(kPropChunk, ids.size() - off);
+        std::string sql = "SELECT id,parent,name,kind,state,created,updated,payload FROM block WHERE id IN (";
+        for (std::size_t i = 0; i < cnt; ++i) {
+            if (i)
+                sql.push_back(',');
+            sql.push_back('?');
+        }
+        sql += ")";
+        auto& stmt = (*guard).statements().ensure("rowsByIds" + std::to_string(cnt), sql);
+        stmt.reset();
+        for (std::size_t i = 0; i < cnt; ++i)
+            stmt.bind(static_cast<int>(i + 1), static_cast<std::int64_t>(ids[off + i]));
+
+        int rc = 0;
+        while ((rc = stmt.tryExecuteStep()) == SQLITE_ROW) {
+            BlockRecord record;
+            if (auto r = readBlockRow(stmt, true, record, *guard, false); !r)
+                return ll::makeStringError(r.error().message());
+            out.push_back(std::move(record));
+        }
+        stmt.reset();
+        if (rc != SQLITE_DONE)
+            return sqlError(*guard);
+    }
+
+    if (withProps) {
+        if (auto r = fillPropsBatch(*guard, out); !r)
+            return ll::makeStringError(r.error().message());
+    }
     return out;
 }
 
@@ -697,7 +845,7 @@ ll::Expected<std::vector<std::pair<BlockId, std::string>>> BlockStore::queryText
         sql += std::to_string(i);
         sql += ".tval=?";
     }
-    sql += " AND b.parent=? AND (b.state & 24)=0";
+    sql += " AND b.parent=? AND b.state < 8";
     sql += " ORDER BY b.id LIMIT ?";
 
     auto& stmt = (*guard).statements().ensure("queryTextNamesAll" + std::to_string(n), sql);
@@ -768,6 +916,33 @@ ll::Expected<void> BlockStore::exec(std::string_view sql) {
         return ll::makeStringError(guard.error().message());
     int rc = (*guard).database().tryExec(std::string(sql).c_str());
     if (rc != SQLITE_OK)
+        return sqlError(*guard);
+    return {};
+}
+
+ll::Expected<void> BlockStore::withQuery(
+    std::string_view key, std::string_view sql, std::span<const BlockProp> params,
+    std::function<void(SQLite::Statement&)> const& consumer) {
+    auto guard = acquireConnection(this->mPool);
+    if (!guard)
+        return ll::makeStringError(guard.error().message());
+
+    auto& stmt = (*guard).statements().ensure(key, sql);
+    stmt.reset();
+    int idx = 1;
+    for (auto const& p : params) {
+        if (p.type == PayloadType::Int)
+            stmt.bind(idx++, static_cast<std::int64_t>(p.intValue));
+        else if (p.type == PayloadType::Double)
+            stmt.bind(idx++, static_cast<double>(p.realValue));
+        else
+            stmt.bind(idx++, p.textValue);
+    }
+    int rc = 0;
+    while ((rc = stmt.tryExecuteStep()) == SQLITE_ROW)
+        consumer(stmt);
+    stmt.reset();
+    if (rc != SQLITE_DONE)
         return sqlError(*guard);
     return {};
 }

@@ -28,7 +28,7 @@ public:
     LOICOLLECTION_A_API   void remove_ptr(std::string_view ptr);
 
     LOICOLLECTION_A_NDAPI bool has(std::string_view key) const;
-    LOICOLLECTION_A_NDAPI bool has_ptr(std::string_view ptr) const; 
+    LOICOLLECTION_A_NDAPI bool has_ptr(std::string_view ptr) const;
 
     LOICOLLECTION_A_NDAPI nlohmann::ordered_json get() const;
 
