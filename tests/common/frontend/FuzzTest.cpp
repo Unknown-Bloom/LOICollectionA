@@ -3,7 +3,6 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
-#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -192,23 +191,14 @@ namespace LOICollection::frontend {
             }
         }
 
-        std::size_t fuzzRounds() {
-            if (const auto* value = std::getenv("LOICOLLECTION_A_FUZZ_ROUNDS")) {
-                const long parsed = std::atol(value);
-                if (parsed > 0)
-                    return static_cast<std::size_t>(parsed);
-            }
-
-            return 2000;
-        }
-
-        constexpr auto kPerInputLimit = std::chrono::milliseconds(250);
+        constexpr auto kFuzzRounds      = std::size_t{2000};
+        constexpr auto kPerInputLimit   = std::chrono::milliseconds(250);
     }
 
     TEST(FuzzTest, MutatedSourcesStayBounded) {
         Rng rng(0x5DEECE66Dull);
         const auto& seeds = corpus();
-        const std::size_t rounds = fuzzRounds();
+        const std::size_t rounds = kFuzzRounds;
 
         for (std::size_t i = 0; i < rounds; ++i) {
             const std::string source = mutate(seeds[rng.below(seeds.size())], rng);
@@ -225,7 +215,7 @@ namespace LOICollection::frontend {
 
     TEST(FuzzTest, TokenSoupStaysBounded) {
         Rng rng(0x2545F4914F6CDD1Dull);
-        const std::size_t rounds = fuzzRounds();
+        const std::size_t rounds = kFuzzRounds;
 
         for (std::size_t i = 0; i < rounds; ++i) {
             const std::string source = tokenSoup(rng);

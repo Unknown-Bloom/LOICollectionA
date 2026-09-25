@@ -132,7 +132,7 @@ namespace LOICollection::server::Plugins {
         if (auto cached = this->mImpl->rankCache.get("global"); cached.has_value())
             return *cached.value();
 
-        auto loadAll = [this](auto& table) -> ll::Expected<std::unordered_map<std::string, std::unordered_map<std::string, std::string>>> {
+        auto loadAll = [](auto& table) -> ll::Expected<std::unordered_map<std::string, std::unordered_map<std::string, std::string>>> {
             auto keys = table.list();
             if (!keys.has_value())
                 return ll::makeStringError(keys.error().message());

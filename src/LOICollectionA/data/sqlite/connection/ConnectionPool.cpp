@@ -66,8 +66,7 @@ ll::Expected<void> SQLiteConnection::applyPragmas() {
 
 ConnectionPool::~ConnectionPool() = default;
 
-ConnectionPool::ConnectionPool(std::string path, bool readOnly)
-    : mPath(std::move(path)), mReadOnly(readOnly) {}
+ConnectionPool::ConnectionPool(std::string path) : mPath(std::move(path)) {}
 
 ll::Expected<std::shared_ptr<ConnectionPool>> ConnectionPool::create(
     std::string path, std::size_t size, bool readOnly) {
@@ -75,7 +74,7 @@ ll::Expected<std::shared_ptr<ConnectionPool>> ConnectionPool::create(
         return ll::makeStringError("connection pool size must be at least 1");
     }
 
-    std::shared_ptr<ConnectionPool> pool(new ConnectionPool(std::move(path), readOnly));
+    std::shared_ptr<ConnectionPool> pool(new ConnectionPool(std::move(path)));
     pool->mAll.reserve(size);
 
     for (std::size_t i = 0; i < size; ++i) {

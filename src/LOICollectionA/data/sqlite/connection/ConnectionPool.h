@@ -50,12 +50,11 @@ public:
     LOICOLLECTION_A_API void release(std::shared_ptr<SQLiteConnection> conn);
 
 private:
-    ConnectionPool(std::string path, bool readOnly);
+    explicit ConnectionPool(std::string path);
 
     std::mutex mMutex;
     std::condition_variable mCond;
     std::string mPath;
-    bool mReadOnly;
     std::vector<std::shared_ptr<SQLiteConnection>> mAll;
     std::queue<std::shared_ptr<SQLiteConnection>> mAvailable;
 };

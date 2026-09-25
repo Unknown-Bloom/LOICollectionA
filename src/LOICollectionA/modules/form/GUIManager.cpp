@@ -179,7 +179,9 @@ namespace LOICollection::form {
 
             if (auto chunk = Serializer::deserialize(blob.value(), header, &bodyChecksum)) {
                 if (auto debug = this->readFile(packagePath + ".dbg"); debug.has_value())
-                    Serializer::attachDebugInfo(*chunk, debug.value(), bodyChecksum);
+                    if (!Serializer::attachDebugInfo(*chunk, debug.value(), bodyChecksum))
+                        ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA")
+                            ->warn("script '{}' has a stale debug package — loaded without debug info", id);
 
                 this->mImpl->cache.insert_or_assign(id, std::make_shared<frontend::ir::MirChunk>(std::move(*chunk)));
                 warnIfMissingPermission(id);
