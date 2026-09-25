@@ -18,7 +18,10 @@ protected:
 
         std::filesystem::create_directories(tempDir);
 
-        pool = std::make_shared<ConnectionPool>((tempDir / "events.db").string(), 2);
+        auto created = ConnectionPool::create((tempDir / "events.db").string(), 2);
+        ASSERT_TRUE(created.has_value());
+
+        pool = std::move(created.value());
 
         auto store = BlockStore::create(pool);
         ASSERT_TRUE(store.has_value());
