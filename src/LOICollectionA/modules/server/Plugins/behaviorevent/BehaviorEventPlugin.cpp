@@ -1149,9 +1149,11 @@ namespace LOICollection::server::Plugins {
 
         auto mDataPath = std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("DataPath")->data());
 
-        auto pool = std::make_shared<ConnectionPool>((mDataPath / "behaviorevent.db").string(), 4);
+        auto pool = ConnectionPool::create((mDataPath / "behaviorevent.db").string(), 4);
+        if (!pool)
+            return ll::makeStringError(pool.error().message());
 
-        auto store = BlockStore::create(pool);
+        auto store = BlockStore::create(*pool);
         if (!store)
             return ll::makeStringError(store.error().message());
 
@@ -1159,7 +1161,7 @@ namespace LOICollection::server::Plugins {
         if (!log)
             return ll::makeStringError(log.error().message());
 
-        this->mImpl->pool = std::move(pool);
+        this->mImpl->pool = std::move(*pool);
         this->mImpl->store = std::move(*store);
         this->mImpl->log = std::move(*log);
 

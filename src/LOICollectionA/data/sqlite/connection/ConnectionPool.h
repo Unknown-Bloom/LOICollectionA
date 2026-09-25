@@ -1,6 +1,7 @@
 #pragma once
 
 #include <condition_variable>
+#include <cstddef>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -8,6 +9,8 @@
 #include <vector>
 
 #include <ll/api/Expected.h>
+
+#include "LOICollectionA/base/Macro.h"
 
 class PreparedStatements;
 
@@ -17,26 +20,38 @@ namespace SQLite {
 
 class SQLiteConnection {
 public:
-    SQLiteConnection(std::string path, bool readOnly);
+    LOICOLLECTION_A_NDAPI static ll::Expected<std::shared_ptr<SQLiteConnection>> create(
+        std::string path, bool readOnly);
 
-    ~SQLiteConnection();
+    LOICOLLECTION_A_API ~SQLiteConnection();
 
     [[nodiscard]] SQLite::Database& database() noexcept { return *mDatabase; }
     [[nodiscard]] PreparedStatements& statements() noexcept { return *mStatements; }
 
 private:
+    SQLiteConnection(std::string path, bool readOnly);
+
+    [[nodiscard]] ll::Expected<void> applyPragmas();
+
     std::unique_ptr<SQLite::Database> mDatabase;
     std::unique_ptr<PreparedStatements> mStatements;
 };
 
 class ConnectionPool {
 public:
-    ConnectionPool(std::string path, size_t size, bool readOnly = false);
+    LOICOLLECTION_A_API ~ConnectionPool();
 
-    [[nodiscard]] ll::Expected<std::shared_ptr<SQLiteConnection>> acquire(int timeout = 5000);
-    void release(std::shared_ptr<SQLiteConnection> conn);
+    LOICOLLECTION_A_NDAPI static ll::Expected<std::shared_ptr<ConnectionPool>> create(
+        std::string path, std::size_t size, bool readOnly = false);
+
+    LOICOLLECTION_A_NDAPI ll::Expected<std::shared_ptr<SQLiteConnection>> acquire(
+        int timeout = 5000);
+
+    LOICOLLECTION_A_API void release(std::shared_ptr<SQLiteConnection> conn);
 
 private:
+    ConnectionPool(std::string path, bool readOnly);
+
     std::mutex mMutex;
     std::condition_variable mCond;
     std::string mPath;

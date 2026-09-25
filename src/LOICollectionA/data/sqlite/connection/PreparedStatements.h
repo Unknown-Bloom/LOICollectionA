@@ -5,6 +5,9 @@
 #include <string_view>
 #include <unordered_map>
 
+#include "LOICollectionA/base/Macro.h"
+#include "LOICollectionA/base/Ownership.h"
+
 namespace SQLite {
     class Database;
     class Statement;
@@ -12,13 +15,16 @@ namespace SQLite {
 
 class PreparedStatements {
 public:
-    explicit PreparedStatements(SQLite::Database& db);
+    LOICOLLECTION_A_API explicit PreparedStatements(SQLite::Database& db);
 
-    [[nodiscard]] SQLite::Statement& get(std::string_view name);
+    LOICOLLECTION_A_API ~PreparedStatements();
 
-    [[nodiscard]] SQLite::Statement& ensure(std::string_view name, std::string_view sql);
+    LOICOLLECTION_A_NDAPI observer<SQLite::Statement> get(std::string_view name) noexcept;
 
-    void resetAll();
+    LOICOLLECTION_A_NDAPI observer<SQLite::Statement> ensure(
+        std::string_view name, std::string_view sql) noexcept;
+
+    LOICOLLECTION_A_API void resetAll();
 
 private:
     SQLite::Database& mDb;

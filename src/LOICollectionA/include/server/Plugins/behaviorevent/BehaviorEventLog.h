@@ -40,7 +40,7 @@ public:
     BehaviorEventLog(BehaviorEventLog const&) = delete;
     BehaviorEventLog& operator=(BehaviorEventLog const&) = delete;
 
-    [[nodiscard]] LOICOLLECTION_A_NDAPI static ll::Expected<std::unique_ptr<BehaviorEventLog>> create(
+    LOICOLLECTION_A_NDAPI static ll::Expected<std::unique_ptr<BehaviorEventLog>> create(
         BlockStore& store, std::string_view rootName);
 
     [[nodiscard]] ll::Expected<BlockId> append(PreparedEvent const& event);

@@ -122,20 +122,6 @@ namespace LOICollection::data {
             return std::string_view(reinterpret_cast<char const*>(b.data()), b.size());
         }
 
-        std::vector<std::byte> encodeRow(RowCells const& cells) {
-            PayloadWriter w;
-            for (auto const& [k, c] : cells) {
-                PayloadField f;
-                f.key = c.key;
-                f.type = c.type;
-                f.intValue = c.intValue;
-                f.realValue = c.realValue;
-                f.textValue = c.textValue;
-                w.write(f);
-            }
-            return w.data();
-        }
-
         RowCells decodeRow(std::string_view blob) {
             RowCells cells;
             if (blob.empty())
@@ -523,12 +509,6 @@ namespace LOICollection::data {
             if (stored.value().has_value() && stored.value().value() == want)
                 return {};
 
-            // Snapshot the existing side table (if any) before rebuilding it. On the block
-            // model set() writes ONLY the side table and never a payload, so the side table
-            // is the sole copy of the data; dropping it without reading it first would
-            // silently lose every row on a column-addition self-heal. When the side table
-            // does not exist yet (initial migration) this map stays empty and the
-            // payload/props path below is used instead.
             std::unordered_map<BlockId, RowCells> oldSide;
             {
                 std::vector<std::string> oldCols;
@@ -593,8 +573,6 @@ namespace LOICollection::data {
                 idParam.type = PayloadType::Int;
                 idParam.intValue = rec.id;
                 params.push_back(idParam);
-                // Start from the legacy payload/props (initial migration), then overlay the
-                // current side-table values, which are authoritative for existing rows.
                 RowCells cells = cellsOf(rec);
                 auto it = oldSide.find(rec.id);
                 if (it != oldSide.end())
@@ -721,13 +699,6 @@ namespace LOICollection::data {
             want.push_back('\x1e');
             want += mask;
 
-            // The schema: meta encodes "version \x1e type_name \x1e column-count \x1e index-mask".
-            // A changed version or enum *type name* is a structural break that cannot be migrated
-            // automatically, so we refuse to open rather than risk corrupting data. A change in the
-            // column count (add/remove a column) or the index mask is NOT a hard error: ensureSide()
-            // rebuilds the side table from the column fingerprint, and we refresh the schema marker
-            // afterwards. This lets a schema upgrade self-heal on the next open instead of failing
-            // outright (the old code bailed at the column-count check before ensureSide() ran).
             bool schemaDirty = false;
             bool needIndexBackfill = false;
             auto stored = repo.metaGet(metaKey);

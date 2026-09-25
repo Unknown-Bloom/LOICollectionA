@@ -4,6 +4,7 @@
 
 #include <ll/api/Expected.h>
 
+#include "LOICollectionA/base/Macro.h"
 #include "LOICollectionA/base/Ownership.h"
 
 class SQLiteConnection;
@@ -15,23 +16,23 @@ namespace SQLite {
 
 class StorageTransaction {
 public:
-    explicit StorageTransaction(std::shared_ptr<SQLiteConnection> conn, observer<ConnectionPool> pool);
+    LOICOLLECTION_A_API explicit StorageTransaction(std::shared_ptr<SQLiteConnection> conn, observer<ConnectionPool> pool);
 
     StorageTransaction(StorageTransaction const&) = delete;
     StorageTransaction& operator=(StorageTransaction const&) = delete;
 
-    StorageTransaction(StorageTransaction&& other) noexcept;
+    LOICOLLECTION_A_API StorageTransaction(StorageTransaction&& other) noexcept;
     StorageTransaction& operator=(StorageTransaction&&) = delete;
 
-    ~StorageTransaction();
+    LOICOLLECTION_A_API ~StorageTransaction();
 
-    [[nodiscard]] ll::Expected<bool> commit();
-    [[nodiscard]] ll::Expected<bool> rollback();
+    LOICOLLECTION_A_NDAPI ll::Expected<bool> commit();
+    LOICOLLECTION_A_NDAPI ll::Expected<bool> rollback();
 
     [[nodiscard]] std::shared_ptr<SQLiteConnection> connection() const noexcept { return mConnection; }
 
 private:
-    void finish();
+    LOICOLLECTION_A_API void finish();
 
     std::shared_ptr<SQLiteConnection> mConnection;
     std::unique_ptr<SQLite::Transaction> mTransaction;

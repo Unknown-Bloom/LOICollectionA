@@ -11,6 +11,8 @@
 #include <optional>
 #include <utility>
 
+#include "LOICollectionA/base/Macro.h"
+
 namespace LOICollection {
     using PropKey = std::int32_t;
 }
@@ -34,12 +36,12 @@ class PayloadWriter {
 public:
     PayloadWriter() = default;
 
-    void write(LOICollection::PropKey key, std::int64_t value);
-    void write(LOICollection::PropKey key, double value);
-    void write(LOICollection::PropKey key, std::string_view value);
-    void write(PayloadField const& field);
+    LOICOLLECTION_A_API void write(LOICollection::PropKey key, std::int64_t value);
+    LOICOLLECTION_A_API void write(LOICollection::PropKey key, double value);
+    LOICOLLECTION_A_API void write(LOICollection::PropKey key, std::string_view value);
+    LOICOLLECTION_A_API void write(PayloadField const& field);
 
-    [[nodiscard]] std::vector<std::byte> data() const;
+    LOICOLLECTION_A_NDAPI std::vector<std::byte> data() const;
 
 private:
     std::vector<std::byte> mData;

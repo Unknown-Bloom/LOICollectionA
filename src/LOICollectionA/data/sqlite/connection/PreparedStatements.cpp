@@ -1,8 +1,8 @@
-#include "LOICollectionA/data/sqlite/connection/PreparedStatements.h"
-
 #include <array>
 
 #include <SQLiteCpp/SQLiteCpp.h>
+
+#include "LOICollectionA/data/sqlite/connection/PreparedStatements.h"
 
 namespace {
     using StatementSpec = std::pair<std::string_view, std::string_view>;
@@ -77,26 +77,35 @@ namespace {
 
 PreparedStatements::PreparedStatements(SQLite::Database& db) : mDb(db) {}
 
-SQLite::Statement& PreparedStatements::ensure(std::string_view name, std::string_view sql) {
+PreparedStatements::~PreparedStatements() = default;
+
+observer<SQLite::Statement> PreparedStatements::ensure(std::string_view name, std::string_view sql) noexcept {
     auto key = std::string(name);
     auto it = mStatements.find(key);
     if (it != mStatements.end())
-        return *it->second;
+        return it->second.get();
 
-    auto stmt = std::make_unique<SQLite::Statement>(mDb, std::string(sql));
-    auto& ref = *stmt;
+    std::unique_ptr<SQLite::Statement> stmt;
+    try {
+        stmt = std::make_unique<SQLite::Statement>(mDb, std::string(sql));
+    } catch (...) {
+        return nullptr;
+    }
+
+    auto* ref = stmt.get();
     mStatements.emplace(std::move(key), std::move(stmt));
     return ref;
 }
 
-SQLite::Statement& PreparedStatements::get(std::string_view name) {
+observer<SQLite::Statement> PreparedStatements::get(std::string_view name) noexcept {
     for (const auto& [n, sql] : kCatalog)
         if (n == name)
             return this->ensure(n, sql);
-    return this->ensure(name, "");
+    return nullptr;
 }
 
 void PreparedStatements::resetAll() {
     for (auto& [name, stmt] : mStatements)
-        stmt->reset();
+        if (stmt)
+            stmt->reset();
 }

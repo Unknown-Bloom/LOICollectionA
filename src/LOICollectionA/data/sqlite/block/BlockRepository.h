@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -16,10 +17,10 @@ public:
     BlockRepository(BlockRepository const&) = delete;
     BlockRepository& operator=(BlockRepository const&) = delete;
 
-    [[nodiscard]] LOICOLLECTION_A_NDAPI static ll::Expected<std::shared_ptr<BlockRepository>> open(
-        std::string dbPath, size_t connections = 4);
+    LOICOLLECTION_A_NDAPI static ll::Expected<std::shared_ptr<BlockRepository>> open(
+        std::string dbPath, std::size_t connections = 4);
 
-    [[nodiscard]] LOICOLLECTION_A_NDAPI static ll::Expected<std::shared_ptr<BlockRepository>> fromStore(
+    LOICOLLECTION_A_NDAPI static ll::Expected<std::shared_ptr<BlockRepository>> fromStore(
         std::shared_ptr<BlockStore> store);
 
     [[nodiscard]] BlockStore& store() noexcept { return *mStore; }

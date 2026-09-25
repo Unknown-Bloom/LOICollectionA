@@ -73,102 +73,102 @@ struct BlockRecord {
     std::vector<BlockProp> props;
 };
 
-[[nodiscard]] BlockRecord materialize(BlockView const& view);
+LOICOLLECTION_A_NDAPI BlockRecord materialize(BlockView const& view);
 
 class BlockStore {
 public:
-    [[nodiscard]] LOICOLLECTION_A_NDAPI static ll::Expected<std::unique_ptr<BlockStore>> create(
+    LOICOLLECTION_A_NDAPI static ll::Expected<std::unique_ptr<BlockStore>> create(
         std::shared_ptr<ConnectionPool> pool);
 
     LOICOLLECTION_A_API ~BlockStore();
 
-    [[nodiscard]] ll::Expected<std::optional<std::string>> metaGet(std::string_view key);
-    [[nodiscard]] ll::Expected<void> metaSet(std::string_view key, std::string_view value);
-    [[nodiscard]] ll::Expected<void> metaDel(std::string_view key);
+    LOICOLLECTION_A_NDAPI ll::Expected<std::optional<std::string>> metaGet(std::string_view key);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> metaSet(std::string_view key, std::string_view value);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> metaDel(std::string_view key);
 
     BlockStore(BlockStore const&) = delete;
     BlockStore& operator=(BlockStore const&) = delete;
 
-    [[nodiscard]] ll::Expected<BlockId> createBlock(
+    LOICOLLECTION_A_NDAPI ll::Expected<BlockId> createBlock(
         BlockId parent, std::int32_t kind, std::string_view name, std::string_view payload = {});
 
-    [[nodiscard]] ll::Expected<BlockId> upsertRow(
+    LOICOLLECTION_A_NDAPI ll::Expected<BlockId> upsertRow(
         BlockId parent, std::string_view name, std::string_view payload = {});
 
-    [[nodiscard]] ll::Expected<BlockRecord> load(BlockId id);
-    [[nodiscard]] ll::Expected<BlockRecord> load(BlockId parent, std::string_view name);
+    LOICOLLECTION_A_NDAPI ll::Expected<BlockRecord> load(BlockId id);
+    LOICOLLECTION_A_NDAPI ll::Expected<BlockRecord> load(BlockId parent, std::string_view name);
 
-    [[nodiscard]] ll::Expected<std::optional<BlockId>> idOf(BlockId parent, std::string_view name);
+    LOICOLLECTION_A_NDAPI ll::Expected<std::optional<BlockId>> idOf(BlockId parent, std::string_view name);
 
-    [[nodiscard]] ll::Expected<void> withBlock(BlockId id, std::function<void(BlockView const&)> const& consumer);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> withBlock(BlockId id, std::function<void(BlockView const&)> const& consumer);
 
-    [[nodiscard]] ll::Expected<void> setPayload(BlockId id, std::string_view payload);
-    [[nodiscard]] ll::Expected<void> remove(BlockId id);
-    [[nodiscard]] ll::Expected<void> control(BlockId id, BlockLifecycle to);
-    [[nodiscard]] ll::Expected<BlockLifecycle> stateOf(BlockId id);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> setPayload(BlockId id, std::string_view payload);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> remove(BlockId id);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> control(BlockId id, BlockLifecycle to);
+    LOICOLLECTION_A_NDAPI ll::Expected<BlockLifecycle> stateOf(BlockId id);
 
-    [[nodiscard]] ll::Expected<std::vector<BlockId>> children(BlockId parent, std::int32_t kind = -1, size_t limit = 0);
-    [[nodiscard]] ll::Expected<std::vector<BlockRecord>> records(BlockId parent, std::int32_t kind = -1, size_t limit = 0);
-    [[nodiscard]] ll::Expected<std::vector<std::pair<BlockId, std::string>>> childNames(BlockId parent);
-    [[nodiscard]] ll::Expected<std::vector<BlockRecord>> rowsByIds(
+    LOICOLLECTION_A_NDAPI ll::Expected<std::vector<BlockId>> children(BlockId parent, std::int32_t kind = -1, size_t limit = 0);
+    LOICOLLECTION_A_NDAPI ll::Expected<std::vector<BlockRecord>> records(BlockId parent, std::int32_t kind = -1, size_t limit = 0);
+    LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<BlockId, std::string>>> childNames(BlockId parent);
+    LOICOLLECTION_A_NDAPI ll::Expected<std::vector<BlockRecord>> rowsByIds(
         std::span<const BlockId> ids, bool withProps = false);
 
-    [[nodiscard]] ll::Expected<void> setProp(BlockId id, PropKey key, std::int64_t value);
-    [[nodiscard]] ll::Expected<void> setProp(BlockId id, PropKey key, double value);
-    [[nodiscard]] ll::Expected<void> setProp(BlockId id, PropKey key, std::string_view value);
-    [[nodiscard]] ll::Expected<void> setProp(
+    LOICOLLECTION_A_NDAPI ll::Expected<void> setProp(BlockId id, PropKey key, std::int64_t value);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> setProp(BlockId id, PropKey key, double value);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> setProp(BlockId id, PropKey key, std::string_view value);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> setProp(
         BlockId id, PropKey key, PayloadType type, std::int64_t ival, double rval, std::string_view tval);
 
-    [[nodiscard]] ll::Expected<std::vector<BlockId>> queryInt(PropKey key, std::int64_t min, std::int64_t max, size_t limit = 0);
-    [[nodiscard]] ll::Expected<std::vector<BlockId>> queryInt(
+    LOICOLLECTION_A_NDAPI ll::Expected<std::vector<BlockId>> queryInt(PropKey key, std::int64_t min, std::int64_t max, size_t limit = 0);
+    LOICOLLECTION_A_NDAPI ll::Expected<std::vector<BlockId>> queryInt(
         BlockId parent, PropKey key, std::int64_t min, std::int64_t max, size_t limit = 0);
-    [[nodiscard]] ll::Expected<std::vector<BlockId>> queryText(PropKey key, std::string_view value, size_t limit = 0);
-    [[nodiscard]] ll::Expected<std::vector<BlockId>> queryText(
+    LOICOLLECTION_A_NDAPI ll::Expected<std::vector<BlockId>> queryText(PropKey key, std::string_view value, size_t limit = 0);
+    LOICOLLECTION_A_NDAPI ll::Expected<std::vector<BlockId>> queryText(
         BlockId parent, PropKey key, std::string_view value, size_t limit = 0);
-    [[nodiscard]] ll::Expected<std::vector<std::pair<BlockId, std::string>>> queryTextNames(
+    LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<BlockId, std::string>>> queryTextNames(
         BlockId parent, PropKey key, std::string_view value, size_t limit = 0);
-    [[nodiscard]] ll::Expected<std::vector<std::pair<BlockId, std::string>>> queryTextNamesAll(
+    LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<BlockId, std::string>>> queryTextNamesAll(
         BlockId parent, std::vector<PropMatch> const& conds, size_t limit = 0);
 
-    [[nodiscard]] ll::Expected<void> exec(std::string_view sql);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> exec(std::string_view sql);
 
-    [[nodiscard]] ll::Expected<void> withQuery(
+    LOICOLLECTION_A_NDAPI ll::Expected<void> withQuery(
         std::string_view key,
         std::string_view sql,
         std::span<const BlockProp> params,
         std::function<void(SQLite::Statement&)> const& consumer);
 
-    [[nodiscard]] ll::Expected<void> link(BlockId src, BlockId dst, std::int32_t kind);
-    [[nodiscard]] ll::Expected<void> unlink(BlockId src, BlockId dst, std::int32_t kind);
-    [[nodiscard]] ll::Expected<std::vector<BlockId>> links(BlockId src, std::int32_t kind = -1);
-    [[nodiscard]] ll::Expected<std::vector<BlockId>> backlinks(BlockId dst, std::int32_t kind = -1);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> link(BlockId src, BlockId dst, std::int32_t kind);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> unlink(BlockId src, BlockId dst, std::int32_t kind);
+    LOICOLLECTION_A_NDAPI ll::Expected<std::vector<BlockId>> links(BlockId src, std::int32_t kind = -1);
+    LOICOLLECTION_A_NDAPI ll::Expected<std::vector<BlockId>> backlinks(BlockId dst, std::int32_t kind = -1);
 
-    [[nodiscard]] ll::Expected<std::int32_t> intern(std::string_view name);
-    [[nodiscard]] ll::Expected<std::string> unintern(std::int32_t id);
+    LOICOLLECTION_A_NDAPI ll::Expected<std::int32_t> intern(std::string_view name);
+    LOICOLLECTION_A_NDAPI ll::Expected<std::string> unintern(std::int32_t id);
 
     friend class WriteBatch;
 
 private:
-    explicit BlockStore(std::shared_ptr<ConnectionPool> pool);
+    LOICOLLECTION_A_API explicit BlockStore(std::shared_ptr<ConnectionPool> pool);
 
-    [[nodiscard]] ll::Expected<std::shared_ptr<SQLiteConnection>> acquire(int timeout = 5000);
-    void release(std::shared_ptr<SQLiteConnection> conn);
+    LOICOLLECTION_A_NDAPI ll::Expected<std::shared_ptr<SQLiteConnection>> acquire(int timeout = 5000);
+    LOICOLLECTION_A_API void release(std::shared_ptr<SQLiteConnection> conn);
 
-    [[nodiscard]] ll::Expected<void> ensureSchema(SQLiteConnection& conn);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> ensureSchema(SQLiteConnection& conn);
 
-    [[nodiscard]] ll::Expected<void> implCreateBlock(
+    LOICOLLECTION_A_NDAPI ll::Expected<void> implCreateBlock(
         SQLiteConnection& conn, BlockId parent, std::int32_t kind, std::string_view name,
         std::string_view payload, BlockId& id);
-    [[nodiscard]] ll::Expected<BlockId> implUpsertRow(
+    LOICOLLECTION_A_NDAPI ll::Expected<BlockId> implUpsertRow(
         SQLiteConnection& conn, BlockId parent, std::string_view name, std::string_view payload);
-    [[nodiscard]] ll::Expected<void> implSetPayload(SQLiteConnection& conn, BlockId id, std::string_view payload);
-    [[nodiscard]] ll::Expected<void> implControl(SQLiteConnection& conn, BlockId id, BlockLifecycle to);
-    [[nodiscard]] ll::Expected<void> implSetProp(SQLiteConnection& conn, BlockId id, PropKey key, PayloadType type, std::int64_t ival, double rval, std::string_view tval);
-    [[nodiscard]] ll::Expected<void> implLink(SQLiteConnection& conn, BlockId src, BlockId dst, std::int32_t kind);
-    [[nodiscard]] ll::Expected<void> implUnlink(SQLiteConnection& conn, BlockId src, BlockId dst, std::int32_t kind);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> implSetPayload(SQLiteConnection& conn, BlockId id, std::string_view payload);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> implControl(SQLiteConnection& conn, BlockId id, BlockLifecycle to);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> implSetProp(SQLiteConnection& conn, BlockId id, PropKey key, PayloadType type, std::int64_t ival, double rval, std::string_view tval);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> implLink(SQLiteConnection& conn, BlockId src, BlockId dst, std::int32_t kind);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> implUnlink(SQLiteConnection& conn, BlockId src, BlockId dst, std::int32_t kind);
 
-    [[nodiscard]] ll::Expected<BlockRecord> readBlock(SQLiteConnection& conn, BlockId id);
-    [[nodiscard]] ll::Expected<std::int32_t> resolveKey(SQLiteConnection& conn, std::string_view name);
+    LOICOLLECTION_A_NDAPI ll::Expected<BlockRecord> readBlock(SQLiteConnection& conn, BlockId id);
+    LOICOLLECTION_A_NDAPI ll::Expected<std::int32_t> resolveKey(SQLiteConnection& conn, std::string_view name);
 
     std::shared_ptr<ConnectionPool> mPool;
     LRUCache<BlockId, BlockRecord> mBlockCache{2048};

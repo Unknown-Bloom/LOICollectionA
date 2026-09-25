@@ -166,10 +166,10 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getReviews(const std::string& storeId, MarketStoreReviewStatus status);
         LOICOLLECTION_A_NDAPI ll::Expected<std::unordered_map<std::string, std::string>> getReviewData(const std::string& id);
 
-        [[nodiscard]] LOICOLLECTION_A_NDAPI StoreTable& stores();
-        [[nodiscard]] LOICOLLECTION_A_NDAPI StoreItemTable& items();
-        [[nodiscard]] LOICOLLECTION_A_NDAPI StoreSaleTable& sales();
-        [[nodiscard]] LOICOLLECTION_A_NDAPI StoreReviewTable& reviews();
+        LOICOLLECTION_A_NDAPI StoreTable& stores();
+        LOICOLLECTION_A_NDAPI StoreItemTable& items();
+        LOICOLLECTION_A_NDAPI StoreSaleTable& sales();
+        LOICOLLECTION_A_NDAPI StoreReviewTable& reviews();
 
         LOICOLLECTION_A_NDAPI ll::Expected<std::optional<QuoteInfo>> getQuote(const std::string& itemName);
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<std::string, long long>>> getTopVolume(int limit, int days = 30);
