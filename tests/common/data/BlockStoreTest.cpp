@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -229,6 +231,153 @@ TEST(BlockStoreTest, FindAndMatchesManualIntersection) {
 
     EXPECT_EQ(actual, expected);
     EXPECT_FALSE(expected.empty());
+    dropDb(path);
+}
+
+namespace {
+    const std::string kProbePayload = "PAYLOAD-0123456789";
+
+    std::string payloadText(std::vector<std::byte> const& bytes) {
+        return std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    }
+
+    BlockId seedProbe(std::filesystem::path const& path, BlockId& rootId) {
+        auto repo = BlockRepository::open(path.string(), 2);
+        if (!repo.has_value())
+            return 0;
+        auto& store = (*repo)->store();
+
+        auto root = store.createBlock(0, 4242, "root");
+        if (!root.has_value())
+            return 0;
+        rootId = root.value();
+
+        auto probe = store.createBlock(rootId, 777, "probe", kProbePayload);
+        if (!probe.has_value())
+            return 0;
+
+        BlockId id = probe.value();
+        if (!store.setProp(id, 1, std::string("alpha")).has_value())
+            return 0;
+        if (!store.setProp(id, 2, std::int64_t(20260926)).has_value())
+            return 0;
+        return id;
+    }
+
+    void expectProbeRecord(BlockRecord const& r, std::string_view tag, BlockId id, BlockId rootId) {
+        EXPECT_EQ(r.id, id) << tag;
+        EXPECT_EQ(r.parent, rootId) << tag;
+        EXPECT_EQ(r.name, "probe") << tag;
+        EXPECT_EQ(r.kind, 777) << tag;
+        EXPECT_EQ(r.state, BlockLifecycle::Active) << tag;
+        EXPECT_GT(r.created, 0) << tag;
+        EXPECT_GT(r.updated, 0) << tag;
+        EXPECT_EQ(payloadText(r.payload), kProbePayload) << tag;
+    }
+
+    void expectProbeProps(std::vector<BlockProp> const& props, std::string_view tag) {
+        ASSERT_EQ(props.size(), 2u) << tag;
+        std::optional<std::string> text;
+        std::optional<std::int64_t> number;
+        for (auto const& p : props) {
+            if (p.key == 1)
+                text = p.textValue;
+            if (p.key == 2)
+                number = p.intValue;
+        }
+        ASSERT_TRUE(text.has_value()) << tag;
+        ASSERT_TRUE(number.has_value()) << tag;
+        EXPECT_EQ(*text, "alpha") << tag;
+        EXPECT_EQ(*number, 20260926) << tag;
+    }
+}
+
+TEST(BlockStoreTest, ReadPathsAgreeOnBlockColumnOrder) {
+    auto path = tempDb("column-order");
+    BlockId rootId = 0;
+    BlockId probeId = seedProbe(path, rootId);
+    ASSERT_NE(probeId, 0);
+    ASSERT_NE(rootId, 0);
+
+    {
+        auto repo = BlockRepository::open(path.string(), 2);
+        ASSERT_TRUE(repo.has_value());
+        auto byId = (*repo)->store().load(probeId);
+        ASSERT_TRUE(byId.has_value()) << byId.error().message();
+        expectProbeRecord(byId.value(), "load(id) / getBlockById", probeId, rootId);
+        expectProbeProps(byId.value().props, "load(id) / getBlockById");
+    }
+
+    {
+        auto repo = BlockRepository::open(path.string(), 2);
+        ASSERT_TRUE(repo.has_value());
+        auto byName = (*repo)->store().load(rootId, "probe");
+        ASSERT_TRUE(byName.has_value()) << byName.error().message();
+        expectProbeRecord(byName.value(), "load(parent,name) / getBlockByName", probeId, rootId);
+        expectProbeProps(byName.value().props, "load(parent,name) / getBlockByName");
+    }
+
+    {
+        auto repo = BlockRepository::open(path.string(), 2);
+        ASSERT_TRUE(repo.has_value());
+        bool visited = false;
+        auto viewed = (*repo)->store().withBlock(probeId, [&](BlockView const& v) {
+            visited = true;
+            EXPECT_EQ(v.id, probeId) << "withBlock / getBlockById";
+            EXPECT_EQ(v.parent, rootId) << "withBlock / getBlockById";
+            EXPECT_EQ(std::string(v.name), "probe") << "withBlock / getBlockById";
+            EXPECT_EQ(v.kind, 777) << "withBlock / getBlockById";
+            EXPECT_EQ(v.state, BlockLifecycle::Active) << "withBlock / getBlockById";
+            EXPECT_GT(v.created, 0) << "withBlock / getBlockById";
+            EXPECT_GT(v.updated, 0) << "withBlock / getBlockById";
+            EXPECT_EQ(std::string(v.payload), kProbePayload) << "withBlock / getBlockById";
+        });
+        ASSERT_TRUE(viewed.has_value()) << viewed.error().message();
+        EXPECT_TRUE(visited);
+    }
+
+    {
+        auto repo = BlockRepository::open(path.string(), 2);
+        ASSERT_TRUE(repo.has_value());
+        auto rows = (*repo)->store().records(rootId);
+        ASSERT_TRUE(rows.has_value()) << rows.error().message();
+        ASSERT_EQ(rows.value().size(), 1u);
+        expectProbeRecord(rows.value().front(), "records / getChildrenFull", probeId, rootId);
+        expectProbeProps(rows.value().front().props, "records / getChildrenFull");
+    }
+
+    {
+        auto repo = BlockRepository::open(path.string(), 2);
+        ASSERT_TRUE(repo.has_value());
+        std::vector<BlockId> ids{probeId};
+        auto rows = (*repo)->store().rowsByIds(ids, true);
+        ASSERT_TRUE(rows.has_value()) << rows.error().message();
+        ASSERT_EQ(rows.value().size(), 1u);
+        expectProbeRecord(rows.value().front(), "rowsByIds", probeId, rootId);
+        expectProbeProps(rows.value().front().props, "rowsByIds");
+    }
+
+    {
+        auto repo = BlockRepository::open(path.string(), 2);
+        ASSERT_TRUE(repo.has_value());
+        auto& store = (*repo)->store();
+
+        auto named = store.childNames(rootId);
+        ASSERT_TRUE(named.has_value()) << named.error().message();
+        ASSERT_EQ(named.value().size(), 1u);
+        EXPECT_EQ(named.value().front().first, probeId) << "childNames / listChildNames";
+        EXPECT_EQ(named.value().front().second, "probe") << "childNames / listChildNames";
+
+        auto resolved = store.idOf(rootId, "probe");
+        ASSERT_TRUE(resolved.has_value()) << resolved.error().message();
+        ASSERT_TRUE(resolved.value().has_value());
+        EXPECT_EQ(*resolved.value(), probeId) << "idOf / getIdByName";
+
+        auto state = store.stateOf(probeId);
+        ASSERT_TRUE(state.has_value()) << state.error().message();
+        EXPECT_EQ(state.value(), BlockLifecycle::Active) << "stateOf / getState";
+    }
+
     dropDb(path);
 }
 
