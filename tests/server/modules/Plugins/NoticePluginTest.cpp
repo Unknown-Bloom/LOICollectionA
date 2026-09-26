@@ -26,6 +26,8 @@ protected:
     }
 
     void TearDown() override {
+        if (!NoticePlugin::getShared()->isValid())
+            return;
         NoticePlugin::getShared()->getDatabase()->write({});
 
         auto saveResult = NoticePlugin::getShared()->getDatabase()->save();

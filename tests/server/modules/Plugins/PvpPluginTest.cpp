@@ -27,6 +27,8 @@ protected:
     }
 
     void TearDown() override {
+        if (!PvpPlugin::getShared()->isValid())
+            return;
         auto result = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB")->exec("DELETE FROM Pvp;");
         if (!result.has_value())
             GTEST_FAIL() << "Unable to clear data";

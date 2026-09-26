@@ -38,6 +38,8 @@ protected:
     }
 
     void TearDown() override {
+        if (!TpaPlugin::getShared()->isValid())
+            return;
         auto r1 = TpaPlugin::getShared()->getDatabase()->exec("DELETE FROM Blacklist;");
         if (!r1.has_value())
             GTEST_FAIL() << "Unable to clear data";

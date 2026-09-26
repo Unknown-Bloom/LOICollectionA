@@ -44,6 +44,8 @@ protected:
     }
 
     void TearDown() override {
+        if (!WalletPlugin::getShared()->isValid())
+            return;
         auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
 
         for (const char* sql : {

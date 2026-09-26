@@ -24,6 +24,8 @@ protected:
     }
 
     void TearDown() override {
+        if (!StatisticsPlugin::getShared()->isValid())
+            return;
         auto db = StatisticsPlugin::getShared()->getDatabase();
 
         auto result = db->exec("DELETE FROM Statistics;");
