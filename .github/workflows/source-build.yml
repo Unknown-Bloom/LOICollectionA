@@ -78,12 +78,14 @@ jobs:
         if: ${{ inputs.source_url != '' }}
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Path _custom_src -Force | Out-Null
           Invoke-WebRequest -Uri "${{ inputs.source_url }}" -OutFile _custom_src/source.zip
 
       - name: Stage custom source (base64)
         if: ${{ inputs.source_base64 != '' }}
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Path _custom_src -Force | Out-Null
           [IO.File]::WriteAllBytes("_custom_src/source.zip", [Convert]::FromBase64String("${{ inputs.source_base64 }}"))
 
       - name: Overlay custom source
