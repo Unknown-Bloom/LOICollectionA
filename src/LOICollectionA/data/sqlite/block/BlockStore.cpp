@@ -53,52 +53,6 @@ namespace {
         std::string_view where = {};
     };
 
-    ll::Expected<std::string> indexColumns(SQLiteConnection& conn, std::string_view name) {
-        auto query = conn.statements().ensure("indexColumns", "SELECT name FROM pragma_index_info(?)");
-        if (!query)
-            return prepareError("indexColumns");
-
-        query->reset();
-        query->bind(1, std::string(name));
-        std::string actual;
-        while (query->tryExecuteStep() == SQLITE_ROW) {
-            if (!actual.empty())
-                actual.push_back(',');
-            actual += query->getColumn(0).getString();
-        }
-        query->reset();
-        return actual;
-    }
-
-    ll::Expected<std::string> indexWhereClause(SQLiteConnection& conn, std::string_view name) {
-        auto query = conn.statements().ensure(
-            "indexWhereClause", "SELECT sql FROM sqlite_master WHERE type='index' AND name=?");
-        if (!query)
-            return prepareError("indexWhereClause");
-
-        query->reset();
-        query->bind(1, std::string(name));
-        std::string clause;
-        if (query->tryExecuteStep() == SQLITE_ROW && !query->getColumn(0).isNull()) {
-            std::string sql = query->getColumn(0).getString();
-            auto pos = sql.find(" WHERE ");
-            if (pos != std::string::npos)
-                clause = sql.substr(pos + 7);
-        }
-        query->reset();
-        return clause;
-    }
-
-    ll::Expected<bool> indexMatches(SQLiteConnection& conn, IndexSpec const& spec) {
-        auto columns = indexColumns(conn, spec.name);
-        if (!columns)
-            return ll::makeStringError(columns.error().message());
-        auto where = indexWhereClause(conn, spec.name);
-        if (!where)
-            return ll::makeStringError(where.error().message());
-        return *columns == spec.columns && *where == spec.where;
-    }
-
     ll::Expected<void> readBlockRow(
         SQLite::Statement& stmt, bool withId, BlockRecord& out, SQLiteConnection& conn, bool withProps = true) {
         size_t col = 0;
@@ -301,18 +255,33 @@ ll::Expected<void> BlockStore::ensureSchema(SQLiteConnection& conn) {
             return sqlError(conn);
     }
 
-    conn.statements().resetAll();
-    for (auto const& spec : kIndexes) {
-        auto matches = indexMatches(conn, spec);
-        if (!matches)
-            return ll::makeStringError(matches.error().message());
-        if (*matches)
-            continue;
+    constexpr int kSchemaVersion = 1;
+    int current = 0;
+    {
+        auto ver = conn.statements().ensure("userVersionGet", "PRAGMA user_version");
+        if (!ver)
+            return prepareError("userVersionGet");
+        ver->reset();
+        if (ver->tryExecuteStep() == SQLITE_ROW)
+            current = ver->getColumn(0).getInt();
+        ver->reset();
+    }
+    if (current == kSchemaVersion)
+        return {};
 
+    for (auto const& spec : kIndexes) {
         int rc = conn.database().tryExec(("DROP INDEX IF EXISTS " + std::string(spec.name)).c_str());
         if (rc != SQLITE_OK)
             return sqlError(conn);
-        rc = conn.database().tryExec(spec.ddl.data());
+    }
+    for (auto const& spec : kIndexes) {
+        int rc = conn.database().tryExec(spec.ddl.data());
+        if (rc != SQLITE_OK)
+            return sqlError(conn);
+    }
+    {
+        std::string setVer = "PRAGMA user_version = " + std::to_string(kSchemaVersion);
+        int rc = conn.database().tryExec(setVer.c_str());
         if (rc != SQLITE_OK)
             return sqlError(conn);
     }
