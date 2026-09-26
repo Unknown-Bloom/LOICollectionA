@@ -158,46 +158,86 @@ namespace LOICollection::frontend::ir {
         }
 
         bool writeValue(Writer& writer, const ValueNode::ValueType& value) {
-            switch (value.index()) {
-                case CONST_INT:
-                    writer.u8(CONST_INT);
-                    writer.i32(std::get<int>(value));
-                    return true;
-                case CONST_FLOAT:
-                    writer.u8(CONST_FLOAT);
-                    writer.f32(std::get<float>(value));
-                    return true;
-                case CONST_STRING:
-                    writer.u8(CONST_STRING);
-                    writer.str(std::get<std::string>(value));
-                    return true;
-                case CONST_BOOL:
-                    writer.u8(CONST_BOOL);
-                    writer.u8(std::get<bool>(value) ? 1 : 0);
-                    return true;
-                case 6: {
-                    const auto& array = std::get<ArrayRef>(value);
-                    if (!array)
-                        return false;
+            // A nested array constant may legally be thousands of levels deep
+            // (RejectsExcessiveConstantNesting builds one at 4096), so this must
+            // not recurse: recursing per nesting level overflowed small thread
+            // stacks. readValue guards itself with kMaxDepth, but until now the
+            // write side had no limit at all, so a structure that is supposed to
+            // be rejected blew the stack before anything could reject it.
+            //
+            // Emulate the same pre-order traversal with an explicit stack; the
+            // emitted byte order is byte-for-byte identical to the recursion.
+            struct Frame {
+                const std::vector<ValueNode::ValueType>* items;
 
-                    const auto& elements = array->elements;
-                    if (elements.size() > 0xFFFFFFFFull)
-                        return false;
+                size_t index = 0;
+            };
 
-                    writer.u8(CONST_ARRAY);
-                    writer.u32(static_cast<uint32_t>(elements.size()));
-                    for (const auto& element : elements)
-                        if (!writeValue(writer, element))
+            std::vector<Frame> stack;
+
+            auto emit = [&writer, &stack](const ValueNode::ValueType& item) -> bool {
+                switch (item.index()) {
+                    case CONST_INT:
+                        writer.u8(CONST_INT);
+                        writer.i32(std::get<int>(item));
+                        return true;
+                    case CONST_FLOAT:
+                        writer.u8(CONST_FLOAT);
+                        writer.f32(std::get<float>(item));
+                        return true;
+                    case CONST_STRING:
+                        writer.u8(CONST_STRING);
+                        writer.str(std::get<std::string>(item));
+                        return true;
+                    case CONST_BOOL:
+                        writer.u8(CONST_BOOL);
+                        writer.u8(std::get<bool>(item) ? 1 : 0);
+                        return true;
+                    case 6: {
+                        const auto& array = std::get<ArrayRef>(item);
+                        if (!array)
                             return false;
 
-                    return true;
+                        const auto& elements = array->elements;
+                        if (elements.size() > 0xFFFFFFFFull)
+                            return false;
+
+                        writer.u8(CONST_ARRAY);
+                        writer.u32(static_cast<uint32_t>(elements.size()));
+                        if (!elements.empty())
+                            stack.push_back(Frame{ &elements, 0 });
+
+                        return true;
+                    }
+                    case 7:
+                        writer.u8(CONST_NONE);
+                        return true;
+                    default:
+                        return false;
                 }
-                case 7:
-                    writer.u8(CONST_NONE);
-                    return true;
-                default:
+            };
+
+            if (!emit(value))
+                return false;
+
+            while (!stack.empty()) {
+                const Frame frame = stack.back();
+                stack.pop_back();
+
+                if (frame.index >= frame.items->size())
+                    continue;
+
+                // Queue the remaining siblings first, so that any children this
+                // element pushes sit on top of the stack and are written first,
+                // preserving the depth-first order of the original recursion.
+                if (frame.index + 1 < frame.items->size())
+                    stack.push_back(Frame{ frame.items, frame.index + 1 });
+
+                if (!emit((*frame.items)[frame.index]))
                     return false;
             }
+
+            return true;
         }
 
         bool readValue(Reader& reader, ValueNode::ValueType& value, size_t depth = 0) {
