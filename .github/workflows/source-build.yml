@@ -1,0 +1,135 @@
+# Diagnostic build: compile the plugin from a custom source tree.
+#
+# This workflow is NOT triggered by pushes or pull requests. It exists only to
+# build a source tree that you hand it (for example the logger-instrumented
+# build used to chase a silent crash), so you get a real Windows binary plus
+# PDB/symbols without touching the committed source.
+#
+# Trigger it manually (Actions -> "Source Build (diagnostic)" -> Run workflow)
+# and pass one of:
+#   - source_url      : a direct URL to a .zip of the full plugin source tree
+#   - source_artifact : the name of an artifact (uploaded beforehand) holding
+#                       that same .zip
+#   - source_base64   : base64 of that same .zip (handy for tiny payloads)
+#
+# The provided .zip must contain xmake.lua at its root (i.e. a full checkout,
+# not just src/). On trigger the checkout is wiped (except .git) and the
+# custom tree is overlaid, then the normal xmake pipeline runs.
+
+name: Source Build (diagnostic)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_url:
+        description: "URL to a .zip of the full plugin source tree to build instead of the checkout."
+        required: false
+        default: ""
+      source_artifact:
+        description: "Name of an uploaded artifact that contains the source .zip."
+        required: false
+        default: ""
+      source_base64:
+        description: "Base64 of the source .zip (single line). Overrides the checkout when provided."
+        required: false
+        default: ""
+      target_type:
+        description: "Build target"
+        required: true
+        default: "server"
+        type: choice
+        options:
+          - server
+          - client
+      mode:
+        description: "Build mode"
+        required: true
+        default: "debug"
+        type: choice
+        options:
+          - debug
+          - release
+      shared:
+        description: "Build a shared library"
+        required: true
+        default: true
+        type: boolean
+      with_symbols:
+        description: "Upload PDB/symbols alongside the binary for crash analysis"
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download custom source (artifact)
+        if: ${{ inputs.source_artifact != '' }}
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ inputs.source_artifact }}
+          path: _custom_src
+
+      - name: Download custom source (url)
+        if: ${{ inputs.source_url != '' }}
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "${{ inputs.source_url }}" -OutFile _custom_src/source.zip
+
+      - name: Stage custom source (base64)
+        if: ${{ inputs.source_base64 != '' }}
+        shell: pwsh
+        run: |
+          [IO.File]::WriteAllBytes("_custom_src/source.zip", [Convert]::FromBase64String("${{ inputs.source_base64 }}"))
+
+      - name: Overlay custom source
+        if: ${{ inputs.source_url != '' || inputs.source_artifact != '' || inputs.source_base64 != '' }}
+        shell: pwsh
+        run: |
+          $temp = Join-Path $env:RUNNER_TEMP "custom_src"
+          if (Test-Path $temp) { Remove-Item $temp -Recurse -Force }
+          New-Item -ItemType Directory -Path $temp | Out-Null
+          if (Test-Path _custom_src/source.zip) {
+            Expand-Archive -Path _custom_src/source.zip -DestinationPath $temp -Force
+            $root = Get-ChildItem $temp -Recurse -Filter xmake.lua | Select-Object -First 1
+            if (-not $root) {
+              Write-Error "xmake.lua not found inside the provided source .zip"
+              exit 1
+            }
+            $src = $root.DirectoryName
+            Write-Host "Overlaying custom source from: $src"
+            Get-ChildItem -Path . | Where-Object { $_.Name -ne '.git' } | Remove-Item -Recurse -Force
+            Copy-Item -Path "$src/*" -Destination . -Recurse -Force
+          } else {
+            Write-Host "No custom source provided; building the checked-out tree."
+          }
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+
+      - name: Refresh xmake repo
+        run: xmake repo -u
+
+      - name: Configure
+        run: xmake f -a x64 -m ${{ inputs.mode }} -p windows -v -y --shared=${{ inputs.shared }} --target_type=${{ inputs.target_type }}
+
+      - name: Build
+        run: xmake -v -y
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ github.event.repository.name }}-${{ inputs.shared == false && 'ES-' || '' }}${{ inputs.target_type }}-${{ inputs.mode }}-windows-x64-${{ github.sha }}
+          path: build/bin-${{ inputs.target_type }}/
+
+      - name: Upload symbols
+        if: ${{ inputs.with_symbols }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ github.event.repository.name }}-${{ inputs.target_type }}-${{ inputs.mode }}-symbols-${{ github.sha }}
+          path: |
+            build/**/*.pdb
