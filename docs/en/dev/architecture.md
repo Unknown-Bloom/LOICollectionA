@@ -88,7 +88,7 @@ Global services registered at plugin startup:
 | `std::string` | `"DataPath"` | Plugin data directory (`plugins/LOICollectionA/data`) |
 | `std::string` | `"GuiPath"` | GUI directory (`plugins/LOICollectionA/gui`) |
 | `std::string` | `"ConfigPath"` | Configuration directory (`plugins/LOICollectionA/config`) |
-| `SQLiteStorage` | `"SettingsDB"` | Global settings database (`data/settings.db`) |
+| `BlockRepository` | `"SettingsDB"` | Global settings database (`data/settings.db`, block storage) |
 
 > [!NOTE]
 > The configuration is registered as `ReadOnlyWrapper<Config::C_Config>`, so modules can only **read** the configuration and cannot modify it. This is an intentional design: the configuration is only read once at startup, and modifying it at runtime requires restarting the server.
@@ -108,7 +108,8 @@ src/LOICollectionA/
 ├─ ConfigPlugin.h / .cpp     # configuration structure definition and loading
 ├─ base/                     # infrastructure: ServiceContainer, ServiceProvider,
 │                            #   ReadOnlyWrapper, LRUKCache, Throttle, ScopeGuard
-├─ data/                     # data layer: SQLiteStorage (SQLite connection pool), JsonStorage
+├─ data/                     # data layer: sqlite/ block storage (BlockStore + WriteBatch +
+│                            #   BlockRepository), JsonStorage
 ├─ frontend/                 # LCUI script engine: Lexer, Parser, SemanticAnalyzer,
 │   │                        #   AST, Callback (native binding registry), ir/ (compiler, VM)
 │   ├─ sandbox/              # script sandbox: ScriptPermission (permission and execution
@@ -140,7 +141,46 @@ The plugin supports both `server` and `client` targets at the same time, disting
 
 ## Data Layer
 
-All persistent data is accessed through `SQLiteStorage` (default, supports read/write connection pool and transactions) or `JsonStorage` (simple JSON files); both return `ll::Expected<T>` to support chained error handling. See the "Data Layer" section of the [Module Development Guide](./module.md) for usage.
+The data layer is organized into four levels bottom-up; business code only ever touches the topmost one:
+
+```txt
+TypedTable<E, Version>        # compile-time columns + versioned schema (the only business entry)
+        |  reads / writes / transactions
+BlockRepository               # facade: open / fromStore / store() / meta* / exec
+        |
+BlockStore                    # block-model persistence (dict / block / prop / link / meta)
+WriteBatch                    # atomic write transaction
+        |
+ConnectionPool               # SQLite connection pool (WAL mode)
+```
+
+| Level | Location | Responsibility |
+| --- | --- | --- |
+| `ConnectionPool` | `data/sqlite/connection/` | SQLite connection management: `WAL` + `synchronous=NORMAL` + `busy_timeout=5s` |
+| `BlockStore` | `data/sqlite/block/` | Splits data into addressable blocks with incremental key-based access over five system tables: `dict` / `block` / `prop` / `link` / `meta` |
+| `WriteBatch` | same | Flushes a batch of changes atomically in one `commit()`, `rollback()` on failure |
+| `BlockRepository` | same | Public surface is only: `open` / `fromStore` / `store()` / `metaGet\|Set\|Del` / `exec` |
+| `TypedTable` | same | Lifts columns to compile time (declared as an `enum class`); `open` writes `version + type name + column count` to `schema:<table>` and returns `SchemaMismatch` on disagreement |
+
+Every method returns `ll::Expected<T>` so errors compose via `and_then` / `transform` / `or_else`; no exceptions are used. See the "Data Layer" section of the [Module Development Guide](./module.md) for usage.
+
+### Database Files
+
+| File | Owner | Contents |
+| --- | --- | --- |
+| `data/settings.db` | global | registered as the `SettingsDB` service; shared tables of Wallet, Language, PvP, Notice, Chat, Tpa, Market and Statistics live here |
+| `data/blacklist.db` | Blacklist | banned words and ban list |
+| `data/mute.db` | Mute | mute list |
+| `data/chat.db` | Chat | chat logs and interception rules |
+| `data/market.db` | Market | market / store / wanted / auction / quotes |
+| `data/statistics.db` | Statistics | player statistics |
+| `data/tpa.db` | Tpa | teleport requests |
+| `data/behaviorevent.db` | BehaviorEvent | behavior event logs |
+
+`Config`, `Notice` (`notice.json`) and `Cdk` (`cdk.json`) do not use block storage; they still use `JsonStorage` and can be edited directly.
+
+> [!WARNING]
+> `BlockRepository::open` performs **no migration**: it only creates the five block-model system tables inside the target SQLite file. Tables written by older versions are neither read nor converted. See [Data Migration](../course/migrate.md) when upgrading across versions.
 
 ## Scripting VM
 

@@ -2,9 +2,9 @@
 #include <chrono>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
-#include <unordered_map>
 
 #include <fmt/core.h>
 
@@ -48,9 +48,9 @@
 
 #include "LOICollectionA/utils/I18nUtils.h"
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
-#include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/include/server/Plugins/types/wallet/WalletSchema.h"
 
 #include "LOICollectionA/include/form/GUIManager.h"
 
@@ -92,7 +92,8 @@ namespace LOICollection::server::Plugins {
 
         Config::C_Wallet options;
 
-        std::shared_ptr<SQLiteStorage> db;
+        std::shared_ptr<BlockRepository> db;
+        std::optional<WalletTable> wallet;
         std::shared_ptr<ll::io::Logger> logger;
 
         std::string mGuiPath;
@@ -133,30 +134,32 @@ namespace LOICollection::server::Plugins {
     }
 
     bool WalletPlugin::isValid() {
-        return this->getLogger() != nullptr && this->mImpl->db != nullptr;
+        return this->getLogger() != nullptr && this->mImpl->db != nullptr && this->mImpl->wallet.has_value();
     }
 
     ll::Expected<std::string> WalletPlugin::getPlayerInfo(const std::string& uuid) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
 
-        return this->mImpl->db->get("Wallet", uuid, "name", "Unknown");
+        return this->mImpl->wallet->get<std::string>(uuid, "name", std::string("Unknown"));
     }
 
     ll::Expected<std::vector<std::pair<std::string, std::string>>> WalletPlugin::getPlayerInfo() {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
 
-        return this->mImpl->db->list("Wallet")
-            .and_then([this](const std::vector<std::string>& ids) -> ll::Expected<std::unordered_map<std::string, std::unordered_map<std::string, std::string>>> {
-                return this->mImpl->db->get("Wallet", ids);
-            })
-            .transform([](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> mData) -> std::vector<std::pair<std::string, std::string>> {
+        return this->mImpl->wallet->list()
+            .and_then([this](const std::vector<std::string>& ids) -> ll::Expected<std::vector<std::pair<std::string, std::string>>> {
                 std::vector<std::pair<std::string, std::string>> result;
+                result.reserve(ids.size());
 
-                result.reserve(mData.size());
-                for (auto& [id, data] : mData)
-                    result.emplace_back(id, data.at("name"));
+                for (const auto& id : ids) {
+                    auto name = this->mImpl->wallet->get<std::string>(id, "name", std::string("Unknown"));
+                    if (!name.has_value())
+                        return ll::Unexpected(name.error());
+
+                    result.emplace_back(id, name.value());
+                }
 
                 return result;
             });
@@ -166,7 +169,7 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid() || uuid.empty())
             return {};
 
-        return this->mImpl->db->set("Wallet", uuid, "balance", std::to_string(balance));
+        return this->mImpl->wallet->set(uuid, "balance", balance);
     }
 
     ll::Expected<bool> WalletPlugin::forTransfer(Player& player, const std::string& target, const std::string& name, int score, bool confirmed) {
@@ -245,13 +248,11 @@ namespace LOICollection::server::Plugins {
             return {};
         }
 
-        return this->mImpl->db->get("Wallet", target, "score", "0")
-            .and_then([this, score, target](const std::string& value) -> ll::Expected<void> {
-                int walletScore = SystemUtils::toInt(value);
-
-                return this->mImpl->db->set("Wallet", target, "score", std::to_string(walletScore + score))
+        return this->mImpl->wallet->get<long long>(target, "score", 0)
+            .and_then([this, target, score](long long walletScore) -> ll::Expected<void> {
+                return this->mImpl->wallet->set(target, "score", walletScore + score)
                     .transform([this, target, walletScore, score]() -> void {
-                        this->updateBalanceSnapshot(target, static_cast<long long>(walletScore) + score)
+                        this->updateBalanceSnapshot(target, walletScore + score)
                             .or_else(modules::defaultErrorHandler<WalletPlugin>);
                     });
             });
@@ -619,25 +620,23 @@ namespace LOICollection::server::Plugins {
 
             std::string uuid = event.self().getUuid().asString();
 
-            this->mImpl->db->has("Wallet", uuid)
-                .and_then([this, uuid, name = event.self().getRealName()](bool exists) -> ll::Expected<void> {
-                    if (!exists) {
-                        std::unordered_map<std::string, std::string> data = {
-                            { "name", name },
-                            { "score", "0" },
-                            { "balance", "0" }
-                        };
-
-                        return this->mImpl->db->set("Wallet", uuid, data);
-                    }
+            this->mImpl->wallet->has(uuid)
+                .and_then([this, &uuid, name = event.self().getRealName()](bool exists) -> ll::Expected<void> {
+                    if (!exists)
+                        return this->mImpl->wallet->set(uuid, "name", name)
+                            .and_then([this, &uuid]() -> ll::Expected<void> {
+                                return this->mImpl->wallet->set(uuid, "score", 0LL);
+                            })
+                            .and_then([this, &uuid]() -> ll::Expected<void> {
+                                return this->mImpl->wallet->set(uuid, "balance", 0LL);
+                            });
 
                     return {};
                 })
                 .or_else(modules::defaultErrorHandler<WalletPlugin>);
 
-            this->mImpl->db->get("Wallet", uuid, "score", "0")
-                .and_then([this, uuid, &event](const std::string& value) -> ll::Expected<void> {
-                    int score = SystemUtils::toInt(value, 0);
+            this->mImpl->wallet->get<long long>(uuid, "score", 0)
+                .and_then([this, uuid, &event](long long score) -> ll::Expected<void> {
                     if (score <= 0) {
                         this->updateBalanceSnapshot(uuid, ScoreboardUtils::getScore(event.self(), this->mImpl->options.TargetScoreboard))
                             .or_else(modules::defaultErrorHandler<WalletPlugin>);
@@ -653,9 +652,9 @@ namespace LOICollection::server::Plugins {
                         this->mImpl->mSettling.erase(uuid);
                     });
 
-                    return this->mImpl->db->set("Wallet", uuid, "score", "0")
+                    return this->mImpl->wallet->set(uuid, "score", 0LL)
                         .transform([this, uuid, score, &event]() -> void {
-                            ScoreboardUtils::addScore(event.self(), this->mImpl->options.TargetScoreboard, score);
+                            ScoreboardUtils::addScore(event.self(), this->mImpl->options.TargetScoreboard, static_cast<int>(score));
 
                             this->updateBalanceSnapshot(uuid, ScoreboardUtils::getScore(event.self(), this->mImpl->options.TargetScoreboard))
                                 .or_else(modules::defaultErrorHandler<WalletPlugin>);
@@ -730,7 +729,7 @@ namespace LOICollection::server::Plugins {
         if (!ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Wallet.ModuleEnabled)
             return false;
 
-        this->mImpl->db = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+        this->mImpl->db = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
         this->mImpl->logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
         this->mImpl->options = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Wallet;
         this->mImpl->mGuiPath = (std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("GuiPath")->data()) / "wallet.lcui").string();
@@ -772,6 +771,8 @@ namespace LOICollection::server::Plugins {
         this->mImpl->mBank.reset();
         this->mImpl->mGui.reset();
 
+        this->mImpl->wallet.reset();
+
         this->mImpl->db.reset();
         this->mImpl->logger.reset();
         this->mImpl->options = {};
@@ -786,13 +787,12 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->options.ModuleEnabled)
             return false;
 
-        return this->mImpl->db->create("Wallet", [](SQLiteStorage::ColumnCallback ctor) -> void {
-            ctor("name");
-            ctor("score");
-            ctor("balance");
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->mLedger->createTables();
-        }).and_then([this]() -> ll::Expected<void> {
+        return WalletTable::open(*this->mImpl->db, "Wallet")
+            .and_then([this](WalletTable table) -> ll::Expected<void> {
+                this->mImpl->wallet.emplace(std::move(table));
+
+                return this->mImpl->mLedger->createTables();
+            }).and_then([this]() -> ll::Expected<void> {
             return this->mImpl->mRedEnvelope->createTables();
         }).and_then([this]() -> ll::Expected<void> {
             return this->mImpl->mBank->createTables();

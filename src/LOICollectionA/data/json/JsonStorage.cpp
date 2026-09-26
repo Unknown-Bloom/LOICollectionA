@@ -9,7 +9,7 @@
 
 #include <ll/api/Expected.h>
 
-#include "LOICollectionA/data/JsonStorage.h"
+#include "LOICollectionA/data/json/JsonStorage.h"
 
 JsonStorage::JsonStorage(std::filesystem::path path) : mPath(std::move(path)){}
 JsonStorage::~JsonStorage() = default;
@@ -19,12 +19,12 @@ ll::Expected<void> JsonStorage::load() {
 
     std::error_code ec;
     if (!std::filesystem::exists(mPath, ec)) {
-        if (ec) 
+        if (ec)
             return ll::makeErrorCodeError(ec);
 
         std::error_code dir_ec;
         std::filesystem::create_directories(mPath.parent_path(), dir_ec);
-        if (dir_ec) 
+        if (dir_ec)
             return ll::makeErrorCodeError(dir_ec);
 
         this->mJson = nlohmann::ordered_json::object();
@@ -32,7 +32,7 @@ ll::Expected<void> JsonStorage::load() {
         std::ofstream file(this->mPath, std::ios::binary | std::ios::trunc);
         if (!file.is_open())
             return ll::makeErrorCodeError(std::make_error_code(std::errc::permission_denied));
-        
+
         file << this->mJson.dump(4);
 
         return {};
@@ -53,7 +53,7 @@ ll::Expected<void> JsonStorage::load() {
 
 void JsonStorage::write(const nlohmann::ordered_json& json) {
     std::unique_lock lock(this->mMutex);
-    
+
     this->mJson = json;
 }
 
@@ -67,7 +67,7 @@ void JsonStorage::remove_ptr(std::string_view ptr) {
     std::unique_lock lock(this->mMutex);
 
     nlohmann::json_pointer<std::string> ptrs((std::string(ptr)));
-    if (!this->mJson.contains(ptrs)) 
+    if (!this->mJson.contains(ptrs))
         return;
 
     auto& parent = this->mJson.at(ptrs.parent_pointer());
@@ -76,7 +76,7 @@ void JsonStorage::remove_ptr(std::string_view ptr) {
 
 bool JsonStorage::has(std::string_view key) const {
     std::shared_lock lock(this->mMutex);
-    
+
     return this->mJson.contains(key);
 }
 

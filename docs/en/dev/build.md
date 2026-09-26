@@ -80,7 +80,7 @@ Tests are based on gtest and **run inside the game server**:
 ```txt
 tests/
 ├─ common/          # cross-platform tests: base (Cache/ServiceContainer/Wrapper, etc.),
-│                   #   coro, data (Json/SQLite storage), frontend (LCUI lexer/parser/semantics/VM)
+│                   #   coro, data (Json storage and block-storage payload), frontend (LCUI lexer/parser/semantics/VM)
 ├─ server/          # server tests: mc (block/scoreboard tools, etc.), modules (plugin callbacks),
 │                   #   TestCommand.cpp (entry), TestSimulatedPlayer (simulated player)
 └─ client/          # client tests (compiled only for the client target)

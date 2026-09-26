@@ -11,7 +11,7 @@
 #include "LOICollectionA/include/ModManager.h"
 
 #include "LOICollectionA/include/server/Plugins/form/MenuData.h"
-#include "LOICollectionA/include/server/Plugins/types/MenuType.h"
+#include "LOICollectionA/include/server/Plugins/types/menu/MenuCommonType.h"
 
 class Player;
 

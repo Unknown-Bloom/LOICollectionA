@@ -10,7 +10,7 @@
 #include "LOICollectionA/include/ModManager.h"
 
 #include "LOICollectionA/include/server/Plugins/form/ShopData.h"
-#include "LOICollectionA/include/server/Plugins/types/ShopType.h"
+#include "LOICollectionA/include/server/Plugins/types/shop/ShopCommonType.h"
 
 class Player;
 

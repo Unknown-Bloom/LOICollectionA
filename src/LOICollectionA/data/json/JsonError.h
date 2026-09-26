@@ -12,7 +12,7 @@ namespace JsonError {
         [[nodiscard]] const char* name() const noexcept override {
             return "JsonStorageError";
         }
-        
+
         [[nodiscard]] std::string message(int ev) const override {
             switch (static_cast<JsonStorageErrorCode>(ev)) {
                 case JsonStorageErrorCode::KeyNotFound: return "Key not found";

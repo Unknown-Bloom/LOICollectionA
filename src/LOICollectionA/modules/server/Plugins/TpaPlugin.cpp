@@ -50,7 +50,8 @@
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/include/server/Plugins/types/tpa/TpaSchema.h"
 
 #include "LOICollectionA/frontend/AST.h"
 
@@ -67,6 +68,8 @@
 using I18nUtilsTools::tr;
 
 namespace LOICollection::server::Plugins {
+    using LOICollection::data::FindMode;
+
     struct TpaPlugin::RequestEntry {
         std::string id;
         std::string source;
@@ -105,8 +108,10 @@ namespace LOICollection::server::Plugins {
 
         Config::C_Tpa options;
 
-        std::shared_ptr<SQLiteStorage> db;
-        std::shared_ptr<SQLiteStorage> db2;
+        std::shared_ptr<BlockRepository> db;
+        std::shared_ptr<BlockRepository> db2;
+        std::optional<TpaTable> tpa;
+        std::optional<TpaBlacklistTable> blacklist;
         std::shared_ptr<ll::io::Logger> logger;
 
         std::string mGuiPath;
@@ -130,7 +135,7 @@ namespace LOICollection::server::Plugins {
         return std::error_code{ static_cast<int>(e), cat };
     }
     
-    std::shared_ptr<SQLiteStorage> TpaPlugin::getDatabase() {
+    std::shared_ptr<BlockRepository> TpaPlugin::getDatabase() {
         return this->mImpl->db;
     }
 
@@ -677,15 +682,14 @@ namespace LOICollection::server::Plugins {
 
             std::string uuid = event.self().getUuid().asString();
 
-            this->mImpl->db2->has("Tpa", uuid)
+            this->mImpl->tpa->has(uuid)
                 .and_then([this, uuid, name = event.self().getRealName()](bool exists) -> ll::Expected<void> {
                     if (!exists) {
-                        std::unordered_map<std::string, std::string> data = {
-                            { "name", name },
-                            { "invite", "false" }
-                        };
+                        auto named = this->mImpl->tpa->set(uuid, TpaCol::name, name);
+                        if (!named.has_value())
+                            return named;
 
-                        return this->mImpl->db2->set("Tpa", uuid, data);
+                        return this->mImpl->tpa->set(uuid, TpaCol::invite, false);
                     }
 
                     return {};
@@ -705,7 +709,7 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(TpaPluginErrorCode::Invalid));
 
-        return this->mImpl->db2->set("Tpa", player.getUuid().asString(), "invite", invite ? "true" : "false");
+        return this->mImpl->tpa->set(player.getUuid().asString(), TpaCol::invite, invite);
     }
 
     ll::Expected<void> TpaPlugin::addBlacklist(Player& player, Player& target) {
@@ -723,7 +727,7 @@ namespace LOICollection::server::Plugins {
             { "time", SystemUtils::getNowTime("%Y%m%d%H%M%S") }
         };
 
-        return this->getDatabase()->set("Blacklist", mTismestamp, mData)
+        return this->mImpl->blacklist->setRow(mTismestamp, mData)
             .transform([this, mObject, mTargetObject, mTismestamp, &player]() -> void {
                 this->getLogger()->info(fmt::runtime(LOICollectionAPI::CallbackUtils::getInstance().translate(tr({}, "tpa.log2"), player)), mTargetObject);
 
@@ -746,7 +750,7 @@ namespace LOICollection::server::Plugins {
                     return ll::makeErrorCodeError(makeErrorCode(TpaPluginErrorCode::BlacklistNotFound));
                 }
 
-                return this->getDatabase()->del("Blacklist", id);
+                return this->mImpl->blacklist->del(id);
             })
             .transform([this, id, &player]() -> void {
                 this->getLogger()->info(fmt::runtime(LOICollectionAPI::CallbackUtils::getInstance().translate(tr({}, "tpa.log3"), player)), id);
@@ -951,10 +955,10 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(TpaPluginErrorCode::Invalid));
 
-        return this->getDatabase()->find("Blacklist", {
-            { "target", target.getUuid().asString() },
-            { "author", player.getUuid().asString() }
-        }, "", SQLiteStorage::FindCondition::AND);
+        return this->mImpl->blacklist->findFirst(FindMode::And, {
+            { TpaBlacklistCol::target, target.getUuid().asString() },
+            { TpaBlacklistCol::author, player.getUuid().asString() }
+        });
     }
 
     ll::Expected<std::vector<std::string>> TpaPlugin::getBlacklist(Player& player) {
@@ -965,9 +969,9 @@ namespace LOICollection::server::Plugins {
         if (this->mImpl->BlacklistCache.contains(uuid))
             return *this->mImpl->BlacklistCache.get(uuid).value();
 
-        return this->getDatabase()->find("Blacklist", {
-            { "author", uuid }
-        }, SQLiteStorage::FindCondition::AND)
+        return this->mImpl->blacklist->find(FindMode::And, {
+            { TpaBlacklistCol::author, uuid }
+        })
             .transform([this, uuid](const std::vector<std::string>& keys) -> std::vector<std::string> {
                 this->mImpl->BlacklistCache.put(uuid, keys);
 
@@ -979,22 +983,25 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(TpaPluginErrorCode::Invalid));
 
-        return this->getDatabase()->get("Blacklist", ids)
-            .transform([](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> data) -> std::vector<std::string> {
-                return data
-                    | std::views::values
-                    | std::views::transform([](const std::unordered_map<std::string, std::string>& entry) -> std::string {
-                        return entry.at("target");
-                    })
-                    | std::ranges::to<std::vector<std::string>>();
-            });
+        std::vector<std::string> targets;
+        targets.reserve(ids.size());
+
+        for (const std::string& id : ids) {
+            auto target = this->mImpl->blacklist->get<std::string>(id, TpaBlacklistCol::target, std::string());
+            if (!target.has_value())
+                return ll::Unexpected(target.error());
+
+            targets.emplace_back(std::move(target.value()));
+        }
+
+        return targets;
     }
 
     ll::Expected<std::unordered_map<std::string, std::string>> TpaPlugin::getBlacklistData(const std::string& id) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(TpaPluginErrorCode::Invalid));
 
-        return this->getDatabase()->get("Blacklist", id);
+        return this->mImpl->blacklist->getRow(id);
     }
 
     ll::Expected<bool> TpaPlugin::hasBlacklist(Player& player, const std::string& id) {
@@ -1007,7 +1014,7 @@ namespace LOICollection::server::Plugins {
             return std::find(mKeys->begin(), mKeys->end(), id) != mKeys->end();
         }
 
-        return this->getDatabase()->has("Blacklist", id);
+        return this->mImpl->blacklist->has(id);
     }
 
     ll::Expected<bool> TpaPlugin::forTpaContent(Player& player) {
@@ -1033,18 +1040,16 @@ namespace LOICollection::server::Plugins {
         if (this->mImpl->InviteCache.contains(uuid))
             return *this->mImpl->InviteCache.get(uuid).value();
         
-        return this->mImpl->db2->get("Tpa", uuid, "invite", "false")
-            .transform([this, uuid](const std::string& value) -> bool {
-                bool result = (value == "true");
+        return this->mImpl->tpa->get<bool>(uuid, TpaCol::invite, false)
+            .transform([this, uuid](bool value) -> bool {
+                this->mImpl->InviteCache.put(uuid, value);
 
-                this->mImpl->InviteCache.put(uuid, result);
-
-                return result;
+                return value;
             });
     }
 
     bool TpaPlugin::isValid() {
-        return this->getLogger() != nullptr && this->getDatabase() != nullptr && this->mImpl->db2 != nullptr;
+        return this->getLogger() != nullptr && this->mImpl->tpa.has_value() && this->mImpl->blacklist.has_value();
     }
 
     int TpaPlugin::getBlacklistUpload() {
@@ -1076,8 +1081,11 @@ namespace LOICollection::server::Plugins {
 
         auto mDataPath = std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("DataPath")->data());
 
-        this->mImpl->db = std::make_shared<SQLiteStorage>((mDataPath / "tpa.db").string());
-        this->mImpl->db2 = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+        auto localDb = BlockRepository::open((mDataPath / "tpa.db").string(), 4);
+        if (!localDb)
+            return ll::makeStringError(localDb.error().message());
+        this->mImpl->db = std::move(localDb.value());
+        this->mImpl->db2 = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
         this->mImpl->logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
         this->mImpl->options = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Tpa;
         this->mImpl->mGuiPath = (std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("GuiPath")->data()) / "tpa.lcui").string();
@@ -1091,6 +1099,8 @@ namespace LOICollection::server::Plugins {
 
         this->mImpl->db.reset();
         this->mImpl->db2.reset();
+        this->mImpl->tpa.reset();
+        this->mImpl->blacklist.reset();
         this->mImpl->logger.reset();
         this->mImpl->options = {};
 
@@ -1104,26 +1114,25 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->options.ModuleEnabled)
             return false;
 
-        return this->mImpl->db2->create("Tpa", [](SQLiteStorage::ColumnCallback ctor) -> void {
-            ctor("name");
-            ctor("invite");
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->getDatabase()->create("Blacklist", [](SQLiteStorage::ColumnCallback ctor) -> void {
-                ctor("name");
-                ctor("target");
-                ctor("author");
-                ctor("time");
+        auto tpa = TpaTable::open(*this->mImpl->db2, "Tpa");
+        if (!tpa.has_value())
+            return ll::Unexpected(tpa.error());
+        this->mImpl->tpa.emplace(std::move(tpa.value()));
+
+        auto blacklist = TpaBlacklistTable::open(*this->mImpl->db, "Blacklist");
+        if (!blacklist.has_value())
+            return ll::Unexpected(blacklist.error());
+        this->mImpl->blacklist.emplace(std::move(blacklist.value()));
+
+        return this->registeryUI()
+            .transform([this]() -> bool {
+                this->registeryCommand();
+                this->listenEvent();
+
+                this->mImpl->mRegistered.store(true, std::memory_order_release);
+
+                return true;
             });
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->registeryUI();
-        }).transform([this]() -> bool {
-            this->registeryCommand();
-            this->listenEvent();
-
-            this->mImpl->mRegistered.store(true, std::memory_order_release);
-
-            return true;
-        });
     }
 
     ll::Expected<bool> TpaPlugin::unregistry() {

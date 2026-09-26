@@ -3,6 +3,7 @@
 #include <cmath>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -19,20 +20,24 @@
 #include "LOICollectionA/coro/TimerManager.h"
 
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
-#include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/include/server/Plugins/types/wallet/WalletSchema.h"
 
 #include "LOICollectionA/ConfigPlugin.h"
 
 #include "LOICollectionA/include/server/Plugins/wallet/WalletBank.h"
 #include "LOICollectionA/include/server/Plugins/wallet/WalletLedger.h"
-#include "LOICollectionA/include/server/Plugins/wallet/WalletType.h"
+#include "LOICollectionA/include/server/Plugins/types/wallet/WalletCommonType.h"
 #include "LOICollectionA/include/server/Plugins/wallet/WalletPlugin.h"
 
 namespace LOICollection::server::Plugins {
     struct WalletBank::Impl {
-        std::shared_ptr<SQLiteStorage> db;
+        std::shared_ptr<BlockRepository> db;
+        std::optional<WalletBankTable> bank;
+        std::optional<WalletFeeTable> fee;
+        std::optional<WalletTable> wallet;
+
         const Config::C_Wallet& options;
         std::shared_ptr<ll::io::Logger> logger;
         TimerManager& timerManager;
@@ -44,7 +49,7 @@ namespace LOICollection::server::Plugins {
         std::unordered_map<std::string, size_t> mRankOf;
 
         Impl(
-            std::shared_ptr<SQLiteStorage> db_,
+            std::shared_ptr<BlockRepository> db_,
             const Config::C_Wallet& options_,
             std::shared_ptr<ll::io::Logger> logger_,
             TimerManager& timerManager_,
@@ -57,7 +62,7 @@ namespace LOICollection::server::Plugins {
     };
 
     WalletBank::WalletBank(
-        std::shared_ptr<SQLiteStorage> db,
+        std::shared_ptr<BlockRepository> db,
         const Config::C_Wallet& options,
         std::shared_ptr<ll::io::Logger> logger,
         TimerManager& timerManager,
@@ -67,15 +72,25 @@ namespace LOICollection::server::Plugins {
     WalletBank::~WalletBank() = default;
 
     bool WalletBank::isValid() const {
-        return this->mImpl->db != nullptr;
+        return this->mImpl->db != nullptr && this->mImpl->bank.has_value()
+            && this->mImpl->fee.has_value() && this->mImpl->wallet.has_value();
     }
 
     ll::Expected<void> WalletBank::createTables() {
-        return this->mImpl->db->create("WalletBank", [](SQLiteStorage::ColumnCallback ctor) -> void {
-            ctor("principal");
-            ctor("deposit_at");
-            ctor("name");
-        });
+        return WalletBankTable::open(*this->mImpl->db, "WalletBank")
+            .and_then([this](WalletBankTable table) -> ll::Expected<WalletFeeTable> {
+                this->mImpl->bank.emplace(std::move(table));
+
+                return WalletFeeTable::open(*this->mImpl->db, "WalletFee");
+            })
+            .and_then([this](WalletFeeTable table) -> ll::Expected<WalletTable> {
+                this->mImpl->fee.emplace(std::move(table));
+
+                return WalletTable::open(*this->mImpl->db, "Wallet");
+            })
+            .transform([this](WalletTable table) -> void {
+                this->mImpl->wallet.emplace(std::move(table));
+            });
     }
 
     ll::Expected<void> WalletBank::deposit(Player& player, int amount) {
@@ -93,56 +108,38 @@ namespace LOICollection::server::Plugins {
 
         ScoreboardUtils::reduceScore(player, mScoreboard, amount);
 
+        auto& bank = *this->mImpl->bank;
+
+        auto principal = bank.get<long long>(uuid, "principal", 0);
+        if (!principal.has_value()) {
+            ScoreboardUtils::addScore(player, mScoreboard, amount);
+
+            return ll::Unexpected(principal.error());
+        }
+
         long long nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
-        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
-        if (!transaction.has_value()) {
-            ScoreboardUtils::addScore(player, mScoreboard, amount);
-
-            return ll::Unexpected(transaction.error());
-        }
-
-        auto conn = transaction.value().connection();
-
-        auto current = this->mImpl->db->get(conn, "WalletBank", uuid);
-        if (!current.has_value()) {
-            ScoreboardUtils::addScore(player, mScoreboard, amount);
-
-            return ll::Unexpected(current.error());
-        }
-
-        long long principal = current.value().contains("principal")
-            ? SystemUtils::toLongLong(current.value().at("principal"), 0)
-            : 0;
-
-        auto setBank = this->mImpl->db->set(conn, "WalletBank", uuid, {
-            { "principal", std::to_string(principal + amount) },
-            { "deposit_at", std::to_string(nowNs) },
-            { "name", player.getRealName() }
-        });
+        auto setBank = bank.set(uuid, "principal", principal.value() + amount)
+            .and_then([&bank, &uuid, nowNs]() -> ll::Expected<void> {
+                return bank.set(uuid, "deposit_at", nowNs);
+            })
+            .and_then([&bank, &uuid, &player]() -> ll::Expected<void> {
+                return bank.set(uuid, "name", player.getRealName());
+            });
         if (!setBank.has_value()) {
             ScoreboardUtils::addScore(player, mScoreboard, amount);
 
             return ll::Unexpected(setBank.error());
         }
 
-        auto commit = transaction.value().commit();
-        if (!commit.has_value()) {
-            ScoreboardUtils::addScore(player, mScoreboard, amount);
-
-            return ll::Unexpected(commit.error());
-        }
-
         this->mImpl->ledger.record(uuid, player.getRealName(), "", "", amount, 0, "bank_deposit");
 
-        this->mImpl->db->set("Wallet", uuid, "balance", std::to_string(static_cast<long long>(ScoreboardUtils::getScore(player, mScoreboard))))
+        return this->mImpl->wallet->set(uuid, "balance", static_cast<long long>(ScoreboardUtils::getScore(player, mScoreboard)))
             .or_else([this](ll::Error e) -> ll::Expected<void> {
                 e.log(*this->mImpl->logger);
 
                 return {};
             });
-
-        return {};
     }
 
     ll::Expected<long long> WalletBank::computeInterest(long long principal, long long depositAt) {
@@ -164,40 +161,35 @@ namespace LOICollection::server::Plugins {
 
         std::string uuid = player.getUuid().asString();
 
-        auto data = this->mImpl->db->get("WalletBank", uuid);
-        if (!data.has_value())
-            return ll::Unexpected(data.error());
+        auto& bank = *this->mImpl->bank;
+        auto& fee = *this->mImpl->fee;
 
-        auto row = data.value();
-        if (row.empty() || !row.contains("principal") || SystemUtils::toLongLong(row.at("principal"), 0) <= 0)
+        auto principal = bank.get<long long>(uuid, "principal", 0);
+        if (!principal.has_value())
+            return ll::Unexpected(principal.error());
+        if (principal.value() <= 0)
             return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::BankEmpty));
 
-        long long principal = SystemUtils::toLongLong(row.at("principal"), 0);
-        long long depositAt = row.contains("deposit_at") ? SystemUtils::toLongLong(row.at("deposit_at"), 0) : 0;
+        auto depositAt = bank.get<long long>(uuid, "deposit_at", 0);
+        if (!depositAt.has_value())
+            return ll::Unexpected(depositAt.error());
 
-        auto interest = this->computeInterest(principal, depositAt);
+        auto interest = this->computeInterest(principal.value(), depositAt.value());
         if (!interest.has_value())
             return ll::Unexpected(interest.error());
 
         long long paidInterest = interest.value();
         long long interestTax = 0;
 
-        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
-        if (!transaction.has_value())
-            return ll::Unexpected(transaction.error());
-
-        auto conn = transaction.value().connection();
-
         if (this->mImpl->options.WalletInterestFromPool) {
-            auto pool = this->mImpl->db->get(conn, "WalletFee", "total", "amount", "0");
+            auto pool = fee.get<long long>("total", "amount", 0);
             if (!pool.has_value())
                 return ll::Unexpected(pool.error());
 
-            long long available = SystemUtils::toLongLong(pool.value(), 0);
-            paidInterest = std::min(paidInterest, available);
+            paidInterest = std::min(paidInterest, pool.value());
 
             if (paidInterest > 0) {
-                auto setPool = this->mImpl->db->set(conn, "WalletFee", "total", "amount", std::to_string(available - paidInterest));
+                auto setPool = fee.set("total", "amount", pool.value() - paidInterest);
                 if (!setPool.has_value())
                     return ll::Unexpected(setPool.error());
             }
@@ -207,99 +199,89 @@ namespace LOICollection::server::Plugins {
             ));
 
             if (interestTax > 0) {
-                auto pool = this->mImpl->db->get(conn, "WalletFee", "total", "amount", "0");
+                auto pool = fee.get<long long>("total", "amount", 0);
                 if (!pool.has_value())
                     return ll::Unexpected(pool.error());
 
-                long long available = SystemUtils::toLongLong(pool.value(), 0);
-
-                auto setPool = this->mImpl->db->set(conn, "WalletFee", "total", "amount", std::to_string(available + interestTax));
+                auto setPool = fee.set("total", "amount", pool.value() + interestTax);
                 if (!setPool.has_value())
                     return ll::Unexpected(setPool.error());
             }
         }
 
-        auto delBank = this->mImpl->db->del(conn, "WalletBank", uuid);
+        auto delBank = bank.del(uuid);
         if (!delBank.has_value())
             return ll::Unexpected(delBank.error());
 
-        auto commit = transaction.value().commit();
-        if (!commit.has_value())
-            return ll::Unexpected(commit.error());
-
-        long long credit = principal + paidInterest;
+        long long credit = principal.value() + paidInterest;
         ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, static_cast<int>(credit));
 
         std::string playerName = player.getRealName();
 
-        this->mImpl->ledger.record(uuid, playerName, "", "", principal, 0, "bank_withdraw");
+        this->mImpl->ledger.record(uuid, playerName, "", "", principal.value(), 0, "bank_withdraw");
 
         if (paidInterest > 0)
             this->mImpl->ledger.record("", "", uuid, playerName, paidInterest, interestTax, "bank_interest");
 
-        this->mImpl->db->set("Wallet", uuid, "balance", std::to_string(static_cast<long long>(ScoreboardUtils::getScore(player, this->mImpl->options.TargetScoreboard))))
+        return this->mImpl->wallet->set(uuid, "balance", static_cast<long long>(ScoreboardUtils::getScore(player, this->mImpl->options.TargetScoreboard)))
             .or_else([this](ll::Error e) -> ll::Expected<void> {
                 e.log(*this->mImpl->logger);
 
                 return {};
             });
-
-        return {};
     }
 
     ll::Expected<long long> WalletBank::getPrincipal(const std::string& uuid) {
         if (!this->isValid())
             return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
-        return this->mImpl->db->get("WalletBank", uuid, "principal", "0")
-            .transform([](const std::string& value) -> long long {
-                return SystemUtils::toLongLong(value, 0);
-            });
+        return this->mImpl->bank->get<long long>(uuid, "principal", 0);
     }
 
     ll::Expected<long long> WalletBank::getInterest(const std::string& uuid) {
         if (!this->isValid())
             return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
-        return this->mImpl->db->get("WalletBank", uuid)
-            .and_then([this, uuid](std::unordered_map<std::string, std::string> row) -> ll::Expected<long long> {
-                if (row.empty() || !row.contains("principal"))
-                    return 0;
+        auto principal = this->mImpl->bank->get<long long>(uuid, "principal", 0);
+        if (!principal.has_value())
+            return ll::Unexpected(principal.error());
 
-                long long principal = SystemUtils::toLongLong(row.at("principal"), 0);
-                long long depositAt = row.contains("deposit_at") ? SystemUtils::toLongLong(row.at("deposit_at"), 0) : 0;
+        auto depositAt = this->mImpl->bank->get<long long>(uuid, "deposit_at", 0);
+        if (!depositAt.has_value())
+            return ll::Unexpected(depositAt.error());
 
-                return this->computeInterest(principal, depositAt);
-            });
+        return this->computeInterest(principal.value(), depositAt.value());
     }
 
     ll::Expected<std::vector<WealthEntry>> WalletBank::computeWealthRanking() {
-        auto ids = this->mImpl->db->list("Wallet");
+        auto& wallet = *this->mImpl->wallet;
+
+        auto ids = wallet.list();
         if (!ids.has_value())
             return ll::Unexpected(ids.error());
 
-        if (ids.value().empty())
-            return std::vector<WealthEntry>{};
-
-        auto rows = this->mImpl->db->get("Wallet", ids.value());
-        if (!rows.has_value())
-            return ll::Unexpected(rows.error());
-
         std::vector<WealthEntry> entries;
-        entries.reserve(rows.value().size());
+        entries.reserve(ids.value().size());
 
         std::string mScoreboard = this->mImpl->options.TargetScoreboard;
 
-        for (const auto& [uuid, row] : rows.value()) {
-            std::string name = row.contains("name") ? row.at("name") : "Unknown";
+        for (const auto& uuid : ids.value()) {
+            auto name = wallet.get<std::string>(uuid, "name", "Unknown");
+            if (!name.has_value())
+                return ll::Unexpected(name.error());
 
             long long balance = 0;
             if (Player* player = ll::service::getLevel()->getPlayer(mce::UUID::fromString(uuid)); player)
                 balance = ScoreboardUtils::getScore(*player, mScoreboard);
-            else
-                balance = SystemUtils::toLongLong(row.contains("balance") ? row.at("balance") : "0", 0);
+            else {
+                auto snapshot = wallet.get<long long>(uuid, "balance", 0);
+                if (!snapshot.has_value())
+                    return ll::Unexpected(snapshot.error());
 
-            entries.push_back({ uuid, name, balance });
+                balance = snapshot.value();
+            }
+
+            entries.push_back({ uuid, name.value(), balance });
         }
 
         std::sort(entries.begin(), entries.end(), [](const WealthEntry& left, const WealthEntry& right) -> bool {

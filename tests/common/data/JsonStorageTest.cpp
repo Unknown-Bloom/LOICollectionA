@@ -8,7 +8,7 @@
 #include <filesystem>
 #include <string_view>
 
-#include "LOICollectionA/data/JsonStorage.h"
+#include "LOICollectionA/data/json/JsonStorage.h"
 
 class JsonStorageTest : public testing::Test {
 protected:

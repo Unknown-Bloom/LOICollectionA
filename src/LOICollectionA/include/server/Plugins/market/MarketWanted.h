@@ -11,7 +11,7 @@
 #include "LOICollectionA/base/Macro.h"
 
 class Player;
-class SQLiteStorage;
+class BlockRepository;
 class TimerManager;
 
 namespace ll {
@@ -31,8 +31,8 @@ namespace LOICollection::server::Plugins {
         using TaxRateProvider = std::function<double()>;
 
         MarketWanted(
-            std::shared_ptr<SQLiteStorage> db,
-            std::shared_ptr<SQLiteStorage> settingsDb,
+            std::shared_ptr<BlockRepository> db,
+            std::shared_ptr<BlockRepository> settingsDb,
             const Config::C_Market& options,
             std::shared_ptr<ll::io::Logger> logger,
             TimerManager& timerManager,

@@ -275,7 +275,28 @@ When you upgrade the plugin version, newly added configuration items are automat
 ## Module Data Files
 
 Data files refer to files that store data in the database. Data files are the core of the database, as they store all the data in the database. Data files can be text files, binary files, or other types of files. The format and content of a data file depend on the type of database and the application scenario.  
-Currently, `LOICollectionA` supports two data file formats: `Json` and `SQLite`. Only data files in the `Json` format can be modified directly. As for data files in the `SQLite` format, we do not recommend modifying them directly.
+Since 1.17.0 module data is stored through exactly two carriers:
+
+| Carrier | Shape | Editable by hand |
+| --- | --- | --- |
+| Block-storage database | `plugins/LOICollectionA/data/*.db` (SQLite file with block-model tables) | Not recommended — the layout is fixed at compile time and manual edits break the `SchemaMismatch` check |
+| JSON file | `notice.json`, `cdk.json`, etc. | Yes, via the in-game editors or by editing the file |
+
+### Database File Overview
+
+| File | Owning module |
+| --- | --- |
+| `settings.db` | global settings plus the shared tables of Wallet / Language / PvP / Chat / Tpa / Market / Statistics / Notice |
+| `blacklist.db` | Blacklist (banned words, ban list) |
+| `mute.db` | Mute (mute list) |
+| `chat.db` | Chat (chat logs, interception rules) |
+| `market.db` | Market (market, store, wanted, auction, quotes) |
+| `statistics.db` | Statistics (player statistics) |
+| `tpa.db` | Tpa (teleport requests) |
+| `behaviorevent.db` | BehaviorEvent (behavior event logs) |
+
+> [!WARNING]
+> 1.17.0 moves the data layer to block storage and **does not migrate data written by older versions**. Back up `plugins/LOICollectionA/data` before upgrading and follow [Data Migration](../course/migrate.md).
 
 > [!TIP]
 > In most cases, you do not need to modify data files manually, because most data files have built-in editors during the use of `LOICollectionA`. Starting from 1.15.0, Menu and Shop have been changed to edit lcui data files directly, and in-game editors are no longer provided.

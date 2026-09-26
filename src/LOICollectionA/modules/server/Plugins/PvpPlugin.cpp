@@ -31,7 +31,8 @@
 
 #include "LOICollectionA/utils/I18nUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/include/server/Plugins/types/pvp/PvpSchema.h"
 
 #include "LOICollectionA/frontend/AST.h"
 
@@ -58,7 +59,8 @@ namespace LOICollection::server::Plugins {
 
         Config::C_Pvp options;
 
-        std::shared_ptr<SQLiteStorage> db;
+        std::shared_ptr<BlockRepository> db;
+        std::optional<PvpTable> pvp;
         std::shared_ptr<ll::io::Logger> logger;
 
         std::string mGuiPath;
@@ -164,15 +166,14 @@ namespace LOICollection::server::Plugins {
 
             std::string mObject = event.self().getUuid().asString();
 
-            this->mImpl->db->has("Pvp", mObject)
+            this->mImpl->pvp->has(mObject)
                 .and_then([this, mObject](bool exists) -> ll::Expected<void> {
                     if (!exists) {
-                        std::unordered_map<std::string, std::string> mData = {
-                            { "name", mObject },
-                            { "enable", "false" }
-                        };
+                        auto named = this->mImpl->pvp->set(mObject, "name", mObject);
+                        if (!named.has_value())
+                            return named;
 
-                        return this->mImpl->db->set("Pvp", mObject, mData);
+                        return this->mImpl->pvp->set(mObject, "enable", false);
                     }
 
                     return {};
@@ -224,7 +225,7 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(PvpPluginErrorCode::Invalid));
         
-        return this->mImpl->db->set("Pvp", player.getUuid().asString(), "enable", (value ? "true" : "false"))
+        return this->mImpl->pvp->set(player.getUuid().asString(), "enable", value)
             .transform([this, value, &player]() -> void {
                 this->mImpl->PvpCache.put(player.getUuid().asString(), value);
 
@@ -247,17 +248,15 @@ namespace LOICollection::server::Plugins {
         if (this->mImpl->PvpCache.contains(mObject)) 
             return *this->mImpl->PvpCache.get(mObject).value();
 
-        return this->mImpl->db->get("Pvp", mObject, "enable", "false")
-            .transform([this, mObject](const std::string& value) -> bool {
-                bool result = (value == "true");
-
+        return this->mImpl->pvp->get<bool>(mObject, "enable", false)
+            .transform([this, mObject](bool result) -> bool {
                 this->mImpl->PvpCache.put(mObject, result);
                 return result;
             });
     }
 
     bool PvpPlugin::isValid() {
-        return this->getLogger() != nullptr && this->mImpl->db != nullptr;
+        return this->getLogger() != nullptr && this->mImpl->pvp.has_value();
     }
 
     std::string PvpPlugin::getName() {
@@ -272,7 +271,7 @@ namespace LOICollection::server::Plugins {
         if (!ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Pvp.ModuleEnabled)
             return false;
 
-        this->mImpl->db = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB");
+        this->mImpl->db = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
         this->mImpl->logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
         this->mImpl->options = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Pvp;
         this->mImpl->mGuiPath = (std::filesystem::path(ServiceProvider::getInstance().getService<std::string>("GuiPath")->data()) / "pvp.lcui").string();
@@ -285,6 +284,7 @@ namespace LOICollection::server::Plugins {
             return false;
 
         this->mImpl->db.reset();
+        this->mImpl->pvp.reset();
         this->mImpl->logger.reset();
         this->mImpl->options = {};
 
@@ -298,12 +298,12 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->options.ModuleEnabled)
             return false;
         
-        return this->mImpl->db->create("Pvp", [](SQLiteStorage::ColumnCallback ctor) -> void {
-            ctor("name");
-            ctor("enable");
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->registeryUI();
-        }).transform([this]() -> bool {
+        return PvpTable::open(*this->mImpl->db, "Pvp")
+            .and_then([this](PvpTable table) -> ll::Expected<void> {
+                this->mImpl->pvp.emplace(std::move(table));
+
+                return this->registeryUI();
+            }).transform([this]() -> bool {
             this->registeryCommand();
             this->listenEvent();
 

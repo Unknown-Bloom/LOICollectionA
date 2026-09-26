@@ -14,12 +14,13 @@
 #include "LOICollectionA/include/ModuleBase.h"
 #include "LOICollectionA/include/ModManager.h"
 
-#include "LOICollectionA/include/server/Plugins/market/MarketType.h"
+#include "LOICollectionA/include/server/Plugins/types/market/MarketSchema.h"
+#include "LOICollectionA/include/server/Plugins/types/market/MarketCommonType.h"
 #include "LOICollectionA/include/server/Plugins/market/MarketQuote.h"
 
 class Player;
 class ItemStack;
-class SQLiteStorage;
+class BlockRepository;
 
 namespace Config {
     struct C_Market;
@@ -105,7 +106,7 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI static std::shared_ptr<MarketPlugin> getShared();
         LOICOLLECTION_A_NDAPI static std::error_code makeErrorCode(MarketPluginErrorCode e);
 
-        LOICOLLECTION_A_NDAPI std::shared_ptr<SQLiteStorage> getDatabase();
+        LOICOLLECTION_A_NDAPI std::shared_ptr<BlockRepository> getDatabase();
         LOICOLLECTION_A_NDAPI std::shared_ptr<ll::io::Logger> getLogger();
         LOICOLLECTION_A_NDAPI const Config::C_Market& getOptions() const;
 
@@ -164,6 +165,11 @@ namespace LOICollection::server::Plugins {
 
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getReviews(const std::string& storeId, MarketStoreReviewStatus status);
         LOICOLLECTION_A_NDAPI ll::Expected<std::unordered_map<std::string, std::string>> getReviewData(const std::string& id);
+
+        LOICOLLECTION_A_NDAPI StoreTable& stores();
+        LOICOLLECTION_A_NDAPI StoreItemTable& items();
+        LOICOLLECTION_A_NDAPI StoreSaleTable& sales();
+        LOICOLLECTION_A_NDAPI StoreReviewTable& reviews();
 
         LOICOLLECTION_A_NDAPI ll::Expected<std::optional<QuoteInfo>> getQuote(const std::string& itemName);
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<std::string, long long>>> getTopVolume(int limit, int days = 30);

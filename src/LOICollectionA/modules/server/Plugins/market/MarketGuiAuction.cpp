@@ -148,7 +148,7 @@ namespace LOICollection::server::Plugins {
                                 data.at("item_name"), data.at("seller_name"), data.at("start_price"),
                                 data.at("current_price"),
                                 data.at("bidder_name").empty() ? "None" : data.at("bidder_name"),
-                                SystemUtils::toFormatTime(data.at("end_at"), data.at("end_at"))
+                                SystemUtils::toFormatEpoch(data.at("end_at"), data.at("end_at"))
                             ));
 
                             return values;

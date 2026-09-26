@@ -10,9 +10,7 @@
 
 #include <mc/server/SimulatedPlayer.h>
 
-#include "LOICollectionA/data/SQLiteStorage.h"
-
-#include "LOICollectionA/include/server/Plugins/BehaviorEventPlugin.h"
+#include "LOICollectionA/include/server/Plugins/behaviorevent/BehaviorEventPlugin.h"
 
 using namespace LOICollection::server::Plugins;
 
@@ -24,40 +22,39 @@ protected:
     }
 
     void TearDown() override {
-        auto result = BehaviorEventPlugin::getShared()->getDatabase()->exec("DELETE FROM Events;");
+        auto result = BehaviorEventPlugin::getShared()->clean(0);
         if (!result.has_value())
             GTEST_FAIL() << "Unable to clear data";
     }
 
-    bool CreateDatabaseEntry(const std::string& id = "test") {
+    std::string CreateDatabaseEntry() {
         auto mEvent = BehaviorEventPlugin::getShared()->getBasicEvent("test", "test", Vec3(-114514, -114514, -114514), 0);
-        if (!mEvent.has_value()) return false;
-        
-        auto result = BehaviorEventPlugin::getShared()->write(id, mEvent.value());
-        if (!result.has_value()) return false;
+        if (!mEvent.has_value()) return {};
 
-        auto has = BehaviorEventPlugin::getShared()->getDatabase()->has("Events", id);
-        return has.has_value() && has.value();
+        auto result = BehaviorEventPlugin::getShared()->write(mEvent.value());
+        if (!result.has_value()) return {};
+
+        return result.value();
     }
 };
 
 TEST_F(BehaviorEventPluginTest, WriteDatabase) {
-    EXPECT_TRUE(CreateDatabaseEntry());
+    EXPECT_FALSE(CreateDatabaseEntry().empty());
 }
 
 TEST_F(BehaviorEventPluginTest, GetEvents) {
-    EXPECT_TRUE(CreateDatabaseEntry());
+    auto id = CreateDatabaseEntry();
 
     auto data = BehaviorEventPlugin::getShared()->getEvents();
     EXPECT_TRUE(data.has_value());
 
     auto& vecs = data.value();
     EXPECT_EQ(vecs.size(), 1);
-    EXPECT_EQ(vecs[0], "test");
+    EXPECT_EQ(vecs[0], id);
 }
 
 TEST_F(BehaviorEventPluginTest, GetEventByConditions) {
-    EXPECT_TRUE(CreateDatabaseEntry());
+    auto id = CreateDatabaseEntry();
 
     auto data = BehaviorEventPlugin::getShared()->getEvents({
         { "event_name", "test" },
@@ -68,11 +65,11 @@ TEST_F(BehaviorEventPluginTest, GetEventByConditions) {
     auto& vecs = data.value();
     EXPECT_FALSE(vecs.empty());
     EXPECT_EQ(vecs.size(), 1);
-    EXPECT_EQ(vecs[0], "test");
+    EXPECT_EQ(vecs[0], id);
 }
 
 TEST_F(BehaviorEventPluginTest, GetEventByFilter) {
-    EXPECT_TRUE(CreateDatabaseEntry());
+    auto id = CreateDatabaseEntry();
 
     auto data = BehaviorEventPlugin::getShared()->getEvents({
         { "event_type", "" }
@@ -84,11 +81,11 @@ TEST_F(BehaviorEventPluginTest, GetEventByFilter) {
     auto& vecs = data.value();
     EXPECT_FALSE(vecs.empty());
     EXPECT_EQ(vecs.size(), 1);
-    EXPECT_EQ(vecs[0], "test");
+    EXPECT_EQ(vecs[0], id);
 }
 
 TEST_F(BehaviorEventPluginTest, GetEventByPosition) {
-    EXPECT_TRUE(CreateDatabaseEntry());
+    auto id = CreateDatabaseEntry();
 
     auto data = BehaviorEventPlugin::getShared()->getEventsByPosition(0, [](int x, int y, int z) -> bool {
         return x == -114514 && y == -114514 && z == -114514;
@@ -98,18 +95,29 @@ TEST_F(BehaviorEventPluginTest, GetEventByPosition) {
     auto& vecs = data.value();
     EXPECT_FALSE(vecs.empty());
     EXPECT_EQ(vecs.size(), 1);
-    EXPECT_EQ(vecs[0], "test");
+    EXPECT_EQ(vecs[0], id);
+}
+
+TEST_F(BehaviorEventPluginTest, GetEventsWithinHours) {
+    auto id = CreateDatabaseEntry();
+
+    auto data = BehaviorEventPlugin::getShared()->getEventsWithin(1);
+    EXPECT_TRUE(data.has_value());
+
+    auto& vecs = data.value();
+    EXPECT_EQ(vecs.size(), 1);
+    EXPECT_EQ(vecs[0], id);
 }
 
 TEST_F(BehaviorEventPluginTest, Filter) {
-    EXPECT_TRUE(CreateDatabaseEntry());
-    EXPECT_TRUE(CreateDatabaseEntry("test2"));
+    auto first = CreateDatabaseEntry();
+    auto second = CreateDatabaseEntry();
 
-    auto data = BehaviorEventPlugin::getShared()->filter({ "test", "test2" });
+    auto data = BehaviorEventPlugin::getShared()->filter({ first, second });
     EXPECT_TRUE(data.has_value());
 
     auto& vecs = data.value();
     EXPECT_FALSE(vecs.empty());
     EXPECT_EQ(vecs.size(), 1);
-    EXPECT_EQ(vecs[0], "test2");
+    EXPECT_EQ(vecs[0], second);
 }

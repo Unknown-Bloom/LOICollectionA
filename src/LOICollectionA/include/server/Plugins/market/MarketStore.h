@@ -10,10 +10,11 @@
 
 #include "LOICollectionA/base/Macro.h"
 
-#include "LOICollectionA/include/server/Plugins/market/MarketType.h"
+#include "LOICollectionA/include/server/Plugins/types/market/MarketSchema.h"
+#include "LOICollectionA/include/server/Plugins/types/market/MarketCommonType.h"
 
 class Player;
-class SQLiteStorage;
+class BlockRepository;
 class TimerManager;
 
 namespace ll {
@@ -33,8 +34,8 @@ namespace LOICollection::server::Plugins {
         using TaxRateProvider = std::function<double()>;
 
         MarketStore(
-            std::shared_ptr<SQLiteStorage> db,
-            std::shared_ptr<SQLiteStorage> settingsDb,
+            std::shared_ptr<BlockRepository> db,
+            std::shared_ptr<BlockRepository> settingsDb,
             const Config::C_Market& options,
             std::shared_ptr<ll::io::Logger> logger,
             TimerManager& timerManager,
@@ -51,6 +52,13 @@ namespace LOICollection::server::Plugins {
 
     public:
         LOICOLLECTION_A_NDAPI ll::Expected<void> createTables();
+
+        [[nodiscard]] StoreTable&     stores();
+        [[nodiscard]] StoreItemTable& items();
+        [[nodiscard]] StoreSaleTable& sales();
+        [[nodiscard]] StoreReviewTable& reviews();
+
+        LOICOLLECTION_A_API void unload();
 
         LOICOLLECTION_A_NDAPI ll::Expected<bool> createStore(Player& player, const std::string& name, const std::string& icon, const std::string& introduce);
         LOICOLLECTION_A_NDAPI ll::Expected<bool> dissolveStore(Player& player);

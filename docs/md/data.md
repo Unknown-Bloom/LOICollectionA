@@ -275,7 +275,29 @@
 ## 模块数据文件
 
 数据文件是指存储在数据库中的数据文件。数据文件是数据库的核心，它存储了数据库中的所有数据。数据文件可以是文本文件、二进制文件或者其他类型的文件。数据文件的格式和内容取决于数据库的类型和应用场景。  
-目前 `LOICollectionA` 支持 `Json` 和 `SQLite` 两种数据文件格式。其中只有 `Json` 格式的数据文件可以被直接修改。而对于 `SQLite` 格式的数据文件，我们是不建议您直接修改的。
+
+自 1.17.0 起，`LOICollectionA` 的模块数据只走两种载体：
+
+| 载体 | 形态 | 能否直接修改 |
+| ---- | ---- | ---- |
+| 块存储数据库 | `plugins/LOICollectionA/data/*.db`（SQLite 文件 + 块模型表） | 不建议。表结构由插件在编译期固定，手工改动会破坏 `SchemaMismatch` 校验 |
+| JSON 文件 | `notice.json`、`cdk.json` 等 | 可以，配合游戏内编辑器或直接编辑 |
+
+### 数据库文件一览
+
+| 文件 | 归属模块 |
+| ---- | ---- |
+| `settings.db` | 全局设置 + Wallet / Language / PvP / Chat / Tpa / Market / Statistics / Notice 的公共表 |
+| `blacklist.db` | Blacklist（违规词、封禁名单） |
+| `mute.db` | Mute（禁言名单） |
+| `chat.db` | Chat（聊天记录、拦截规则） |
+| `market.db` | Market（市场、商店、求购、拍卖、报价） |
+| `statistics.db` | Statistics（玩家统计） |
+| `tpa.db` | Tpa（传送请求） |
+| `behaviorevent.db` | BehaviorEvent（行为事件日志） |
+
+> [!WARNING]
+> 1.17.0 把数据层换成了块存储，**旧版本写入的数据不会被自动迁移**。升级前请备份 `plugins/LOICollectionA/data` 目录，升级步骤见 [数据迁移](../course/migrate.md)。
 
 > [!TIP]
 > 通常情况下，您不需要手动修改数据文件，因为在使用 `LOICollectionA` 的过程中，大部分数据文件都存在内部编辑器。从 1.15.0 起，Menu 与 Shop 改为直接编辑 lcui 数据文件，不再提供游戏内编辑器。

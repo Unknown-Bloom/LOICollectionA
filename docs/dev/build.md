@@ -80,7 +80,7 @@ xmake
 ```txt
 tests/
 ├─ common/          # 跨平台测试：base（Cache/ServiceContainer/Wrapper 等）、
-│                   #   coro、data（Json/SQLite 存储）、frontend（LCUI 词法/语法/语义/VM）
+│                   #   coro、data（Json 存储与块存储 Payload）、frontend（LCUI 词法/语法/语义/VM）
 ├─ server/          # 服务端测试：mc（方块/计分板等工具）、modules（插件回调）、
 │                   #   TestCommand.cpp（入口）、TestSimulatedPlayer（模拟玩家）
 └─ client/          # 客户端测试（仅 client 目标编译）

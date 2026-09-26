@@ -231,7 +231,7 @@ namespace LOICollection::frontend {
                 TypeInfo left = checkExpr(*arith.left, scope);
                 TypeInfo right = checkExpr(*arith.right, scope);
 
-                if (auto overload = resolveOperatorOverload(arith.op, left, right, scope)) {
+                if (auto overload = resolveOperatorOverload(arith.op, left)) {
                     arith.overload = overload;
                     return overload->returnType;
                 }
@@ -242,9 +242,9 @@ namespace LOICollection::frontend {
             case ASTNode::Type::Compare: {
                 auto& cmp = static_cast<CompareNode&>(node);
                 TypeInfo left = checkExpr(*cmp.left, scope);
-                TypeInfo right = checkExpr(*cmp.right, scope);
+                checkExpr(*cmp.right, scope);
 
-                if (auto overload = resolveOperatorOverload(cmp.op, left, right, scope)) {
+                if (auto overload = resolveOperatorOverload(cmp.op, left)) {
                     cmp.overload = overload;
                     return overload->returnType;
                 }
@@ -264,7 +264,7 @@ namespace LOICollection::frontend {
                 TypeInfo operand = checkExpr(*unary.operand, scope);
 
                 if (unary.op == "-") {
-                    if (auto overload = resolveOperatorOverload("neg", operand, {}, scope)) {
+                    if (auto overload = resolveOperatorOverload("neg", operand)) {
                         unary.overload = overload;
                         return overload->returnType;
                     }

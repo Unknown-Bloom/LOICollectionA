@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -29,20 +30,25 @@
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/include/server/Plugins/types/wallet/WalletSchema.h"
 
 #include "LOICollectionA/ConfigPlugin.h"
 
 #include "LOICollectionA/include/server/Plugins/wallet/WalletRedEnvelope.h"
 #include "LOICollectionA/include/server/Plugins/wallet/WalletLedger.h"
-#include "LOICollectionA/include/server/Plugins/wallet/WalletType.h"
+#include "LOICollectionA/include/server/Plugins/types/wallet/WalletCommonType.h"
 #include "LOICollectionA/include/server/Plugins/wallet/WalletPlugin.h"
 
 using I18nUtilsTools::tr;
 
 namespace LOICollection::server::Plugins {
     struct WalletRedEnvelope::Impl {
-        std::shared_ptr<SQLiteStorage> db;
+        std::shared_ptr<BlockRepository> db;
+        std::optional<RedEnvelopeTable> envelope;
+        std::optional<RedEnvelopeGrabTable> grab;
+        std::optional<WalletTable> wallet;
+
         const Config::C_Wallet& options;
         std::shared_ptr<ll::io::Logger> logger;
         TimerManager& timerManager;
@@ -53,7 +59,7 @@ namespace LOICollection::server::Plugins {
         ll::ConcurrentDenseMap<std::string, std::vector<RedEnvelopeEntry>> mRedEnvelopes;
 
         Impl(
-            std::shared_ptr<SQLiteStorage> db_,
+            std::shared_ptr<BlockRepository> db_,
             const Config::C_Wallet& options_,
             std::shared_ptr<ll::io::Logger> logger_,
             TimerManager& timerManager_,
@@ -68,7 +74,7 @@ namespace LOICollection::server::Plugins {
     };
 
     WalletRedEnvelope::WalletRedEnvelope(
-        std::shared_ptr<SQLiteStorage> db,
+        std::shared_ptr<BlockRepository> db,
         const Config::C_Wallet& options,
         std::shared_ptr<ll::io::Logger> logger,
         TimerManager& timerManager,
@@ -79,26 +85,25 @@ namespace LOICollection::server::Plugins {
     WalletRedEnvelope::~WalletRedEnvelope() = default;
 
     bool WalletRedEnvelope::isValid() const {
-        return this->mImpl->db != nullptr;
+        return this->mImpl->db != nullptr && this->mImpl->envelope.has_value()
+            && this->mImpl->grab.has_value() && this->mImpl->wallet.has_value();
     }
 
     ll::Expected<void> WalletRedEnvelope::createTables() {
-        return this->mImpl->db->create("RedEnvelope", [](SQLiteStorage::ColumnCallback ctor) -> void {
-            ctor("chat_key");
-            ctor("sender_uuid");
-            ctor("sender_name");
-            ctor("capacity");
-            ctor("total");
-            ctor("count");
-            ctor("people");
-            ctor("targets");
-            ctor("expire_at");
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->mImpl->db->create("RedEnvelopeGrab", [](SQLiteStorage::ColumnCallback ctor) -> void {
-                ctor("name");
-                ctor("amount");
+        return RedEnvelopeTable::open(*this->mImpl->db, "RedEnvelope")
+            .and_then([this](RedEnvelopeTable table) -> ll::Expected<RedEnvelopeGrabTable> {
+                this->mImpl->envelope.emplace(std::move(table));
+
+                return RedEnvelopeGrabTable::open(*this->mImpl->db, "RedEnvelopeGrab");
+            })
+            .and_then([this](RedEnvelopeGrabTable table) -> ll::Expected<WalletTable> {
+                this->mImpl->grab.emplace(std::move(table));
+
+                return WalletTable::open(*this->mImpl->db, "Wallet");
+            })
+            .transform([this](WalletTable table) -> void {
+                this->mImpl->wallet.emplace(std::move(table));
             });
-        });
     }
 
     ll::Expected<void> WalletRedEnvelope::tryGrab(Player& player, const std::string& message) {
@@ -137,30 +142,49 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<bool> WalletRedEnvelope::grabEnvelope(Player& player, const std::string& uuid, RedEnvelopeEntry& entry) {
-        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
-        if (!transaction.has_value())
-            return ll::Unexpected(transaction.error());
+        auto& envelope = *this->mImpl->envelope;
+        auto& grab = *this->mImpl->grab;
 
-        auto conn = transaction.value().connection();
+        auto envelopeBatch = envelope.tx();
+        if (!envelopeBatch.has_value())
+            return ll::Unexpected(envelopeBatch.error());
 
-        auto data = this->mImpl->db->get(conn, "RedEnvelope", entry.id);
-        if (!data.has_value())
-            return ll::Unexpected(data.error());
+        auto grabBatch = grab.tx();
+        if (!grabBatch.has_value())
+            return ll::Unexpected(grabBatch.error());
 
-        auto m = data.value();
-        if (m.empty())
+        auto& envelopeTx = envelopeBatch.value();
+        auto& grabTx = grabBatch.value();
+
+        auto exists = envelopeTx.has(entry.id);
+        if (!exists.has_value())
+            return ll::Unexpected(exists.error());
+
+        if (!exists.value())
             return false;
 
-        int capacity = SystemUtils::toInt(m["capacity"], 0);
-        int count = SystemUtils::toInt(m["count"], 0);
-        int people = SystemUtils::toInt(m["people"], 0);
+        auto capacity = envelopeTx.get<long long>(entry.id, "capacity", 0);
+        if (!capacity.has_value())
+            return ll::Unexpected(capacity.error());
 
-        if (people >= count)
+        auto count = envelopeTx.get<long long>(entry.id, "count", 0);
+        if (!count.has_value())
+            return ll::Unexpected(count.error());
+
+        auto people = envelopeTx.get<long long>(entry.id, "people", 0);
+        if (!people.has_value())
+            return ll::Unexpected(people.error());
+
+        if (people.value() >= count.value())
             return false;
 
-        if (m.contains("targets") && !m.at("targets").empty()) {
+        auto targets = envelopeTx.get<std::string>(entry.id, "targets", "");
+        if (!targets.has_value())
+            return ll::Unexpected(targets.error());
+
+        if (!targets.value().empty()) {
             bool inList = false;
-            std::string_view targetsView = m.at("targets");
+            std::string_view targetsView = targets.value();
             size_t start = 0;
             while (start <= targetsView.size()) {
                 size_t comma = targetsView.find(',', start);
@@ -179,50 +203,60 @@ namespace LOICollection::server::Plugins {
         }
 
         std::string grabKey = entry.id + ":" + uuid;
-        auto grabbed = this->mImpl->db->has(conn, "RedEnvelopeGrab", grabKey);
+
+        auto grabbed = grabTx.has(grabKey);
         if (!grabbed.has_value())
             return ll::Unexpected(grabbed.error());
 
         if (grabbed.value())
             return false;
 
-        int remainingPeople = count - people;
+        long long remainingPeople = count.value() - people.value();
         bool last = remainingPeople == 1;
-        int amount = last ? capacity : this->computeGiftAmount(capacity, remainingPeople);
+        int amount = last ? static_cast<int>(capacity.value())
+            : this->computeGiftAmount(static_cast<int>(capacity.value()), static_cast<int>(remainingPeople));
         if (amount <= 0)
             return false;
 
-        auto setCapacity = this->mImpl->db->set(conn, "RedEnvelope", entry.id, "capacity", std::to_string(capacity - amount));
+        auto setCapacity = envelopeTx.set(entry.id, "capacity", capacity.value() - amount);
         if (!setCapacity.has_value())
             return ll::Unexpected(setCapacity.error());
 
-        auto setPeople = this->mImpl->db->set(conn, "RedEnvelope", entry.id, "people", std::to_string(people + 1));
+        auto setPeople = envelopeTx.set(entry.id, "people", people.value() + 1);
         if (!setPeople.has_value())
             return ll::Unexpected(setPeople.error());
 
-        auto setGrab = this->mImpl->db->set(conn, "RedEnvelopeGrab", grabKey, {
-            { "name", player.getRealName() },
-            { "amount", std::to_string(amount) }
-        });
-        if (!setGrab.has_value())
-            return ll::Unexpected(setGrab.error());
+        auto setName = grabTx.set(grabKey, "name", player.getRealName());
+        if (!setName.has_value())
+            return ll::Unexpected(setName.error());
 
-        bool nowFull = (people + 1) >= count;
+        auto setAmount = grabTx.set(grabKey, "amount", static_cast<long long>(amount));
+        if (!setAmount.has_value())
+            return ll::Unexpected(setAmount.error());
+
+        bool nowFull = (people.value() + 1) >= count.value();
         if (nowFull) {
-            auto delEnv = this->mImpl->db->del(conn, "RedEnvelope", entry.id);
+            auto delEnv = envelopeTx.del(entry.id);
             if (!delEnv.has_value())
                 return ll::Unexpected(delEnv.error());
         }
 
-        auto commit = transaction.value().commit();
-        if (!commit.has_value())
-            return ll::Unexpected(commit.error());
+        auto commitGrab = grabTx.commit();
+        if (!commitGrab.has_value()) {
+            [[maybe_unused]] auto rolledBack = envelopeTx.rollback();
+
+            return ll::Unexpected(commitGrab.error());
+        }
+
+        auto commitEnvelope = envelopeTx.commit();
+        if (!commitEnvelope.has_value())
+            return ll::Unexpected(commitEnvelope.error());
 
         ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, amount);
 
         this->mImpl->ledger.record(entry.senderUuid, entry.senderName, uuid, player.getRealName(), amount, 0, "redenvelope_grab");
 
-        this->broadcastReceive(entry, player, amount, people + 1);
+        this->broadcastReceive(entry, player, amount, static_cast<int>(people.value()) + 1);
 
         if (amount > entry.kingAmount) {
             entry.kingAmount = amount;
@@ -318,19 +352,34 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<void> WalletRedEnvelope::deleteEnvelope(const std::string& id) {
-        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
-        if (!transaction.has_value())
-            return ll::Unexpected(transaction.error());
+        auto& envelope = *this->mImpl->envelope;
+        auto& grab = *this->mImpl->grab;
 
-        auto conn = transaction.value().connection();
+        auto envelopeBatch = envelope.tx();
+        if (!envelopeBatch.has_value())
+            return ll::Unexpected(envelopeBatch.error());
 
-        auto delEnv = this->mImpl->db->del(conn, "RedEnvelope", id);
-        if (!delEnv.has_value())
+        auto grabBatch = grab.tx();
+        if (!grabBatch.has_value())
+            return ll::Unexpected(grabBatch.error());
+
+        auto& envelopeTx = envelopeBatch.value();
+        auto& grabTx = grabBatch.value();
+
+        auto delEnv = envelopeTx.del(id);
+        if (!delEnv.has_value()) {
+            [[maybe_unused]] auto rolledBack = grabTx.rollback();
+
             return ll::Unexpected(delEnv.error());
+        }
 
-        auto grabs = this->mImpl->db->list(conn, "RedEnvelopeGrab");
-        if (!grabs.has_value())
+        auto grabs = grab.list();
+        if (!grabs.has_value()) {
+            [[maybe_unused]] auto rolledBack = envelopeTx.rollback();
+            [[maybe_unused]] auto rolledBackGrab = grabTx.rollback();
+
             return ll::Unexpected(grabs.error());
+        }
 
         std::string prefix = id + ":";
         std::vector<std::string> keys;
@@ -339,46 +388,66 @@ namespace LOICollection::server::Plugins {
                 keys.emplace_back(grabKey);
         }
 
-        if (!keys.empty()) {
-            auto delGrabs = this->mImpl->db->del(conn, "RedEnvelopeGrab", keys);
-            if (!delGrabs.has_value())
-                return ll::Unexpected(delGrabs.error());
+        for (const auto& key : keys) {
+            auto delGrab = grabTx.del(key);
+            if (!delGrab.has_value()) {
+                [[maybe_unused]] auto rolledBack = envelopeTx.rollback();
+                [[maybe_unused]] auto rolledBackGrab = grabTx.rollback();
+
+                return ll::Unexpected(delGrab.error());
+            }
         }
 
-        auto commit = transaction.value().commit();
-        if (!commit.has_value())
-            return ll::Unexpected(commit.error());
+        auto commitEnvelope = envelopeTx.commit();
+        if (!commitEnvelope.has_value()) {
+            [[maybe_unused]] auto rolledBack = grabTx.rollback();
+
+            return ll::Unexpected(commitEnvelope.error());
+        }
+
+        auto commitGrab = grabTx.commit();
+        if (!commitGrab.has_value())
+            return ll::Unexpected(commitGrab.error());
 
         return {};
     }
 
     ll::Expected<bool> WalletRedEnvelope::refundEnvelope(const std::string& id) {
-        auto data = this->mImpl->db->get("RedEnvelope", id, "sender_uuid", "");
-        if (!data.has_value())
-            return ll::Unexpected(data.error());
+        auto& envelope = *this->mImpl->envelope;
 
-        if (data.value().empty())
+        auto exists = envelope.has(id);
+        if (!exists.has_value())
+            return ll::Unexpected(exists.error());
+
+        if (!exists.value())
             return false;
 
-        auto capacity = this->mImpl->db->get("RedEnvelope", id, "capacity", "0");
+        auto senderUuid = envelope.get<std::string>(id, "sender_uuid", "");
+        if (!senderUuid.has_value())
+            return ll::Unexpected(senderUuid.error());
+
+        if (senderUuid.value().empty())
+            return false;
+
+        auto capacity = envelope.get<long long>(id, "capacity", 0);
         if (!capacity.has_value())
             return ll::Unexpected(capacity.error());
 
-        auto chatKey = this->mImpl->db->get("RedEnvelope", id, "chat_key", "");
+        auto chatKey = envelope.get<std::string>(id, "chat_key", "");
         if (!chatKey.has_value())
             return ll::Unexpected(chatKey.error());
 
-        auto senderName = this->mImpl->db->get("RedEnvelope", id, "sender_name", "");
+        auto senderName = envelope.get<std::string>(id, "sender_name", "");
         if (!senderName.has_value())
             return ll::Unexpected(senderName.error());
 
-        int remaining = SystemUtils::toInt(capacity.value(), 0);
+        long long remaining = capacity.value();
         if (remaining > 0) {
-            auto refund = this->mImpl->transferProvider(data.value(), remaining);
+            auto refund = this->mImpl->transferProvider(senderUuid.value(), static_cast<int>(remaining));
             if (!refund.has_value())
                 return ll::Unexpected(refund.error());
 
-            this->mImpl->ledger.record("", "", data.value(), senderName.value(), remaining, 0, "redenvelope_refund");
+            this->mImpl->ledger.record("", "", senderUuid.value(), senderName.value(), remaining, 0, "redenvelope_refund");
         }
 
         auto del = this->deleteEnvelope(id);
@@ -431,29 +500,38 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<void> WalletRedEnvelope::sweepExpired() {
-        auto ids = this->mImpl->db->list("RedEnvelope");
+        auto& envelope = *this->mImpl->envelope;
+
+        auto ids = envelope.list();
         if (!ids.has_value())
             return ll::Unexpected(ids.error());
 
         for (const auto& id : ids.value()) {
-            auto data = this->mImpl->db->get("RedEnvelope", id);
-            if (!data.has_value())
-                return ll::Unexpected(data.error());
+            auto exists = envelope.has(id);
+            if (!exists.has_value())
+                return ll::Unexpected(exists.error());
 
-            auto m = data.value();
-            if (m.empty())
+            if (!exists.value())
                 continue;
 
-            int people = SystemUtils::toInt(m["people"], 0);
-            int count = SystemUtils::toInt(m["count"], 0);
-            long long expireAt = SystemUtils::toLongLong(m["expire_at"], 0);
+            auto people = envelope.get<long long>(id, "people", 0);
+            if (!people.has_value())
+                return ll::Unexpected(people.error());
+
+            auto count = envelope.get<long long>(id, "count", 0);
+            if (!count.has_value())
+                return ll::Unexpected(count.error());
+
+            auto expireAt = envelope.get<long long>(id, "expire_at", 0);
+            if (!expireAt.has_value())
+                return ll::Unexpected(expireAt.error());
 
             long long now = std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::system_clock::now().time_since_epoch()
             ).count();
 
-            bool completed = people >= count;
-            bool expired = now > expireAt;
+            bool completed = people.value() >= count.value();
+            bool expired = now > expireAt.value();
 
             if (completed || expired) {
                 auto refund = this->refundEnvelope(id);
@@ -463,21 +541,40 @@ namespace LOICollection::server::Plugins {
                 continue;
             }
 
-            auto chatKey = m["chat_key"];
-            long long remain = expireAt - now;
-            int total = m.contains("total") ? SystemUtils::toInt(m["total"], 0) : SystemUtils::toInt(m["capacity"], 0);
+            auto chatKey = envelope.get<std::string>(id, "chat_key", "");
+            if (!chatKey.has_value())
+                return ll::Unexpected(chatKey.error());
 
-            this->mImpl->mRedEnvelopes[chatKey].push_back({
+            auto senderUuid = envelope.get<std::string>(id, "sender_uuid", "");
+            if (!senderUuid.has_value())
+                return ll::Unexpected(senderUuid.error());
+
+            auto senderName = envelope.get<std::string>(id, "sender_name", "");
+            if (!senderName.has_value())
+                return ll::Unexpected(senderName.error());
+
+            auto total = envelope.get<long long>(id, "total", 0);
+            if (!total.has_value())
+                return ll::Unexpected(total.error());
+
+            auto capacity = envelope.get<long long>(id, "capacity", 0);
+            if (!capacity.has_value())
+                return ll::Unexpected(capacity.error());
+
+            long long remain = expireAt.value() - now;
+            long long envelopeTotal = total.value() > 0 ? total.value() : capacity.value();
+
+            this->mImpl->mRedEnvelopes[chatKey.value()].push_back({
                 id,
-                chatKey,
-                m["sender_uuid"],
-                m["sender_name"],
-                count,
-                expireAt,
+                chatKey.value(),
+                senderUuid.value(),
+                senderName.value(),
+                static_cast<int>(count.value()),
+                expireAt.value(),
                 "",
                 "",
                 0,
-                total
+                static_cast<int>(envelopeTotal)
             });
 
             this->mImpl->timerManager.schedule(id, std::chrono::nanoseconds(remain), [this, id]() -> void {
@@ -498,7 +595,9 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<void> WalletRedEnvelope::refundAll() {
-        auto ids = this->mImpl->db->list("RedEnvelope");
+        auto& envelope = *this->mImpl->envelope;
+
+        auto ids = envelope.list();
         if (!ids.has_value())
             return ll::Unexpected(ids.error());
 
@@ -525,8 +624,8 @@ namespace LOICollection::server::Plugins {
 
         std::string uuid = player.getUuid().asString();
 
-        int total = score * count;
-        if (ScoreboardUtils::getScore(player, this->mImpl->options.TargetScoreboard) < total)
+        long long total = static_cast<long long>(score) * static_cast<long long>(count);
+        if (static_cast<long long>(ScoreboardUtils::getScore(player, this->mImpl->options.TargetScoreboard)) < total)
             return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
         auto targetUuids = this->resolveTargetUuids(targets);
@@ -542,7 +641,7 @@ namespace LOICollection::server::Plugins {
             }
         }
 
-        ScoreboardUtils::reduceScore(player, this->mImpl->options.TargetScoreboard, total);
+        ScoreboardUtils::reduceScore(player, this->mImpl->options.TargetScoreboard, static_cast<int>(total));
 
         std::string id = SystemUtils::getCurrentTimestamp();
 
@@ -550,38 +649,52 @@ namespace LOICollection::server::Plugins {
             std::chrono::system_clock::now().time_since_epoch()
         ).count() + static_cast<long long>(this->mImpl->options.RedEnvelopeTimeout) * 1000000000LL;
 
-        std::unordered_map<std::string, std::string> env = {
-            { "chat_key", key },
-            { "sender_uuid", uuid },
-            { "sender_name", player.getRealName() },
-            { "capacity", std::to_string(total) },
-            { "total", std::to_string(total) },
-            { "count", std::to_string(count) },
-            { "people", "0" },
-            { "created_at", SystemUtils::getNowTime() },
-            { "expire_at", std::to_string(expire) }
-        };
-        if (!targetsValue.empty())
-            env["targets"] = targetsValue;
+        auto batch = this->mImpl->envelope->tx();
+        if (!batch.has_value()) {
+            ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, static_cast<int>(total));
 
-        auto transaction = SQLiteStorageTransaction::create(*this->mImpl->db);
-        if (!transaction.has_value()) {
-            ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, total);
-
-            return ll::Unexpected(transaction.error());
+            return ll::Unexpected(batch.error());
         }
 
-        auto conn = transaction.value().connection();
-        auto setEnv = this->mImpl->db->set(conn, "RedEnvelope", id, env);
-        if (!setEnv.has_value()) {
-            ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, total);
+        auto& tx = batch.value();
 
-            return ll::Unexpected(setEnv.error());
+        auto written = tx.set(id, "chat_key", key)
+            .and_then([&tx, &id, &uuid]() -> ll::Expected<void> {
+                return tx.set(id, "sender_uuid", uuid);
+            })
+            .and_then([&tx, &id, &player]() -> ll::Expected<void> {
+                return tx.set(id, "sender_name", player.getRealName());
+            })
+            .and_then([&tx, &id, total]() -> ll::Expected<void> {
+                return tx.set(id, "capacity", total);
+            })
+            .and_then([&tx, &id, total]() -> ll::Expected<void> {
+                return tx.set(id, "total", total);
+            })
+            .and_then([&tx, &id, count]() -> ll::Expected<void> {
+                return tx.set(id, "count", static_cast<long long>(count));
+            })
+            .and_then([&tx, &id]() -> ll::Expected<void> {
+                return tx.set(id, "people", 0LL);
+            })
+            .and_then([&tx, &id, expire]() -> ll::Expected<void> {
+                return tx.set(id, "expire_at", expire);
+            })
+            .and_then([&tx, &id, &targetsValue]() -> ll::Expected<void> {
+                if (targetsValue.empty())
+                    return {};
+
+                return tx.set(id, "targets", targetsValue);
+            });
+        if (!written.has_value()) {
+            ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, static_cast<int>(total));
+
+            return ll::Unexpected(written.error());
         }
 
-        auto commit = transaction.value().commit();
+        auto commit = tx.commit();
         if (!commit.has_value()) {
-            ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, total);
+            ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, static_cast<int>(total));
 
             return ll::Unexpected(commit.error());
         }
@@ -596,7 +709,7 @@ namespace LOICollection::server::Plugins {
             "",
             "",
             0,
-            total
+            static_cast<int>(total)
         });
 
         this->mImpl->ledger.record(uuid, player.getRealName(), "", "", total, 0, "redenvelope_send");
@@ -621,15 +734,19 @@ namespace LOICollection::server::Plugins {
             return true;
         });
 
-        auto ids = this->mImpl->db->list("Wallet");
-        if (ids.has_value() && !ids.value().empty()) {
-            auto rows = this->mImpl->db->get("Wallet", ids.value());
-            if (rows.has_value()) {
-                for (const auto& [uuid, row] : rows.value()) {
-                    if (row.contains("name"))
-                        nameToUuid[row.at("name")] = uuid;
-                }
-            }
+        auto& wallet = *this->mImpl->wallet;
+
+        auto ids = wallet.list();
+        if (!ids.has_value())
+            return ll::Unexpected(ids.error());
+
+        for (const auto& uuid : ids.value()) {
+            auto name = wallet.get<std::string>(uuid, "name", "");
+            if (!name.has_value())
+                return ll::Unexpected(name.error());
+
+            if (!name.value().empty())
+                nameToUuid[name.value()] = uuid;
         }
 
         for (const auto& name : names) {
@@ -645,44 +762,51 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
-        return this->mImpl->db->list("RedEnvelopeGrab")
-            .and_then([this, id](const std::vector<std::string>& keys) -> ll::Expected<std::vector<std::string>> {
-                std::string prefix = id + ":";
-                std::vector<std::string> grabKeys;
-                for (const auto& key : keys)
-                    if (key.rfind(prefix, 0) == 0)
-                        grabKeys.emplace_back(key);
+        auto& grab = *this->mImpl->grab;
 
-                if (grabKeys.empty())
-                    return std::vector<std::string>{};
+        auto keys = grab.list();
+        if (!keys.has_value())
+            return ll::Unexpected(keys.error());
 
-                return this->mImpl->db->get("RedEnvelopeGrab", grabKeys)
-                    .transform([id](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> rows) -> std::vector<std::string> {
-                        std::vector<std::pair<std::string, long long>> grabs;
-                        for (const auto& [key, row] : rows) {
-                            std::string name = row.contains("name") ? row.at("name") : "?";
-                            long long amount = row.contains("amount") ? SystemUtils::toLongLong(row.at("amount"), 0) : 0;
+        std::string prefix = id + ":";
+        std::vector<std::string> grabKeys;
+        for (const auto& key : keys.value())
+            if (key.rfind(prefix, 0) == 0)
+                grabKeys.emplace_back(key);
 
-                            grabs.emplace_back(name, amount);
-                        }
+        if (grabKeys.empty())
+            return std::vector<std::string>{};
 
-                        std::sort(grabs.begin(), grabs.end(), [](const auto& a, const auto& b) {
-                            return a.second > b.second;
-                        });
+        std::vector<std::pair<std::string, long long>> grabs;
+        grabs.reserve(grabKeys.size());
 
-                        std::vector<std::string> result;
-                        result.emplace_back(fmt::format(fmt::runtime(tr({}, "wallet.rinfo.header")), id));
+        for (const auto& key : grabKeys) {
+            auto name = grab.get<std::string>(key, "name", "?");
+            if (!name.has_value())
+                return ll::Unexpected(name.error());
 
-                        for (const auto& [name, amount] : grabs)
-                            result.emplace_back(fmt::format(fmt::runtime(tr({}, "wallet.rinfo.row")), name, amount));
+            auto amount = grab.get<long long>(key, "amount", 0);
+            if (!amount.has_value())
+                return ll::Unexpected(amount.error());
 
-                        if (!grabs.empty()) {
-                            const auto& [kingName, kingAmount] = grabs.front();
-                            result.emplace_back(fmt::format(fmt::runtime(tr({}, "wallet.rinfo.king")), kingName, kingAmount));
-                        }
+            grabs.emplace_back(name.value(), amount.value());
+        }
 
-                        return result;
-                    });
-            });
+        std::sort(grabs.begin(), grabs.end(), [](const auto& a, const auto& b) {
+            return a.second > b.second;
+        });
+
+        std::vector<std::string> result;
+        result.emplace_back(fmt::format(fmt::runtime(tr({}, "wallet.rinfo.header")), id));
+
+        for (const auto& [name, amount] : grabs)
+            result.emplace_back(fmt::format(fmt::runtime(tr({}, "wallet.rinfo.row")), name, amount));
+
+        if (!grabs.empty()) {
+            const auto& [kingName, kingAmount] = grabs.front();
+            result.emplace_back(fmt::format(fmt::runtime(tr({}, "wallet.rinfo.king")), kingName, kingAmount));
+        }
+
+        return result;
     }
 }

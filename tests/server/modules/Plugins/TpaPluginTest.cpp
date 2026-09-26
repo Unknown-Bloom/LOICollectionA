@@ -13,7 +13,7 @@
 
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/base/Wrapper.h"
 #include "LOICollectionA/base/ServiceProvider.h"
@@ -42,7 +42,7 @@ protected:
         if (!r1.has_value())
             GTEST_FAIL() << "Unable to clear data";
 
-        auto r2 = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB")->exec("DELETE FROM Tpa;");
+        auto r2 = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB")->exec("DELETE FROM Tpa;");
         if (!r2.has_value())
             GTEST_FAIL() << "Unable to clear data";
 

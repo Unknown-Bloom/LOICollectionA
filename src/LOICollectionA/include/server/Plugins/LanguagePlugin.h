@@ -11,7 +11,7 @@
 #include "LOICollectionA/include/ModManager.h"
 
 class Player;
-class SQLiteStorage;
+class BlockRepository;
 
 namespace ll::io {
     class Logger;

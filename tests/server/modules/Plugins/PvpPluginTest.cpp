@@ -9,7 +9,7 @@
 
 #include <mc/server/SimulatedPlayer.h>
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/base/ServiceProvider.h"
 
@@ -27,7 +27,7 @@ protected:
     }
 
     void TearDown() override {
-        auto result = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB")->exec("DELETE FROM Pvp;");
+        auto result = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB")->exec("DELETE FROM Pvp;");
         if (!result.has_value())
             GTEST_FAIL() << "Unable to clear data";
     }

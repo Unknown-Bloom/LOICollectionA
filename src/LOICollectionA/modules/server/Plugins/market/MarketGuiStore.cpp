@@ -17,47 +17,53 @@
 #include "LOICollectionA/utils/I18nUtils.h"
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
-#include "LOICollectionA/data/SQLiteStorage.h"
-
 #include "LOICollectionA/ConfigPlugin.h"
 
 #include "LOICollectionA/frontend/AST.h"
 
 #include "LOICollectionA/include/form/GUIManager.h"
 
+#include "LOICollectionA/include/server/Plugins/types/market/MarketSchema.h"
 #include "LOICollectionA/include/server/Plugins/market/MarketGui.h"
 #include "LOICollectionA/include/server/Plugins/market/MarketGuiDetail.h"
 #include "LOICollectionA/include/server/Plugins/market/MarketPlugin.h"
 
 using I18nUtilsTools::tr;
+using LOICollection::data::FindMode;
 
 namespace LOICollection::server::Plugins {
     void MarketGui::registerStore(MarketPlugin& owner) {
         auto listVisibleStores = [&owner](Player& player) -> ll::Expected<std::vector<std::pair<std::string, std::string>>> {
             return owner.getStoreRanking()
                 .and_then([&owner, &player](const std::vector<std::string>& ids) -> ll::Expected<std::vector<std::pair<std::string, std::string>>> {
-                    return owner.getDatabase()->get("Store", ids)
-                        .and_then([&owner, &player, ids](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> data) -> ll::Expected<std::vector<std::pair<std::string, std::string>>> {
-                            std::vector<std::pair<std::string, std::string>> items;
-                            std::string mUuid = player.getUuid().asString();
+                    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> data;
+                    data.reserve(ids.size());
+                    for (const std::string& storeId : ids) {
+                        auto row = owner.stores().getRow(storeId);
+                        if (!row.has_value())
+                            return ll::Unexpected(row.error());
+                        data.emplace(storeId, std::move(row.value()));
+                    }
 
-                            for (const std::string& storeId : ids) {
-                                auto it = data.find(storeId);
-                                if (it == data.end())
-                                    continue;
+                    std::vector<std::pair<std::string, std::string>> items;
+                    std::string mUuid = player.getUuid().asString();
 
-                                auto blacklists = owner.getBlacklist(it->second.at("owner_uuid"));
-                                if (!blacklists.has_value())
-                                    return ll::Unexpected(blacklists.error());
+                    for (const std::string& storeId : ids) {
+                        auto it = data.find(storeId);
+                        if (it == data.end())
+                            continue;
 
-                                if (std::find(blacklists.value().begin(), blacklists.value().end(), mUuid) != blacklists.value().end())
-                                    continue;
+                        auto blacklists = owner.getBlacklist(it->second.at("owner_uuid"));
+                        if (!blacklists.has_value())
+                            return ll::Unexpected(blacklists.error());
 
-                                items.emplace_back(it->second.at("name") + "\n" + it->second.at("owner_name"), storeId);
-                            }
+                        if (std::find(blacklists.value().begin(), blacklists.value().end(), mUuid) != blacklists.value().end())
+                            continue;
 
-                            return items;
-                        });
+                        items.emplace_back(it->second.at("name") + "\n" + it->second.at("owner_name"), storeId);
+                    }
+
+                    return items;
                 });
         };
 
@@ -71,20 +77,26 @@ namespace LOICollection::server::Plugins {
 
                             return owner.getStoreItems(storeId)
                                 .and_then([&owner](const std::vector<std::string>& ids) -> ll::Expected<std::vector<std::pair<std::string, std::string>>> {
-                                    return owner.getDatabase()->get("StoreItem", ids)
-                                        .transform([](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> data) -> std::vector<std::pair<std::string, std::string>> {
-                                            std::vector<std::pair<std::string, std::string>> items;
-                                            items.reserve(data.size());
+                                    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> data;
+                                    data.reserve(ids.size());
+                                    for (const auto& id : ids) {
+                                        auto row = owner.items().getRow(id);
+                                        if (!row.has_value())
+                                            return ll::Unexpected(row.error());
+                                        data.emplace(id, std::move(row.value()));
+                                    }
 
-                                            for (const auto& [id, row] : data)
-                                                items.emplace_back(row.at("name"), id);
+                                    std::vector<std::pair<std::string, std::string>> items;
+                                    items.reserve(data.size());
 
-                                            std::sort(items.begin(), items.end(), [](const auto& left, const auto& right) -> bool {
-                                                return left.second < right.second;
-                                            });
+                                    for (const auto& [id, row] : data)
+                                        items.emplace_back(row.at("name"), id);
 
-                                            return items;
-                                        });
+                                    std::sort(items.begin(), items.end(), [](const auto& left, const auto& right) -> bool {
+                                        return left.second < right.second;
+                                    });
+
+                                    return items;
                                 });
                         });
                 });
@@ -93,44 +105,50 @@ namespace LOICollection::server::Plugins {
         auto listMyStoreItems = [&owner](Player& player) -> ll::Expected<std::vector<std::pair<std::string, std::string>>> {
             return owner.getStoreItems(player.getUuid().asString())
                 .and_then([&owner](const std::vector<std::string>& ids) -> ll::Expected<std::vector<std::pair<std::string, std::string>>> {
-                    return owner.getDatabase()->get("StoreItem", ids)
-                        .transform([](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> data) -> std::vector<std::pair<std::string, std::string>> {
-                            std::vector<std::pair<std::string, std::string>> items;
-                            items.reserve(data.size());
+                    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> data;
+                    data.reserve(ids.size());
+                    for (const auto& id : ids) {
+                        auto row = owner.items().getRow(id);
+                        if (!row.has_value())
+                            return ll::Unexpected(row.error());
+                        data.emplace(id, std::move(row.value()));
+                    }
 
-                            for (const auto& [id, row] : data)
-                                items.emplace_back(row.at("name"), id);
+                    std::vector<std::pair<std::string, std::string>> items;
+                    items.reserve(data.size());
 
-                            std::sort(items.begin(), items.end(), [](const auto& left, const auto& right) -> bool {
-                                return left.second < right.second;
-                            });
+                    for (const auto& [id, row] : data)
+                        items.emplace_back(row.at("name"), id);
 
-                            return items;
-                        });
+                    std::sort(items.begin(), items.end(), [](const auto& left, const auto& right) -> bool {
+                        return left.second < right.second;
+                    });
+
+                    return items;
                 });
         };
 
         auto getStoreApprovedRating = [&owner](const std::string& storeId) -> ll::Expected<double> {
-            return owner.getDatabase()->find("StoreReview", {
-                { "store_id", storeId },
-                { "status", "approved" }
-            }, SQLiteStorage::FindCondition::AND)
+            return owner.reviews().find(FindMode::And, {
+                {StoreReviewCol::store_id, storeId},
+                {StoreReviewCol::status, "approved"}
+            })
                 .and_then([&owner](const std::vector<std::string>& keys) -> ll::Expected<double> {
                     if (keys.empty())
                         return 0.0;
 
-                    return owner.getDatabase()->get("StoreReview", keys)
-                        .transform([](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> data) -> double {
-                            double sum = 0.0;
-                            int count = 0;
+                    double sum = 0.0;
+                    int count = 0;
 
-                            for (const auto& [key, row] : data) {
-                                sum += SystemUtils::toInt(row.at("rating"), 0);
-                                count++;
-                            }
+                    for (const auto& key : keys) {
+                        auto row = owner.reviews().getRow(key);
+                        if (!row.has_value())
+                            return ll::Unexpected(row.error());
+                        sum += SystemUtils::toInt(row.value().at("rating"), 0);
+                        count++;
+                    }
 
-                            return count > 0 ? sum / count : 0.0;
-                        });
+                    return count > 0 ? sum / count : 0.0;
                 });
         };
 
@@ -203,7 +221,7 @@ namespace LOICollection::server::Plugins {
         form::GUIManager::getInstance().registerRequest("market.store.mine.has", [&owner](frontend::ArrayRef, Player& player) -> ll::Expected<frontend::ArrayRef> {
             auto values = std::make_shared<frontend::ArrayValue>();
 
-            return owner.getDatabase()->has("Store", player.getUuid().asString())
+            return owner.stores().has(player.getUuid().asString())
                 .transform([values](bool exists) -> frontend::ArrayRef {
                     values->elements.emplace_back(exists);
 
@@ -215,7 +233,7 @@ namespace LOICollection::server::Plugins {
             auto values = std::make_shared<frontend::ArrayValue>();
             std::string uuid = player.getUuid().asString();
 
-            return owner.getDatabase()->has("Store", uuid)
+            return owner.stores().has(uuid)
                 .and_then([&owner, uuid, values](bool exists) -> ll::Expected<frontend::ArrayRef> {
                     values->elements.emplace_back(exists);
 
@@ -391,28 +409,34 @@ namespace LOICollection::server::Plugins {
 
             return owner.getReviews(storeId, MarketStoreReviewStatus::approved)
                 .and_then([&owner, &player](const std::vector<std::string>& keys) -> ll::Expected<frontend::ArrayRef> {
-                    return owner.getDatabase()->get("StoreReview", keys)
-                        .and_then([&player, keys](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> data) -> ll::Expected<frontend::ArrayRef> {
-                            return LanguagePlugin::getShared()->getLanguage(player)
-                                .transform([keys, data](const std::string& language) -> frontend::ArrayRef {
-                                    auto values = std::make_shared<frontend::ArrayValue>();
+                    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> data;
+                    data.reserve(keys.size());
+                    for (const auto& key : keys) {
+                        auto row = owner.reviews().getRow(key);
+                        if (!row.has_value())
+                            return ll::Unexpected(row.error());
+                        data.emplace(key, std::move(row.value()));
+                    }
 
-                                    for (const std::string& key : keys) {
-                                        auto it = data.find(key);
-                                        if (it == data.end())
-                                            continue;
+                    return LanguagePlugin::getShared()->getLanguage(player)
+                        .transform([keys, data](const std::string& language) -> frontend::ArrayRef {
+                            auto values = std::make_shared<frontend::ArrayValue>();
 
-                                        const auto& row = it->second;
-                                        values->elements.emplace_back(fmt::format(fmt::runtime(tr(language, "market.gui.store.review.line")),
-                                            row.at("buyer_name"),
-                                            row.at("rating"),
-                                            row.at("content"),
-                                            row.at("time")
-                                        ));
-                                    }
+                            for (const std::string& key : keys) {
+                                auto it = data.find(key);
+                                if (it == data.end())
+                                    continue;
 
-                                    return values;
-                                });
+                                const auto& row = it->second;
+                                values->elements.emplace_back(fmt::format(fmt::runtime(tr(language, "market.gui.store.review.line")),
+                                    row.at("buyer_name"),
+                                    row.at("rating"),
+                                    row.at("content"),
+                                    row.at("time")
+                                ));
+                            }
+
+                            return values;
                         });
                 });
         });
@@ -430,7 +454,7 @@ namespace LOICollection::server::Plugins {
                 return values;
             }
 
-            return owner.getDatabase()->has("Store", storeId)
+            return owner.stores().has(storeId)
                 .and_then([&owner, storeId, &player, values](bool exists) -> ll::Expected<frontend::ArrayRef> {
                     if (!exists) {
                         values->elements.emplace_back(false);
@@ -446,10 +470,10 @@ namespace LOICollection::server::Plugins {
                                 return values;
                             }
 
-                            return owner.getDatabase()->find("StoreReview", {
-                                { "store_id", storeId },
-                                { "buyer_uuid", player.getUuid().asString() }
-                            }, SQLiteStorage::FindCondition::AND)
+                            return owner.reviews().find(FindMode::And, {
+                                {StoreReviewCol::store_id, storeId},
+                                {StoreReviewCol::buyer_uuid, player.getUuid().asString()}
+                            })
                                 .transform([values](const std::vector<std::string>& reviews) -> frontend::ArrayRef {
                                     values->elements.emplace_back(reviews.empty());
 
@@ -465,30 +489,36 @@ namespace LOICollection::server::Plugins {
             if (player.getCommandPermissionLevel() < CommandPermissionLevel::GameDirectors)
                 return values;
 
-            return owner.getDatabase()->find("StoreReview", {
-                { "status", "pending" }
-            }, SQLiteStorage::FindCondition::AND)
+            return owner.reviews().find(FindMode::And, {
+                {StoreReviewCol::status, "pending"}
+            })
                 .and_then([&owner, &player, values](const std::vector<std::string>& keys) -> ll::Expected<frontend::ArrayRef> {
-                    return owner.getDatabase()->get("StoreReview", keys)
-                        .and_then([&player, keys, values](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> data) -> ll::Expected<frontend::ArrayRef> {
-                            return LanguagePlugin::getShared()->getLanguage(player)
-                                .transform([keys, data, values](const std::string& language) -> frontend::ArrayRef {
-                                    for (const std::string& key : keys) {
-                                        auto it = data.find(key);
-                                        if (it == data.end())
-                                            continue;
+                    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> data;
+                    data.reserve(keys.size());
+                    for (const auto& key : keys) {
+                        auto row = owner.reviews().getRow(key);
+                        if (!row.has_value())
+                            return ll::Unexpected(row.error());
+                        data.emplace(key, std::move(row.value()));
+                    }
 
-                                        const auto& row = it->second;
-                                        values->elements.emplace_back(fmt::format(fmt::runtime(tr(language, "market.gui.store.review.line")),
-                                            row.at("buyer_name"),
-                                            row.at("rating"),
-                                            row.at("content"),
-                                            row.at("time")
-                                        ));
-                                    }
+                    return LanguagePlugin::getShared()->getLanguage(player)
+                        .transform([keys, data, values](const std::string& language) -> frontend::ArrayRef {
+                            for (const std::string& key : keys) {
+                                auto it = data.find(key);
+                                if (it == data.end())
+                                    continue;
 
-                                    return values;
-                                });
+                                const auto& row = it->second;
+                                values->elements.emplace_back(fmt::format(fmt::runtime(tr(language, "market.gui.store.review.line")),
+                                    row.at("buyer_name"),
+                                    row.at("rating"),
+                                    row.at("content"),
+                                    row.at("time")
+                                ));
+                            }
+
+                            return values;
                         });
                 });
         });
@@ -499,9 +529,9 @@ namespace LOICollection::server::Plugins {
 
             int index = std::get<int>(args->elements[0]);
 
-            return owner.getDatabase()->find("StoreReview", {
-                { "status", "pending" }
-            }, SQLiteStorage::FindCondition::AND)
+            return owner.reviews().find(FindMode::And, {
+                {StoreReviewCol::status, "pending"}
+            })
                 .and_then([index](const std::vector<std::string>& keys) -> ll::Expected<frontend::ArrayRef> {
                     auto values = std::make_shared<frontend::ArrayValue>();
 
@@ -660,7 +690,7 @@ namespace LOICollection::server::Plugins {
             auto values = std::make_shared<frontend::ArrayValue>();
             std::string storeId = player.getUuid().asString();
 
-            return owner.getDatabase()->has("Store", storeId)
+            return owner.stores().has(storeId)
                 .and_then([&owner, storeId, &player, values](bool exists) -> ll::Expected<frontend::ArrayRef> {
                     if (!exists) {
                         values->elements.emplace_back(false);
@@ -668,9 +698,9 @@ namespace LOICollection::server::Plugins {
                         return values;
                     }
 
-                    return owner.getDatabase()->find("StoreItem", {
-                        { "store_id", storeId }
-                    }, SQLiteStorage::FindCondition::AND)
+                    return owner.items().find(FindMode::And, {
+                        {StoreItemCol::store_id, storeId}
+                    })
                         .and_then([&owner, &player, values](const std::vector<std::string>& items) -> ll::Expected<frontend::ArrayRef> {
                             if (static_cast<int>(items.size()) >= owner.getOptions().StoreMaximumItems) {
                                 return LanguagePlugin::getShared()->getLanguage(player)

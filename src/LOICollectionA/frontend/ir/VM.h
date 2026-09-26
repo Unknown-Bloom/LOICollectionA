@@ -30,8 +30,8 @@ namespace LOICollection::frontend::ir {
         );
 
         LOICOLLECTION_A_API   void setBudget(const sandbox::SandboxBudget& budget) { *mBudget = budget; }
-        [[nodiscard]] LOICOLLECTION_A_NDAPI const sandbox::SandboxBudget& budget() const { return *mBudget; }
-        [[nodiscard]] LOICOLLECTION_A_NDAPI const sandbox::SandboxReport& report() const { return mReport; }
+        LOICOLLECTION_A_NDAPI const sandbox::SandboxBudget& budget() const { return *mBudget; }
+        LOICOLLECTION_A_NDAPI const sandbox::SandboxReport& report() const { return mReport; }
 
         LOICOLLECTION_A_NDAPI static ValueNode::ValueType callFunctionRef(
             const FunctionRefPtr& func,

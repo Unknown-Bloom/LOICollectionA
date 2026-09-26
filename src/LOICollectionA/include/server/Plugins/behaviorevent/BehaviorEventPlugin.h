@@ -9,12 +9,15 @@
 #include <ll/api/Expected.h>
 
 #include "LOICollectionA/base/Macro.h"
+#include "LOICollectionA/base/Ownership.h"
 
 #include "LOICollectionA/include/ModuleBase.h"
 #include "LOICollectionA/include/ModManager.h"
 
 class Vec3;
-class SQLiteStorage;
+class BehaviorEventLog;
+class BlockStore;
+class ConnectionPool;
 
 namespace ll {
     namespace event {
@@ -72,7 +75,7 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI static std::shared_ptr<BehaviorEventPlugin> getShared();
         LOICOLLECTION_A_NDAPI static std::error_code makeErrorCode(BehaviorEventPluginErrorCode e);
 
-        LOICOLLECTION_A_NDAPI std::shared_ptr<SQLiteStorage> getDatabase();
+        LOICOLLECTION_A_NDAPI observer<BehaviorEventLog> getBehaviorEventLog();
         LOICOLLECTION_A_NDAPI std::shared_ptr<ll::io::Logger> getLogger();
 
         LOICOLLECTION_A_NDAPI ll::Expected<void> setExecutor(const ll::coro::Executor& executor);
@@ -80,11 +83,12 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI ll::Expected<Event> getBasicEvent(const std::string& name, const std::string& type, const Vec3& position, int dimension);
 
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getEvents(int limit = -1);
+        LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getEventsWithin(int hours, int limit = -1);
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getEvents(std::vector<std::pair<std::string, std::string>> conditions, std::function<bool(std::string)> filter = {}, int limit = -1);
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getEventsByPosition(int dimension, std::function<bool(int x, int y, int z)> filter, int limit = -1);
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> filter(std::vector<std::string> ids);
 
-        LOICOLLECTION_A_NDAPI ll::Expected<void> write(const std::string& id, const Event& event);
+        LOICOLLECTION_A_NDAPI ll::Expected<std::string> write(const Event& event);
         LOICOLLECTION_A_NDAPI ll::Expected<void> back(const std::vector<std::string>& ids);
         LOICOLLECTION_A_NDAPI ll::Expected<void> clean(int hours);
 

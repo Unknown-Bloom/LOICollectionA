@@ -143,8 +143,7 @@ namespace LOICollection::frontend {
         TypeInfo checkReturn(ReturnNode& node, MethodScope& scope);
         TypeInfo checkLambda(LambdaNode& node, MethodScope& scope);
 
-        std::optional<OperatorOverload> resolveOperatorOverload(
-            const std::string& op, const TypeInfo& receiver, const TypeInfo& arg, const MethodScope& scope);
+        std::optional<OperatorOverload> resolveOperatorOverload(const std::string& op, const TypeInfo& receiver);
 
         TypeInfo lookupName(const std::string& name, MethodScope& scope);
         void unify(TypeInfo& target, const TypeInfo& from, SourceLocation loc, const std::string& what);

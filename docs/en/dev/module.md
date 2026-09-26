@@ -58,7 +58,8 @@ namespace LOICollection::server::Plugins {
 // modules/server/Plugins/XxxPlugin.cpp
 namespace LOICollection::server::Plugins {
     struct XxxPlugin::Impl {
-        std::shared_ptr<SQLiteStorage> db;
+        std::shared_ptr<BlockRepository> db;
+        std::optional<XxxTable> xxx;              // Typed table handle
         std::shared_ptr<ll::io::Logger> logger;
         ReadOnlyWrapper<Config::C_Xxx> options;   // Module configuration (read-only)
         std::filesystem::path dataPath;
@@ -86,8 +87,11 @@ namespace LOICollection::server::Plugins {
         this->mImpl->logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
         this->mImpl->options = config.ServerConfig.Plugins.Xxx;  // Copy module configuration (read-only)
 
-        // Initialize the module's own database
-        this->mImpl->db = std::make_shared<SQLiteStorage>((mDataPath / "xxx.db").string());
+        // Initialize the module's own database (block storage)
+        auto localDb = BlockRepository::open((mDataPath / "xxx.db").string(), 4);
+        if (!localDb)
+            return ll::makeStringError(localDb.error().message());
+        this->mImpl->db = std::move(localDb.value());
         return true;
     }
 
@@ -96,18 +100,17 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->options.ModuleEnabled)
             return false;
 
-        // Create table -> register UI -> register commands and events
-        return this->mImpl->db->create("Xxx", [](SQLiteStorage::ColumnCallback ctor) -> void {
-            ctor("id");
-            ctor("name");
-        }).and_then([this]() -> ll::Expected<void> {
-            return this->registeryUI();
-        }).transform([this]() -> bool {
-            this->registeryCommand();
-            this->listenEvent();
-            this->mImpl->mRegistered.store(true, std::memory_order_release);
-            return true;
-        });
+        // Open table -> register UI -> register commands and events
+        return XxxTable::open(*this->mImpl->db, "Xxx")
+            .and_then([this](XxxTable table) -> ll::Expected<void> {
+                this->mImpl->xxx.emplace(std::move(table));
+                return this->registeryUI();
+            }).transform([this]() -> bool {
+                this->registeryCommand();
+                this->listenEvent();
+                this->mImpl->mRegistered.store(true, std::memory_order_release);
+                return true;
+            });
     }
 
     ll::Expected<bool> XxxPlugin::unregistry() {
@@ -123,6 +126,7 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<bool> XxxPlugin::unload() {
+        this->mImpl->xxx.reset();
         this->mImpl->db.reset();
         this->mImpl->logger.reset();
         this->mImpl->options = {};
@@ -138,7 +142,7 @@ namespace LOICollection::server::Plugins {
 | Stage | Responsibility | Notes |
 | --- | --- | --- |
 | `load` | Obtain services, initialize the database and logger, cache paths | Only prepare resources; do not register any runtime behavior |
-| `registry` | Check `ModuleEnabled` → create table → register UI/commands/events | Return `false` to skip when the plugin is not enabled |
+| `registry` | Check `ModuleEnabled` → open table → register UI/commands/events | Return `false` to skip when the plugin is not enabled |
 | `unregistry` | Unregister events, clean up the database (e.g. `VACUUM`) | Strictly corresponds to registry |
 | `unload` | Release all resources | Unregister first if still in the registered state |
 
@@ -177,46 +181,99 @@ On the next plugin startup, `MergePatch` automatically merges the new fields int
 
 ## Data Layer
 
-### SQLiteStorage (Recommended)
+A module persists through `BlockRepository` (the block-storage facade, see [Architecture](./architecture.md)), but business code should not talk to it directly — columns are **compile-time** information, expressed as `TypedTable`.
 
-A connection-pool wrapper based on SQLite; all methods return `ll::Expected<T>`:
+### Declaring a table
+
+Every table's columns are declared centrally in `src/LOICollectionA/include/server/Plugins/TableSchema.h`; columns can only be added or removed there, never misspelled at a call site:
+
+```cpp
+namespace LOICollection::server::Plugins {
+    enum class XxxCol { id, name, time };
+    using XxxTable = TypedTable<XxxCol, 1>;   // the second parameter is the schema version
+}
+```
+
+`TypedTable` uses the enumerator order as the physical column id, therefore:
+
+- **Append new columns at the end of the enum.** Inserting one in the middle shifts every stored column.
+- Bump the version when the layout changes. `open` records a `schema:<table>` fingerprint; a mismatch in version, type name or column count returns `BlockError::SchemaMismatch`.
+
+### BlockRepository
+
+```cpp
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+
+auto db = BlockRepository::open((dataPath / "xxx.db").string(), 4);
+if (!db)
+    return ll::makeStringError(db.error().message());
+this->mImpl->db = std::move(db.value());
+```
 
 | Method | Description |
 | --- | --- |
-| `create(table, callback)` | Create a table; call `ctor("column name")` for each column in the callback |
-| `set(table, key, values)` | Write one row (key is the primary key, values is a column-name-to-value mapping) |
-| `get(table, key)` | Read one row, returning a `column name -> value` mapping |
-| `get(table, key, column, default)` | Read a single column |
-| `find(table, conditions, match)` | Query by conditions, returning the list of matching keys (`FindCondition::AND/OR`) |
-| `has(table, key)` | Check whether the key exists |
-| `del(table, key)` | Delete one row |
-| `list(table)` | List all keys |
+| `open(path, connections)` | Open (or create) a database, returning `shared_ptr<BlockRepository>` |
 | `exec(sql)` | Execute raw SQL (e.g. `"VACUUM;"`) |
+| `store()` | Return the underlying `BlockStore`, which `TypedTable` and `WriteBatch` build on |
+| `metaGet/metaSet/metaDel` | Read/write database-level metadata (`TypedTable` stores its schema fingerprint here) |
+
+### TypedTable (Recommended)
+
+`get` / `set` are templates; a cell holds a `string`, an integral, a floating point value or a `bool`. The column argument accepts either an enumerator or a string literal — literals are resolved to enumerators at **compile time**, so a typo fails the build:
+
+| Method | Description |
+| --- | --- |
+| `open(repo, name)` | Open (or create) the table and return a handle; it only holds a reference to `repo` and is freely movable |
+| `get<T>(row, col, def)` | Read a single column, returning `def` when the row is absent |
+| `set<T>(row, col, value)` | Write a single column, creating the row when needed |
+| `getRow(row)` / `setRow(row, map)` | Whole-row read/write (`column name -> value` mapping) |
+| `has(row)` / `del(row)` / `list()` | Test existence, delete, list every key |
+| `find(FindMode, conds)` | Query matching keys (`FindMode::And` / `FindMode::Or`) |
+| `findFirst(FindMode, conds)` | Same, returning only the first key |
+| `findValues<T>(col, FindMode, conds)` | Project one column into a list of values |
+| `tx()` | Start a batched write transaction, see below |
 
 ```cpp
 // Write
-this->db->set("Xxx", uuid, {
-    { "name", player.getRealName() },
-    { "time", std::to_string(time) }
-});
+this->mImpl->xxx->set(uuid, XxxCol::name, player.getRealName());
+this->mImpl->xxx->set(uuid, "time", time);
 
-// Query (OR condition)
-auto id = this->db->find("Xxx", {
-    { "data_uuid", uuid },
-    { "data_ip", ip }
-}, "", SQLiteStorage::FindCondition::OR);
-
-// Chained error handling
-this->db->get("Xxx", id)
-    .and_then([this](std::unordered_map<std::string, std::string> data) -> ll::Expected<void> {
+// Read + chained error handling
+this->mImpl->xxx->get<std::string>(uuid, XxxCol::name, "")
+    .and_then([this, uuid](const std::string& name) -> ll::Expected<void> {
         // ...
         return {};
     })
     .or_else(modules::defaultErrorHandler<XxxPlugin>);
+
+// Query (And / Or conditions, columns given as enumerators)
+auto ids = this->mImpl->xxx->find(FindMode::Or, {
+    { XxxCol::name, name },
+    { XxxCol::id, uuid }
+});
 ```
 
 > [!TIP]
-> When a transaction is needed, use `SQLiteStorageTransaction::create(storage)` and control it with `commit()` / `rollback()`.
+> To mutate several rows atomically, take a `Batch` from `tx()`: `auto batch = table.tx()`, then `batch->set/get/has/del`, and finally `commit()` or `rollback()`.
+
+> [!WARNING]
+> String columns only work as **literals** (`"time"`). For a `std::string` obtained at runtime, use `parseColumn()`.
+
+### Error Handling Conventions
+
+The data layer never throws (the build sets `set_exceptions("none")`); every step returns `ll::Expected<T>`:
+
+| Case | Form |
+| --- | --- |
+| Continue only with a value | `.and_then([](XxxTable::Row row) -> ll::Expected<U> { ... })` (the lambda takes no parameter for `Expected<void>`) |
+| Just reshape the value | `.transform([](const std::string& s) -> U { ... })` |
+| Log and swallow the error | `.or_else(modules::defaultErrorHandler<XxxPlugin>)` |
+| Handle it yourself | `.or_else([this](ll::Error e) -> ll::Expected<void> { e.log(*this->mImpl->logger); return {}; })` |
+
+`defaultErrorHandler<Module>` calls `e.log(...)` for you when the module exposes `getShared()->getLogger()`.
+
+> [!IMPORTANT]
+> The `or_else` result type must match the **current** value type of the chain. `Batch::commit()` yields `Expected<bool>`, so either let `or_else` return `Expected<bool>` or collapse it first with `.transform([](bool) {})` — otherwise the compiler reports "no matching function for call to `or_else`".
 
 ### JsonStorage (Simple JSON Files)
 

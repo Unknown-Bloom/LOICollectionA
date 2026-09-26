@@ -10,7 +10,7 @@
 
 #include <mc/server/SimulatedPlayer.h>
 
-#include "LOICollectionA/data/SQLiteStorage.h"
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/base/ServiceProvider.h"
 
@@ -41,7 +41,7 @@ protected:
         if (!r2.has_value())
             GTEST_FAIL() << "Unable to clear data";
 
-        auto r3 = ServiceProvider::getInstance().getService<SQLiteStorage>("SettingsDB")->exec("DELETE FROM Chat;");
+        auto r3 = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB")->exec("DELETE FROM Chat;");
         if (!r3.has_value())
             GTEST_FAIL() << "Unable to clear data";
     }
