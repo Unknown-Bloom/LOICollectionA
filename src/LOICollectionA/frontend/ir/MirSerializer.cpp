@@ -318,14 +318,21 @@ namespace LOICollection::frontend::ir {
         }
 
         void writeDebugInfo(Writer& writer, const MirChunk& chunk) {
-            for (const auto& instr : chunk.code) {
-                writer.u64(instr.loc.line);
-                writer.u64(instr.loc.column);
-                writer.u64(instr.loc.offset);
-            }
+            std::vector<const MirChunk*> pending{&chunk};
+            while (!pending.empty()) {
+                const MirChunk* current = pending.back();
+                pending.pop_back();
 
-            for (const auto& body : chunk.methodBodies)
-                writeDebugInfo(writer, *body);
+                for (const auto& instr : current->code) {
+                    writer.u64(instr.loc.line);
+                    writer.u64(instr.loc.column);
+                    writer.u64(instr.loc.offset);
+                }
+
+                for (auto it = current->methodBodies.rbegin(); it != current->methodBodies.rend(); ++it)
+                    if (*it)
+                        pending.push_back(it->get());
+            }
         }
 
         bool readDebugInfo(Reader& reader, MirChunk& chunk, size_t depth = 0) {
@@ -351,9 +358,17 @@ namespace LOICollection::frontend::ir {
         }
 
         size_t countInstructions(const MirChunk& chunk) {
-            size_t total = chunk.code.size();
-            for (const auto& body : chunk.methodBodies)
-                total += countInstructions(*body);
+            size_t total = 0;
+            std::vector<const MirChunk*> pending{&chunk};
+            while (!pending.empty()) {
+                const MirChunk* current = pending.back();
+                pending.pop_back();
+
+                total += current->code.size();
+                for (const auto& body : current->methodBodies)
+                    if (body)
+                        pending.push_back(body.get());
+            }
 
             return total;
         }
@@ -544,7 +559,7 @@ namespace LOICollection::frontend::ir {
             return reader.i32(meta.bodyIndex) && reader.i32(meta.argCount) && reader.i32(meta.captureCount);
         }
 
-        bool writeChunk(Writer& writer, const MirChunk& chunk) {
+        bool writeChunkFlat(Writer& writer, const MirChunk& chunk) {
             writeVector<MirInstr>(writer, chunk.code, [](Writer& w, const MirInstr& instr) {
                 writeInstruction(w, instr);
             });
@@ -582,11 +597,26 @@ namespace LOICollection::frontend::ir {
             });
 
             writer.i32(chunk.slotCount);
-
             writer.u32(static_cast<uint32_t>(chunk.methodBodies.size()));
-            for (const auto& body : chunk.methodBodies)
-                if (!body || !writeChunk(writer, *body))
+            return true;
+        }
+
+        bool writeChunk(Writer& writer, const MirChunk& chunk) {
+            std::vector<const MirChunk*> pending;
+            pending.push_back(&chunk);
+            while (!pending.empty()) {
+                const MirChunk* current = pending.back();
+                pending.pop_back();
+
+                if (!writeChunkFlat(writer, *current))
                     return false;
+
+                for (auto it = current->methodBodies.rbegin(); it != current->methodBodies.rend(); ++it) {
+                    if (!*it)
+                        return false;
+                    pending.push_back(it->get());
+                }
+            }
 
             return true;
         }
