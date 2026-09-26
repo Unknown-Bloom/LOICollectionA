@@ -53,7 +53,7 @@ namespace {
     };
 
     std::filesystem::path locateProductionPermissionJson() {
-        const auto config = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config");
+        const auto config = ServiceProvider::getInstance().getService<ReadOnlyWrapper<::Config::C_Config>>("Config");
         return LOICollection::A::getInstance().getSelf().getModDir() / config->ScriptPermission.PermissionFilePath;
     }
 }
