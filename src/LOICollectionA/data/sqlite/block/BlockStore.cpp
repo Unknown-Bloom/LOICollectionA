@@ -200,6 +200,35 @@ void BlockStore::release(std::shared_ptr<SQLiteConnection> conn) {
 }
 
 ll::Expected<void> BlockStore::ensureSchema(SQLiteConnection& conn) {
+    // 启动即清理旧版本/旧运行遗留的 WAL 脏尾，并校验数据库完整性。
+    // 否则携带未 checkpoint 的旧 WAL 进入运行时，会在启用阶段解析旧数据时
+    // 破坏堆内存，延迟到内存释放时崩溃（表现为 MimallocMemoryAllocator::release
+    // 抛 std::system_error "Module not found"）。等价于代码内自动完成
+    // “删除 data 重建”的效果。
+    {
+        // 合并并清空 WAL（TRUNCATE 回写主库后删除 WAL 文件）。
+        // 若因其他连接存在而降级为 RESTART，非致命，忽略返回码。
+        conn.database().tryExec("PRAGMA wal_checkpoint(TRUNCATE)");
+
+        // 完整性校验：任何非 "ok" 的结果都视为损坏，明确失败而非带病运行
+        auto ic = conn.statements().ensure("integrityCheck", "PRAGMA integrity_check");
+        if (!ic)
+            return prepareError("integrityCheck");
+        ic->reset();
+        bool intact = true;
+        while (ic->tryExecuteStep() == SQLITE_ROW) {
+            if (ic->getColumn(0).getString() != "ok") {
+                intact = false;
+                break;
+            }
+        }
+        ic->reset();
+        if (!intact)
+            return ll::makeStringError(
+                "database integrity_check failed: corrupt WAL or schema; "
+                "remove the data directory to rebuild");
+    }
+
     constexpr std::string_view kTables[] = {
         "CREATE TABLE IF NOT EXISTS dict("
         "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE)",
