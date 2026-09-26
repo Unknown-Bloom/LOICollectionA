@@ -119,6 +119,13 @@ namespace LOICollection::frontend::ir {
         meta.staticMethodSignatures = table.staticOrder;
         meta.methods.assign(meta.methodSignatures.size(), -1);
         meta.staticMethods.assign(meta.staticMethodSignatures.size(), -1);
+        if (baseIdx >= 0) {
+            const auto& base = this->chunk.classes[baseIdx];
+            for (size_t i = 0; i < meta.methods.size() && i < base.methods.size(); ++i)
+                meta.methods[i] = base.methods[i];
+            for (size_t i = 0; i < meta.staticMethods.size() && i < base.staticMethods.size(); ++i)
+                meta.staticMethods[i] = base.staticMethods[i];
+        }
 
         for (auto& method : node.methods) {
             int methodIdx = static_cast<int>(methodCount++);
