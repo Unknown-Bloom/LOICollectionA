@@ -66,6 +66,7 @@ namespace {
                 actual.push_back(',');
             actual += query->getColumn(0).getString();
         }
+        query->reset();
         return actual;
     }
 
@@ -300,6 +301,7 @@ ll::Expected<void> BlockStore::ensureSchema(SQLiteConnection& conn) {
             return sqlError(conn);
     }
 
+    conn.statements().resetAll();
     for (auto const& spec : kIndexes) {
         auto matches = indexMatches(conn, spec);
         if (!matches)
@@ -332,8 +334,6 @@ ll::Expected<BlockId> BlockStore::createBlock(
     auto guard = acquireConnection(this->mPool);
     if (!guard)
         return ll::makeStringError(guard.error().message());
-    if (auto err = this->ensureSchema(*guard); !err)
-        return ll::makeStringError(err.error().message());
 
     BlockId id = 0;
     if (auto res = this->implCreateBlock(*guard, parent, kind, name, payload, id); !res)
@@ -383,8 +383,6 @@ ll::Expected<BlockId> BlockStore::upsertRow(
     auto guard = acquireConnection(this->mPool);
     if (!guard)
         return ll::makeStringError(guard.error().message());
-    if (auto err = this->ensureSchema(*guard); !err)
-        return ll::makeStringError(err.error().message());
     return this->implUpsertRow(*guard, parent, name, payload);
 }
 
