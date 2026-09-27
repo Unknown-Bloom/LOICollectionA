@@ -6,19 +6,13 @@ set_xmakever("3.0.0")
 
 local is_server = is_config("target_type", "server")
 
-option("shared")
-    set_default(true)
-    set_showmenu(true)
-    set_description("Build shared library")
-option_end()
-
 option("target_type")
     set_default("server")
     set_showmenu(true)
     set_values("server", "client")
 option_end()
 
-add_requires("sqlitecpp 3.3.3", {configs = {shared = get_config("shared")}})
+add_requires("sqlitecpp 3.3.3", {configs = {shared = false}})
 add_requires("levilamina 26.20.7", {configs = {target_type = get_config("target_type")}})
 add_requires(
     "levibuildscript",

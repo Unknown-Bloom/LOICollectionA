@@ -11,9 +11,6 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                shared:
-                    - true
-                    - false
                 target_type:
                     - server
                     - client
@@ -34,7 +31,7 @@ jobs:
                 xmake repo -u
             
             - run: |
-                xmake f -a x64 -m release -p windows -v -y --shared=${{ matrix.shared }} --target_type=${{ matrix.target_type }}
+                xmake f -a x64 -m release -p windows -v -y --target_type=${{ matrix.target_type }}
             
             - run: |
                 xmake -v -y
@@ -69,7 +66,7 @@ jobs:
 
             - uses: actions/upload-artifact@v7
               with:
-                name: ${{ github.event.repository.name }}-${{ matrix.shared == false && 'ES-' || '' }}${{ matrix.target_type }}-windows-x64-${{ github.sha }}
+                name: ${{ github.event.repository.name }}-${{ matrix.target_type }}-windows-x64-${{ github.sha }}
                 path: |
                     build/bin-${{ matrix.target_type }}/
 
@@ -246,9 +243,6 @@ jobs:
         runs-on: ubuntu-latest
         strategy:
             matrix:
-                shared: 
-                    - true
-                    - false
                 target_type: 
                     - server
                     - client
@@ -259,24 +253,24 @@ jobs:
             - name: Download Artifact
               uses: actions/download-artifact@v8
               with:
-                name: ${{ github.event.repository.name }}-${{ matrix.shared == false && 'ES-' || '' }}${{ matrix.target_type }}-windows-x64-${{ github.sha }}
+                name: ${{ github.event.repository.name }}-${{ matrix.target_type }}-windows-x64-${{ github.sha }}
                 path: artifact
 
             - name: Create ZIP Archive
               run: |
-                zip -r ../${{ github.event.repository.name }}-${{ matrix.shared == false && 'ES-' || '' }}${{ matrix.target_type }}-windows-x64.zip *
+                zip -r ../${{ github.event.repository.name }}-${{ matrix.target_type }}-windows-x64.zip *
               working-directory: artifact
 
             - name: Calculate SHA256
               id: sha256
               run: |
-                echo "release=$(sha256sum ${{ github.event.repository.name }}-${{ matrix.shared == false && 'ES-' || '' }}${{ matrix.target_type }}-windows-x64.zip | awk '{print $1}')" >> $GITHUB_OUTPUT
+                echo "release=$(sha256sum ${{ github.event.repository.name }}-${{ matrix.target_type }}-windows-x64.zip | awk '{print $1}')" >> $GITHUB_OUTPUT
 
             - name: Update Release Assets
               uses: softprops/action-gh-release@v2
               with:
                 append_body: true
                 body: |-
-                    | ${{ github.event.repository.name }}-${{ matrix.shared == false && 'ES-' || '' }}${{ matrix.target_type }}-windows-x64.zip | ${{ steps.sha256.outputs.release }} |
+                    | ${{ github.event.repository.name }}-${{ matrix.target_type }}-windows-x64.zip | ${{ steps.sha256.outputs.release }} |
                 files: |
-                    ${{ github.event.repository.name }}-${{ matrix.shared == false && 'ES-' || '' }}${{ matrix.target_type }}-windows-x64.zip
+                    ${{ github.event.repository.name }}-${{ matrix.target_type }}-windows-x64.zip

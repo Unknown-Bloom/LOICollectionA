@@ -50,17 +50,12 @@ lip install --upgrade github.com/loitietu/LOICollectionA
 > Please manually download the version-compatible prerequisite components. If you are unsure about version compatibility, it is recommended to use lip installation instead.
 
 1. Go to Minebbs or Github Release to download the latest version of LOICollectionA
-2. Extract the downloaded `LOICollectionA-windows-x64.zip`
+2. Extract the downloaded `LOICollectionA-server-windows-x64.zip`
 3. Move the extracted `LOICollectionA` folder to the `plugins` folder
 4. Double-click the `bedrock_server_mod.exe` file in the server root directory to start the server
 5. In the server terminal, you should be able to see the LOICollection startup log
 
 ---
-
-### Common Issues
-
-- **Unable to enable: unknown error when make exception string**
-  - For this issue, you can try going to Github Release to manually install the `LOICollectionA-ES-windows-x64.zip` version
 
 ## Installing LOICollectionA-Expand
 

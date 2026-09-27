@@ -24,7 +24,7 @@
                 {
                     "type": "zip",
                     "urls": [
-                        "https://{{tooth}}/releases/download/v{{version}}/LOICollectionA-windows-x64.zip"
+                        "https://{{tooth}}/releases/download/v{{version}}/LOICollectionA-server-windows-x64.zip"
                     ],
                     "placements": [
                         {

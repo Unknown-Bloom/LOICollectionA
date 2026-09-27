@@ -49,11 +49,6 @@ on:
         options:
           - debug
           - release
-      shared:
-        description: "Build a shared library"
-        required: true
-        default: true
-        type: boolean
       with_symbols:
         description: "Upload PDB/symbols alongside the binary for crash analysis"
         required: false
@@ -117,7 +112,7 @@ jobs:
         run: xmake repo -u
 
       - name: Configure
-        run: xmake f -a x64 -m ${{ inputs.mode }} -p windows -v -y --shared=${{ inputs.shared }} --target_type=${{ inputs.target_type }}
+        run: xmake f -a x64 -m ${{ inputs.mode }} -p windows -v -y --target_type=${{ inputs.target_type }}
 
       - name: Build
         run: xmake -v -y
@@ -125,7 +120,7 @@ jobs:
       - name: Upload binary
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ github.event.repository.name }}-${{ inputs.shared == false && 'ES-' || '' }}${{ inputs.target_type }}-${{ inputs.mode }}-windows-x64-${{ github.sha }}
+          name: ${{ github.event.repository.name }}-${{ inputs.target_type }}-${{ inputs.mode }}-windows-x64-${{ github.sha }}
           path: build/bin-${{ inputs.target_type }}/
 
       - name: Upload symbols

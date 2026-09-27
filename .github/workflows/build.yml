@@ -22,9 +22,6 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                shared:
-                    - true
-                    - false
                 target_type:
                     - server
                     - client
@@ -48,14 +45,14 @@ jobs:
                 xmake repo -u
             
             - run: |
-                xmake f -a x64 -m ${{ matrix.mode }} -p windows -v -y --shared=${{ matrix.shared }} --target_type=${{ matrix.target_type }}
+                xmake f -a x64 -m ${{ matrix.mode }} -p windows -v -y --target_type=${{ matrix.target_type }}
             
             - run: |
                 xmake -v -y
             
             - uses: actions/upload-artifact@v7
               with:
-                name: ${{ github.event.repository.name }}-${{ matrix.shared == false && 'ES-' || '' }}${{ matrix.target_type }}-${{ matrix.mode }}-windows-x64-${{ github.sha }}
+                name: ${{ github.event.repository.name }}-${{ matrix.target_type }}-${{ matrix.mode }}-windows-x64-${{ github.sha }}
                 path: |
                     build/bin-${{ matrix.target_type }}/
             

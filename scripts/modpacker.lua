@@ -18,23 +18,6 @@ after_build(function(target)
     import("core.project.config")
     mod_define.modPlatform = mod_define.modPlatform or config.get("target_type")
 
-    function cpPackage(name, target, outputdir)
-        local mPackage = target:pkg(name)
-        
-        if not mPackage then
-            cprint("${bright yellow}warn: ${reset}not found package " .. name)
-        end
-
-        local mPackage_installdir = mPackage:installdir()
-
-        if not mPackage_installdir then
-            cprint("${bright yellow}warn: ${reset}not found package " .. name)
-        end
-
-        local mPackage_bindir = path.join(mPackage_installdir, "bin")
-        os.cp(path.join(mPackage_bindir, "*.dll"), outputdir)
-    end
-
     function string_formatter(str, variables)
         return str:gsub("%${(.-)}", function(var)
             return variables[var] or "${" .. var .. "}"
@@ -68,8 +51,6 @@ after_build(function(target)
             if os.isdir(commondir) then
                 os.cp(path.join(commondir, "*"), outputdir)
             end
-
-            cpPackage("sqlitecpp", target, outputdir)
 
             formattedmanifest = string_formatter(manifest, mod_define)
             io.writefile(manifestfile, formattedmanifest)

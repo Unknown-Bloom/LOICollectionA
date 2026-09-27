@@ -50,17 +50,12 @@ lip install --upgrade github.com/loitietu/LOICollectionA
 > 请您手动下载版本兼容的前置组件。若不确定版本兼容性，建议改用 lip 安装。
 
 1. 前往 Minebbs 或者 Github Release 下载 LOICollectionA 的最新版本
-2. 解压下载的 `LOICollectionA-windows-x64.zip`
+2. 解压下载的 `LOICollectionA-server-windows-x64.zip`
 3. 将解压后的 `LOICollectionA` 文件夹移动到 `plugins` 文件夹下
 4. 双击服务端根目录下的 `bedrock_server_mod.exe` 文件以启动服务器
 5. 在服务器终端中，您应该能够看到 LOICollection 的启动日志
 
 ---
-
-### 常见问题
-
-- **无法启用: unknown error when make exception string**
-  - 对于这个问题，可以尝试前往 Github Release 手动安装 `LOICollectionA-ES-windows-x64.zip` 版本
 
 ## 安装 LOICollectionA-Expand
 
