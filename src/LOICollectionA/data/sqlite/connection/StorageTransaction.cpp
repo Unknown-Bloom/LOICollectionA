@@ -41,6 +41,12 @@ ll::Expected<bool> StorageTransaction::commit() {
         this->mTransaction->commit();
         this->mTransaction.reset();
     } catch (...) {
+        // A failed COMMIT leaves the transaction open; the SQLite::Transaction
+        // destructor retries the rollback but swallows its error. Retry through
+        // busy_timeout so the connection is never released with an active
+        // transaction (the pool also guards this on reuse).
+        if (this->mConnection)
+            this->mConnection->database().tryExec("ROLLBACK");
         this->mTransaction.reset();
         this->finish();
         return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::CommitFailed));
@@ -57,6 +63,10 @@ ll::Expected<bool> StorageTransaction::rollback() {
         this->mTransaction->rollback();
         this->mTransaction.reset();
     } catch (...) {
+        // Same guard as commit(): never release the connection while a
+        // transaction is still active on it.
+        if (this->mConnection)
+            this->mConnection->database().tryExec("ROLLBACK");
         this->mTransaction.reset();
         this->finish();
         return ll::makeErrorCodeError(

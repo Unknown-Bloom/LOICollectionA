@@ -5,6 +5,8 @@
 #include <string_view>
 #include <utility>
 
+#include <sqlite3.h>
+
 #include <SQLiteCpp/SQLiteCpp.h>
 
 #include "LOICollectionA/data/sqlite/block/BlockError.h"
@@ -88,6 +90,13 @@ ll::Expected<std::shared_ptr<SQLiteConnection>> ConnectionPool::acquire(int time
         if (!this->mAvailable.empty()) {
             auto conn = this->mAvailable.front();
             this->mAvailable.pop();
+            // A failed COMMIT/ROLLBACK can leave a transaction open on a
+            // connection that was still released back to the pool; every
+            // BEGIN on it would then fail with "cannot start a transaction
+            // within a transaction". Reset any abandoned transaction before
+            // handing the connection out again (rollback honors busy_timeout).
+            if (conn && !sqlite3_get_autocommit(conn->database().getHandle()))
+                conn->database().tryExec("ROLLBACK");
             return conn;
         }
         if (this->mOpen < this->mSize) {
