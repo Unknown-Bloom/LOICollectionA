@@ -44,12 +44,19 @@ ll::Expected<bool> StorageTransaction::commit() {
         // A failed COMMIT leaves the transaction open; the SQLite::Transaction
         // destructor retries the rollback but swallows its error. Retry through
         // busy_timeout so the connection is never released with an active
-        // transaction (the pool also guards this on reuse).
-        if (this->mConnection)
-            this->mConnection->database().tryExec("ROLLBACK");
+        // transaction, and surface the underlying SQLite error for diagnosis.
+        std::string detail = "commit failed: connection already released";
+        if (this->mConnection) {
+            auto& db = this->mConnection->database();
+            db.tryExec("ROLLBACK");
+            detail = "commit failed (autocommit=";
+            detail += sqlite3_get_autocommit(db.getHandle()) ? "1" : "0";
+            detail += ", rc-msg): ";
+            detail += db.getErrorMsg();
+        }
         this->mTransaction.reset();
         this->finish();
-        return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::CommitFailed));
+        return ll::makeStringError(std::move(detail));
     }
     this->finish();
     return true;
@@ -64,13 +71,19 @@ ll::Expected<bool> StorageTransaction::rollback() {
         this->mTransaction.reset();
     } catch (...) {
         // Same guard as commit(): never release the connection while a
-        // transaction is still active on it.
-        if (this->mConnection)
-            this->mConnection->database().tryExec("ROLLBACK");
+        // transaction is still active on it, and report the SQLite error.
+        std::string detail = "rollback failed: connection already released";
+        if (this->mConnection) {
+            auto& db = this->mConnection->database();
+            db.tryExec("ROLLBACK");
+            detail = "rollback failed (autocommit=";
+            detail += sqlite3_get_autocommit(db.getHandle()) ? "1" : "0";
+            detail += "): ";
+            detail += db.getErrorMsg();
+        }
         this->mTransaction.reset();
         this->finish();
-        return ll::makeErrorCodeError(
-            BlockError::makeErrorCode(BlockError::BlockErrorCode::RollbackFailed));
+        return ll::makeStringError(std::move(detail));
     }
     this->finish();
     return true;
