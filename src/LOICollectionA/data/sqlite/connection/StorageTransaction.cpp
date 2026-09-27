@@ -2,6 +2,8 @@
 
 #include <utility>
 
+#include <sqlite3.h>
+
 #include <SQLiteCpp/SQLiteCpp.h>
 
 #include "LOICollectionA/data/sqlite/block/BlockError.h"
@@ -51,7 +53,7 @@ ll::Expected<bool> StorageTransaction::commit() {
             db.tryExec("ROLLBACK");
             detail = "commit failed (autocommit=";
             detail += sqlite3_get_autocommit(db.getHandle()) ? "1" : "0";
-            detail += ", rc-msg): ";
+            detail += "): ";
             detail += db.getErrorMsg();
         }
         this->mTransaction.reset();
