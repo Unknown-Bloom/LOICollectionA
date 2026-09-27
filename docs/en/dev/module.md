@@ -183,6 +183,12 @@ On the next plugin startup, `MergePatch` automatically merges the new fields int
 
 A module persists through `BlockRepository` (the block-storage facade, see [Architecture](./architecture.md)), but business code should not talk to it directly — columns are **compile-time** information, expressed as `TypedTable`.
 
+> [!NOTE]
+> The complete data-layer usage (API, schema, queries, transactions, error codes) is in the [SQLite Layer Tutorial](./sqlite.md).
+
+> [!WARNING]
+> **Never run DDL inside a `WriteBatch` transaction** (`CREATE` / `DROP TABLE` / `CREATE INDEX` / `VACUUM`, etc.)—SQLite implicitly commits the active transaction, so the later `commit()` throws `CommitFailed`. Send such statements through `BlockRepository::exec()` (autocommit); only DML goes into the transaction.
+
 ### Declaring a table
 
 Every table's columns are declared centrally in `src/LOICollectionA/include/server/Plugins/TableSchema.h`; columns can only be added or removed there, never misspelled at a call site:

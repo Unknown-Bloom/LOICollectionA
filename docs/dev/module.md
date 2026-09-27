@@ -183,6 +183,12 @@ struct C_Xxx {
 
 模块的持久化入口是 `BlockRepository`（块存储门面，见 [架构总览](./architecture.md)），业务代码不直接操作它——列名属于**编译期**信息，统一用 `TypedTable` 表达。
 
+> [!NOTE]
+> 数据层完整用法（API、Schema、查询、事务、错误码）见 [SQLite 层使用教程](./sqlite.md)。
+
+> [!WARNING]
+> **不要在 `WriteBatch` 显式事务内执行 DDL**（`CREATE` / `DROP TABLE` / `CREATE INDEX` / `VACUUM` 等）——SQLite 会隐式提交活跃事务，导致后续 `commit()` 抛 `CommitFailed`。这类语句一律用 `BlockRepository::exec()`（自动提交）；只有 DML 进事务。
+
 ### 声明一张表
 
 所有表的列集中声明在 `src/LOICollectionA/include/server/Plugins/TableSchema.h`，列名只能增删，不能拼写错：

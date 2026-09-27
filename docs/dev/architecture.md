@@ -161,7 +161,13 @@ ConnectionPool               # SQLite 连接池（WAL 模式）
 | `BlockRepository` | 同上 | 对外只剩：`open` / `fromStore` / `store()` / `metaGet\|Set\|Del` / `exec` |
 | `TypedTable` | 同上 | 把列名提升到编译期（列由 `enum class` 定义）；`open` 时把 `版本 + 类型名 + 列数` 写入 `schema:<表名>`，不一致返回 `SchemaMismatch` |
 
-所有方法统一返回 `ll::Expected<T>`，用 `and_then` / `transform` / `or_else` 链式处理，不使用异常。用法详见 [模块开发指南](./module.md) 的"数据层"章节。
+所有方法统一返回 `ll::Expected<T>`，用 `and_then` / `transform` / `or_else` 链式处理，不使用异常。用法详见 [模块开发指南](./module.md) 的"数据层"章节，以及完整的 [SQLite 层使用教程](./sqlite.md)。
+
+> [!NOTE]
+> 数据层完整 API、Schema 定义、条件查询、事务与错误码速查见 [SQLite 层使用教程](./sqlite.md)。
+
+> [!WARNING]
+> 数据层硬性约束：**DDL（`CREATE` / `DROP TABLE` / `CREATE INDEX` / `VACUUM`）不能在 `WriteBatch` 显式事务内执行**——SQLite 会在活跃事务中隐式提交，使后续的显式 `commit()` 抛 `CommitFailed`。这类语句一律走 `BlockRepository::exec()`（自动提交），只有 DML 才进事务。详见教程第 9 节（事务、DDL 与并发）。
 
 ### 数据库文件
 

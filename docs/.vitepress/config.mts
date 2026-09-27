@@ -92,6 +92,7 @@ export default withMermaid(
             items: [
               { text: '架构概览', link: '/dev/architecture' },
               { text: '模块开发指南', link: '/dev/module' },
+              { text: 'SQLite 层使用教程', link: '/dev/sqlite' },
               { text: 'API 扩展指南', link: '/dev/api-extension' },
               { text: 'LCUI 语言服务', link: '/dev/lsp' },
               { text: '构建与测试', link: '/dev/build' },
@@ -171,6 +172,7 @@ export default withMermaid(
             items: [
               { text: 'Architecture Overview', link: '/en/dev/architecture' },
               { text: 'Module Development Guide', link: '/en/dev/module' },
+              { text: 'SQLite Layer Tutorial', link: '/en/dev/sqlite' },
               { text: 'API Extension Guide', link: '/en/dev/api-extension' },
               { text: 'LCUI Language Service', link: '/en/dev/lsp' },
               { text: 'Build and Test', link: '/en/dev/build' },

@@ -162,7 +162,13 @@ ConnectionPool               # SQLite connection pool (WAL mode)
 | `BlockRepository` | same | Public surface is only: `open` / `fromStore` / `store()` / `metaGet\|Set\|Del` / `exec` |
 | `TypedTable` | same | Lifts columns to compile time (declared as an `enum class`); `open` writes `version + type name + column count` to `schema:<table>` and returns `SchemaMismatch` on disagreement |
 
-Every method returns `ll::Expected<T>` so errors compose via `and_then` / `transform` / `or_else`; no exceptions are used. See the "Data Layer" section of the [Module Development Guide](./module.md) for usage.
+Every method returns `ll::Expected<T>` so errors compose via `and_then` / `transform` / `or_else`; no exceptions are used. See the "Data Layer" section of the [Module Development Guide](./module.md) for usage, and the complete [SQLite Layer Tutorial](./sqlite.md).
+
+> [!NOTE]
+> The full data-layer API, schema definition, conditional queries, transactions, and error-code reference are in the [SQLite Layer Tutorial](./sqlite.md).
+
+> [!WARNING]
+> Hard rule of the data layer: **never run DDL (`CREATE` / `DROP TABLE` / `CREATE INDEX` / `VACUUM`) inside a `WriteBatch` transaction**—SQLite implicitly commits the active transaction, so the later explicit `commit()` throws `CommitFailed`. Always send such statements through `BlockRepository::exec()` (autocommit); only DML goes into the transaction. See section 9 of the tutorial.
 
 ### Database Files
 

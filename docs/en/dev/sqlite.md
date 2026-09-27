@@ -1,0 +1,475 @@
+# SQLite Layer Tutorial
+
+> [!NOTE]
+> This article is based on the LOICollectionA 1.17.0 data layer (`src/LOICollectionA/data/sqlite/`). Later versions may differ. The examples follow the project's existing block-storage (BlockStore) and typed-table (TypedTable) conventions and can be dropped straight into module development.
+
+The data layer is the foundation of all persistence in LOICollectionA. It adds a **block-storage abstraction** on top of SQLite, then lifts column names to **compile time** with templates, so business code reads and writes in a type-safe way—without hand-writing SQL or worrying about schema drift.
+
+This tutorial is for developers who need to persist data inside a module. It goes "concepts → API reference → practice". If you just want to get started, jump to [Declaring a Table](#5-declaring-a-table-schema) and the [Complete Example](#13-complete-example-a-module).
+
+## 1. What problem it solves
+
+Plain SQLite usage has two long-standing pain points:
+
+- **Schema drift**: hand-written `CREATE TABLE` and "which column is which" in business code are kept in sync by memory; adding or removing a column shifts everything and breaks silently.
+- **SQL injection & string concatenation**: runtime SQL string building is error-prone and a security risk.
+
+LOICollectionA's answer:
+
+- A **block model** that splits data into addressable "blocks", decoupling schema from business data.
+- `TypedTable<E, Version>` turns "columns" into an enum; column names are resolved at **compile time**, so a typo is a compile error.
+- Cells are uniformly encoded/decoded (`CellCodec`); `string` / integer / floating / `bool` map automatically to SQLite affinity.
+- Everything returns `ll::Expected<T>`, composed with `and_then` / `transform` / `or_else`; no exceptions.
+
+## 2. Layered structure
+
+```txt
+TypedTable<E, Version>        # compile-time columns + versioned schema (the only business entry)
+        |  read / write / transaction
+BlockRepository               # facade: open / fromStore / store() / meta* / exec
+        |
+BlockStore                    # block-model persistence (dict / block / prop / link / meta)
+WriteBatch                    # atomic write transaction
+        |
+ConnectionPool               # SQLite connection pool (WAL mode)
+```
+
+| Layer | Location | Responsibility |
+| --- | --- | --- |
+| `ConnectionPool` | `data/sqlite/connection/` | SQLite connection management: `journal_mode=WAL` + `synchronous=NORMAL` + `temp_store=MEMORY` + `cache_size=8096` + `busy_timeout=5000` |
+| `BlockStore` | `data/sqlite/block/` | Splits data into addressable "blocks", reads/writes by key; five system tables: `dict` / `block` / `prop` / `link` / `meta` |
+| `WriteBatch` | same | Flushes a batch of changes atomically in one `commit()`; `rollback()` on failure |
+| `BlockRepository` | same | Public surface is only: `open` / `fromStore` / `store()` / `metaGet\|Set\|Del` / `exec` |
+| `TypedTable` | same | Lifts columns to compile time; `open` writes `version + type name + column count + index mask` to `schema:<table>` and returns `SchemaMismatch` on disagreement |
+
+Business code **should only touch `TypedTable`** (rare cases touch `BlockRepository` directly).
+
+## 3. Core concepts
+
+### 3.1 The block model
+
+`BlockStore` abstracts the whole database as a tree of nodes keyed by `BlockId`:
+
+- `block`: node body (id, parent, kind, name, state, payload)
+- `dict`: `name → BlockId` index under a parent; this is how a rowKey is located
+- `prop`: node attributes (used for the queryable "mirror columns")
+- `link`: directed edges between nodes
+- `meta`: database-level key/value (schema fingerprint and side fingerprint live here)
+
+Each logical "row" of a `TypedTable` is a child block named by its `rowKey` (usually a player uuid or name). A cell may live in `block.payload` or be mirrored into the **side table** `col_<rootId>` for SQL queries. The side table is maintained automatically—you never deal with it directly.
+
+> [!TIP]
+> `block.payload` is the block's raw value (any JSON-ish cell set); the side table is an extra mirror it builds for queryable columns. Reads of indexed columns hit the side table; reads of non-indexed columns fall back to payload—the switch is automatic.
+
+### 3.2 Columns are an enum
+
+All columns of a table are declared as a single `enum class`, and the **enum order is the physical column id**:
+
+```cpp
+enum class XxxCol { id, name, time };   // id=0, name=1, time=2
+```
+
+Therefore:
+
+- **New columns may only be appended at the end of the enum**, otherwise they misalign with already-persisted data.
+- A column may be an enum value (`XxxCol::name`) or a string literal (`"name"`)—the literal is resolved to the enum at **compile time**, so a typo fails to compile.
+- For a runtime `std::string` column name, use `parseColumn()`; do not use the literal form.
+
+### 3.3 Types and affinity
+
+A column's physical affinity is derived from `TypedColumn<E>::Types` (a `std::tuple`) whose length must equal the enum size:
+
+| C++ type | SQLite affinity |
+| --- | --- |
+| Integral (`int` / `long long` / …) | `INTEGER` |
+| Floating (`double` / `float`) | `REAL` |
+| `bool` | `INTEGER` (`1` / `0`) |
+| Everything else (`std::string`, custom types via `CellCodec`) | `TEXT` |
+
+```cpp
+enum class XxxCol { id, name, time };
+
+namespace LOICollection::data {
+    template <>
+    struct TypedColumn<LOICollection::server::Plugins::XxxCol> {
+        using Types = std::tuple<std::string, std::string, long long>;
+    };
+}
+```
+
+> [!TIP]
+> Declare numeric fields as `long long` / `double` rather than `std::string`: the former become `INTEGER`/`REAL`—smaller, comparable, and usable for range queries—while the latter are always `TEXT` and compare lexicographically.
+
+### 3.4 Schema fingerprint and version
+
+`open` writes a fingerprint to `schema:<table>`: `version \x1e typeName \x1e columnCount \x1e indexMask`.
+
+- Version or type name mismatch → immediately returns `BlockError::SchemaMismatch` (refuses to open, never silently misreads).
+- Column count or index mask change → marked `schemaDirty`, the side table is rebuilt and existing payloads backfilled automatically (**it does not migrate older-version data, only rebuilds the current blocks' mirror**).
+
+The version number is your manual upgrade knob: when the structure changes, bump it; `open` safely rebuilds the mirror instead of reading corrupt data.
+
+## 4. Layered API reference
+
+### 4.1 ConnectionPool (internal)
+
+Not used directly by business code. Each database is opened in `WAL` mode with `busy_timeout=5s` so concurrent writes wait instead of failing immediately. Database files live at `plugins/LOICollectionA/data/*.db`.
+
+### 4.2 BlockRepository (facade)
+
+```cpp
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+
+// Open (or create) a database; connections default to 4
+auto db = BlockRepository::open((dataPath / "xxx.db").string(), 4);
+if (!db) return ll::makeStringError(db.error().message());
+std::shared_ptr<BlockRepository> repo = std::move(db.value());
+
+// Reuse an existing store (e.g. the global SettingsDB on the same file)
+// auto repo = BlockRepository::fromStore(existingStore);
+
+repo->store();                       // returns the underlying BlockStore&
+repo->exec("VACUUM;");               // run raw SQL (autocommit, see section 9)
+repo->metaGet("sidecol:Xxx");        // ll::Expected<std::optional<std::string>>
+repo->metaSet("key", "value");       // ll::Expected<void>
+repo->metaDel("key");
+```
+
+| Method | Description |
+| --- | --- |
+| `open(path, connections=4)` | Open (or create) a database, return `shared_ptr<BlockRepository>` |
+| `fromStore(store)` | Build a facade from an existing `BlockStore` (share a pool across tables on one file) |
+| `store()` | Return the underlying `BlockStore&` |
+| `exec(sql)` | Run raw SQL (autocommit) |
+| `metaGet/metaSet/metaDel` | Read/write database-level metadata (`TypedTable` stores its schema/side fingerprints here) |
+
+### 4.3 WriteBatch (transaction)
+
+```cpp
+#include "LOICollectionA/data/sqlite/block/WriteBatch.h"
+
+auto b = WriteBatch::begin(repo->store());
+if (!b) return ll::makeStringError(b.error().message());
+auto& tx = *b;
+
+tx.exec("UPDATE ...");                       // raw SQL (DML)
+tx.execCells("key", "INSERT ... VALUES(?,?)", params); // parameterized raw SQL
+tx.upsertRow(parentId, rowKey);              // write a row (create block if absent)
+tx.append(parentId, kind, name, payload);    // append a child block
+tx.setProp(id, key, ival / rval / tval);     // set a node attribute
+tx.control(id, BlockLifecycle::Deleted);     // mark deleted (soft delete)
+
+auto ok = tx.commit();                       // ll::Expected<bool>
+if (!ok) { tx.rollback(); /* ... */ }
+```
+
+| Method | Description |
+| --- | --- |
+| `begin(store)` | Begin a transaction, return `unique_ptr<WriteBatch>` |
+| `exec(sql)` / `execCells(key, sql, params)` | Run SQL (with / without parameters) |
+| `upsertRow(parent, name, payload={})` | Write a row, return `BlockId` |
+| `append(parent, kind, name, payload)` | Append a child block, return `BlockId` |
+| `setProp(id, key, ...)` | Set a node attribute (three overloads: int / double / text) |
+| `control(id, lifecycle)` | Change node state (e.g. `Deleted` soft delete) |
+| `commit()` / `rollback()` | Commit (returns `Expected<bool>`) / rollback |
+
+> [!WARNING]
+> `WriteBatch` is **non-copyable and non-movable**. It owns a `StorageTransaction` and may only be used as a `unique_ptr` within a scope. Business code usually does not create it directly—`TypedTable::tx()` already wraps it in a `Batch`.
+
+### 4.4 TypedTable (business entry)
+
+```cpp
+#include "LOICollectionA/data/sqlite/block/TypedTable.h"
+using LOICollection::data::TypedTable;
+using LOICollection::data::FindMode;
+
+// Open (or create) a table
+auto table = XxxTable::open(*repo, "Xxx");
+if (!table) return ll::makeStringError(table.error().message());
+XxxTable t = std::move(table.value());
+```
+
+`Key` is the unified column parameter type: either an enum value or a string literal, with the literal resolved at compile time.
+
+| Method | Description |
+| --- | --- |
+| `open(repo, name)` | Open (or create) a table and return a handle; the handle only holds a `repo` reference and is freely movable |
+| `get<T>(row, col, def)` | Read one cell; returns `def` if the row is absent (string column name literals only) |
+| `set<T>(row, col, value)` | Write one cell; creates the row if absent |
+| `getRow(row)` / `setRow(row, map)` | Read/write a whole row (a `column name → value` map) |
+| `has(row)` / `del(row)` / `list()` | Existence check, delete, list all rowKeys |
+| `find(FindMode, conds)` | Query matching rowKeys (`FindMode::And` / `FindMode::Or`) |
+| `findFirst(FindMode, conds)` | Same, but take only the first |
+| `findValues<T>(col, FindMode, conds)` | Project a single column's values |
+| `tx()` | Begin a batched write transaction, return `Batch` |
+| `parseColumn(s)` | Resolve a runtime string to an enum column (static) |
+| `clearTypedTable(repo, name)` | Clear all rows of a table (free function) |
+
+## 5. Declaring a table (Schema)
+
+All columns are declared centrally in `src/LOICollectionA/include/server/Plugins/types/<module>/<Module>Schema.h`, in three parts: **enum + type specialization + alias**.
+
+```cpp
+// include/server/Plugins/types/xxx/XxxSchema.h
+#pragma once
+
+#include "LOICollectionA/data/sqlite/block/TypedTable.h"
+
+namespace LOICollection::server::Plugins {
+    using LOICollection::data::TypedTable;
+
+    enum class XxxCol { id, name, time, score };
+}
+
+namespace LOICollection::data {
+    template <>
+    struct TypedColumn<LOICollection::server::Plugins::XxxCol> {
+        // Must match column count; integral→INTEGER, floating→REAL, else→TEXT
+        using Types = std::tuple<std::string, std::string, long long, long long>;
+    };
+}
+
+namespace LOICollection::server::Plugins {
+    // The second template parameter is the schema version; bump it on structural change
+    using XxxTable = TypedTable<XxxCol, 1>;
+}
+```
+
+That's it. No hand-written `CREATE TABLE`—`open` builds the side table automatically from the enum and affinity.
+
+## 6. Typical read/write
+
+```cpp
+// Write (row auto-created if absent)
+t.set(uuid, XxxCol::name, player.getRealName());
+t.set(uuid, "time", now);          // string-literal column name also works, compile-time resolved
+t.set(uuid, XxxCol::score, 100LL);
+
+// Read: returns default if row absent; typo on column name is a compile error
+auto name = t.get<std::string>(uuid, XxxCol::name, "");
+name.and_then([&](std::string const& n) -> ll::Expected<void> {
+    // use n ...
+    return {};
+}).or_else(modules::defaultErrorHandler<XxxPlugin>);
+
+// Whole-row read/write (for forms/editors)
+auto row = t.getRow(uuid);            // ll::Expected<std::unordered_map<std::string, std::string>>
+t.setRow(uuid, { {"name", "Steve"}, {"score", "100"} });
+
+// Existence, delete, list
+bool exists = t.has(uuid).value_or(false);
+t.del(uuid);                          // soft delete
+auto keys = t.list();                 // all rowKeys
+```
+
+> [!IMPORTANT]
+> The default `def` of `get<T>` is also of type `T`. `get<long long>` and `get<int>` are **different** overloads—keep them consistent with the column's declared affinity, or you'll hit a decode error.
+
+## 7. Conditional query (find)
+
+`find` runs a SQL query on the side table; conditions are a `std::vector<std::pair<Key, std::string>>`—note that **values are always strings**, and the framework infers the parameter type from the column's affinity (numeric if parseable, otherwise text).
+
+```cpp
+// Find players where name == "Steve" AND score == "100" (And)
+auto ids = t.find(FindMode::And, {
+    { XxxCol::name, "Steve" },
+    { XxxCol::score, "100" },
+});
+
+// Find name == "Steve" OR name == "Alex" (Or)
+auto ids2 = t.find(FindMode::Or, {
+    { XxxCol::name, "Steve" },
+    { XxxCol::name, "Alex" },
+});
+
+// Take only the first
+auto first = t.findFirst(FindMode::And, { { XxxCol::name, "Steve" } });
+
+// Project: pull one column out of the matched rows
+auto scores = t.findValues<long long>(XxxCol::score, FindMode::And, { { XxxCol::name, "Steve" } });
+```
+
+A queried column that is indexable (all columns are indexed by default) gets an index (`CREATE INDEX`) created and cached on demand; later queries on the same column use it.
+
+> [!WARNING]
+> The value argument of `find` is a string. Even for an `INTEGER` column, passing `"100"` compares correctly; but passing a malformed numeric string falls back to text comparison with unpredictable results—always pass well-formed values.
+
+## 8. Batch transaction (tx())
+
+A single `set` is already its own transaction, but frequent per-cell writes each open a transaction per cell—costly. **When atomically changing multiple rows, or multiple columns of one row, take a `Batch` via `tx()` and `commit()` once at the end.**
+
+```cpp
+auto batch = t.tx();
+if (!batch) return ll::makeStringError(batch.error().message());
+auto& b = batch.value();
+
+b.set(uuid, XxxCol::name, "Steve");
+b.set(uuid, XxxCol::score, 200LL);
+b.set(other, XxxCol::name, "Alex");
+
+// Reads inside the Batch see this transaction's uncommitted writes
+auto justSet = b.get<std::string>(uuid, XxxCol::name, "");
+
+auto ok = b.commit();                 // one atomic commit
+if (!ok) {
+    b.rollback();                     // rollback on failure
+    return ll::makeStringError(ok.error().message());
+}
+```
+
+`Batch` supports `set` / `get` / `has` / `del` / `commit` / `rollback`; `get` prefers the pending buffer, then falls back to persisted data.
+
+## 9. Transactions, DDL, and concurrency (important)
+
+### 9.1 Concurrency model
+
+Databases open in `WAL` mode: `busy_timeout=5s` makes writes **wait** under lock contention instead of failing immediately; readers and writers don't block each other (reads are not blocked by writes). Normal read/write needs no locking—just call as usual.
+
+### 9.2 DDL must not run inside an explicit transaction
+
+This is the easiest and most隐蔽 pitfall in the data layer, and it has caused a production incident in this project:
+
+> SQLite, when executing DDL (`CREATE` / `DROP TABLE` / `CREATE INDEX` / `VACUUM`, etc.) inside an **active transaction**, **implicitly commits that transaction**. Your explicit `commit()` afterward then faces "no active transaction" and throws, surfacing as `BlockError::CommitFailed` (the log shows `transaction commit failed`).
+
+Wrong—running DDL inside a `WriteBatch` transaction:
+
+```cpp
+auto b = WriteBatch::begin(repo->store());
+(*b)->exec("DROP TABLE IF EXISTS t");   // DDL: implicitly commits the transaction here
+(*b)->exec("CREATE TABLE t(...)");      // DDL: another implicit commit
+(*b)->commit();                         // no active transaction → CommitFailed
+```
+
+Right—**DDL goes through `BlockRepository::exec` (autocommit); only DML goes into a `WriteBatch` transaction**:
+
+```cpp
+repo->exec("DROP TABLE IF EXISTS t");   // autocommit, safe
+repo->exec("CREATE TABLE t(...)");      // autocommit, safe
+
+auto b = WriteBatch::begin(repo->store());
+(*b)->exec("INSERT INTO t VALUES(?)");  // this is DML, goes in the transaction
+(*b)->commit();                         // active transaction present, commits successfully
+```
+
+> [!TIP]
+> Within the project, `TypedTable::ensureSide`, `ensureColumnIndex`, and `BlockRepository`'s initialization all follow this rule: DDL uses `store().exec()` (autocommit), and only DML enters `WriteBatch`. **Follow it in your own code**—any `CREATE` / `DROP` / `VACUUM` statement goes straight to `repo->exec()`, never inside a transaction.
+>
+> `repo->exec("VACUUM;")` (reclaiming space in `unregistry`) is also DDL and takes the autocommit path, which is fine.
+
+### 9.3 Prefer tx() over per-cell writes
+
+Each `set` carries its own transaction commit. When changing many columns/rows at once, merge them into one commit with `tx()`—it guarantees atomicity and cuts I/O significantly.
+
+## 10. Error handling
+
+The data layer uses no exceptions (build option `set_exceptions("none")`); every step returns `ll::Expected<T>`:
+
+| Scenario | Writing |
+| --- | --- |
+| Continue only if value present | `.and_then([](T v) -> ll::Expected<U> { ... })` (lambda for `Expected<void>` takes no argument) |
+| Just transform the shape | `.transform([](T const& v) -> U { ... })` |
+| Log and swallow | `.or_else(modules::defaultErrorHandler<XxxPlugin>)` |
+| Handle yourself | `.or_else([this](ll::Error e) -> ll::Expected<void> { e.log(*logger); return {}; })` |
+
+`defaultErrorHandler<Module>` calls `e.log(...)` for you when the module provides `getShared()->getLogger()`.
+
+> [!IMPORTANT]
+> `or_else`'s return type must match the chain's **current** value type. `Batch::commit()` returns `Expected<bool>`; at the chain tail, either let `or_else` return `Expected<bool>`, or first `.transform([](bool) {})` it down to `Expected<void>`—otherwise you'll get "no matching function for call to `or_else`".
+
+## 11. Performance and best practices
+
+- **Batch writes with `tx()`**: avoid one transaction commit per row/column.
+- **Declare numeric fields as `long long` / `double`**: they become `INTEGER`/`REAL`, smaller, comparable, and indexable—unlike `TEXT`.
+- **Keep queried columns indexable**: all columns are indexed by default; columns used only in `find` get indexed and cached automatically—no manual work.
+- **Use a stable rowKey** (player uuid / xuid); don't use a mutable name as the primary key.
+- **Don't `list()` + `get` in a hot path**: to filter by condition, use `find` / `findValues` and let SQL do the work on the side table.
+- **Vacuum periodically**: under WAL, space isn't reclaimed automatically; `repo->exec("VACUUM;")` once in `unregistry` suffices (note it's DDL, autocommit).
+
+## 12. Common error codes
+
+Errors come from the `BlockError` category and appear in logs as `BlockError: <message>`:
+
+| Code | Enum | Meaning | Typical cause |
+| --- | --- | --- | --- |
+| 1 | `PoolTimeout` | Connection pool timeout | Too many concurrent writes, a transaction held too long, slow disk |
+| 2 | `CreateFailed` | Block creation failed | Underlying SQLite write failure |
+| 3 | `LoadFailed` | Block load failed | Corrupted record |
+| 4 | `NotFound` | Block not found | Reading an unwritten rowKey (usually avoided with `def` / `has`) |
+| 5 | `NoConnection` | No available connection | Pool exhausted |
+| 6 | `CommitFailed` | Transaction commit failed | **DDL executed inside a transaction causing an implicit commit** (see 9.2); or disk full |
+| 7 | `RollbackFailed` | Rollback failed | Connection already dropped |
+| 8 | `DuplicateName` | Duplicate name under parent | Re-upserting the same rowKey (rare with upsert) |
+| 9 | `InvalidState` | Invalid block state | Illegal operation on a deleted block |
+| 10 | `SchemaMismatch` | Table schema version/columns mismatch | Version or type name disagrees with stored `schema:<table>`; never hand-edit the schema |
+
+## 13. Complete example (a module)
+
+Stringing it together: a table + opening, reading/writing, querying, and batch-committing in a module's `registry`.
+
+```cpp
+// include/server/Plugins/types/xxx/XxxSchema.h
+#pragma once
+#include "LOICollectionA/data/sqlite/block/TypedTable.h"
+namespace LOICollection::server::Plugins {
+    using LOICollection::data::TypedTable;
+    enum class XxxCol { id, name, time, score };
+}
+namespace LOICollection::data {
+    template <> struct TypedColumn<LOICollection::server::Plugins::XxxCol> {
+        using Types = std::tuple<std::string, std::string, long long, long long>;
+    };
+}
+namespace LOICollection::server::Plugins {
+    using XxxTable = TypedTable<XxxCol, 1>;
+}
+```
+
+```cpp
+// modules/server/Plugins/XxxPlugin.cpp (excerpt)
+ll::Expected<bool> XxxPlugin::registry() {
+    if (!this->mImpl->options.ModuleEnabled)
+        return false;
+
+    // 1. Open the table
+    return XxxTable::open(*this->mImpl->db, "Xxx")
+        .and_then([this](XxxTable table) -> ll::Expected<void> {
+            this->mImpl->xxx.emplace(std::move(table));
+            return {};
+        })
+        .and_then([this]() -> ll::Expected<void> {
+            auto& t = *this->mImpl->xxx;
+            std::string uuid = "player-001";
+
+            // 2. Single write
+            t.set(uuid, XxxCol::name, "Steve");
+            t.set(uuid, XxxCol::score, 100LL);
+
+            // 3. Conditional query
+            auto ids = t.find(FindMode::And, { { XxxCol::name, "Steve" } });
+            if (!ids) return ll::makeStringError(ids.error().message());
+
+            // 4. Batch transaction
+            auto batch = t.tx();
+            if (!batch) return ll::makeStringError(batch.error().message());
+            auto& b = batch.value();
+            b.set(uuid, XxxCol::score, 200LL);
+            b.del("player-999");
+            auto ok = b.commit();
+            if (!ok) { b.rollback(); return ll::makeStringError(ok.error().message()); }
+
+            return {};
+        })
+        .transform([this]() -> bool {
+            this->registeryCommand();
+            this->listenEvent();
+            return true;
+        });
+}
+```
+
+> [!NOTE]
+> When a module is disabled, `registry` returns `false` immediately; the database is opened in `load` via `BlockRepository::open` (see the [Module Development Guide](./module.md)). This example focuses on the data-layer API—combine it with the module guide for the lifecycle details.
+
+---
+
+For the data layer's place in the overall architecture and the database file layout, see [Architecture Overview](./architecture.md); for module integration, see [Module Development Guide](./module.md).
