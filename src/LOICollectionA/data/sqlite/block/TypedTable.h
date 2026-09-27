@@ -544,15 +544,16 @@ namespace LOICollection::data {
                 }
             }
 
+            auto dropped = mRepo.store().exec("DROP TABLE IF EXISTS \"" + mSide + "\"");
+            if (!dropped.has_value())
+                return ll::makeStringError(dropped.error().message());
+            auto made = mRepo.store().exec(sideDdl());
+            if (!made.has_value())
+                return ll::makeStringError(made.error().message());
+
             auto b = WriteBatch::begin(mRepo.store());
             if (!b.has_value())
                 return ll::makeStringError(b.error().message());
-            auto dropped = (*b)->exec("DROP TABLE IF EXISTS \"" + mSide + "\"");
-            if (!dropped.has_value())
-                return ll::makeStringError(dropped.error().message());
-            auto made = (*b)->exec(sideDdl());
-            if (!made.has_value())
-                return ll::makeStringError(made.error().message());
 
             std::string insert = "INSERT OR REPLACE INTO \"" + mSide + "\"(id";
             for (std::size_t i = 0; i < N; ++i)
