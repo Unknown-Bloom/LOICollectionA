@@ -15,6 +15,11 @@ namespace SQLite {
 
 class PreparedStatements {
 public:
+    struct Entry {
+        std::unique_ptr<SQLite::Statement> statement;
+        std::string sql;
+    };
+
     LOICOLLECTION_A_API explicit PreparedStatements(SQLite::Database& db);
 
     LOICOLLECTION_A_API ~PreparedStatements();
@@ -28,5 +33,5 @@ public:
 
 private:
     SQLite::Database& mDb;
-    std::unordered_map<std::string, std::unique_ptr<SQLite::Statement>> mStatements;
+    std::unordered_map<std::string, Entry> mStatements;
 };

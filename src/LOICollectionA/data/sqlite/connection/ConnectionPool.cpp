@@ -114,6 +114,8 @@ ll::Expected<std::shared_ptr<SQLiteConnection>> ConnectionPool::acquire(int time
 }
 
 void ConnectionPool::release(std::shared_ptr<SQLiteConnection> conn) {
+    if (conn)
+        conn->database().tryExec("ROLLBACK");
     {
         std::unique_lock lock(this->mMutex);
         this->mAvailable.push(std::move(conn));

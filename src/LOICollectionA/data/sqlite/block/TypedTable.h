@@ -1133,7 +1133,7 @@ namespace LOICollection::data {
                     for (std::size_t i = 1; i < params.size(); ++i)
                         insert += ",?";
                     insert += ")";
-                    auto pr = mTx->execCells("sideBatch:" + mOwner.mSide, insert, params);
+                    auto pr = mTx->execCells("sideBatch:" + mOwner.mSide + ":" + cols, insert, params);
                     if (!pr.has_value())
                         return ll::makeStringError(pr.error().message());
                 }

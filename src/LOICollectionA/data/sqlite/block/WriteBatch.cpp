@@ -119,6 +119,7 @@ ll::Expected<void> WriteBatch::execCells(
     if (!stmt)
         return ll::makeStringError("prepare statement '" + std::string(key) + "' failed");
     stmt->reset();
+    stmt->clearBindings();
     int idx = 1;
     for (auto const& p : params) {
         if (p.type == PayloadType::Int)

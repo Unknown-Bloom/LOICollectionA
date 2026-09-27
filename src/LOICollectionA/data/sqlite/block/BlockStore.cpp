@@ -995,6 +995,7 @@ ll::Expected<void> BlockStore::withQuery(
     if (!stmt)
         return prepareError(std::string(key));
     stmt->reset();
+    stmt->clearBindings();
     int idx = 1;
     for (auto const& p : params) {
         if (p.type == PayloadType::Int)
@@ -1005,8 +1006,13 @@ ll::Expected<void> BlockStore::withQuery(
             stmt->bind(idx++, p.textValue);
     }
     int rc = 0;
-    while ((rc = stmt->tryExecuteStep()) == SQLITE_ROW)
-        consumer(*stmt);
+    try {
+        while ((rc = stmt->tryExecuteStep()) == SQLITE_ROW)
+            consumer(*stmt);
+    } catch (...) {
+        stmt->reset();
+        throw;
+    }
     stmt->reset();
     if (rc != SQLITE_DONE)
         return sqlError(*guard);

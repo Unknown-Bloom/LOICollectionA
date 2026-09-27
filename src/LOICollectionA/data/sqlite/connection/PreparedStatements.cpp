@@ -82,8 +82,21 @@ PreparedStatements::~PreparedStatements() = default;
 observer<SQLite::Statement> PreparedStatements::ensure(std::string_view name, std::string_view sql) noexcept {
     auto key = std::string(name);
     auto it = mStatements.find(key);
-    if (it != mStatements.end())
-        return it->second.get();
+    if (it != mStatements.end()) {
+        if (it->second.sql == sql)
+            return it->second.statement.get();
+
+        std::unique_ptr<SQLite::Statement> stmt;
+        try {
+            stmt = std::make_unique<SQLite::Statement>(mDb, std::string(sql));
+        } catch (...) {
+            return nullptr;
+        }
+        auto* ref = stmt.get();
+        it->second.statement = std::move(stmt);
+        it->second.sql = std::string(sql);
+        return ref;
+    }
 
     std::unique_ptr<SQLite::Statement> stmt;
     try {
@@ -93,7 +106,7 @@ observer<SQLite::Statement> PreparedStatements::ensure(std::string_view name, st
     }
 
     auto* ref = stmt.get();
-    mStatements.emplace(std::move(key), std::move(stmt));
+    mStatements.emplace(std::move(key), Entry{std::move(stmt), std::string(sql)});
     return ref;
 }
 
@@ -105,7 +118,7 @@ observer<SQLite::Statement> PreparedStatements::get(std::string_view name) noexc
 }
 
 void PreparedStatements::resetAll() {
-    for (auto& [name, stmt] : mStatements)
-        if (stmt)
-            stmt->reset();
+    for (auto& [name, entry] : mStatements)
+        if (entry.statement)
+            entry.statement->reset();
 }
