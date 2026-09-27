@@ -7,6 +7,7 @@
 #include <iterator>
 
 #include <ll/api/Config.h>
+#include <ll/api/Expected.h>
 #include <ll/api/io/Logger.h>
 #include <ll/api/Mod/NativeMod.h>
 #include <ll/api/Mod/RegisterHelper.h>
@@ -191,8 +192,11 @@ namespace LOICollection {
                 return;
             }
 
-            mModule->registry().or_else([&logger](const ll::Error& err) -> ll::Expected<bool> { 
-                err.log(logger);
+            mModule->registry().or_else([&logger](ll::Error err) -> ll::Expected<bool> {
+                if (err.isA<ll::StringError>())
+                    logger.error("{}", err.as<ll::StringError>().str);
+                else
+                    err.log(logger);
                 return false;
             });
         });
