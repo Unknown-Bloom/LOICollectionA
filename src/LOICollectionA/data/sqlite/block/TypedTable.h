@@ -25,6 +25,7 @@
 #include "LOICollectionA/data/sqlite/block/BlockError.h"
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 #include "LOICollectionA/data/sqlite/block/BlockStore.h"
+#include "LOICollectionA/data/sqlite/block/ColumnText.h"
 #include "LOICollectionA/data/sqlite/block/WriteBatch.h"
 
 namespace LOICollection::data {
@@ -418,7 +419,7 @@ namespace LOICollection::data {
                 p.textValue.assign(buf, q);
             } else {
                 p.type = PayloadType::Text;
-                p.textValue = stmt.getColumn(col).getString();
+                p.textValue = columnToString(stmt.getColumn(col));
             }
             return p;
         }
@@ -515,7 +516,7 @@ namespace LOICollection::data {
                 auto info = mRepo.store().withQuery(
                     "sideInfo:" + mSide, "PRAGMA table_info(\"" + mSide + "\")",
                     std::span<const BlockProp>(),
-                    [&](SQLite::Statement& stmt) { oldCols.emplace_back(stmt.getColumn(1).getString()); });
+                    [&](SQLite::Statement& stmt) { oldCols.emplace_back(columnToString(stmt.getColumn(1))); });
                 if (!info.has_value())
                     return ll::makeStringError(info.error().message());
                 if (oldCols.size() > 1) {
@@ -533,7 +534,7 @@ namespace LOICollection::data {
                                 BlockProp p;
                                 p.key = k;
                                 p.type = PayloadType::Text;
-                                p.textValue = stmt.getColumn(static_cast<int>(j)).getString();
+                                p.textValue = columnToString(stmt.getColumn(static_cast<int>(j)));
                                 cells[k] = std::move(p);
                             }
                             oldSide[id] = std::move(cells);
@@ -944,7 +945,7 @@ namespace LOICollection::data {
                 fkey += std::to_string(colKey(col.value)) + ",";
             auto r = mRepo.store().withQuery(
                 fkey, sql, params,
-                [&](SQLite::Statement& stmt) { out.emplace_back(stmt.getColumn(0).getString()); });
+                [&](SQLite::Statement& stmt) { out.emplace_back(columnToString(stmt.getColumn(0))); });
             if (!r.has_value())
                 return ll::makeStringError(r.error().message());
             return out;

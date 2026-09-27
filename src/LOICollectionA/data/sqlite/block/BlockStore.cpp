@@ -14,6 +14,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 
 #include "LOICollectionA/data/sqlite/block/BlockError.h"
+#include "LOICollectionA/data/sqlite/block/ColumnText.h"
 #include "LOICollectionA/data/sqlite/connection/ConnectionPool.h"
 #include "LOICollectionA/data/sqlite/connection/PreparedStatements.h"
 
@@ -58,7 +59,7 @@ namespace {
         size_t col = 0;
         if (withId) out.id = stmt.getColumn(static_cast<int>(col++)).getInt64();
         out.parent = stmt.getColumn(static_cast<int>(col++)).getInt64();
-        out.name = stmt.getColumn(static_cast<int>(col++)).getString();
+        out.name = columnToString(stmt.getColumn(static_cast<int>(col++)));
         out.kind = stmt.getColumn(static_cast<int>(col++)).getInt();
         out.state = static_cast<BlockLifecycle>(stmt.getColumn(static_cast<int>(col++)).getInt64());
         out.created = stmt.getColumn(static_cast<int>(col++)).getInt64();
@@ -85,7 +86,7 @@ namespace {
             prop.type = static_cast<PayloadType>(props->getColumn(1).getInt());
             prop.intValue = props->getColumn(2).getInt64();
             prop.realValue = props->getColumn(3).getDouble();
-            prop.textValue = props->getColumn(4).isNull() ? "" : props->getColumn(4).getString();
+            prop.textValue = columnToString(props->getColumn(4));
             out.props.push_back(std::move(prop));
             prc = props->tryExecuteStep();
         }
@@ -132,7 +133,7 @@ namespace {
                 prop.type = static_cast<PayloadType>(stmt->getColumn(2).getInt());
                 prop.intValue = stmt->getColumn(3).getInt64();
                 prop.realValue = stmt->getColumn(4).getDouble();
-                prop.textValue = stmt->getColumn(5).isNull() ? "" : stmt->getColumn(5).getString();
+                prop.textValue = columnToString(stmt->getColumn(5));
                 it->second->props.push_back(std::move(prop));
             }
             stmt->reset();
@@ -217,7 +218,7 @@ ll::Expected<void> BlockStore::ensureSchema(SQLiteConnection& conn) {
         ic->reset();
         bool intact = true;
         while (ic->tryExecuteStep() == SQLITE_ROW) {
-            if (ic->getColumn(0).getString() != "ok") {
+            if (columnToString(ic->getColumn(0)) != "ok") {
                 intact = false;
                 break;
             }
@@ -667,7 +668,7 @@ ll::Expected<std::vector<std::pair<BlockId, std::string>>> BlockStore::childName
     std::vector<std::pair<BlockId, std::string>> out;
     int rc = 0;
     while ((rc = stmt->tryExecuteStep()) == SQLITE_ROW)
-        out.emplace_back(static_cast<BlockId>(stmt->getColumn(0).getInt64()), stmt->getColumn(1).getString());
+        out.emplace_back(static_cast<BlockId>(stmt->getColumn(0).getInt64()), columnToString(stmt->getColumn(1)));
     if (rc != SQLITE_DONE)
         return sqlError(*guard);
     return out;
@@ -867,7 +868,7 @@ ll::Expected<std::vector<std::pair<BlockId, std::string>>> BlockStore::queryText
     int rc = 0;
     while ((rc = stmt->tryExecuteStep()) == SQLITE_ROW)
         out.emplace_back(
-            static_cast<BlockId>(stmt->getColumn(0).getInt64()), stmt->getColumn(1).getString());
+            static_cast<BlockId>(stmt->getColumn(0).getInt64()), columnToString(stmt->getColumn(1)));
     if (rc != SQLITE_DONE)
         return sqlError(*guard);
     return out;
@@ -921,7 +922,7 @@ ll::Expected<std::vector<std::pair<BlockId, std::string>>> BlockStore::queryText
     int rc = 0;
     while ((rc = stmt->tryExecuteStep()) == SQLITE_ROW)
         out.emplace_back(
-            static_cast<BlockId>(stmt->getColumn(0).getInt64()), stmt->getColumn(1).getString());
+            static_cast<BlockId>(stmt->getColumn(0).getInt64()), columnToString(stmt->getColumn(1)));
     if (rc != SQLITE_DONE)
         return sqlError(*guard);
     return out;
@@ -1126,7 +1127,7 @@ ll::Expected<std::string> BlockStore::unintern(std::int32_t id) {
         return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound));
     if (rc != SQLITE_ROW)
         return sqlError(*guard);
-    auto name = stmt->getColumn(0).getString();
+    auto name = columnToString(stmt->getColumn(0));
     stmt->reset();
     return name;
 }
@@ -1183,7 +1184,7 @@ ll::Expected<std::optional<std::string>> BlockStore::metaGet(std::string_view ke
         return std::nullopt;
     if (rc != SQLITE_ROW)
         return sqlError(*guard);
-    auto value = stmt->getColumn(0).getString();
+    auto value = columnToString(stmt->getColumn(0));
     stmt->reset();
     return std::optional<std::string>(std::string(value));
 }

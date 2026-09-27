@@ -13,6 +13,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/data/sqlite/block/ColumnText.h"
 #include "LOICollectionA/data/sqlite/block/TypedTable.h"
 
 namespace BlockStoreTestModel {
@@ -56,7 +57,7 @@ namespace {
         query.bind(1, std::string(index));
         std::vector<std::string> columns;
         while (query.executeStep())
-            columns.emplace_back(query.getColumn(0).getString());
+            columns.emplace_back(columnToString(query.getColumn(0)));
         return columns;
     }
 
