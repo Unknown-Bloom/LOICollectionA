@@ -75,36 +75,42 @@ ll::Expected<std::shared_ptr<ConnectionPool>> ConnectionPool::create(
     }
 
     std::shared_ptr<ConnectionPool> pool(new ConnectionPool(std::move(path)));
-    pool->mAll.reserve(size);
-
-    for (std::size_t i = 0; i < size; ++i) {
-        auto conn = SQLiteConnection::create(pool->mPath, readOnly);
-        if (!conn) {
-            return ll::makeStringError(
-                "connection " + std::to_string(i + 1) + "/" + std::to_string(size) + " of '" +
-                pool->mPath + "' failed: " + conn.error().message()
-            );
-        }
-
-        pool->mAll.push_back(*conn);
-        pool->mAvailable.push(*conn);
-    }
-
+    pool->mSize = size;
+    pool->mReadOnly = readOnly;
     return pool;
 }
 
 ll::Expected<std::shared_ptr<SQLiteConnection>> ConnectionPool::acquire(int timeout) {
     std::unique_lock lock(this->mMutex);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
-    if (!this->mCond.wait_for(lock, std::chrono::milliseconds(timeout), [this] {
-            return !this->mAvailable.empty();
-        })) {
-        return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::PoolTimeout));
+    while (true) {
+        if (!this->mAvailable.empty()) {
+            auto conn = this->mAvailable.front();
+            this->mAvailable.pop();
+            return conn;
+        }
+        if (this->mOpen < this->mSize) {
+            this->mOpen++;
+            lock.unlock();
+            auto conn = SQLiteConnection::create(this->mPath, this->mReadOnly);
+            if (!conn) {
+                std::unique_lock relock(this->mMutex);
+                this->mOpen--;
+                return ll::makeStringError(conn.error().message());
+            }
+            {
+                std::unique_lock relock(this->mMutex);
+                this->mAll.push_back(*conn);
+            }
+            return conn;
+        }
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= deadline) {
+            return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::PoolTimeout));
+        }
+        this->mCond.wait_for(lock, deadline - now, [this] { return !this->mAvailable.empty(); });
     }
-
-    auto conn = this->mAvailable.front();
-    this->mAvailable.pop();
-    return conn;
 }
 
 void ConnectionPool::release(std::shared_ptr<SQLiteConnection> conn) {

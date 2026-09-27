@@ -144,13 +144,13 @@ namespace LOICollection::frontend::ir::opt {
     }
 
     bool InlinePass::inlinable(const MirChunk& body) const {
-        // A leaf body is a straight-line sequence of safe instructions terminated
-        // by the first RETURN. The compiler may append a dead default
-        // `LOAD_CONST ""; RETURN` after the live return; such trailing dead code
-        // is tolerated (and dropped during splicing) because, with no branches,
-        // it is unreachable. Instructions that read/write names (LOAD_VAR,
-        // STORE_VAR) or transfer control are rejected: they cannot be safely
-        // spliced into the caller.
+        
+        
+        
+        
+        
+        
+        
         for (const MirInstr& instr : body.code) {
             const MirOp op = instr.op;
             if (op == MirOp::RETURN)
@@ -191,10 +191,10 @@ namespace LOICollection::frontend::ir::opt {
 
                 const std::size_t bodySize = body.code.size();
 
-                // Copy only the live prefix up to the first RETURN. A leaf body's
-                // live return may be followed by the compiler's dead default
-                // `LOAD_CONST ""; RETURN`; splicing that stray RETURN would
-                // terminate the inlined caller prematurely.
+                
+                
+                
+                
                 std::size_t retIdx = bodySize;
                 for (std::size_t r = 0; r < bodySize; ++r) {
                     if (body.code[r].op == MirOp::RETURN) {

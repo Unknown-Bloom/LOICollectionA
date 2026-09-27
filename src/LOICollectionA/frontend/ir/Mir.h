@@ -161,13 +161,13 @@ namespace LOICollection::frontend::ir {
         MirChunk(const MirChunk&) = delete;
         MirChunk& operator=(const MirChunk&) = delete;
 
-        // methodBodies owns nested bodies through unique_ptr, so the implicit
-        // destructor would recurse once per nesting level. Destroying a deeply
-        // nested chunk (for example the 4096-level chain built by a hostile or
-        // pathological script) then overflows the thread stack on platforms with
-        // a small stack (Windows ~1MB), killing the process before anything can
-        // report it. Drain the tree iteratively so destruction stays O(1) deep
-        // regardless of how deep the nesting is.
+        
+        
+        
+        
+        
+        
+        
         ~MirChunk() {
             std::vector<std::unique_ptr<MirChunk>> pending;
 
@@ -183,9 +183,9 @@ namespace LOICollection::frontend::ir {
                 auto owned = std::move(pending.back());
                 pending.pop_back();
 
-                // Detach this node's children into `pending` first, so when
-                // `owned` is destroyed below its methodBodies is already empty
-                // and its destructor cannot recurse.
+                
+                
+                
                 drain(owned.get());
             }
         }

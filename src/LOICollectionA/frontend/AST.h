@@ -1112,15 +1112,15 @@ namespace LOICollection::frontend {
         ArrayValue(ArrayValue&&) noexcept = default;
         ArrayValue& operator=(ArrayValue&&) noexcept = default;
 
-        // Nested arrays are owned through ArrayRef (shared_ptr), so the implicit
-        // destructor recursed once per nesting level: releasing a deeply nested
-        // array constant overflowed small thread stacks (killing the process)
-        // long before anyone reported anything. Flatten the structure first and
-        // release it iteratively, so destruction stays O(1) deep.
-        //
-        // Only nodes this array exclusively owns (use_count() == 1) are taken
-        // over; a shared sub-array is left intact so draining can never empty
-        // it underneath another live holder.
+        
+        
+        
+        
+        
+        
+        
+        
+        
         ~ArrayValue() {
             std::vector<ArrayRef> pending;
 
@@ -1138,8 +1138,8 @@ namespace LOICollection::frontend {
                 ArrayRef node = std::move(pending.back());
                 pending.pop_back();
 
-                // node->elements is emptied before `node` is released below, so
-                // its destructor cannot recurse.
+                
+                
                 drainInto(node->elements);
             }
         }

@@ -55,6 +55,9 @@ private:
     std::mutex mMutex;
     std::condition_variable mCond;
     std::string mPath;
+    bool mReadOnly = false;
+    std::size_t mSize = 0;
+    std::size_t mOpen = 0;
     std::vector<std::shared_ptr<SQLiteConnection>> mAll;
     std::queue<std::shared_ptr<SQLiteConnection>> mAvailable;
 };

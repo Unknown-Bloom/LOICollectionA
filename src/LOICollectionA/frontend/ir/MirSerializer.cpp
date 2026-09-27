@@ -158,15 +158,15 @@ namespace LOICollection::frontend::ir {
         }
 
         bool writeValue(Writer& writer, const ValueNode::ValueType& value) {
-            // A nested array constant may legally be thousands of levels deep
-            // (RejectsExcessiveConstantNesting builds one at 4096), so this must
-            // not recurse: recursing per nesting level overflowed small thread
-            // stacks. readValue guards itself with kMaxDepth, but until now the
-            // write side had no limit at all, so a structure that is supposed to
-            // be rejected blew the stack before anything could reject it.
-            //
-            // Emulate the same pre-order traversal with an explicit stack; the
-            // emitted byte order is byte-for-byte identical to the recursion.
+            
+            
+            
+            
+            
+            
+            
+            
+            
             struct Frame {
                 const std::vector<ValueNode::ValueType>* items;
 
@@ -227,9 +227,9 @@ namespace LOICollection::frontend::ir {
                 if (frame.index >= frame.items->size())
                     continue;
 
-                // Queue the remaining siblings first, so that any children this
-                // element pushes sit on top of the stack and are written first,
-                // preserving the depth-first order of the original recursion.
+                
+                
+                
                 if (frame.index + 1 < frame.items->size())
                     stack.push_back(Frame{ frame.items, frame.index + 1 });
 
