@@ -11,10 +11,12 @@
 #include <mc/server/SimulatedPlayer.h>
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/data/sqlite/block/TypedTable.h"
 
 #include "LOICollectionA/include/server/Plugins/MutePlugin.h"
 
 using namespace LOICollection::server::Plugins;
+using LOICollection::data::clearTypedTable;
 
 class MutePluginTest : public testing::Test {
 protected:
@@ -27,9 +29,10 @@ protected:
     }
 
     void TearDown() override {
-        auto result = MutePlugin::getShared()->getDatabase()->exec("DELETE FROM Mute;");
-        if (!result.has_value())
-            GTEST_FAIL() << "Unable to clear data";
+        if (!MutePlugin::getShared()->isValid())
+            return;
+        auto result = clearTypedTable(*MutePlugin::getShared()->getDatabase(), "Mute");
+        EXPECT_TRUE(result.has_value()) << "Unable to clear data";
     }
 
     bool CreateMuteEntry() {

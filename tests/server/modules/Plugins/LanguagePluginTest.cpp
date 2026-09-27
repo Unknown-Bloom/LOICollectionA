@@ -10,19 +10,20 @@
 #include <mc/server/SimulatedPlayer.h>
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/data/sqlite/block/TypedTable.h"
 
 #include "LOICollectionA/base/ServiceProvider.h"
 
 #include "LOICollectionA/include/server/Plugins/LanguagePlugin.h"
 
 using namespace LOICollection::server::Plugins;
+using LOICollection::data::clearTypedTable;
 
 class LanguagePluginTest : public testing::Test {
 protected:
     void TearDown() override {
-        auto result = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB")->exec("DELETE FROM Language;");
-        if (!result.has_value())
-            GTEST_FAIL() << "Unable to clear data";
+        auto result = clearTypedTable(*ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB"), "Language");
+        EXPECT_TRUE(result.has_value()) << "Unable to clear data";
     }
 };
 

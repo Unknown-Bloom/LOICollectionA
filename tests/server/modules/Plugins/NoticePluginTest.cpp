@@ -13,10 +13,12 @@
 
 #include "LOICollectionA/data/json/JsonStorage.h"
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/data/sqlite/block/TypedTable.h"
 
 #include "LOICollectionA/include/server/Plugins/NoticePlugin.h"
 
 using namespace LOICollection::server::Plugins;
+using LOICollection::data::clearTypedTable;
 
 class NoticePluginTest : public testing::Test {
 protected:
@@ -31,12 +33,10 @@ protected:
         NoticePlugin::getShared()->getDatabase()->write({});
 
         auto saveResult = NoticePlugin::getShared()->getDatabase()->save();
-        if (!saveResult.has_value())
-            GTEST_FAIL() << "Unable to save data";
+        EXPECT_TRUE(saveResult.has_value()) << "Unable to save data";
 
-        auto result = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB")->exec("DELETE FROM Notice;");
-        if (!result.has_value())
-            GTEST_FAIL() << "Unable to clear data";
+        auto result = clearTypedTable(*ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB"), "Notice");
+        EXPECT_TRUE(result.has_value()) << "Unable to clear data";
     }
 };
 

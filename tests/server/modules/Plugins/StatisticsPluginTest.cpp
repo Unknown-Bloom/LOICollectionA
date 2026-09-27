@@ -11,10 +11,12 @@
 #include <mc/server/SimulatedPlayer.h>
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/data/sqlite/block/TypedTable.h"
 
 #include "LOICollectionA/include/server/Plugins/StatisticsPlugin.h"
 
 using namespace LOICollection::server::Plugins;
+using LOICollection::data::clearTypedTable;
 
 class StatisticsPluginTest : public testing::Test {
 protected:
@@ -28,9 +30,8 @@ protected:
             return;
         auto db = StatisticsPlugin::getShared()->getDatabase();
 
-        auto result = db->exec("DELETE FROM Statistics;");
-        if (!result.has_value())
-            GTEST_FAIL() << "Unable to clear data";
+        auto result = clearTypedTable(*db, "Statistics");
+        EXPECT_TRUE(result.has_value()) << "Unable to clear data";
     }
 };
 

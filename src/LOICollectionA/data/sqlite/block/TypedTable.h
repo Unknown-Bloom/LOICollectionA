@@ -1161,4 +1161,19 @@ namespace LOICollection::data {
         }
     };
 
+    [[nodiscard]] inline ll::Expected<void> clearTypedTable(BlockRepository& repo, std::string_view name) {
+        auto root = repo.store().load(0, name);
+        if (!root.has_value())
+            return ll::makeStringError(root.error().message());
+        auto children = repo.store().childNames(root.value().id);
+        if (!children.has_value())
+            return ll::makeStringError(children.error().message());
+        for (auto const& entry : children.value()) {
+            auto removed = repo.store().control(entry.first, BlockLifecycle::Deleted);
+            if (!removed.has_value())
+                return ll::makeStringError(removed.error().message());
+        }
+        return {};
+    }
+
 }

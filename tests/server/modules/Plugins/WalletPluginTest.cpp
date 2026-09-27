@@ -16,6 +16,7 @@
 #include <mc/server/SimulatedPlayer.h>
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/data/sqlite/block/TypedTable.h"
 #include "LOICollectionA/include/server/Plugins/types/wallet/WalletSchema.h"
 
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
@@ -34,6 +35,7 @@
 #include "server/TestSimulatedPlayer.h"
 
 using namespace LOICollection::server::Plugins;
+using LOICollection::data::clearTypedTable;
 using LOICollection::data::FindMode;
 
 class WalletPluginTest : public testing::Test {
@@ -46,22 +48,21 @@ protected:
     void TearDown() override {
         if (!WalletPlugin::getShared()->isValid())
             return;
+        EXPECT_TRUE(WalletPlugin::getShared()->setExecutor(ll::thread::ServerThreadExecutor::getDefault()).has_value());
+
         auto storage = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB");
 
-        for (const char* sql : {
-            "DELETE FROM Wallet;",
-            "DELETE FROM RedEnvelope;",
-            "DELETE FROM RedEnvelopeGrab;",
-            "DELETE FROM WalletFee;",
-            "DELETE FROM WalletLedger;",
-            "DELETE FROM WalletBank;"
+        for (const char* table : {
+            "Wallet",
+            "RedEnvelope",
+            "RedEnvelopeGrab",
+            "WalletFee",
+            "WalletLedger",
+            "WalletBank"
         }) {
-            auto result = storage->exec(sql);
-            if (!result.has_value())
-                GTEST_FAIL() << "Unable to clear data";
+            auto result = clearTypedTable(*storage, table);
+            EXPECT_TRUE(result.has_value()) << "Unable to clear data";
         }
-
-        EXPECT_TRUE(WalletPlugin::getShared()->setExecutor(ll::thread::ServerThreadExecutor::getDefault()).has_value());
     }
 
     Config::C_Wallet GetWalletConfig() {

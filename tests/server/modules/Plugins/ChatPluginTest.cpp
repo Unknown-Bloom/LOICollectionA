@@ -11,6 +11,7 @@
 #include <mc/server/SimulatedPlayer.h>
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/data/sqlite/block/TypedTable.h"
 
 #include "LOICollectionA/base/ServiceProvider.h"
 
@@ -19,6 +20,7 @@
 #include "server/TestSimulatedPlayer.h"
 
 using namespace LOICollection::server::Plugins;
+using LOICollection::data::clearTypedTable;
 
 class ChatPluginTest : public testing::Test {
 protected:
@@ -31,19 +33,18 @@ protected:
     }
 
     void TearDown() override {
+        if (!ChatPlugin::getShared()->isValid())
+            return;
         auto db = ChatPlugin::getShared()->getDatabase();
 
-        auto r1 = db->exec("DELETE FROM Blacklist;");
-        if (!r1.has_value())
-            GTEST_FAIL() << "Unable to clear data";
+        auto r1 = clearTypedTable(*db, "Blacklist");
+        EXPECT_TRUE(r1.has_value()) << "Unable to clear data";
 
-        auto r2 = db->exec("DELETE FROM Titles;");
-        if (!r2.has_value())
-            GTEST_FAIL() << "Unable to clear data";
+        auto r2 = clearTypedTable(*db, "Titles");
+        EXPECT_TRUE(r2.has_value()) << "Unable to clear data";
 
-        auto r3 = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB")->exec("DELETE FROM Chat;");
-        if (!r3.has_value())
-            GTEST_FAIL() << "Unable to clear data";
+        auto r3 = clearTypedTable(*ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB"), "Chat");
+        EXPECT_TRUE(r3.has_value()) << "Unable to clear data";
     }
 
     bool CreateBlacklistEntry() {

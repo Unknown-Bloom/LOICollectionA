@@ -28,6 +28,7 @@
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/data/sqlite/block/TypedTable.h"
 
 #include "LOICollectionA/base/Wrapper.h"
 #include "LOICollectionA/base/ServiceProvider.h"
@@ -40,6 +41,7 @@
 #include "server/TestSimulatedPlayer.h"
 
 using namespace LOICollection::server::Plugins;
+using LOICollection::data::clearTypedTable;
 using LOICollection::data::FindMode;
 
 class MarketPluginTest : public testing::Test {
@@ -54,47 +56,40 @@ protected:
     }
 
     void TearDown() override {
-        auto db = MarketPlugin::getShared()->getDatabase();
-
-        auto r1 = db->exec("DELETE FROM Blacklist;");
-        if (!r1.has_value())
-            GTEST_FAIL() << "Unable to clear data";
-
-        auto r2 = db->exec("DELETE FROM Item;");
-        if (!r2.has_value())
-            GTEST_FAIL() << "Unable to clear data";
-
-        auto r3 = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB")->exec("DELETE FROM Market;");
-        if (!r3.has_value())
-            GTEST_FAIL() << "Unable to clear data";
-
-        auto r4 = db->exec("DELETE FROM Store;");
-        if (!r4.has_value())
-            GTEST_FAIL() << "Unable to clear data";
-
-        auto r5 = db->exec("DELETE FROM StoreItem;");
-        if (!r5.has_value())
-            GTEST_FAIL() << "Unable to clear data";
-
-        auto r6 = db->exec("DELETE FROM StoreSale;");
-        if (!r6.has_value())
-            GTEST_FAIL() << "Unable to clear data";
-
-        auto r7 = db->exec("DELETE FROM StoreReview;");
-        if (!r7.has_value())
-            GTEST_FAIL() << "Unable to clear data";
-
-        auto r8 = db->exec("DELETE FROM StoreWanted;");
-        if (!r8.has_value())
-            GTEST_FAIL() << "Unable to clear data";
-
-        auto r9 = db->exec("DELETE FROM StoreAuction;");
-        if (!r9.has_value())
-            GTEST_FAIL() << "Unable to clear data";
+        if (!MarketPlugin::getShared()->isValid())
+            return;
 
         MarketPlugin::getShared()->clearStoreRankCache();
-
         EXPECT_TRUE(MarketPlugin::getShared()->setExecutor(ll::thread::ServerThreadExecutor::getDefault()).has_value());
+
+        auto db = MarketPlugin::getShared()->getDatabase();
+
+        auto r1 = clearTypedTable(*db, "Blacklist");
+        EXPECT_TRUE(r1.has_value()) << "Unable to clear data";
+
+        auto r2 = clearTypedTable(*db, "Item");
+        EXPECT_TRUE(r2.has_value()) << "Unable to clear data";
+
+        auto r3 = clearTypedTable(*ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB"), "Market");
+        EXPECT_TRUE(r3.has_value()) << "Unable to clear data";
+
+        auto r4 = clearTypedTable(*db, "Store");
+        EXPECT_TRUE(r4.has_value()) << "Unable to clear data";
+
+        auto r5 = clearTypedTable(*db, "StoreItem");
+        EXPECT_TRUE(r5.has_value()) << "Unable to clear data";
+
+        auto r6 = clearTypedTable(*db, "StoreSale");
+        EXPECT_TRUE(r6.has_value()) << "Unable to clear data";
+
+        auto r7 = clearTypedTable(*db, "StoreReview");
+        EXPECT_TRUE(r7.has_value()) << "Unable to clear data";
+
+        auto r8 = clearTypedTable(*db, "StoreWanted");
+        EXPECT_TRUE(r8.has_value()) << "Unable to clear data";
+
+        auto r9 = clearTypedTable(*db, "StoreAuction");
+        EXPECT_TRUE(r9.has_value()) << "Unable to clear data";
 
         Config::C_Market config = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Market;
         if (config.StoreEnabled)
@@ -747,7 +742,7 @@ TEST_F(MarketPluginTest, StoreCreateDuplicateAndCost) {
     EXPECT_FALSE(duplicate.has_value());
 
     auto db = MarketPlugin::getShared()->getDatabase();
-    ASSERT_TRUE(db->exec("DELETE FROM Store;").has_value());
+    ASSERT_TRUE(clearTypedTable(*db, "Store").has_value());
     MarketPlugin::getShared()->clearStoreRankCache();
 
     if (config.StoreCreationCost > 0) {

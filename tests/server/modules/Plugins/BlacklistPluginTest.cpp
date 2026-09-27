@@ -11,12 +11,14 @@
 #include <mc/server/SimulatedPlayer.h>
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/data/sqlite/block/TypedTable.h"
 
 #include "LOICollectionA/include/server/Plugins/BlacklistPlugin.h"
 
 #include "server/TestSimulatedPlayer.h"
 
 using namespace LOICollection::server::Plugins;
+using LOICollection::data::clearTypedTable;
 
 class BlacklistPluginTest : public testing::Test {
 protected:
@@ -29,9 +31,10 @@ protected:
     }
 
     void TearDown() override {
-        auto result = BlacklistPlugin::getShared()->getDatabase()->exec("DELETE FROM Blacklist;");
-        if (!result.has_value())
-            GTEST_FAIL() << "Unable to clear data";
+        if (!BlacklistPlugin::getShared()->isValid())
+            return;
+        auto result = clearTypedTable(*BlacklistPlugin::getShared()->getDatabase(), "Blacklist");
+        EXPECT_TRUE(result.has_value()) << "Unable to clear data";
     }
 
     bool CreateBlacklistEntry() {

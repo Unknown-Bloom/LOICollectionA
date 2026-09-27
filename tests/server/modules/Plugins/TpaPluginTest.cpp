@@ -14,6 +14,7 @@
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/data/sqlite/block/TypedTable.h"
 
 #include "LOICollectionA/base/Wrapper.h"
 #include "LOICollectionA/base/ServiceProvider.h"
@@ -26,6 +27,7 @@
 #include "server/TestSimulatedPlayer.h"
 
 using namespace LOICollection::server::Plugins;
+using LOICollection::data::clearTypedTable;
 
 class TpaPluginTest : public testing::Test {
 protected:
@@ -40,15 +42,13 @@ protected:
     void TearDown() override {
         if (!TpaPlugin::getShared()->isValid())
             return;
-        auto r1 = TpaPlugin::getShared()->getDatabase()->exec("DELETE FROM Blacklist;");
-        if (!r1.has_value())
-            GTEST_FAIL() << "Unable to clear data";
-
-        auto r2 = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB")->exec("DELETE FROM Tpa;");
-        if (!r2.has_value())
-            GTEST_FAIL() << "Unable to clear data";
-
         EXPECT_TRUE(TpaPlugin::getShared()->setExecutor(ll::thread::ServerThreadExecutor::getDefault()).has_value());
+
+        auto r1 = clearTypedTable(*TpaPlugin::getShared()->getDatabase(), "Blacklist");
+        EXPECT_TRUE(r1.has_value()) << "Unable to clear data";
+
+        auto r2 = clearTypedTable(*ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB"), "Tpa");
+        EXPECT_TRUE(r2.has_value()) << "Unable to clear data";
     }
 
     bool CreateBlacklistEntry() {

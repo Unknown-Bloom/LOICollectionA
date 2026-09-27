@@ -10,6 +10,7 @@
 #include <mc/server/SimulatedPlayer.h>
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/data/sqlite/block/TypedTable.h"
 
 #include "LOICollectionA/base/ServiceProvider.h"
 
@@ -18,6 +19,7 @@
 #include "server/TestSimulatedPlayer.h"
 
 using namespace LOICollection::server::Plugins;
+using LOICollection::data::clearTypedTable;
 
 class PvpPluginTest : public testing::Test {
 protected:
@@ -29,9 +31,8 @@ protected:
     void TearDown() override {
         if (!PvpPlugin::getShared()->isValid())
             return;
-        auto result = ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB")->exec("DELETE FROM Pvp;");
-        if (!result.has_value())
-            GTEST_FAIL() << "Unable to clear data";
+        auto result = clearTypedTable(*ServiceProvider::getInstance().getService<BlockRepository>("SettingsDB"), "Pvp");
+        EXPECT_TRUE(result.has_value()) << "Unable to clear data";
     }
 };
 
