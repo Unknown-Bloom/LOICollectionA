@@ -1,5 +1,6 @@
 #include "LOICollectionA/data/sqlite/connection/StorageTransaction.h"
 
+#include <string>
 #include <utility>
 
 #include <SQLiteCpp/SQLiteCpp.h>
@@ -40,6 +41,12 @@ ll::Expected<bool> StorageTransaction::commit() {
     try {
         this->mTransaction->commit();
         this->mTransaction.reset();
+    } catch (SQLite::Exception const& e) {
+        this->mTransaction.reset();
+        auto msg = std::string("transaction commit failed: ")
+                   + e.what() + " (code " + std::to_string(e.getErrorCode()) + ")";
+        this->finish();
+        return ll::makeStringError(std::move(msg));
     } catch (...) {
         this->mTransaction.reset();
         this->finish();
@@ -56,6 +63,12 @@ ll::Expected<bool> StorageTransaction::rollback() {
     try {
         this->mTransaction->rollback();
         this->mTransaction.reset();
+    } catch (SQLite::Exception const& e) {
+        this->mTransaction.reset();
+        auto msg = std::string("transaction rollback failed: ")
+                   + e.what() + " (code " + std::to_string(e.getErrorCode()) + ")";
+        this->finish();
+        return ll::makeStringError(std::move(msg));
     } catch (...) {
         this->mTransaction.reset();
         this->finish();
