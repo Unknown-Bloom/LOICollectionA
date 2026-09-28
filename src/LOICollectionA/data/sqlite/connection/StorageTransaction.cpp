@@ -11,6 +11,8 @@
 StorageTransaction::StorageTransaction(std::shared_ptr<SQLiteConnection> conn, observer<ConnectionPool> pool)
     : mConnection(std::move(conn)), mPool(pool) {
     mTransaction = std::make_unique<SQLite::Transaction>(this->mConnection->database());
+    if (this->mPool)
+        this->mPool->bindTransaction(this->mConnection.get());
 }
 
 StorageTransaction::StorageTransaction(StorageTransaction&& other) noexcept
@@ -28,8 +30,11 @@ StorageTransaction::~StorageTransaction() {
 
 void StorageTransaction::finish() {
     if (auto conn = std::move(this->mConnection)) {
+        if (this->mPool) {
+            this->mPool->unbindTransaction(conn.get());
+            this->mPool->release(std::move(conn));
+        }
         this->mConnection.reset();
-        this->mPool->release(std::move(conn));
         this->mPool = nullptr;
     }
 }

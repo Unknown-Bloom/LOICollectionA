@@ -325,36 +325,37 @@ if (!ok) {
 
 Databases open in `WAL` mode: `busy_timeout=5s` makes writes **wait** under lock contention instead of failing immediately; readers and writers don't block each other (reads are not blocked by writes). Normal read/write needs no locking—just call as usual.
 
-### 9.2 DDL must not run inside an explicit transaction
+### 9.2 DDL, autocommit, and which connection a transaction owns
 
-This is the easiest and most隐蔽 pitfall in the data layer, and it has caused a production incident in this project:
+SQLite's DDL is **transactional**: `CREATE TABLE` / `DROP TABLE` / `CREATE INDEX` inside a `BEGIN` do **not** implicitly commit—they commit or roll back atomically together with your DML. So "never run DDL in a transaction" is simply wrong. What you actually have to respect is:
 
-> SQLite, when executing DDL (`CREATE` / `DROP TABLE` / `CREATE INDEX` / `VACUUM`, etc.) inside an **active transaction**, **implicitly commits that transaction**. Your explicit `commit()` afterward then faces "no active transaction" and throws, surfacing as `BlockError::CommitFailed` (the log shows `transaction commit failed`).
+1. **A few statements cannot run inside a transaction**—most notably `VACUUM` (SQLite reports `cannot VACUUM from within a transaction`), and `PRAGMA`s that switch `journal_mode`. Those must take the autocommit path: `repo->exec("VACUUM;")`.
+2. **Don't call `repo->exec()` while a transaction is open**—`exec()` is the autocommit path and takes a **second** connection from the pool, while your transaction holds the write lock; that second connection is blocked and reports `SQLITE_BUSY` after at most `busy_timeout` (5s).
 
-Wrong—running DDL inside a `WriteBatch` transaction:
+Reads inside a transaction (`load` / `records` / `children` / `withQuery` / `metaGet`) **reuse the transaction's own connection** and never request another one, so a transaction can never deadlock waiting for a second connection.
+
+Right—DDL and DML together, all on the same transaction connection:
 
 ```cpp
 auto b = WriteBatch::begin(repo->store());
-(*b)->exec("DROP TABLE IF EXISTS t");   // DDL: implicitly commits the transaction here
-(*b)->exec("CREATE TABLE t(...)");      // DDL: another implicit commit
-(*b)->commit();                         // no active transaction → CommitFailed
+(*b)->exec("DROP TABLE IF EXISTS t");   // on the transaction connection, atomic with the DML below
+(*b)->exec("CREATE TABLE t(a INTEGER)");
+(*b)->exec("INSERT INTO t VALUES(1)");
+(*b)->commit();                         // one commit: all or nothing
 ```
 
-Right—**DDL goes through `BlockRepository::exec` (autocommit); only DML goes into a `WriteBatch` transaction**:
+Wrong—using the autocommit channel while a transaction is open:
 
 ```cpp
-repo->exec("DROP TABLE IF EXISTS t");   // autocommit, safe
-repo->exec("CREATE TABLE t(...)");      // autocommit, safe
-
 auto b = WriteBatch::begin(repo->store());
-(*b)->exec("INSERT INTO t VALUES(?)");  // this is DML, goes in the transaction
-(*b)->commit();                         // active transaction present, commits successfully
+repo->exec("DROP TABLE IF EXISTS t");   // second connection → hits the write lock this transaction holds → SQLITE_BUSY
+(*b)->commit();
 ```
 
 > [!TIP]
-> Within the project, `TypedTable::ensureSide`, `ensureColumnIndex`, and `BlockRepository`'s initialization all follow this rule: DDL uses `store().exec()` (autocommit), and only DML enters `WriteBatch`. **Follow it in your own code**—any `CREATE` / `DROP` / `VACUUM` statement goes straight to `repo->exec()`, never inside a transaction.
+> Within the project, `TypedTable::ensureSide`, `ensureColumnIndex`, and `BlockRepository`'s initialization all follow this rule: DDL and DML stay on their own path, each using only its own connection, never crossing. **Follow it in your own code.**
 >
-> `repo->exec("VACUUM;")` (reclaiming space in `unregistry`) is also DDL and takes the autocommit path, which is fine.
+> `repo->exec("VACUUM;")` (reclaiming space in `unregistry`) must be called while no transaction is open on that repository.
 
 ### 9.3 Prefer tx() over per-cell writes
 
@@ -383,7 +384,7 @@ The data layer uses no exceptions (build option `set_exceptions("none")`); every
 - **Keep queried columns indexable**: all columns are indexed by default; columns used only in `find` get indexed and cached automatically—no manual work.
 - **Use a stable rowKey** (player uuid / xuid); don't use a mutable name as the primary key.
 - **Don't `list()` + `get` in a hot path**: to filter by condition, use `find` / `findValues` and let SQL do the work on the side table.
-- **Vacuum periodically**: under WAL, space isn't reclaimed automatically; `repo->exec("VACUUM;")` once in `unregistry` suffices (note it's DDL, autocommit).
+- **Vacuum periodically**: under WAL, space isn't reclaimed automatically; `repo->exec("VACUUM;")` once in `unregistry` suffices (it cannot run inside a transaction, so no transaction may be open on that repository).
 
 ## 12. Common error codes
 
@@ -396,7 +397,7 @@ Errors come from the `BlockError` category and appear in logs as `BlockError: <m
 | 3 | `LoadFailed` | Block load failed | Corrupted record |
 | 4 | `NotFound` | Block not found | Reading an unwritten rowKey (usually avoided with `def` / `has`) |
 | 5 | `NoConnection` | No available connection | Pool exhausted |
-| 6 | `CommitFailed` | Transaction commit failed | **DDL executed inside a transaction causing an implicit commit** (see 9.2); or disk full |
+| 6 | `CommitFailed` | Transaction commit failed | A statement that cannot run inside a transaction, e.g. `VACUUM` (see 9.2); or disk full |
 | 7 | `RollbackFailed` | Rollback failed | Connection already dropped |
 | 8 | `DuplicateName` | Duplicate name under parent | Re-upserting the same rowKey (rare with upsert) |
 | 9 | `InvalidState` | Invalid block state | Illegal operation on a deleted block |

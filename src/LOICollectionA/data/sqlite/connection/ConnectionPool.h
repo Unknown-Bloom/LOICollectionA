@@ -6,6 +6,7 @@
 #include <mutex>
 #include <queue>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <ll/api/Expected.h>
@@ -49,6 +50,11 @@ public:
 
     LOICOLLECTION_A_API void release(std::shared_ptr<SQLiteConnection> conn);
 
+    LOICOLLECTION_A_API void bindTransaction(SQLiteConnection* conn);
+    LOICOLLECTION_A_API void unbindTransaction(SQLiteConnection* conn);
+
+    LOICOLLECTION_A_NDAPI SQLiteConnection* activeTransaction() const noexcept;
+
 private:
     explicit ConnectionPool(std::string path);
 
@@ -60,4 +66,8 @@ private:
     std::size_t mOpen = 0;
     std::vector<std::shared_ptr<SQLiteConnection>> mAll;
     std::queue<std::shared_ptr<SQLiteConnection>> mAvailable;
+    std::unordered_set<SQLiteConnection*> mInTxn;
+
+    static thread_local ConnectionPool const* sActiveTxnPool;
+    static thread_local SQLiteConnection* sActiveTxnConn;
 };

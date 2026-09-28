@@ -168,7 +168,7 @@ Every method returns `ll::Expected<T>` so errors compose via `and_then` / `trans
 > The full data-layer API, schema definition, conditional queries, transactions, and error-code reference are in the [SQLite Layer Tutorial](./sqlite.md).
 
 > [!WARNING]
-> Hard rule of the data layer: **never run DDL (`CREATE` / `DROP TABLE` / `CREATE INDEX` / `VACUUM`) inside a `WriteBatch` transaction**—SQLite implicitly commits the active transaction, so the later explicit `commit()` throws `CommitFailed`. Always send such statements through `BlockRepository::exec()` (autocommit); only DML goes into the transaction. See section 9 of the tutorial.
+> Data-layer constraint: **a few statements such as `VACUUM` cannot run inside a transaction** and must go through `BlockRepository::exec()` (autocommit), while `CREATE` / `DROP TABLE` / `CREATE INDEX` are transactional in SQLite and are safe to place in the same `WriteBatch` as your DML. **Never call `repo->exec()` while a transaction is open**—it takes a second connection and collides with the write lock your transaction holds. Reads inside a transaction reuse the transaction's own connection and never request another one. See section 9 of the tutorial.
 
 ### Database Files
 

@@ -187,7 +187,7 @@ struct C_Xxx {
 > 数据层完整用法（API、Schema、查询、事务、错误码）见 [SQLite 层使用教程](./sqlite.md)。
 
 > [!WARNING]
-> **不要在 `WriteBatch` 显式事务内执行 DDL**（`CREATE` / `DROP TABLE` / `CREATE INDEX` / `VACUUM` 等）——SQLite 会隐式提交活跃事务，导致后续 `commit()` 抛 `CommitFailed`。这类语句一律用 `BlockRepository::exec()`（自动提交）；只有 DML 进事务。
+> **不要在事务开着的时候调用 `repo->exec()`**——它走自动提交，会另取一条连接，撞上本事务持有的写锁并报 `SQLITE_BUSY`。`CREATE` / `DROP TABLE` / `CREATE INDEX` 等 DDL 本身是事务性的，可以直接放进 `WriteBatch`；只有 `VACUUM` 这类语句必须走 `repo->exec()`，且要在没有打开事务时调用。
 
 ### 声明一张表
 

@@ -147,6 +147,13 @@ namespace {
         std::shared_ptr<ConnectionPool> pool;
         std::shared_ptr<SQLiteConnection> conn;
 
+        DbGuard(std::shared_ptr<ConnectionPool> p, std::shared_ptr<SQLiteConnection> c) noexcept
+            : pool(std::move(p)), conn(std::move(c)) {}
+        DbGuard(DbGuard&&) noexcept = default;
+        DbGuard(DbGuard const&) = delete;
+        DbGuard& operator=(DbGuard&&) noexcept = default;
+        DbGuard& operator=(DbGuard const&) = delete;
+
         ~DbGuard() {
             if (pool && conn)
                 pool->release(std::move(conn));
@@ -161,6 +168,9 @@ namespace {
     };
 
     ll::Expected<DbGuard> acquireConnection(std::shared_ptr<ConnectionPool> pool) {
+        if (SQLiteConnection* active = pool->activeTransaction())
+            return DbGuard{nullptr, std::shared_ptr<SQLiteConnection>(active, [](SQLiteConnection*) {})};
+
         auto conn = pool->acquire();
         if (!conn)
             return ll::makeStringError(conn.error().message());

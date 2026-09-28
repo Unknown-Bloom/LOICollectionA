@@ -187,7 +187,7 @@ A module persists through `BlockRepository` (the block-storage facade, see [Arch
 > The complete data-layer usage (API, schema, queries, transactions, error codes) is in the [SQLite Layer Tutorial](./sqlite.md).
 
 > [!WARNING]
-> **Never run DDL inside a `WriteBatch` transaction** (`CREATE` / `DROP TABLE` / `CREATE INDEX` / `VACUUM`, etc.)—SQLite implicitly commits the active transaction, so the later `commit()` throws `CommitFailed`. Send such statements through `BlockRepository::exec()` (autocommit); only DML goes into the transaction.
+> **Never call `repo->exec()` while a transaction is open**—it takes the autocommit path and grabs a second connection, colliding with the write lock your transaction holds and reporting `SQLITE_BUSY`. `CREATE` / `DROP TABLE` / `CREATE INDEX` are transactional and can go straight into a `WriteBatch`; only statements like `VACUUM` must use `repo->exec()`, and only while no transaction is open.
 
 ### Declaring a table
 

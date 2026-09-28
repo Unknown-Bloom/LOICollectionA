@@ -66,6 +66,9 @@ ll::Expected<void> SQLiteConnection::applyPragmas() {
 
 ConnectionPool::~ConnectionPool() = default;
 
+thread_local ConnectionPool const* ConnectionPool::sActiveTxnPool = nullptr;
+thread_local SQLiteConnection* ConnectionPool::sActiveTxnConn = nullptr;
+
 ConnectionPool::ConnectionPool(std::string path) : mPath(std::move(path)) {}
 
 ll::Expected<std::shared_ptr<ConnectionPool>> ConnectionPool::create(
@@ -114,11 +117,37 @@ ll::Expected<std::shared_ptr<SQLiteConnection>> ConnectionPool::acquire(int time
 }
 
 void ConnectionPool::release(std::shared_ptr<SQLiteConnection> conn) {
-    if (conn)
-        conn->database().tryExec("ROLLBACK");
+    if (!conn)
+        return;
+    {
+        std::unique_lock lock(this->mMutex);
+        if (this->mInTxn.contains(conn.get()))
+            return;
+    }
+    conn->database().tryExec("ROLLBACK");
     {
         std::unique_lock lock(this->mMutex);
         this->mAvailable.push(std::move(conn));
     }
     this->mCond.notify_one();
+}
+
+void ConnectionPool::bindTransaction(SQLiteConnection* conn) {
+    std::unique_lock lock(this->mMutex);
+    this->mInTxn.insert(conn);
+    sActiveTxnPool = this;
+    sActiveTxnConn = conn;
+}
+
+void ConnectionPool::unbindTransaction(SQLiteConnection* conn) {
+    std::unique_lock lock(this->mMutex);
+    this->mInTxn.erase(conn);
+    if (sActiveTxnPool == this && sActiveTxnConn == conn) {
+        sActiveTxnPool = nullptr;
+        sActiveTxnConn = nullptr;
+    }
+}
+
+SQLiteConnection* ConnectionPool::activeTransaction() const noexcept {
+    return sActiveTxnPool == this ? sActiveTxnConn : nullptr;
 }

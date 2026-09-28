@@ -325,36 +325,37 @@ if (!ok) {
 
 库以 `WAL` 模式打开：`busy_timeout=5s` 让写操作在锁竞争时**自动等待**而非立刻失败；读者与写者互不阻塞（写时不阻塞读）。日常读写无需加锁，照常调用即可。
 
-### 9.2 DDL 不能在显式事务内执行
+### 9.2 DDL、自动提交与事务内的连接归属
 
-这是数据层最容易踩、也最隐蔽的坑，本项目曾在此处出过线上故障：
+SQLite 的 DDL 是**事务性**的：在 `BEGIN` 里执行 `CREATE TABLE` / `DROP TABLE` / `CREATE INDEX` **不会**隐式提交，它们和 DML 一起原子提交或一起回滚。所以"DDL 一律不能在事务里"是错的。真正要守的是下面两条：
 
-> SQLite 在**活跃事务中**执行 DDL（`CREATE` / `DROP TABLE` / `CREATE INDEX` / `VACUUM` 等）会**隐式提交当前事务**。随后你代码里的显式 `commit()` 面对"已无活动事务"会抛错，被转换为 `BlockError::CommitFailed`（日志表现为 `transaction commit failed`）。
+1. **少数语句无法在事务内执行**——最典型的是 `VACUUM`（SQLite 直接报 `cannot VACUUM from within a transaction`），以及切换 `journal_mode` 这类 `PRAGMA`。它们必须走自动提交：`repo->exec("VACUUM;")`。
+2. **事务开着时不要调用 `repo->exec()`**——`exec()` 是自动提交路径，会从池里取**另一条**连接；而你的事务此时持有写锁，第二条连接会被挡住，最多等 `busy_timeout`（5s）后报 `SQLITE_BUSY`。
 
-错误写法（在 `WriteBatch` 事务里跑 DDL）：
+事务内的读取（`load` / `records` / `children` / `withQuery` / `metaGet`）会**复用事务自己的连接**，不会再向池子申请第二条，因此不存在"事务内等第二条连接"的死锁。
+
+正确写法——DDL 与 DML 一起，全部走同一条事务连接：
 
 ```cpp
 auto b = WriteBatch::begin(repo->store());
-(*b)->exec("DROP TABLE IF EXISTS t");   // DDL：这里已经隐式提交了事务
-(*b)->exec("CREATE TABLE t(...)");      // DDL：又一次隐式提交
-(*b)->commit();                         // 无活动事务 → CommitFailed
+(*b)->exec("DROP TABLE IF EXISTS t");   // 走事务连接，与下面的 DML 同原子
+(*b)->exec("CREATE TABLE t(a INTEGER)");
+(*b)->exec("INSERT INTO t VALUES(1)");
+(*b)->commit();                         // 一次提交，全成功或全回滚
 ```
 
-正确写法——**DDL 走 `BlockRepository::exec`（自动提交），只有 DML 走 `WriteBatch` 事务**：
+错误写法——事务开着却去用自动提交通道：
 
 ```cpp
-repo->exec("DROP TABLE IF EXISTS t");   // 自动提交，安全
-repo->exec("CREATE TABLE t(...)");      // 自动提交，安全
-
 auto b = WriteBatch::begin(repo->store());
-(*b)->exec("INSERT INTO t VALUES(?)");  // 这才是 DML，放进事务
-(*b)->commit();                         // 确有活动事务，提交成功
+repo->exec("DROP TABLE IF EXISTS t");   // 第二条连接 → 撞上本事务持有的写锁 → SQLITE_BUSY
+(*b)->commit();
 ```
 
 > [!TIP]
-> 项目里 `TypedTable::ensureSide`、`ensureColumnIndex` 与 `BlockRepository` 的初始化都遵循这一约定：DDL 用 `store().exec()` 自动提交，DML 才进 `WriteBatch`。**你自己的代码也请照此办理**——凡是 `CREATE`/`DROP`/`VACUUM` 这类语句，直接交给 `repo->exec()`，不要塞进事务。
+> 项目里 `TypedTable::ensureSide`、`ensureColumnIndex` 与 `BlockRepository` 的初始化都遵循这一约定：DDL 与 DML 分属两条路径，各自只用自己那条连接，互不交叉。**你自己的代码也请照此办理**。
 >
-> `repo->exec("VACUUM;")`（在 `unregistry` 里回收空间）同样是 DDL，走自动提交路径，没问题。
+> `repo->exec("VACUUM;")`（在 `unregistry` 里回收空间）必须在没有打开事务的时候调用。
 
 ### 9.3 优先用 tx() 而非逐单元格写
 
@@ -383,7 +384,7 @@ auto b = WriteBatch::begin(repo->store());
 - **被查询的列保持可索引**：默认全列索引；只在 `find` 里用到的列会自动建索引并缓存，无需手管。
 - **rowKey 用稳定标识**（玩家 uuid / xuid），不要用会变的名字作主键。
 - **别在热路径里 `list()` + 逐个 `get`**：要按条件取数用 `find` / `findValues`，让 SQL 在 side 表上完成筛选。
-- **定期 `VACUUM`**：WAL 模式下空间不会自动回收，`unregistry` 时 `repo->exec("VACUUM;")` 一次即可（注意它是 DDL，走自动提交）。
+- **定期 `VACUUM`**：WAL 模式下空间不会自动回收，`unregistry` 时 `repo->exec("VACUUM;")` 一次即可（注意它不能在事务内执行，且调用时本仓库不能有打开的事务）。
 
 ## 12. 常见错误码速查
 
@@ -396,7 +397,7 @@ auto b = WriteBatch::begin(repo->store());
 | 3 | `LoadFailed` | 块读取失败 | 记录损坏 |
 | 4 | `NotFound` | 块不存在 | 读取未写入的 rowKey（多数情况用 `def`/ `has` 避免） |
 | 5 | `NoConnection` | 无可用连接 | 连接池耗尽 |
-| 6 | `CommitFailed` | 事务提交失败 | **事务内执行了 DDL 导致隐式提交**（见 9.2）；或磁盘满 |
+| 6 | `CommitFailed` | 事务提交失败 | 事务内执行了 `VACUUM` 等不允许在事务中的语句（见 9.2）；或磁盘满 |
 | 7 | `RollbackFailed` | 回滚失败 | 连接已断 |
 | 8 | `DuplicateName` | 父节点下重名 | 同一 rowKey 重复 upsert（一般用 upsert 不会出现） |
 | 9 | `InvalidState` | 块状态非法 | 对已删除块做非法操作 |
