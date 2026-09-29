@@ -1185,6 +1185,11 @@ ll::Expected<std::int32_t> BlockStore::resolveKey(SQLiteConnection& conn, std::s
     return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::CreateFailed));
 }
 
+void BlockStore::forgetBlocks(std::span<const BlockId> ids) {
+    for (BlockId id : ids)
+        mBlockCache.erase(id);
+}
+
 ll::Expected<std::optional<std::string>> BlockStore::metaGet(std::string_view key) {
     auto guard = acquireConnection(this->mPool);
     if (!guard.has_value())

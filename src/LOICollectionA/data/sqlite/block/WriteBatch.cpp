@@ -65,7 +65,10 @@ ll::Expected<std::unique_ptr<WriteBatch>> WriteBatch::begin(BlockStore& store) {
 WriteBatch::WriteBatch(BlockStore& store, std::unique_ptr<StorageTransaction> txn)
     : mStore(&store), mTxn(std::move(txn)) {}
 
-WriteBatch::~WriteBatch() = default;
+WriteBatch::~WriteBatch() {
+    if (!mFinished)
+        [[maybe_unused]] auto _ = this->rollback();
+}
 
 ll::Expected<BlockId> WriteBatch::append(
     BlockId parent, std::int32_t kind, std::string_view name, std::string_view payload) {
@@ -76,6 +79,7 @@ ll::Expected<BlockId> WriteBatch::append(
     auto res = mStore->implCreateBlock(*mTxn->connection(), parent, kind, name, payload, id);
     if (!res.has_value())
         return ll::makeStringError(res.error().message());
+    mCreated.push_back(id);
     return id;
 }
 
@@ -205,7 +209,13 @@ ll::Expected<bool> WriteBatch::rollback() {
         return ll::makeStringError("write batch already finished");
 
     auto ok = mTxn->rollback();
-    if (ok.has_value())
+    if (ok.has_value()) {
+        // The blocks this batch created are gone from the database, so keeping
+        // them cached would hand out rows that no longer exist. A stale name
+        // mapping heals itself: resolving it misses and the entry is dropped.
+        mStore->forgetBlocks(mCreated);
+        mCreated.clear();
         mFinished = true;
+    }
     return ok;
 }
