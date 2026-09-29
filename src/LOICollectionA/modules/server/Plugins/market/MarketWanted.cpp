@@ -297,7 +297,7 @@ namespace LOICollection::server::Plugins {
 
                         ItemStack target = ItemStack::fromTag(CompoundTag::fromSnbt(data.at("item_data"))->mTags);
 
-                        if (!InventoryUtils::isItemInInventory(player, target, amount))
+                        if (!InventoryUtils::isItemInInventory(player, data.at("item_type"), amount))
                             return false;
 
                         std::string mScoreboard = this->mImpl->options.TargetScoreboard;
@@ -309,7 +309,7 @@ namespace LOICollection::server::Plugins {
 
                         return this->commitWantedFill(id, data, amount, pay, tax, player)
                             .and_then([this, data, amount, pay, sellerAmount, tax, buyerUuid, &player, buyer, target](const std::string& saleKey) -> ll::Expected<bool> {
-                                InventoryUtils::clearItem(player, target, amount);
+                                InventoryUtils::clearItem(player, data.at("item_type"), amount);
 
                                 InventoryUtils::giveItem(*buyer, target, amount);
 
