@@ -170,7 +170,7 @@ private:
     LOICOLLECTION_A_NDAPI ll::Expected<BlockRecord> readBlock(SQLiteConnection& conn, BlockId id);
     LOICOLLECTION_A_NDAPI ll::Expected<std::int32_t> resolveKey(SQLiteConnection& conn, std::string_view name);
 
-    LOICOLLECTION_A_API void forgetBlocks(std::span<const BlockId> ids);
+    LOICOLLECTION_A_NDAPI bool mayCache() const noexcept;
 
     std::shared_ptr<ConnectionPool> mPool;
     LRUCache<BlockId, BlockRecord> mBlockCache{2048};

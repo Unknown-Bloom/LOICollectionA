@@ -68,6 +68,5 @@ private:
 
     observer<BlockStore> mStore = nullptr;
     std::unique_ptr<StorageTransaction> mTxn;
-    std::vector<BlockId> mCreated;
     bool mFinished = false;
 };

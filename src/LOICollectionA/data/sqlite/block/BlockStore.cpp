@@ -382,8 +382,10 @@ ll::Expected<void> BlockStore::implCreateBlock(
         rec.payload.resize(payload.size());
         std::memcpy(rec.payload.data(), payload.data(), payload.size());
     }
-    mBlockCache.put(id, std::make_shared<BlockRecord>(std::move(rec)));
-    mNameCache.put(nameKey(parent, name), id);
+    if (this->mayCache()) {
+        mBlockCache.put(id, std::make_shared<BlockRecord>(std::move(rec)));
+        mNameCache.put(nameKey(parent, name), id);
+    }
     return {};
 }
 
@@ -433,7 +435,8 @@ ll::Expected<BlockRecord> BlockStore::load(BlockId id) {
     if (!record.has_value())
         return ll::makeStringError(record.error().message());
     auto shared = std::make_shared<BlockRecord>(std::move(*record));
-    mBlockCache.put(id, shared);
+    if (this->mayCache())
+        mBlockCache.put(id, shared);
     return *shared;
 }
 
@@ -470,9 +473,11 @@ ll::Expected<BlockRecord> BlockStore::load(BlockId parent, std::string_view name
     if (auto r = readBlockRow(*stmt, true, record, *guard); !r.has_value())
         return ll::makeStringError(r.error().message());
     stmt->reset();
-    mBlockCache.put(record.id, std::make_shared<BlockRecord>(record));
-    if (record.state != BlockLifecycle::Deleted)
-        mNameCache.put(key, record.id);
+    if (this->mayCache()) {
+        mBlockCache.put(record.id, std::make_shared<BlockRecord>(record));
+        if (record.state != BlockLifecycle::Deleted)
+            mNameCache.put(key, record.id);
+    }
     return record;
 }
 
@@ -497,7 +502,8 @@ ll::Expected<std::optional<BlockId>> BlockStore::idOf(BlockId parent, std::strin
 
     BlockId id = stmt->getColumn(0).getInt64();
     stmt->reset();
-    mNameCache.put(nameKey(parent, name), id);
+    if (this->mayCache())
+        mNameCache.put(nameKey(parent, name), id);
     return id;
 }
 
@@ -1185,9 +1191,12 @@ ll::Expected<std::int32_t> BlockStore::resolveKey(SQLiteConnection& conn, std::s
     return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::CreateFailed));
 }
 
-void BlockStore::forgetBlocks(std::span<const BlockId> ids) {
-    for (BlockId id : ids)
-        mBlockCache.erase(id);
+bool BlockStore::mayCache() const noexcept {
+    // While this thread holds a write transaction its reads run on the
+    // transaction's connection and therefore see uncommitted rows. Caching them
+    // would keep serving rows that vanish when the transaction rolls back, so
+    // the caches only ever hold commit-visible state.
+    return !mPool->activeTransaction();
 }
 
 ll::Expected<std::optional<std::string>> BlockStore::metaGet(std::string_view key) {
