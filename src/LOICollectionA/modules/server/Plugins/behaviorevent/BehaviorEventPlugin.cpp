@@ -981,7 +981,14 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(BehaviorEventPluginErrorCode::Invalid));
 
-        return select(*this->getBehaviorEventLog(), conditions, limit > 0 ? static_cast<size_t>(limit) : 0)
+        const size_t maxRows = limit > 0 ? static_cast<size_t>(limit) : 0;
+
+        // A caller-supplied filter decides which values are accepted, so the
+        // condition values are placeholders and must not narrow the query.
+        auto ids = filter ? this->getBehaviorEventLog()->all(maxRows)
+                          : select(*this->getBehaviorEventLog(), conditions, maxRows);
+
+        return ids
             .and_then([this](const std::vector<BlockId>& ids) -> ll::Expected<BehaviorEventLog::Rows> {
                 return this->getBehaviorEventLog()->read(ids);
             })
