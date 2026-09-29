@@ -46,10 +46,10 @@ TEST_F(BehaviorEventPluginTest, GetEvents) {
     auto id = CreateDatabaseEntry();
 
     auto data = BehaviorEventPlugin::getShared()->getEvents();
-    EXPECT_TRUE(data.has_value());
+    ASSERT_TRUE(data.has_value());
 
     auto& vecs = data.value();
-    EXPECT_EQ(vecs.size(), 1);
+    ASSERT_EQ(vecs.size(), 1);
     EXPECT_EQ(vecs[0], id);
 }
 
@@ -60,11 +60,11 @@ TEST_F(BehaviorEventPluginTest, GetEventByConditions) {
         { "event_name", "test" },
         { "event_type", "test" }
     });
-    EXPECT_TRUE(data.has_value());
+    ASSERT_TRUE(data.has_value());
 
     auto& vecs = data.value();
-    EXPECT_FALSE(vecs.empty());
-    EXPECT_EQ(vecs.size(), 1);
+    ASSERT_FALSE(vecs.empty());
+    ASSERT_EQ(vecs.size(), 1);
     EXPECT_EQ(vecs[0], id);
 }
 
@@ -76,11 +76,11 @@ TEST_F(BehaviorEventPluginTest, GetEventByFilter) {
     }, [](std::string value) -> bool {
         return value == "test";
     });
-    EXPECT_TRUE(data.has_value());
+    ASSERT_TRUE(data.has_value());
 
     auto& vecs = data.value();
-    EXPECT_FALSE(vecs.empty());
-    EXPECT_EQ(vecs.size(), 1);
+    ASSERT_FALSE(vecs.empty());
+    ASSERT_EQ(vecs.size(), 1);
     EXPECT_EQ(vecs[0], id);
 }
 
@@ -90,11 +90,11 @@ TEST_F(BehaviorEventPluginTest, GetEventByPosition) {
     auto data = BehaviorEventPlugin::getShared()->getEventsByPosition(0, [](int x, int y, int z) -> bool {
         return x == -114514 && y == -114514 && z == -114514;
     });
-    EXPECT_TRUE(data.has_value());
+    ASSERT_TRUE(data.has_value());
 
     auto& vecs = data.value();
-    EXPECT_FALSE(vecs.empty());
-    EXPECT_EQ(vecs.size(), 1);
+    ASSERT_FALSE(vecs.empty());
+    ASSERT_EQ(vecs.size(), 1);
     EXPECT_EQ(vecs[0], id);
 }
 
@@ -102,10 +102,10 @@ TEST_F(BehaviorEventPluginTest, GetEventsWithinHours) {
     auto id = CreateDatabaseEntry();
 
     auto data = BehaviorEventPlugin::getShared()->getEventsWithin(1);
-    EXPECT_TRUE(data.has_value());
+    ASSERT_TRUE(data.has_value());
 
     auto& vecs = data.value();
-    EXPECT_EQ(vecs.size(), 1);
+    ASSERT_EQ(vecs.size(), 1);
     EXPECT_EQ(vecs[0], id);
 }
 
@@ -114,10 +114,10 @@ TEST_F(BehaviorEventPluginTest, Filter) {
     auto second = CreateDatabaseEntry();
 
     auto data = BehaviorEventPlugin::getShared()->filter({ first, second });
-    EXPECT_TRUE(data.has_value());
+    ASSERT_TRUE(data.has_value());
 
     auto& vecs = data.value();
-    EXPECT_FALSE(vecs.empty());
-    EXPECT_EQ(vecs.size(), 1);
+    ASSERT_FALSE(vecs.empty());
+    ASSERT_EQ(vecs.size(), 1);
     EXPECT_EQ(vecs[0], second);
 }
