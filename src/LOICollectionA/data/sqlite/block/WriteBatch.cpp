@@ -13,7 +13,7 @@
 
 ll::Expected<std::unique_ptr<WriteBatch>> WriteBatch::begin(BlockStore& store) {
     auto conn = store.acquire();
-    if (!conn)
+    if (!conn.has_value())
         return ll::makeStringError(conn.error().message());
 
     auto txn = std::make_unique<StorageTransaction>(std::move(*conn), store.mPool.get());
@@ -32,7 +32,7 @@ ll::Expected<BlockId> WriteBatch::append(
 
     BlockId id = 0;
     auto res = mStore->implCreateBlock(*mTxn->connection(), parent, kind, name, payload, id);
-    if (!res)
+    if (!res.has_value())
         return ll::makeStringError(res.error().message());
     return id;
 }
@@ -46,7 +46,7 @@ ll::Expected<std::vector<BlockId>> WriteBatch::appendMany(
 
     for (auto& [name, payload] : namePayloads) {
         auto id = this->append(parent, kind, name, payload);
-        if (!id)
+        if (!id.has_value())
             return ll::makeStringError(id.error().message());
         ids.emplace_back(*id);
     }
@@ -153,7 +153,7 @@ ll::Expected<bool> WriteBatch::commit() {
         return ll::makeStringError("write batch already finished");
 
     auto ok = mTxn->commit();
-    if (ok)
+    if (ok.has_value())
         mFinished = true;
     return ok;
 }
@@ -163,7 +163,7 @@ ll::Expected<bool> WriteBatch::rollback() {
         return ll::makeStringError("write batch already finished");
 
     auto ok = mTxn->rollback();
-    if (ok)
+    if (ok.has_value())
         mFinished = true;
     return ok;
 }

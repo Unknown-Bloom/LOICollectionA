@@ -21,11 +21,11 @@ ll::Expected<std::unique_ptr<BehaviorEventLog>> BehaviorEventLog::create(BlockSt
     auto log = std::unique_ptr<BehaviorEventLog>(new BehaviorEventLog(&store));
 
     auto root = store.load(0, rootName);
-    if (root && root.value().id != 0) {
+    if (root.has_value() && root.value().id != 0) {
         log->mRoot = root.value().id;
     } else {
         auto created = store.createBlock(0, 0, rootName);
-        if (!created)
+        if (!created.has_value())
             return ll::makeStringError(created.error().message());
         log->mRoot = *created;
     }
@@ -39,7 +39,7 @@ ll::Expected<std::unique_ptr<BehaviorEventLog>> BehaviorEventLog::create(BlockSt
     auto py = intern("event_pos_y");
     auto pz = intern("event_pos_z");
 
-    if (!ts || !ty || !ac || !dm || !px || !py || !pz)
+    if (!ts.has_value() || !ty.has_value() || !ac.has_value() || !dm.has_value() || !px.has_value() || !py.has_value() || !pz.has_value())
         return ll::makeStringError("intern event props failed");
 
     log->mKeyTimestamp = *ts;
@@ -67,7 +67,7 @@ ll::Expected<std::int32_t> BehaviorEventLog::intern(std::string_view name) {
     }
 
     auto id = mStore->intern(name);
-    if (!id)
+    if (!id.has_value())
         return ll::makeStringError(id.error().message());
 
     {
@@ -87,7 +87,7 @@ ll::Expected<std::string> BehaviorEventLog::unintern(std::int32_t id) {
     }
 
     auto name = mStore->unintern(id);
-    if (!name)
+    if (!name.has_value())
         return ll::makeStringError(name.error().message());
 
     {
@@ -103,13 +103,13 @@ ll::Expected<BehaviorEventLog::Encoded> BehaviorEventLog::encode(PreparedEvent c
     Encoded encoded;
 
     auto kind = this->intern(event.name);
-    if (!kind)
+    if (!kind.has_value())
         return ll::makeStringError(kind.error().message());
     encoded.kind = *kind;
 
     if (!event.type.empty()) {
         auto type = this->intern(event.type);
-        if (!type)
+        if (!type.has_value())
             return ll::makeStringError(type.error().message());
         encoded.type = *type;
     }
@@ -117,7 +117,7 @@ ll::Expected<BehaviorEventLog::Encoded> BehaviorEventLog::encode(PreparedEvent c
     PayloadWriter writer;
     for (auto const& [key, value] : event.fields) {
         auto field = this->intern(key);
-        if (!field)
+        if (!field.has_value())
             return ll::makeStringError(field.error().message());
         writer.write(*field, std::string_view(value));
     }
@@ -131,29 +131,29 @@ ll::Expected<BehaviorEventLog::Encoded> BehaviorEventLog::encode(PreparedEvent c
 ll::Expected<BlockId> BehaviorEventLog::writeEvent(
     WriteBatch& batch, PreparedEvent const& event, Encoded const& encoded) {
     auto id = batch.append(mRoot, encoded.kind, "", encoded.payload);
-    if (!id)
+    if (!id.has_value())
         return ll::makeStringError(id.error().message());
 
     if (event.timestamp) {
-        if (auto r = batch.setProp(*id, mKeyTimestamp, event.timestamp); !r)
+        if (auto r = batch.setProp(*id, mKeyTimestamp, event.timestamp); !r.has_value())
             return ll::makeStringError(r.error().message());
     }
     if (encoded.type) {
-        if (auto r = batch.setProp(*id, mKeyType, encoded.type); !r)
+        if (auto r = batch.setProp(*id, mKeyType, encoded.type); !r.has_value())
             return ll::makeStringError(r.error().message());
     }
     if (event.actor) {
-        if (auto r = batch.setProp(*id, mKeyActor, event.actor); !r)
+        if (auto r = batch.setProp(*id, mKeyActor, event.actor); !r.has_value())
             return ll::makeStringError(r.error().message());
     }
 
-    if (auto r = batch.setProp(*id, mKeyDim, event.dimension); !r)
+    if (auto r = batch.setProp(*id, mKeyDim, event.dimension); !r.has_value())
         return ll::makeStringError(r.error().message());
-    if (auto r = batch.setProp(*id, mKeyPosX, event.posX); !r)
+    if (auto r = batch.setProp(*id, mKeyPosX, event.posX); !r.has_value())
         return ll::makeStringError(r.error().message());
-    if (auto r = batch.setProp(*id, mKeyPosY, event.posY); !r)
+    if (auto r = batch.setProp(*id, mKeyPosY, event.posY); !r.has_value())
         return ll::makeStringError(r.error().message());
-    if (auto r = batch.setProp(*id, mKeyPosZ, event.posZ); !r)
+    if (auto r = batch.setProp(*id, mKeyPosZ, event.posZ); !r.has_value())
         return ll::makeStringError(r.error().message());
 
     return *id;
@@ -162,7 +162,7 @@ ll::Expected<BlockId> BehaviorEventLog::writeEvent(
 ll::Expected<BehaviorEventLog::Row> BehaviorEventLog::decode(BlockRecord const& record) {
     Row row;
 
-    if (auto name = this->unintern(record.kind); name)
+    if (auto name = this->unintern(record.kind); name.has_value())
         row.emplace("event_name", *name);
 
     std::int64_t type = 0;
@@ -184,7 +184,7 @@ ll::Expected<BehaviorEventLog::Row> BehaviorEventLog::decode(BlockRecord const& 
             dimension = prop.intValue;
     }
 
-    if (auto value = this->unintern(static_cast<std::int32_t>(type)); value)
+    if (auto value = this->unintern(static_cast<std::int32_t>(type)); value.has_value())
         row.emplace("event_type", *value);
 
     row.emplace("position_x", std::to_string(posX));
@@ -200,7 +200,7 @@ ll::Expected<BehaviorEventLog::Row> BehaviorEventLog::decode(BlockRecord const& 
             return;
 
         auto key = this->unintern(field.key);
-        if (!key)
+        if (!key.has_value())
             return;
 
         row.insert_or_assign(*key, reader.materializeText(field));
@@ -211,19 +211,19 @@ ll::Expected<BehaviorEventLog::Row> BehaviorEventLog::decode(BlockRecord const& 
 
 ll::Expected<BlockId> BehaviorEventLog::append(PreparedEvent const& event) {
     auto encoded = this->encode(event);
-    if (!encoded)
+    if (!encoded.has_value())
         return ll::makeStringError(encoded.error().message());
 
     auto batch = WriteBatch::begin(*mStore);
-    if (!batch)
+    if (!batch.has_value())
         return ll::makeStringError(batch.error().message());
 
     auto id = this->writeEvent(**batch, event, *encoded);
-    if (!id)
+    if (!id.has_value())
         return ll::makeStringError(id.error().message());
 
     auto ok = (*batch)->commit();
-    if (!ok)
+    if (!ok.has_value())
         return ll::makeStringError(ok.error().message());
 
     return *id;
@@ -235,14 +235,14 @@ ll::Expected<std::vector<BlockId>> BehaviorEventLog::appendMany(std::span<const 
 
     for (auto const& event : events) {
         auto prepared = this->encode(event);
-        if (!prepared)
+        if (!prepared.has_value())
             return ll::makeStringError(prepared.error().message());
 
         encoded.emplace_back(std::move(*prepared));
     }
 
     auto batch = WriteBatch::begin(*mStore);
-    if (!batch)
+    if (!batch.has_value())
         return ll::makeStringError(batch.error().message());
 
     std::vector<BlockId> ids;
@@ -250,14 +250,14 @@ ll::Expected<std::vector<BlockId>> BehaviorEventLog::appendMany(std::span<const 
 
     for (size_t index = 0; index < events.size(); ++index) {
         auto id = this->writeEvent(**batch, events[index], encoded[index]);
-        if (!id)
+        if (!id.has_value())
             return ll::makeStringError(id.error().message());
 
         ids.emplace_back(*id);
     }
 
     auto ok = (*batch)->commit();
-    if (!ok)
+    if (!ok.has_value())
         return ll::makeStringError(ok.error().message());
 
     return ids;
@@ -265,7 +265,7 @@ ll::Expected<std::vector<BlockId>> BehaviorEventLog::appendMany(std::span<const 
 
 ll::Expected<BehaviorEventLog::Row> BehaviorEventLog::read(BlockId id) {
     auto record = mStore->load(id);
-    if (!record)
+    if (!record.has_value())
         return Row{};
 
     if (record->state == BlockLifecycle::Deleted || record->state == BlockLifecycle::Archived)
@@ -280,7 +280,7 @@ ll::Expected<BehaviorEventLog::Rows> BehaviorEventLog::read(std::span<const Bloc
 
     for (auto id : ids) {
         auto row = this->read(id);
-        if (!row)
+        if (!row.has_value())
             return ll::makeStringError(row.error().message());
 
         if (!row->empty())
@@ -296,7 +296,7 @@ ll::Expected<std::vector<BlockId>> BehaviorEventLog::all(size_t limit) {
 
 ll::Expected<size_t> BehaviorEventLog::count() {
     auto ids = mStore->children(mRoot, -1, 0);
-    if (!ids)
+    if (!ids.has_value())
         return ll::makeStringError(ids.error().message());
 
     return ids->size();
@@ -308,7 +308,7 @@ ll::Expected<std::vector<BlockId>> BehaviorEventLog::byTimeRange(std::int64_t fr
 
 ll::Expected<std::vector<BlockId>> BehaviorEventLog::byName(std::string_view name, size_t limit) {
     auto kind = this->intern(name);
-    if (!kind)
+    if (!kind.has_value())
         return ll::makeStringError(kind.error().message());
 
     return mStore->children(mRoot, *kind, limit);
@@ -316,7 +316,7 @@ ll::Expected<std::vector<BlockId>> BehaviorEventLog::byName(std::string_view nam
 
 ll::Expected<std::vector<BlockId>> BehaviorEventLog::byType(std::string_view type, size_t limit) {
     auto value = this->intern(type);
-    if (!value)
+    if (!value.has_value())
         return ll::makeStringError(value.error().message());
 
     return mStore->queryInt(mRoot, mKeyType, *value, *value, limit);
@@ -333,14 +333,14 @@ ll::Expected<std::vector<BlockId>> BehaviorEventLog::byDimension(std::int64_t di
 ll::Expected<std::vector<BlockId>> BehaviorEventLog::byPosition(
     std::int64_t x, std::int64_t y, std::int64_t z, size_t limit) {
     auto xs = mStore->queryInt(mRoot, mKeyPosX, x, x, limit);
-    if (!xs)
+    if (!xs.has_value())
         return ll::makeStringError(xs.error().message());
 
     if (xs->empty())
         return xs;
 
     auto ys = mStore->queryInt(mRoot, mKeyPosY, y, y, limit);
-    if (!ys)
+    if (!ys.has_value())
         return ll::makeStringError(ys.error().message());
 
     keepCommon(*xs, *ys);
@@ -348,7 +348,7 @@ ll::Expected<std::vector<BlockId>> BehaviorEventLog::byPosition(
         return xs;
 
     auto zs = mStore->queryInt(mRoot, mKeyPosZ, z, z, limit);
-    if (!zs)
+    if (!zs.has_value())
         return ll::makeStringError(zs.error().message());
 
     keepCommon(*xs, *zs);
@@ -363,16 +363,16 @@ ll::Expected<void> BehaviorEventLog::erase(std::span<const BlockId> ids) {
         return {};
 
     auto batch = WriteBatch::begin(*mStore);
-    if (!batch)
+    if (!batch.has_value())
         return ll::makeStringError(batch.error().message());
 
     for (auto id : ids) {
-        if (auto r = (*batch)->control(id, BlockLifecycle::Deleted); !r)
+        if (auto r = (*batch)->control(id, BlockLifecycle::Deleted); !r.has_value())
             return ll::makeStringError(r.error().message());
     }
 
     auto ok = (*batch)->commit();
-    if (!ok)
+    if (!ok.has_value())
         return ll::makeStringError(ok.error().message());
 
     return {};
@@ -380,23 +380,23 @@ ll::Expected<void> BehaviorEventLog::erase(std::span<const BlockId> ids) {
 
 ll::Expected<size_t> BehaviorEventLog::archiveBefore(std::int64_t timestamp) {
     auto ids = mStore->queryInt(mRoot, mKeyTimestamp, std::numeric_limits<std::int64_t>::min(), timestamp, 0);
-    if (!ids)
+    if (!ids.has_value())
         return ll::makeStringError(ids.error().message());
 
     if (ids->empty())
         return size_t{0};
 
     auto batch = WriteBatch::begin(*mStore);
-    if (!batch)
+    if (!batch.has_value())
         return ll::makeStringError(batch.error().message());
 
     for (auto id : *ids) {
-        if (auto r = (*batch)->control(id, BlockLifecycle::Archived); !r)
+        if (auto r = (*batch)->control(id, BlockLifecycle::Archived); !r.has_value())
             return ll::makeStringError(r.error().message());
     }
 
     auto ok = (*batch)->commit();
-    if (!ok)
+    if (!ok.has_value())
         return ll::makeStringError(ok.error().message());
 
     return ids->size();

@@ -172,7 +172,7 @@ namespace {
             return DbGuard{nullptr, std::shared_ptr<SQLiteConnection>(active, [](SQLiteConnection*) {})};
 
         auto conn = pool->acquire();
-        if (!conn)
+        if (!conn.has_value())
             return ll::makeStringError(conn.error().message());
         return DbGuard{std::move(pool), std::move(*conn)};
     }
@@ -331,9 +331,9 @@ ll::Expected<void> BlockStore::ensureSchema(SQLiteConnection& conn) {
 ll::Expected<std::unique_ptr<BlockStore>> BlockStore::create(std::shared_ptr<ConnectionPool> pool) {
     auto store = std::unique_ptr<BlockStore>(new BlockStore(std::move(pool)));
     auto guard = acquireConnection(store->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
-    if (auto err = store->ensureSchema(*guard); !err)
+    if (auto err = store->ensureSchema(*guard); !err.has_value())
         return ll::makeStringError(err.error().message());
     return store;
 }
@@ -341,11 +341,11 @@ ll::Expected<std::unique_ptr<BlockStore>> BlockStore::create(std::shared_ptr<Con
 ll::Expected<BlockId> BlockStore::createBlock(
     BlockId parent, std::int32_t kind, std::string_view name, std::string_view payload) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     BlockId id = 0;
-    if (auto res = this->implCreateBlock(*guard, parent, kind, name, payload, id); !res)
+    if (auto res = this->implCreateBlock(*guard, parent, kind, name, payload, id); !res.has_value())
         return ll::makeStringError(res.error().message());
     return id;
 }
@@ -390,7 +390,7 @@ ll::Expected<void> BlockStore::implCreateBlock(
 ll::Expected<BlockId> BlockStore::upsertRow(
     BlockId parent, std::string_view name, std::string_view payload) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
     return this->implUpsertRow(*guard, parent, name, payload);
 }
@@ -426,11 +426,11 @@ ll::Expected<BlockRecord> BlockStore::load(BlockId id) {
         return **cached;
 
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto record = this->readBlock(*guard, id);
-    if (!record)
+    if (!record.has_value())
         return ll::makeStringError(record.error().message());
     auto shared = std::make_shared<BlockRecord>(std::move(*record));
     mBlockCache.put(id, shared);
@@ -451,7 +451,7 @@ ll::Expected<BlockRecord> BlockStore::load(BlockId parent, std::string_view name
     }
 
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().get("getBlockByName");
@@ -467,7 +467,7 @@ ll::Expected<BlockRecord> BlockStore::load(BlockId parent, std::string_view name
         return sqlError(*guard);
 
     BlockRecord record;
-    if (auto r = readBlockRow(*stmt, true, record, *guard); !r)
+    if (auto r = readBlockRow(*stmt, true, record, *guard); !r.has_value())
         return ll::makeStringError(r.error().message());
     stmt->reset();
     mBlockCache.put(record.id, std::make_shared<BlockRecord>(record));
@@ -478,7 +478,7 @@ ll::Expected<BlockRecord> BlockStore::load(BlockId parent, std::string_view name
 
 ll::Expected<std::optional<BlockId>> BlockStore::idOf(BlockId parent, std::string_view name) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().get("getIdByName");
@@ -504,7 +504,7 @@ ll::Expected<std::optional<BlockId>> BlockStore::idOf(BlockId parent, std::strin
 ll::Expected<void> BlockStore::withBlock(
     BlockId id, std::function<void(BlockView const&)> const& consumer) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().get("getBlockById");
@@ -554,7 +554,7 @@ ll::Expected<BlockRecord> BlockStore::readBlock(SQLiteConnection& conn, BlockId 
 
     BlockRecord record;
     record.id = id;
-    if (auto r = readBlockRow(*stmt, false, record, conn); !r)
+    if (auto r = readBlockRow(*stmt, false, record, conn); !r.has_value())
         return ll::makeStringError(r.error().message());
     stmt->reset();
     return record;
@@ -562,10 +562,10 @@ ll::Expected<BlockRecord> BlockStore::readBlock(SQLiteConnection& conn, BlockId 
 
 ll::Expected<void> BlockStore::setPayload(BlockId id, std::string_view payload) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
-    if (auto res = this->implSetPayload(*guard, id, payload); !res)
+    if (auto res = this->implSetPayload(*guard, id, payload); !res.has_value())
         return ll::makeStringError(res.error().message());
     return {};
 }
@@ -593,10 +593,10 @@ ll::Expected<void> BlockStore::remove(BlockId id) {
 
 ll::Expected<void> BlockStore::control(BlockId id, BlockLifecycle to) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
-    if (auto res = this->implControl(*guard, id, to); !res)
+    if (auto res = this->implControl(*guard, id, to); !res.has_value())
         return ll::makeStringError(res.error().message());
     return {};
 }
@@ -620,7 +620,7 @@ ll::Expected<void> BlockStore::implControl(SQLiteConnection& conn, BlockId id, B
 
 ll::Expected<BlockLifecycle> BlockStore::stateOf(BlockId id) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().get("getState");
@@ -640,7 +640,7 @@ ll::Expected<BlockLifecycle> BlockStore::stateOf(BlockId id) {
 
 ll::Expected<std::vector<BlockId>> BlockStore::children(BlockId parent, std::int32_t kind, size_t limit) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().get(kind < 0 ? "listChildren" : "listChildrenKind");
@@ -666,7 +666,7 @@ ll::Expected<std::vector<BlockId>> BlockStore::children(BlockId parent, std::int
 
 ll::Expected<std::vector<std::pair<BlockId, std::string>>> BlockStore::childNames(BlockId parent) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().get("listChildNames");
@@ -686,7 +686,7 @@ ll::Expected<std::vector<std::pair<BlockId, std::string>>> BlockStore::childName
 
 ll::Expected<std::vector<BlockRecord>> BlockStore::records(BlockId parent, std::int32_t kind, size_t limit) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().get(kind < 0 ? "getChildrenFull" : "getChildrenFullKind");
@@ -705,7 +705,7 @@ ll::Expected<std::vector<BlockRecord>> BlockStore::records(BlockId parent, std::
     int rc = 0;
     while ((rc = stmt->tryExecuteStep()) == SQLITE_ROW) {
         BlockRecord record;
-        if (auto r = readBlockRow(*stmt, true, record, *guard, false); !r)
+        if (auto r = readBlockRow(*stmt, true, record, *guard, false); !r.has_value())
             return ll::makeStringError(r.error().message());
         out.push_back(std::move(record));
     }
@@ -713,14 +713,14 @@ ll::Expected<std::vector<BlockRecord>> BlockStore::records(BlockId parent, std::
     if (rc != SQLITE_DONE)
         return sqlError(*guard);
 
-    if (auto r = fillPropsBatch(*guard, out); !r)
+    if (auto r = fillPropsBatch(*guard, out); !r.has_value())
         return ll::makeStringError(r.error().message());
     return out;
 }
 
 ll::Expected<std::vector<BlockRecord>> BlockStore::rowsByIds(std::span<const BlockId> ids, bool withProps) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     std::vector<BlockRecord> out;
@@ -747,7 +747,7 @@ ll::Expected<std::vector<BlockRecord>> BlockStore::rowsByIds(std::span<const Blo
         int rc = 0;
         while ((rc = stmt->tryExecuteStep()) == SQLITE_ROW) {
             BlockRecord record;
-            if (auto r = readBlockRow(*stmt, true, record, *guard, false); !r)
+            if (auto r = readBlockRow(*stmt, true, record, *guard, false); !r.has_value())
                 return ll::makeStringError(r.error().message());
             out.push_back(std::move(record));
         }
@@ -757,7 +757,7 @@ ll::Expected<std::vector<BlockRecord>> BlockStore::rowsByIds(std::span<const Blo
     }
 
     if (withProps) {
-        if (auto r = fillPropsBatch(*guard, out); !r)
+        if (auto r = fillPropsBatch(*guard, out); !r.has_value())
             return ll::makeStringError(r.error().message());
     }
     return out;
@@ -778,10 +778,10 @@ ll::Expected<void> BlockStore::setProp(BlockId id, PropKey key, std::string_view
 ll::Expected<void> BlockStore::setProp(
     BlockId id, PropKey key, PayloadType type, std::int64_t ival, double rval, std::string_view tval) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
-    if (auto res = this->implSetProp(*guard, id, key, type, ival, rval, tval); !res)
+    if (auto res = this->implSetProp(*guard, id, key, type, ival, rval, tval); !res.has_value())
         return ll::makeStringError(res.error().message());
     return {};
 }
@@ -813,7 +813,7 @@ ll::Expected<void> BlockStore::implSetProp(
 
 ll::Expected<std::vector<BlockId>> BlockStore::queryInt(PropKey key, std::int64_t min, std::int64_t max, size_t limit) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().get("queryPropInt");
@@ -837,7 +837,7 @@ ll::Expected<std::vector<BlockId>> BlockStore::queryInt(PropKey key, std::int64_
 ll::Expected<std::vector<BlockId>> BlockStore::queryInt(
     BlockId parent, PropKey key, std::int64_t min, std::int64_t max, size_t limit) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().get("queryPropIntUnder");
@@ -862,7 +862,7 @@ ll::Expected<std::vector<BlockId>> BlockStore::queryInt(
 ll::Expected<std::vector<std::pair<BlockId, std::string>>> BlockStore::queryTextNames(
     BlockId parent, PropKey key, std::string_view value, size_t limit) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().get("queryPropTextUnderNames");
@@ -892,7 +892,7 @@ ll::Expected<std::vector<std::pair<BlockId, std::string>>> BlockStore::queryText
         return this->queryTextNames(parent, conds.front().key, conds.front().value, limit);
 
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     std::size_t const n = conds.size();
@@ -940,7 +940,7 @@ ll::Expected<std::vector<std::pair<BlockId, std::string>>> BlockStore::queryText
 
 ll::Expected<std::vector<BlockId>> BlockStore::queryText(PropKey key, std::string_view value, size_t limit) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().get("queryPropText");
@@ -963,7 +963,7 @@ ll::Expected<std::vector<BlockId>> BlockStore::queryText(PropKey key, std::strin
 ll::Expected<std::vector<BlockId>> BlockStore::queryText(
     BlockId parent, PropKey key, std::string_view value, size_t limit) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().get("queryPropTextUnder");
@@ -986,7 +986,7 @@ ll::Expected<std::vector<BlockId>> BlockStore::queryText(
 
 ll::Expected<void> BlockStore::exec(std::string_view sql) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
     int rc = (*guard).database().tryExec(std::string(sql).c_str());
     if (rc != SQLITE_OK)
@@ -998,7 +998,7 @@ ll::Expected<void> BlockStore::withQuery(
     std::string_view key, std::string_view sql, std::span<const BlockProp> params,
     std::function<void(SQLite::Statement&)> const& consumer) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().ensure(key, sql);
@@ -1031,10 +1031,10 @@ ll::Expected<void> BlockStore::withQuery(
 
 ll::Expected<void> BlockStore::link(BlockId src, BlockId dst, std::int32_t kind) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
-    if (auto res = this->implLink(*guard, src, dst, kind); !res)
+    if (auto res = this->implLink(*guard, src, dst, kind); !res.has_value())
         return ll::makeStringError(res.error().message());
     return {};
 }
@@ -1055,10 +1055,10 @@ ll::Expected<void> BlockStore::implLink(SQLiteConnection& conn, BlockId src, Blo
 
 ll::Expected<void> BlockStore::unlink(BlockId src, BlockId dst, std::int32_t kind) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
-    if (auto res = this->implUnlink(*guard, src, dst, kind); !res)
+    if (auto res = this->implUnlink(*guard, src, dst, kind); !res.has_value())
         return ll::makeStringError(res.error().message());
     return {};
 }
@@ -1079,7 +1079,7 @@ ll::Expected<void> BlockStore::implUnlink(SQLiteConnection& conn, BlockId src, B
 
 ll::Expected<std::vector<BlockId>> BlockStore::links(BlockId src, std::int32_t kind) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().get("linksBySrc");
@@ -1101,7 +1101,7 @@ ll::Expected<std::vector<BlockId>> BlockStore::links(BlockId src, std::int32_t k
 
 ll::Expected<std::vector<BlockId>> BlockStore::backlinks(BlockId dst, std::int32_t kind) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().get("linksByDst");
@@ -1123,14 +1123,14 @@ ll::Expected<std::vector<BlockId>> BlockStore::backlinks(BlockId dst, std::int32
 
 ll::Expected<std::int32_t> BlockStore::intern(std::string_view name) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
     return this->resolveKey(*guard, name);
 }
 
 ll::Expected<std::string> BlockStore::unintern(std::int32_t id) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().get("getDictName");
@@ -1187,7 +1187,7 @@ ll::Expected<std::int32_t> BlockStore::resolveKey(SQLiteConnection& conn, std::s
 
 ll::Expected<std::optional<std::string>> BlockStore::metaGet(std::string_view key) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().get("getMeta");
@@ -1207,7 +1207,7 @@ ll::Expected<std::optional<std::string>> BlockStore::metaGet(std::string_view ke
 
 ll::Expected<void> BlockStore::metaSet(std::string_view key, std::string_view value) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().get("setMeta");
@@ -1224,7 +1224,7 @@ ll::Expected<void> BlockStore::metaSet(std::string_view key, std::string_view va
 
 ll::Expected<void> BlockStore::metaDel(std::string_view key) {
     auto guard = acquireConnection(this->mPool);
-    if (!guard)
+    if (!guard.has_value())
         return ll::makeStringError(guard.error().message());
 
     auto stmt = (*guard).statements().get("delMeta");

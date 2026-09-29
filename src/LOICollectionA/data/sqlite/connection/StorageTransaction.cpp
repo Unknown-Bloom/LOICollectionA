@@ -1,12 +1,32 @@
 #include "LOICollectionA/data/sqlite/connection/StorageTransaction.h"
 
+#include <exception>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include <SQLiteCpp/SQLiteCpp.h>
 
 #include "LOICollectionA/data/sqlite/block/BlockError.h"
 #include "LOICollectionA/data/sqlite/connection/ConnectionPool.h"
+
+namespace {
+// The fallback catch (...) in commit()/rollback() used to swallow the real
+// exception and report only the bare "transaction ... failed" string, hiding the
+// underlying SQLite error (e.g. SQLITE_BUSY/LOCKED) that actually broke the call.
+// This recovers the real exception's message when one is available.
+std::string transactionFailedMessage(std::string_view base) {
+    if (auto ep = std::current_exception()) {
+        try {
+            std::rethrow_exception(ep);
+        } catch (std::exception const& e) {
+            return std::string(base) + ": " + e.what();
+        } catch (...) {
+        }
+    }
+    return std::string(base);
+}
+} // namespace
 
 StorageTransaction::StorageTransaction(std::shared_ptr<SQLiteConnection> conn, observer<ConnectionPool> pool)
     : mConnection(std::move(conn)), mPool(pool) {
@@ -55,7 +75,7 @@ ll::Expected<bool> StorageTransaction::commit() {
     } catch (...) {
         this->mTransaction.reset();
         this->finish();
-        return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::CommitFailed));
+        return ll::makeStringError(transactionFailedMessage("transaction commit failed"));
     }
     this->finish();
     return true;
@@ -77,8 +97,7 @@ ll::Expected<bool> StorageTransaction::rollback() {
     } catch (...) {
         this->mTransaction.reset();
         this->finish();
-        return ll::makeErrorCodeError(
-            BlockError::makeErrorCode(BlockError::BlockErrorCode::RollbackFailed));
+        return ll::makeStringError(transactionFailedMessage("transaction rollback failed"));
     }
     this->finish();
     return true;
