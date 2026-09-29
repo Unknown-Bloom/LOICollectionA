@@ -718,7 +718,7 @@ namespace LOICollection::frontend {
         if (receiver.kind != TypeKind::Object)
             return std::nullopt;
 
-        const std::string& methodName = *operatorMethodFor(op);
+        const std::string methodName = *operatorMethodFor(op);
         std::optional<std::reference_wrapper<ClassNode>> walk =
             receiver.className.empty() ? std::nullopt : this->findClass(receiver.className);
         if (!walk)
