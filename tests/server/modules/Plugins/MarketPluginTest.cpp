@@ -209,6 +209,62 @@ protected:
 
         return true;
     }
+
+    bool InsertStore(const std::string& rowKey, const std::string& name, const std::string& introduce,
+                     const std::string& icon, const std::string& ownerUuid, const std::string& ownerName,
+                     const std::string& createdAt) {
+        auto table = StoreTable::open(*MarketPlugin::getShared()->getDatabase(), "Store");
+        if (!table.has_value()) return false;
+
+        return table->set(rowKey, StoreCol::name, name).has_value()
+            && table->set(rowKey, StoreCol::introduce, introduce).has_value()
+            && table->set(rowKey, StoreCol::icon, icon).has_value()
+            && table->set(rowKey, StoreCol::owner_uuid, ownerUuid).has_value()
+            && table->set(rowKey, StoreCol::owner_name, ownerName).has_value()
+            && table->set(rowKey, StoreCol::store_created_at, createdAt).has_value();
+    }
+
+    bool InsertStoreItem(const std::string& rowKey, const std::string& storeId, const std::string& name,
+                         const std::string& icon, const std::string& introduce, long long score,
+                         const std::string& data) {
+        auto table = StoreItemTable::open(*MarketPlugin::getShared()->getDatabase(), "StoreItem");
+        if (!table.has_value()) return false;
+
+        return table->set(rowKey, StoreItemCol::store_id, storeId).has_value()
+            && table->set(rowKey, StoreItemCol::name, name).has_value()
+            && table->set(rowKey, StoreItemCol::icon, icon).has_value()
+            && table->set(rowKey, StoreItemCol::introduce, introduce).has_value()
+            && table->set(rowKey, StoreItemCol::score, score).has_value()
+            && table->set(rowKey, StoreItemCol::data, data).has_value();
+    }
+
+    bool InsertStoreSale(const std::string& rowKey, const std::string& storeId, const std::string& itemName,
+                         long long price, const std::string& buyerUuid, const std::string& buyerName,
+                         const std::string& time) {
+        auto table = StoreSaleTable::open(*MarketPlugin::getShared()->getDatabase(), "StoreSale");
+        if (!table.has_value()) return false;
+
+        return table->set(rowKey, StoreSaleCol::store_id, storeId).has_value()
+            && table->set(rowKey, StoreSaleCol::item_name, itemName).has_value()
+            && table->set(rowKey, StoreSaleCol::price, price).has_value()
+            && table->set(rowKey, StoreSaleCol::buyer_uuid, buyerUuid).has_value()
+            && table->set(rowKey, StoreSaleCol::buyer_name, buyerName).has_value()
+            && table->set(rowKey, StoreSaleCol::time, time).has_value();
+    }
+
+    bool SetStoreCreatedAt(const std::string& rowKey, const std::string& createdAt) {
+        auto table = StoreTable::open(*MarketPlugin::getShared()->getDatabase(), "Store");
+        if (!table.has_value()) return false;
+
+        return table->set(rowKey, StoreCol::store_created_at, createdAt).has_value();
+    }
+
+    bool SetReviewStatus(const std::string& rowKey, const std::string& status) {
+        auto table = StoreReviewTable::open(*MarketPlugin::getShared()->getDatabase(), "StoreReview");
+        if (!table.has_value()) return false;
+
+        return table->set(rowKey, StoreReviewCol::status, status).has_value();
+    }
 };
 
 TEST_F(MarketPluginTest, CreateBlacklistEntry) {
@@ -890,18 +946,15 @@ TEST_F(MarketPluginTest, StoreBuyOfflineOwner) {
 
     std::string ownerUuid = "00000000-0000-0000-0000-00000000dead";
     std::string nowTime = SystemUtils::getNowTime();
-    auto db = MarketPlugin::getShared()->getDatabase();
 
     auto itemStack = std::make_unique<ItemStack>();
     itemStack->reinit("minecraft:grass_block", 1, 0);
     std::string snbt = itemStack->save(*SaveContextFactory::createCloneSaveContext())->toSnbt(SnbtFormat::Minimize, 0);
 
-    ASSERT_TRUE(db->exec("INSERT INTO Store (key, name, introduce, icon, owner_uuid, owner_name, store_created_at) VALUES ('" +
-        ownerUuid + "', 'Offline Store', 'A store.', 'minecraft:chest', '" + ownerUuid + "', 'Offline Owner', '" + nowTime + "');").has_value());
+    ASSERT_TRUE(InsertStore(ownerUuid, "Offline Store", "A store.", "minecraft:chest", ownerUuid, "Offline Owner", nowTime));
 
     std::string itemId = SystemUtils::getCurrentTimestamp();
-    ASSERT_TRUE(db->exec("INSERT INTO StoreItem (key, store_id, name, icon, introduce, score, data) VALUES ('" +
-        itemId + "', '" + ownerUuid + "', 'grass_block', 'minecraft:grass_block', 'A grass block.', '100', '" + snbt + "');").has_value());
+    ASSERT_TRUE(InsertStoreItem(itemId, ownerUuid, "grass_block", "minecraft:grass_block", "A grass block.", 100, snbt));
 
     MarketPlugin::getShared()->clearStoreRankCache();
 
@@ -1032,8 +1085,7 @@ TEST_F(MarketPluginTest, StoreReviewStatusScoring) {
     ASSERT_TRUE(audit.has_value());
     EXPECT_FALSE(audit.value());
 
-    auto db = MarketPlugin::getShared()->getDatabase();
-    ASSERT_TRUE(db->exec("UPDATE StoreReview SET status='approved' WHERE key='" + reviewKey + "';").has_value());
+    ASSERT_TRUE(SetReviewStatus(reviewKey, "approved"));
     MarketPlugin::getShared()->clearStoreRankCache();
 
     auto approved = MarketPlugin::getShared()->getReviews(storeId, MarketStoreReviewStatus::approved);
@@ -1063,7 +1115,7 @@ TEST_F(MarketPluginTest, StoreReviewStatusScoring) {
     ASSERT_TRUE(pending2.has_value());
     ASSERT_EQ(pending2.value().size(), 1);
 
-    ASSERT_TRUE(db->exec("UPDATE StoreReview SET status='rejected' WHERE key='" + pending2.value().front() + "';").has_value());
+    ASSERT_TRUE(SetReviewStatus(pending2.value().front(), "rejected"));
     MarketPlugin::getShared()->clearStoreRankCache();
 
     auto approvedFinal = MarketPlugin::getShared()->getReviews(storeId, MarketStoreReviewStatus::approved);
@@ -1143,7 +1195,6 @@ TEST_F(MarketPluginTest, StoreRankingCacheHitAndWindow) {
     ASSERT_TRUE(GiveItem(*sp2.getPlayer(), "minecraft:grass_block", 1));
     ASSERT_TRUE(UploadStoreItem(*sp2.getPlayer(), "grass_block", 1));
 
-    auto db = MarketPlugin::getShared()->getDatabase();
     long long nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::system_clock::now().time_since_epoch()
     ).count();
@@ -1153,8 +1204,8 @@ TEST_F(MarketPluginTest, StoreRankingCacheHitAndWindow) {
     std::string past30 = FormatTimeDaysAgo(30);
     std::string past40 = FormatTimeDaysAgo(40);
 
-    ASSERT_TRUE(db->exec("UPDATE Store SET store_created_at='" + past31 + "' WHERE key='" + uuidA + "';").has_value());
-    ASSERT_TRUE(db->exec("UPDATE Store SET store_created_at='" + past30 + "' WHERE key='" + uuidB + "';").has_value());
+    ASSERT_TRUE(SetStoreCreatedAt(uuidA, past31));
+    ASSERT_TRUE(SetStoreCreatedAt(uuidB, past30));
 
     MarketPlugin::getShared()->clearStoreRankCache();
 
@@ -1164,8 +1215,7 @@ TEST_F(MarketPluginTest, StoreRankingCacheHitAndWindow) {
     EXPECT_EQ(rank1.value().front(), uuidA);
 
     std::string saleKey = std::to_string(nowNs + 1);
-    ASSERT_TRUE(db->exec("INSERT INTO StoreSale (key, store_id, item_name, price, buyer_uuid, buyer_name, time) VALUES ('" +
-        saleKey + "', '" + uuidB + "', 'grass_block', '1000', 'buyer', 'buyer', '" + nowTime + "');").has_value());
+    ASSERT_TRUE(InsertStoreSale(saleKey, uuidB, "grass_block", 1000, "buyer", "buyer", nowTime));
 
     auto rank2 = MarketPlugin::getShared()->getStoreRanking();
     ASSERT_TRUE(rank2.has_value());
@@ -1177,16 +1227,14 @@ TEST_F(MarketPluginTest, StoreRankingCacheHitAndWindow) {
     ASSERT_TRUE(rank3.has_value());
     EXPECT_EQ(rank3.value().front(), uuidB);
 
-    ASSERT_TRUE(db->exec("INSERT INTO StoreSale (key, store_id, item_name, price, buyer_uuid, buyer_name, time) VALUES ('" +
-        std::to_string(nowNs + 2) + "', '" + uuidA + "', 'grass_block', '1000000000', 'buyer', 'buyer', '" + past40 + "');").has_value());
+    ASSERT_TRUE(InsertStoreSale(std::to_string(nowNs + 2), uuidA, "grass_block", 1000000000LL, "buyer", "buyer", past40));
     MarketPlugin::getShared()->clearStoreRankCache();
 
     auto rank4 = MarketPlugin::getShared()->getStoreRanking();
     ASSERT_TRUE(rank4.has_value());
     EXPECT_EQ(rank4.value().front(), uuidB);
 
-    ASSERT_TRUE(db->exec("INSERT INTO StoreSale (key, store_id, item_name, price, buyer_uuid, buyer_name, time) VALUES ('" +
-        std::to_string(nowNs + 3) + "', '" + uuidA + "', 'grass_block', '100000', 'buyer', 'buyer', '" + nowTime + "');").has_value());
+    ASSERT_TRUE(InsertStoreSale(std::to_string(nowNs + 3), uuidA, "grass_block", 100000, "buyer", "buyer", nowTime));
     MarketPlugin::getShared()->clearStoreRankCache();
 
     auto rank5 = MarketPlugin::getShared()->getStoreRanking();
@@ -1215,15 +1263,14 @@ TEST_F(MarketPluginTest, StoreRankingTimedRefresh) {
     ASSERT_TRUE(GiveItem(*sp2.getPlayer(), "minecraft:grass_block", 1));
     ASSERT_TRUE(UploadStoreItem(*sp2.getPlayer(), "grass_block", 1));
 
-    auto db = MarketPlugin::getShared()->getDatabase();
     long long nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::system_clock::now().time_since_epoch()
     ).count();
 
     std::string nowTime = SystemUtils::getNowTime();
 
-    ASSERT_TRUE(db->exec("UPDATE Store SET store_created_at='" + FormatTimeDaysAgo(31) + "' WHERE key='" + uuidA + "';").has_value());
-    ASSERT_TRUE(db->exec("UPDATE Store SET store_created_at='" + FormatTimeDaysAgo(30) + "' WHERE key='" + uuidB + "';").has_value());
+    ASSERT_TRUE(SetStoreCreatedAt(uuidA, FormatTimeDaysAgo(31)));
+    ASSERT_TRUE(SetStoreCreatedAt(uuidB, FormatTimeDaysAgo(30)));
 
     MarketPlugin::getShared()->clearStoreRankCache();
 
@@ -1235,8 +1282,7 @@ TEST_F(MarketPluginTest, StoreRankingTimedRefresh) {
     ASSERT_TRUE(rank1.has_value());
     EXPECT_EQ(rank1.value().front(), uuidA);
 
-    ASSERT_TRUE(db->exec("INSERT INTO StoreSale (key, store_id, item_name, price, buyer_uuid, buyer_name, time) VALUES ('" +
-        std::to_string(nowNs + 1) + "', '" + uuidB + "', 'grass_block', '1000', 'buyer', 'buyer', '" + nowTime + "');").has_value());
+    ASSERT_TRUE(InsertStoreSale(std::to_string(nowNs + 1), uuidB, "grass_block", 1000, "buyer", "buyer", nowTime));
 
     auto rank2 = MarketPlugin::getShared()->getStoreRanking();
     ASSERT_TRUE(rank2.has_value());
