@@ -1,3 +1,6 @@
+#include <atomic>
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -11,13 +14,52 @@
 
 #include "LOICollectionA/data/sqlite/block/WriteBatch.h"
 
-ll::Expected<std::unique_ptr<WriteBatch>> WriteBatch::begin(BlockStore& store) {
-    auto conn = store.acquire();
-    if (!conn.has_value())
-        return ll::makeStringError(conn.error().message());
+namespace {
+    constexpr int kAcquireTimeoutMs = 5000;
 
-    auto txn = std::make_unique<StorageTransaction>(std::move(*conn), store.mPool.get());
-    return std::unique_ptr<WriteBatch>(new WriteBatch(store, std::move(txn)));
+    std::string nextSavepoint() {
+        static std::atomic<std::uint64_t> seq{0};
+        return "wb_sp_" + std::to_string(seq.fetch_add(1, std::memory_order_relaxed) + 1);
+    }
+}
+
+ll::Expected<std::unique_ptr<WriteBatch>> WriteBatch::begin(BlockStore& store) {
+    ConnectionPool* pool = store.mPool.get();
+    if (!pool)
+        return ll::makeStringError("write batch requires a connection pool");
+
+    // SQLite allows a single writer per database file, so a second concurrent
+    // transaction on another pooled connection is rejected with SQLITE_BUSY
+    // ("database is locked"). Nest into the transaction this thread already
+    // holds as a savepoint instead of opening another one.
+    if (SQLiteConnection* active = pool->activeTransaction()) {
+        auto txn = std::make_unique<StorageTransaction>(
+            std::shared_ptr<SQLiteConnection>(active, [](SQLiteConnection*) {}),
+            pool,
+            nextSavepoint());
+        return std::unique_ptr<WriteBatch>(new WriteBatch(store, std::move(txn)));
+    }
+
+    // Serialize writers: a competing transaction waits for the lock rather than
+    // failing outright.
+    if (!pool->tryAcquireWrite(kAcquireTimeoutMs))
+        return ll::makeStringError("timed out waiting for the database write lock");
+
+    auto conn = store.acquire();
+    if (!conn.has_value()) {
+        pool->releaseWrite();
+        return ll::makeStringError(conn.error().message());
+    }
+
+    auto held = *conn;
+    try {
+        auto txn = std::make_unique<StorageTransaction>(std::move(*conn), pool);
+        return std::unique_ptr<WriteBatch>(new WriteBatch(store, std::move(txn)));
+    } catch (...) {
+        pool->releaseWrite();
+        store.release(std::move(held));
+        return ll::makeStringError("begin transaction failed");
+    }
 }
 
 WriteBatch::WriteBatch(BlockStore& store, std::unique_ptr<StorageTransaction> txn)

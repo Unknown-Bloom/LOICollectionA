@@ -55,9 +55,15 @@ public:
 
     LOICOLLECTION_A_NDAPI SQLiteConnection* activeTransaction() const noexcept;
 
+    LOICOLLECTION_A_NDAPI bool tryAcquireWrite(int timeout);
+    LOICOLLECTION_A_API void releaseWrite();
+
 private:
     explicit ConnectionPool(std::string path);
 
+    std::mutex mWriteMutex;
+    std::condition_variable mWriteCv;
+    bool mWriteBusy = false;
     std::mutex mMutex;
     std::condition_variable mCond;
     std::string mPath;

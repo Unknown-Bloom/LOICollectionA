@@ -151,3 +151,26 @@ void ConnectionPool::unbindTransaction(SQLiteConnection* conn) {
 SQLiteConnection* ConnectionPool::activeTransaction() const noexcept {
     return sActiveTxnPool == this ? sActiveTxnConn : nullptr;
 }
+
+bool ConnectionPool::tryAcquireWrite(int timeout) {
+    std::unique_lock lock(this->mWriteMutex);
+    if (!this->mWriteBusy) {
+        this->mWriteBusy = true;
+        return true;
+    }
+    if (timeout <= 0)
+        return false;
+    if (!this->mWriteCv.wait_for(
+            lock, std::chrono::milliseconds(timeout), [this] { return !this->mWriteBusy; }))
+        return false;
+    this->mWriteBusy = true;
+    return true;
+}
+
+void ConnectionPool::releaseWrite() {
+    {
+        std::unique_lock lock(this->mWriteMutex);
+        this->mWriteBusy = false;
+    }
+    this->mWriteCv.notify_one();
+}

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
 #include <ll/api/Expected.h>
 
@@ -17,6 +18,9 @@ namespace SQLite {
 class StorageTransaction {
 public:
     LOICOLLECTION_A_API explicit StorageTransaction(std::shared_ptr<SQLiteConnection> conn, observer<ConnectionPool> pool);
+
+    LOICOLLECTION_A_API StorageTransaction(
+        std::shared_ptr<SQLiteConnection> conn, observer<ConnectionPool> pool, std::string savepoint);
 
     StorageTransaction(StorageTransaction const&) = delete;
     StorageTransaction& operator=(StorageTransaction const&) = delete;
@@ -37,4 +41,6 @@ private:
     std::shared_ptr<SQLiteConnection> mConnection;
     std::unique_ptr<SQLite::Transaction> mTransaction;
     observer<ConnectionPool> mPool = nullptr;
+    bool mNested = false;
+    std::string mSavepoint;
 };

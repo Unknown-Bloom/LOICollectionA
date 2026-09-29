@@ -35,12 +35,22 @@ StorageTransaction::StorageTransaction(std::shared_ptr<SQLiteConnection> conn, o
         this->mPool->bindTransaction(this->mConnection.get());
 }
 
+StorageTransaction::StorageTransaction(
+    std::shared_ptr<SQLiteConnection> conn, observer<ConnectionPool> pool, std::string savepoint)
+    : mConnection(std::move(conn)), mPool(pool), mNested(true), mSavepoint(std::move(savepoint)) {
+    this->mConnection->database().exec("SAVEPOINT " + this->mSavepoint);
+}
+
 StorageTransaction::StorageTransaction(StorageTransaction&& other) noexcept
     : mConnection(std::move(other.mConnection)),
       mTransaction(std::move(other.mTransaction)),
-      mPool(other.mPool) {
+      mPool(other.mPool),
+      mNested(other.mNested),
+      mSavepoint(std::move(other.mSavepoint)) {
     other.mConnection.reset();
     other.mPool = nullptr;
+    other.mNested = false;
+    other.mSavepoint.clear();
 }
 
 StorageTransaction::~StorageTransaction() {
@@ -49,10 +59,17 @@ StorageTransaction::~StorageTransaction() {
 }
 
 void StorageTransaction::finish() {
+    if (this->mNested) {
+        // The enclosing transaction owns the connection and the write lock.
+        this->mConnection.reset();
+        this->mPool = nullptr;
+        return;
+    }
     if (auto conn = std::move(this->mConnection)) {
         if (this->mPool) {
             this->mPool->unbindTransaction(conn.get());
             this->mPool->release(std::move(conn));
+            this->mPool->releaseWrite();
         }
         this->mConnection.reset();
         this->mPool = nullptr;
@@ -60,8 +77,41 @@ void StorageTransaction::finish() {
 }
 
 ll::Expected<bool> StorageTransaction::commit() {
-    if (!this->mTransaction)
+    if (this->mNested) {
+        if (!this->mConnection)
+            return false;
+        if (this->mPool && this->mPool->activeTransaction() != this->mConnection.get()) {
+            // The enclosing transaction already ended and released this savepoint.
+            this->mSavepoint.clear();
+            this->finish();
+            return true;
+        }
+        if (!this->mSavepoint.empty()) {
+            auto& db = this->mConnection->database();
+            try {
+                db.exec("RELEASE SAVEPOINT " + this->mSavepoint);
+            } catch (SQLite::Exception const& e) {
+                this->mSavepoint.clear();
+                this->finish();
+                return ll::makeStringError(
+                    "savepoint release failed: " + std::string(e.what()) + " (code "
+                    + std::to_string(e.getErrorCode()) + ")");
+            } catch (...) {
+                this->mSavepoint.clear();
+                this->finish();
+                return ll::makeStringError(transactionFailedMessage("savepoint release failed"));
+            }
+            this->mSavepoint.clear();
+        }
+        this->finish();
+        return true;
+    }
+
+    if (!this->mTransaction) {
+        if (this->mConnection)
+            this->finish();
         return false;
+    }
 
     try {
         this->mTransaction->commit();
@@ -82,8 +132,42 @@ ll::Expected<bool> StorageTransaction::commit() {
 }
 
 ll::Expected<bool> StorageTransaction::rollback() {
-    if (!this->mTransaction)
+    if (this->mNested) {
+        if (!this->mConnection)
+            return false;
+        if (this->mPool && this->mPool->activeTransaction() != this->mConnection.get()) {
+            // The enclosing transaction already ended; there is nothing left to undo.
+            this->mSavepoint.clear();
+            this->finish();
+            return true;
+        }
+        if (!this->mSavepoint.empty()) {
+            auto& db = this->mConnection->database();
+            try {
+                db.exec("ROLLBACK TO SAVEPOINT " + this->mSavepoint);
+                db.exec("RELEASE SAVEPOINT " + this->mSavepoint);
+            } catch (SQLite::Exception const& e) {
+                this->mSavepoint.clear();
+                this->finish();
+                return ll::makeStringError(
+                    "savepoint rollback failed: " + std::string(e.what()) + " (code "
+                    + std::to_string(e.getErrorCode()) + ")");
+            } catch (...) {
+                this->mSavepoint.clear();
+                this->finish();
+                return ll::makeStringError(transactionFailedMessage("savepoint rollback failed"));
+            }
+            this->mSavepoint.clear();
+        }
+        this->finish();
+        return true;
+    }
+
+    if (!this->mTransaction) {
+        if (this->mConnection)
+            this->finish();
         return false;
+    }
 
     try {
         this->mTransaction->rollback();
