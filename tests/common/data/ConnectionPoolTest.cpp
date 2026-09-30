@@ -8,7 +8,7 @@
 
 namespace {
 
-    std::filesystem::path tempDb(std::string_view tag) {
+    std::filesystem::path tempConnectionPoolTestDb(std::string_view tag) {
         auto base = std::filesystem::temp_directory_path()
                     / ("loicollectiona-pool-" + std::string(tag) + ".db");
         std::filesystem::remove(base);
@@ -17,7 +17,7 @@ namespace {
         return base;
     }
 
-    void dropDb(std::filesystem::path const& base) {
+    void dropConnectionPoolTestDb(std::filesystem::path const& base) {
         std::filesystem::remove(base);
         std::filesystem::remove(std::filesystem::path(base.string() + "-wal"));
         std::filesystem::remove(std::filesystem::path(base.string() + "-shm"));
@@ -30,8 +30,8 @@ namespace {
 // binding a transaction on B must not clobber A's binding, and ending B's
 // transaction must restore A's instead of clearing it forever.
 TEST(ConnectionPoolTest, ActiveTransactionIsPerPoolStack) {
-    auto pathA = tempDb("A");
-    auto pathB = tempDb("B");
+    auto pathA = tempConnectionPoolTestDb("A");
+    auto pathB = tempConnectionPoolTestDb("B");
     auto poolA = ConnectionPool::create(pathA.string(), 1);
     auto poolB = ConnectionPool::create(pathB.string(), 1);
     ASSERT_TRUE(poolA.has_value());
@@ -62,13 +62,13 @@ TEST(ConnectionPoolTest, ActiveTransactionIsPerPoolStack) {
     (*poolA)->unbindTransaction(connA->get());
     EXPECT_EQ((*poolA)->activeTransaction(), nullptr);
 
-    dropDb(pathA);
-    dropDb(pathB);
+    dropConnectionPoolTestDb(pathA);
+    dropConnectionPoolTestDb(pathB);
 }
 
 // Re-binding and unbinding the same pool must round-trip cleanly.
 TEST(ConnectionPoolTest, SamePoolRebindRoundTrips) {
-    auto path = tempDb("rebind");
+    auto path = tempConnectionPoolTestDb("rebind");
     auto pool = ConnectionPool::create(path.string(), 1);
     ASSERT_TRUE(pool.has_value());
     auto conn = (*pool)->acquire(5000);
@@ -79,13 +79,13 @@ TEST(ConnectionPoolTest, SamePoolRebindRoundTrips) {
     (*pool)->unbindTransaction(conn->get());
     EXPECT_EQ((*pool)->activeTransaction(), nullptr);
 
-    dropDb(path);
+    dropConnectionPoolTestDb(path);
 }
 
 // §2 (I2): the pool-level write lock is mutually exclusive. A second acquire
 // while held must be denied immediately rather than succeeding.
 TEST(ConnectionPoolTest, WriteLockIsMutuallyExclusive) {
-    auto path = tempDb("writelock");
+    auto path = tempConnectionPoolTestDb("writelock");
     auto pool = ConnectionPool::create(path.string(), 1);
     ASSERT_TRUE(pool.has_value());
 
@@ -95,5 +95,5 @@ TEST(ConnectionPoolTest, WriteLockIsMutuallyExclusive) {
     EXPECT_TRUE((*pool)->tryAcquireWrite(0));
     (*pool)->releaseWrite();
 
-    dropDb(path);
+    dropConnectionPoolTestDb(path);
 }

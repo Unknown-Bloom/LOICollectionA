@@ -12,7 +12,7 @@
 
 namespace {
 
-    std::filesystem::path tempDb(std::string_view tag) {
+    std::filesystem::path tempWriteBatchTestDb(std::string_view tag) {
         auto base = std::filesystem::temp_directory_path()
                     / ("loicollectiona-batch-" + std::string(tag) + ".db");
         std::filesystem::remove(base);
@@ -21,7 +21,7 @@ namespace {
         return base;
     }
 
-    void dropDb(std::filesystem::path const& base) {
+    void dropWriteBatchTestDb(std::filesystem::path const& base) {
         std::filesystem::remove(base);
         std::filesystem::remove(std::filesystem::path(base.string() + "-wal"));
         std::filesystem::remove(std::filesystem::path(base.string() + "-shm"));
@@ -33,7 +33,7 @@ namespace {
 // outer write survives and the inner write is gone from both the database and
 // the process cache.
 TEST(WriteBatchTest, NestedRollbackKeepsOuterWrite) {
-    auto path = tempDb("nested");
+    auto path = tempWriteBatchTestDb("nested");
     auto repo = BlockRepository::open(path.string(), 4);
     ASSERT_TRUE(repo.has_value()) << (repo.has_value() ? "" : repo.error().message());
     auto& store = (*repo)->store();
@@ -54,14 +54,14 @@ TEST(WriteBatchTest, NestedRollbackKeepsOuterWrite) {
     EXPECT_TRUE(store.load(0, "outer-row").has_value());
     EXPECT_FALSE(store.load(0, "inner-row").has_value());
 
-    dropDb(path);
+    dropWriteBatchTestDb(path);
 }
 
 // A row read inside its own transaction must not survive a rollback as a cached
 // phantom (I3: uncommitted data must not escape the transaction into the
 // process cache).
 TEST(WriteBatchTest, UncommittedReadIsNotCachedAfterRollback) {
-    auto path = tempDb("phantom");
+    auto path = tempWriteBatchTestDb("phantom");
     auto repo = BlockRepository::open(path.string(), 4);
     ASSERT_TRUE(repo.has_value()) << (repo.has_value() ? "" : repo.error().message());
     auto& store = (*repo)->store();
@@ -84,15 +84,15 @@ TEST(WriteBatchTest, UncommittedReadIsNotCachedAfterRollback) {
     ASSERT_TRUE((*outer)->rollback().has_value());
     EXPECT_FALSE(store.load(0, "keep").has_value());
 
-    dropDb(path);
+    dropWriteBatchTestDb(path);
 }
 
 // §3: two pools on the same thread with overlapping transactions. Opening a
 // transaction on the second pool must not break the first pool's connection
 // affinity, and ending the second must restore the first instead of clearing it.
 TEST(WriteBatchTest, TwoPoolOverlappingTransactions) {
-    auto pathA = tempDb("two-a");
-    auto pathB = tempDb("two-b");
+    auto pathA = tempWriteBatchTestDb("two-a");
+    auto pathB = tempWriteBatchTestDb("two-b");
     auto repoA = BlockRepository::open(pathA.string(), 4);
     auto repoB = BlockRepository::open(pathB.string(), 4);
     ASSERT_TRUE(repoA.has_value()) << (repoA.has_value() ? "" : repoA.error().message());
@@ -116,15 +116,15 @@ TEST(WriteBatchTest, TwoPoolOverlappingTransactions) {
 
     ASSERT_TRUE((*a)->commit().has_value());
 
-    dropDb(pathA);
-    dropDb(pathB);
+    dropWriteBatchTestDb(pathA);
+    dropWriteBatchTestDb(pathB);
 }
 
 // Many threads opening write transactions on the same file must serialize
 // through the pool write lock and never fail with SQLITE_BUSY, and must not
 // deadlock. (§2, I2.)
 TEST(WriteBatchTest, ConcurrentWritesDoNotDeadlockOrBusy) {
-    auto path = tempDb("concurrent");
+    auto path = tempWriteBatchTestDb("concurrent");
     auto repo = BlockRepository::open(path.string(), 4);
     ASSERT_TRUE(repo.has_value()) << (repo.has_value() ? "" : repo.error().message());
     auto& store = (*repo)->store();
@@ -157,14 +157,14 @@ TEST(WriteBatchTest, ConcurrentWritesDoNotDeadlockOrBusy) {
         t.join();
     EXPECT_EQ(failures.load(), 0);
 
-    dropDb(path);
+    dropWriteBatchTestDb(path);
 }
 
 // cbfc8f1c2: each set must write to its own column. Writing distinct properties
 // to the same block must not collide through the prepared-statement cache and
 // leave the wrong value in either column.
 TEST(WriteBatchTest, PropsWriteDistinctColumns) {
-    auto path = tempDb("props");
+    auto path = tempWriteBatchTestDb("props");
     BlockId id = 0;
     {
         auto repo = BlockRepository::open(path.string(), 2);
@@ -198,5 +198,5 @@ TEST(WriteBatchTest, PropsWriteDistinctColumns) {
         EXPECT_EQ(*first, "alpha");
         EXPECT_EQ(*second, "beta");
     }
-    dropDb(path);
+    dropWriteBatchTestDb(path);
 }

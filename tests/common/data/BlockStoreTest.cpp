@@ -37,7 +37,7 @@ namespace {
     using Key = Table::Key;
     using FindMode = LOICollection::data::FindMode;
 
-    std::filesystem::path tempDb(std::string_view tag) {
+    std::filesystem::path tempBlockStoreTestDb(std::string_view tag) {
         auto base = std::filesystem::temp_directory_path() / ("loicollectiona-" + std::string(tag) + ".db");
         std::filesystem::remove(base);
         std::filesystem::remove(std::filesystem::path(base.string() + "-wal"));
@@ -45,7 +45,7 @@ namespace {
         return base;
     }
 
-    void dropDb(std::filesystem::path const& base) {
+    void dropBlockStoreTestDb(std::filesystem::path const& base) {
         std::filesystem::remove(base);
         std::filesystem::remove(std::filesystem::path(base.string() + "-wal"));
         std::filesystem::remove(std::filesystem::path(base.string() + "-shm"));
@@ -74,7 +74,7 @@ namespace {
 }
 
 TEST(BlockStoreTest, SchemaCreatesCoveringPropIndexes) {
-    auto path = tempDb("covering");
+    auto path = tempBlockStoreTestDb("covering");
     {
         auto repo = BlockRepository::open(path.string(), 2);
         ASSERT_TRUE(repo.has_value()) << (repo.has_value() ? "" : repo.error().message());
@@ -82,11 +82,11 @@ TEST(BlockStoreTest, SchemaCreatesCoveringPropIndexes) {
     EXPECT_EQ(indexColumns(path, "idx_prop_key_ival"), kIntCovering);
     EXPECT_EQ(indexColumns(path, "idx_prop_key_tval"), kTextCovering);
     EXPECT_EQ(indexColumns(path, "idx_block_parent_kind"), (std::vector<std::string>{"parent", "kind"}));
-    dropDb(path);
+    dropBlockStoreTestDb(path);
 }
 
 TEST(BlockStoreTest, SchemaUpgradesLegacyPropIndexes) {
-    auto path = tempDb("legacy-indexes");
+    auto path = tempBlockStoreTestDb("legacy-indexes");
     {
         SQLite::Database db(path.string(), SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
         db.exec(
@@ -110,11 +110,11 @@ TEST(BlockStoreTest, SchemaUpgradesLegacyPropIndexes) {
 
     EXPECT_EQ(indexColumns(path, "idx_prop_key_ival"), kIntCovering);
     EXPECT_EQ(indexColumns(path, "idx_prop_key_tval"), kTextCovering);
-    dropDb(path);
+    dropBlockStoreTestDb(path);
 }
 
 TEST(BlockStoreTest, SchemaUpgradeIsIdempotent) {
-    auto path = tempDb("idempotent");
+    auto path = tempBlockStoreTestDb("idempotent");
     {
         auto repo = BlockRepository::open(path.string(), 2);
         ASSERT_TRUE(repo.has_value());
@@ -129,11 +129,11 @@ TEST(BlockStoreTest, SchemaUpgradeIsIdempotent) {
     EXPECT_NE(first, -1);
     EXPECT_EQ(first, second) << "index was rebuilt on every open";
     EXPECT_EQ(indexColumns(path, "idx_prop_key_tval"), kTextCovering);
-    dropDb(path);
+    dropBlockStoreTestDb(path);
 }
 
 TEST(BlockStoreTest, ChildrenKindFilterMatchesPostFilter) {
-    auto path = tempDb("children-kind");
+    auto path = tempBlockStoreTestDb("children-kind");
     {
         auto repo = BlockRepository::open(path.string(), 2);
         ASSERT_TRUE(repo.has_value());
@@ -160,11 +160,11 @@ TEST(BlockStoreTest, ChildrenKindFilterMatchesPostFilter) {
             EXPECT_EQ(filtered.value().size(), expected) << "kind=" << kind;
         }
     }
-    dropDb(path);
+    dropBlockStoreTestDb(path);
 }
 
 TEST(BlockStoreTest, QueryTextNamesAllMatchesManualIntersection) {
-    auto path = tempDb("multi-condition");
+    auto path = tempBlockStoreTestDb("multi-condition");
     {
         auto repo = BlockRepository::open(path.string(), 2);
         ASSERT_TRUE(repo.has_value());
@@ -198,11 +198,11 @@ TEST(BlockStoreTest, QueryTextNamesAllMatchesManualIntersection) {
         EXPECT_EQ(pushed.value(), expected);
         EXPECT_FALSE(expected.empty());
     }
-    dropDb(path);
+    dropBlockStoreTestDb(path);
 }
 
 TEST(BlockStoreTest, FindAndMatchesManualIntersection) {
-    auto path = tempDb("find-and");
+    auto path = tempBlockStoreTestDb("find-and");
     {
         auto repo = BlockRepository::open(path.string(), 2);
         ASSERT_TRUE(repo.has_value());
@@ -238,7 +238,7 @@ TEST(BlockStoreTest, FindAndMatchesManualIntersection) {
         EXPECT_EQ(actual, expected);
         EXPECT_FALSE(expected.empty());
     }
-    dropDb(path);
+    dropBlockStoreTestDb(path);
 }
 
 namespace {
@@ -300,7 +300,7 @@ namespace {
 }
 
 TEST(BlockStoreTest, ReadPathsAgreeOnBlockColumnOrder) {
-    auto path = tempDb("column-order");
+    auto path = tempBlockStoreTestDb("column-order");
     BlockId rootId = 0;
     BlockId probeId = seedProbe(path, rootId);
     ASSERT_NE(probeId, 0);
@@ -385,11 +385,11 @@ TEST(BlockStoreTest, ReadPathsAgreeOnBlockColumnOrder) {
         EXPECT_EQ(state.value(), BlockLifecycle::Active) << "stateOf / getState";
     }
 
-    dropDb(path);
+    dropBlockStoreTestDb(path);
 }
 
 TEST(BlockStoreTest, IndexedColumnSurvivesUpdateOfUnindexedColumn) {
-    auto path = tempDb("mirror-survives");
+    auto path = tempBlockStoreTestDb("mirror-survives");
     {
         auto repo = BlockRepository::open(path.string(), 2);
         ASSERT_TRUE(repo.has_value());
@@ -416,5 +416,5 @@ TEST(BlockStoreTest, IndexedColumnSurvivesUpdateOfUnindexedColumn) {
         EXPECT_EQ(after.value().size(), before.value().size())
             << "updating an unindexed column must not clear the indexed column mirror";
     }
-    dropDb(path);
+    dropBlockStoreTestDb(path);
 }

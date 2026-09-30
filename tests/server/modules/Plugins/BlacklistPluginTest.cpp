@@ -37,7 +37,7 @@ protected:
         EXPECT_TRUE(result.has_value()) << "Unable to clear data";
     }
 
-    bool CreateBlacklistEntry() {
+    bool CreateBlacklistEntryForBlacklistPlugin() {
         TestSimulatedPlayer sp("test_player1");
         if (!sp.create())
             return false;
@@ -61,11 +61,11 @@ protected:
 };
 
 TEST_F(BlacklistPluginTest, AddPlayerToBlacklist) {
-    EXPECT_TRUE(CreateBlacklistEntry());
+    EXPECT_TRUE(CreateBlacklistEntryForBlacklistPlugin());
 }
 
 TEST_F(BlacklistPluginTest, GetBlacklistData) {
-    EXPECT_TRUE(CreateBlacklistEntry());
+    EXPECT_TRUE(CreateBlacklistEntryForBlacklistPlugin());
 
     auto data = BlacklistPlugin::getShared()->getBlacklistData(this->mBlacklistId);
     EXPECT_TRUE(data.has_value());
@@ -76,7 +76,7 @@ TEST_F(BlacklistPluginTest, GetBlacklistData) {
 }
 
 TEST_F(BlacklistPluginTest, GetBlacklists) {
-    EXPECT_TRUE(CreateBlacklistEntry());
+    EXPECT_TRUE(CreateBlacklistEntryForBlacklistPlugin());
 
     auto blacklists = BlacklistPlugin::getShared()->getBlacklists();
     EXPECT_TRUE(blacklists.has_value());
@@ -86,7 +86,7 @@ TEST_F(BlacklistPluginTest, GetBlacklists) {
 }
 
 TEST_F(BlacklistPluginTest, DeleteBlacklist) {
-    EXPECT_TRUE(CreateBlacklistEntry());
+    EXPECT_TRUE(CreateBlacklistEntryForBlacklistPlugin());
 
     EXPECT_TRUE(BlacklistPlugin::getShared()->delBlacklist(this->mBlacklistId).has_value());
 

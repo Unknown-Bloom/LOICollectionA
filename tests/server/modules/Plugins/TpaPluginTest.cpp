@@ -51,7 +51,7 @@ protected:
         EXPECT_TRUE(r2.has_value()) << "Unable to clear data";
     }
 
-    bool CreateBlacklistEntry() {
+    bool CreateBlacklistEntryForTpaPlugin() {
         auto sp2 = ll::service::getLevel()->getPlayer("test_player");
 
         TestSimulatedPlayer sp("test_player2");
@@ -92,11 +92,11 @@ TEST_F(TpaPluginTest, InviteSetting) {
 }
 
 TEST_F(TpaPluginTest, AddPlayerToBlacklist) {
-    EXPECT_TRUE(CreateBlacklistEntry());
+    EXPECT_TRUE(CreateBlacklistEntryForTpaPlugin());
 }
 
 TEST_F(TpaPluginTest, DeletePlayerFromBlacklist) {
-    EXPECT_TRUE(CreateBlacklistEntry());
+    EXPECT_TRUE(CreateBlacklistEntryForTpaPlugin());
 
     auto sp = ll::service::getLevel()->getPlayer("test_player");
     EXPECT_TRUE(sp);
@@ -109,7 +109,7 @@ TEST_F(TpaPluginTest, DeletePlayerFromBlacklist) {
 }
 
 TEST_F(TpaPluginTest, GetBlacklist) {
-    EXPECT_TRUE(CreateBlacklistEntry());
+    EXPECT_TRUE(CreateBlacklistEntryForTpaPlugin());
 
     auto sp = ll::service::getLevel()->getPlayer("test_player");
     EXPECT_TRUE(sp);
@@ -120,7 +120,7 @@ TEST_F(TpaPluginTest, GetBlacklist) {
 }
 
 TEST_F(TpaPluginTest, GetBlacklistFromTarget) {
-    EXPECT_TRUE(CreateBlacklistEntry());
+    EXPECT_TRUE(CreateBlacklistEntryForTpaPlugin());
 
     auto blacklists = TpaPlugin::getShared()->getBlacklistFromTarget({ this->mBlacklistId });
     EXPECT_TRUE(blacklists.has_value());
@@ -128,7 +128,7 @@ TEST_F(TpaPluginTest, GetBlacklistFromTarget) {
 }
 
 TEST_F(TpaPluginTest, GetBlacklistData) {
-    EXPECT_TRUE(CreateBlacklistEntry());
+    EXPECT_TRUE(CreateBlacklistEntryForTpaPlugin());
 
     auto sp = ll::service::getLevel()->getPlayer("test_player");
     EXPECT_TRUE(sp);

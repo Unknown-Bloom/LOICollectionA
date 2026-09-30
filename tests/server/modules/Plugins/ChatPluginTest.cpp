@@ -47,7 +47,7 @@ protected:
         EXPECT_TRUE(r3.has_value()) << "Unable to clear data";
     }
 
-    bool CreateBlacklistEntry() {
+    bool CreateBlacklistEntryForChatPlugin() {
         auto sp2 = ll::service::getLevel()->getPlayer("test_player");
 
         TestSimulatedPlayer sp("test_player2");
@@ -86,11 +86,11 @@ protected:
 };
 
 TEST_F(ChatPluginTest, AddPlayerToBlacklist) {
-    EXPECT_TRUE(CreateBlacklistEntry());
+    EXPECT_TRUE(CreateBlacklistEntryForChatPlugin());
 }
 
 TEST_F(ChatPluginTest, DeletePlayerFromBlacklist) {
-    EXPECT_TRUE(CreateBlacklistEntry());
+    EXPECT_TRUE(CreateBlacklistEntryForChatPlugin());
 
     auto sp = ll::service::getLevel()->getPlayer("test_player");
     EXPECT_TRUE(sp);
@@ -103,7 +103,7 @@ TEST_F(ChatPluginTest, DeletePlayerFromBlacklist) {
 }
 
 TEST_F(ChatPluginTest, GetBlacklist) {
-    EXPECT_TRUE(CreateBlacklistEntry());
+    EXPECT_TRUE(CreateBlacklistEntryForChatPlugin());
 
     auto sp = ll::service::getLevel()->getPlayer("test_player");
     EXPECT_TRUE(sp);
@@ -114,7 +114,7 @@ TEST_F(ChatPluginTest, GetBlacklist) {
 }
 
 TEST_F(ChatPluginTest, GetBlacklistData) {
-    EXPECT_TRUE(CreateBlacklistEntry());
+    EXPECT_TRUE(CreateBlacklistEntryForChatPlugin());
 
     auto sp = ll::service::getLevel()->getPlayer("test_player");
     EXPECT_TRUE(sp);

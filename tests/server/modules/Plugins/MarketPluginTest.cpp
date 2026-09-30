@@ -160,7 +160,7 @@ protected:
         return result.has_value() && result.value();
     }
 
-    bool CreateBlacklistEntry() {
+    bool CreateBlacklistEntryForMarketPlugin() {
         auto sp2 = ll::service::getLevel()->getPlayer("test_player");
 
         TestSimulatedPlayer sp("test_player6");
@@ -268,11 +268,11 @@ protected:
 };
 
 TEST_F(MarketPluginTest, CreateBlacklistEntry) {
-    EXPECT_TRUE(CreateBlacklistEntry());
+    EXPECT_TRUE(CreateBlacklistEntryForMarketPlugin());
 }
 
 TEST_F(MarketPluginTest, DeletePlayerFromBlacklist) {
-    EXPECT_TRUE(CreateBlacklistEntry());
+    EXPECT_TRUE(CreateBlacklistEntryForMarketPlugin());
 
     auto sp = ll::service::getLevel()->getPlayer("test_player");
     EXPECT_TRUE(sp);
@@ -299,7 +299,7 @@ TEST_F(MarketPluginTest, GetBlacklist) {
 }
 
 TEST_F(MarketPluginTest, GetBlacklistData) {
-    EXPECT_TRUE(CreateBlacklistEntry());
+    EXPECT_TRUE(CreateBlacklistEntryForMarketPlugin());
 
     auto sp = ll::service::getLevel()->getPlayer("test_player");
     EXPECT_TRUE(sp);
