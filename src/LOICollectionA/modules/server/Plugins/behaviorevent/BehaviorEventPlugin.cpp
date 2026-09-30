@@ -985,10 +985,8 @@ namespace LOICollection::server::Plugins {
 
         // A caller-supplied filter decides which values are accepted, so the
         // condition values are placeholders and must not narrow the query.
-        auto ids = filter ? this->getBehaviorEventLog()->all(maxRows)
-                          : select(*this->getBehaviorEventLog(), conditions, maxRows);
-
-        return ids
+        return (filter ? this->getBehaviorEventLog()->all(maxRows)
+                       : select(*this->getBehaviorEventLog(), conditions, maxRows))
             .and_then([this](const std::vector<BlockId>& ids) -> ll::Expected<BehaviorEventLog::Rows> {
                 return this->getBehaviorEventLog()->read(ids);
             })
