@@ -36,7 +36,7 @@
 > 1.15.0 不再提供自动迁移脚本。Menu 与 Shop 的界面数据需要手动迁移。
 
 1. 升级前请先备份 `plugins/LOICollectionA/config` 目录下的 `config.json`、`menu.json` 与 `shop.json`。
-2. 完成升级后，Menu 与 Shop 不再读取 `menu.json` / `shop.json`，请参考 [数据文件](../md/data.md) 中的示例，手动将旧数据改写为 `menu.lcui` 与 `shop.lcui`，并放置在 `plugins/LOICollectionA/config` 目录下。
+2. 完成升级后，Menu 与 Shop 不再读取 `menu.json` / `shop.json`，请参考 [数据文件](../md/data.md) 中的示例，手动将旧数据改写为 `menu.lcui` 与 `shop.lcui`，并放置在 `plugins/LOICollectionA/config` 目录下。示例已按当前语法使用 `let` 声明变量；如果您在早期版本按旧示例写过脚本，请在升级到 1.17.0 之前补上 `let`，见 [下文](#对于-1160-版本升至-1170-版本)。
 3. 如自定义过 `GuiPath`，请确认 `config.json` 中的 `ServerConfig.Plugins.Menu.GuiPath` 与 `ServerConfig.Plugins.Shop.GuiPath` 指向新创建的 lcui 文件（默认分别为 `menu.lcui` 与 `shop.lcui`）。
 4. 其余模块的数据文件（如 `notice.json`、`cdk.json`）与数据库文件不受影响；其余模块的界面已改由插件内置的 `gui` 目录加载，无需迁移。
 
@@ -75,6 +75,19 @@
 2. 升级后首次启动时，插件会在每个 `.db` 文件中创建块模型的系统表（`dict` / `block` / `prop` / `link` / `meta`），随后从空数据开始运行。
 3. 旧数据并未被删除，只是保留在各自数据库文件的旧表里（例如 `Wallet`、`Blacklist`、`Market` 这类以业务名命名的表）。需要保留这些内容时，请用 SQLite 工具从旧表导出，再通过游戏内界面或命令重新录入。
 4. `notice.json`、`cdk.json`、`config.json` 仍是 JSON 文件，不受本次改动影响，无需迁移。
+5. 自行编写的脚本（`config/menu.lcui`、`config/shop.lcui`，以及您在 `gui` 目录下改过的脚本）如果是从早期示例复制而来的，通常是无关键字的裸赋值写法。脚本语言要求所有变量绑定都用 `let` 显式声明，裸赋值不再隐式创建变量，否则加载脚本时会报 `Variable 'xxx' is not declared; write 'let xxx = ...' to introduce it`，该脚本不会被启用（启动日志里是 `ERROR [LOICollectionA]` 级别）。请给每个变量的**首次**赋值补上 `let`：
+
+    ```lcui
+    // 升级前
+    button1 = new MenuItemData();
+    form = new MenuForm("main", "Menu Example");
+
+    // 升级后
+    let button1 = new MenuItemData();
+    let form = new MenuForm("main", "Menu Example");
+    ```
+
+    只有首次绑定需要 `let`：之后的重新赋值（`button1.permission = 0;`）、成员写入（`form.button(...)`）与数组下标写入都保持原样；带类型标注的声明写成 `let x: int = 0;`，且必须带初始值。修改脚本后无需手工清理 `.lcp` 缓存，插件会按源文件内容自动失效并重新编译。同类报错的排查步骤见 [错误处理](../md/errors.md) 第 59、60 条。
 
 > [!TIP]
 > 如果不需要历史数据，可以直接删除 `plugins/LOICollectionA/data` 下的 `.db` 文件让插件重建空库——但请先确认已备份。

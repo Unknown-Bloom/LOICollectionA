@@ -361,15 +361,18 @@ Since 1.17.0 module data is stored through exactly two carriers:
 
 > Starting from LOICollectionA 1.15.0, Menu no longer reads `menu.json`. Please create `menu.lcui` yourself in the `plugins/LOICollectionA/config` directory, directly define `MenuData` in the file, and open it using `MenuForm`. The form ID corresponds to the Id passed in `/menu gui <Id>`.
 
+> [!IMPORTANT]
+> Every script variable must be declared with `let` (`const` only declares associated constants inside `impl` / `trait` bodies); a bare assignment no longer creates a variable. Keep the `let` when copying the examples below, otherwise loading the script reports `Variable 'x' is not declared` and the script is not enabled. See [lcui syntax](./lcui.md) and [Data Migration](../course/migrate.md).
+
 ```lcui
-button1 = new MenuItemData();
+let button1 = new MenuItemData();
 button1.type = "button";
 button1.title = "Button 1";
 button1.id = "Button1";
 button1.run = [ "say Button1" ];
 button1.permission = 0;
 
-form = new MenuForm("main", "Menu Example");
+let form = new MenuForm("main", "Menu Example");
 form.label("This is a menu example", new TextOptions());
 form.button("Button 1", button1, func () -> void {
 }, new ButtonOptions());
@@ -384,19 +387,19 @@ form.show(func (result) -> void {
     ]
 });
 
-confirmAction = new MenuItemData();
+let confirmAction = new MenuItemData();
 confirmAction.type = "button";
 confirmAction.title = "Confirm";
 confirmAction.run = [ "say Confirm" ];
 confirmAction.permission = 0;
 
-cancelAction = new MenuItemData();
+let cancelAction = new MenuItemData();
 cancelAction.type = "button";
 cancelAction.title = "Cancel";
 cancelAction.run = [ "say Cancel" ];
 cancelAction.permission = 0;
 
-box = new MenuMessageBox("Menu1", "Menu 1");
+let box = new MenuMessageBox("Menu1", "Menu 1");
 box.body("This is a menu 1");
 box.button1("Confirm", confirmAction);
 box.button2("Cancel", cancelAction);
@@ -410,7 +413,7 @@ box.show(func (result) -> void {
 > Starting from LOICollectionA 1.15.0, Shop no longer reads `shop.json`. Please create `shop.lcui` yourself in the `plugins/LOICollectionA/config` directory, directly define `ShopData` in the file, and open it using `ShopForm`. The form ID corresponds to the Id passed in `/shop gui <Id>`.
 
 ```lcui
-mainBuy = new ShopData();
+let mainBuy = new ShopData();
 mainBuy.id = "MainBuy";
 mainBuy.type = "buy";
 mainBuy.title = "Buy Shop Example";
@@ -418,20 +421,20 @@ mainBuy.content = "This is a shop example";
 mainBuy.exitCommand = "say Exit Shop";
 mainBuy.scoreCommand = "say No score";
 
-apple = new ShopItemData();
+let apple = new ShopItemData();
 apple.type = "commodity";
 apple.title = "Apple";
 apple.introduce = "A red apple";
 apple.number = "Buy number";
 apple.id = "minecraft:apple";
-appleScore = new ScoreRequirement();
+let appleScore = new ScoreRequirement();
 appleScore.objective = "money";
 appleScore.value = 100;
 apple.scores = [ appleScore ];
 
 mainBuy.items = [ apple ];
 
-form = new ShopForm("MainBuy", mainBuy);
+let form = new ShopForm("MainBuy", mainBuy);
 form.show(func (result) -> void {
     if (result.closeReason == 1) [
         if (result.resultCode == 1) [

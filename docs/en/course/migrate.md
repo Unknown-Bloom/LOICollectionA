@@ -36,7 +36,7 @@ Here, `data migration` refers to migrating the specified lower-version data in `
 > 1.15.0 no longer provides automatic migration scripts. The interface data of Menu and Shop needs to be migrated manually.
 
 1. Before upgrading, please back up `config.json`, `menu.json`, and `shop.json` in the `plugins/LOICollectionA/config` directory.
-2. After the upgrade, Menu and Shop no longer read `menu.json` / `shop.json`. Please refer to the examples in [Data Files](../md/data.md) to manually rewrite the old data as `menu.lcui` and `shop.lcui`, and place them in the `plugins/LOICollectionA/config` directory.
+2. After the upgrade, Menu and Shop no longer read `menu.json` / `shop.json`. Please refer to the examples in [Data Files](../md/data.md) to manually rewrite the old data as `menu.lcui` and `shop.lcui`, and place them in the `plugins/LOICollectionA/config` directory. The examples already declare their variables with `let`; if you wrote the scripts from older examples, add `let` before upgrading to 1.17.0 — see [below](#for-upgrading-from-version-1160-to-version-1170).
 3. If you have customized `GuiPath`, please confirm that `ServerConfig.Plugins.Menu.GuiPath` and `ServerConfig.Plugins.Shop.GuiPath` in `config.json` point to the newly created lcui files (defaulting to `menu.lcui` and `shop.lcui` respectively).
 4. The data files of other modules (such as `notice.json` and `cdk.json`) and database files are not affected; the interfaces of other modules are now loaded from the plugin's built-in `gui` directory and do not need migration.
 
@@ -75,6 +75,19 @@ Here, `data migration` refers to migrating the specified lower-version data in `
 2. On the first start after upgrading, the plugin creates the block-model system tables (`dict` / `block` / `prop` / `link` / `meta`) in every `.db` file and then runs on empty data.
 3. Your old data is not deleted — it stays in the legacy tables of each database file (tables named after the feature, such as `Wallet`, `Blacklist`, `Market`). To keep it, export those tables with a SQLite tool and re-enter the data through the in-game UI or commands.
 4. `notice.json`, `cdk.json` and `config.json` remain plain JSON files and are unaffected — no migration needed.
+5. Scripts you wrote yourself (`config/menu.lcui`, `config/shop.lcui`, and any script you edited under `gui`) are usually copies of older examples and therefore use keyword-less bare assignments. Every variable binding must be declared with `let`; a bare assignment no longer creates a variable, so such a script fails to load with `Variable 'xxx' is not declared; write 'let xxx = ...' to introduce it` and is not enabled (the start-up log shows it at `ERROR [LOICollectionA]` level). Add `let` to the **first** assignment of every variable:
+
+    ```lcui
+    // before the upgrade
+    button1 = new MenuItemData();
+    form = new MenuForm("main", "Menu Example");
+
+    // after the upgrade
+    let button1 = new MenuItemData();
+    let form = new MenuForm("main", "Menu Example");
+    ```
+
+    Only the first binding needs `let`: later re-assignments (`button1.permission = 0;`), member writes (`form.button(...)`) and index writes stay as they are; a typed declaration is written `let x: int = 0;` and must provide an initial value. There is no need to delete the `.lcp` cache by hand after editing a script — the plugin invalidates it from the source content and recompiles. See entries 59 and 60 of [Error Handling](../md/errors.md) for this class of error.
 
 > [!TIP]
 > If the history does not matter, you can delete the `.db` files under `plugins/LOICollectionA/data` and let the plugin rebuild empty databases — back them up first.

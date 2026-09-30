@@ -229,16 +229,16 @@ func add(a: int, b: int) -> int {
     return a + b;
 }
 
-result = add(1, 2);
+let result = add(1, 2);
 ```
 
 匿名函数（Lambda）使用 `func (参数) -> 返回类型 { ... }` 定义，可以赋值给变量或直接作为参数传递：
 
 ```lcui
-double = func (x: int) -> int {
+let double = func (x: int) -> int {
     return x * 2;
 };
-value = double(3);
+let value = double(3);
 
 form.button("Button", func () -> void {
     mc::runCmd("say Hello");
@@ -272,7 +272,7 @@ class Dog extends Animal {
     }
 }
 
-dog = new Dog("dog");
+let dog = new Dog("dog");
 if (dog instanceof Animal) [
     mc::runCmd("say " + dog.speak());
 ]

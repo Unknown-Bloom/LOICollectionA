@@ -21,7 +21,7 @@ ScriptLoader（导入解析与合并） -> Lexer（词法分析） -> Parser（�
 ## 一个最小的脚本
 
 ```lcui
-form = new CustomForm("example.main", {tr("example.gui.title")}) {
+let form = new CustomForm("example.main", {tr("example.gui.title")}) {
     label({tr("example.gui.hello")}, new TextOptions());
     button({tr("generic.gui.close")}, on: func () -> void {
         form.close();
@@ -36,7 +36,7 @@ form = new CustomForm("example.main", {tr("example.gui.title")}) {
 创建表单时，可以在构造调用后紧跟一个 `{ ... }` 块，按界面出现顺序声明控件。块内省略接收者的方法调用会自动作用于正在构建的表单。上面的最小脚本完全等价于手工展开的命令式写法：
 
 ```lcui
-form = new CustomForm("example.main", {tr("example.gui.title")});
+let form = new CustomForm("example.main", {tr("example.gui.title")});
 form.label({tr("example.gui.hello")}, new TextOptions());
 form.button({tr("generic.gui.close")}, on: func () -> void {
     form.close();
@@ -52,7 +52,7 @@ form.show();
 - **控制流**：块内允许 `if` 等控制流语句，按实际执行顺序决定哪些控件被加入。例如内置的 `market_store.lcui` 中，审核按钮仅在管理员且开启审核时才会加入：
 
 ```lcui
-mineForm = new CustomForm("market.store.mine", {tr("market.gui.title")}) {
+let mineForm = new CustomForm("market.store.mine", {tr("market.gui.title")}) {
     /* ... 其他按钮 ... */
     if (GUIManager::request("market.isAdmin", [])[0] && GUIManager::request("market.store.review.enabled", [])[0]) [
         button({tr("market.gui.store.mine.audit")}, on: func () -> void {
@@ -79,7 +79,7 @@ component ConfirmBar(confirmText, onConfirm) {
     closeButton();
 }
 
-form = new CustomForm("wallet.main", {tr("wallet.gui.title")}) {
+let form = new CustomForm("wallet.main", {tr("wallet.gui.title")}) {
     label({tr("wallet.gui.label")}, new TextOptions());
     ConfirmBar(saveLabel(), func () -> void {
         form.close();
@@ -91,7 +91,7 @@ form = new CustomForm("wallet.main", {tr("wallet.gui.title")}) {
 上面的写法在编译期等价于直接在块内写：
 
 ```lcui
-form = new CustomForm("wallet.main", {tr("wallet.gui.title")}) {
+let form = new CustomForm("wallet.main", {tr("wallet.gui.title")}) {
     label({tr("wallet.gui.label")}, new TextOptions());
     button(saveLabel(), on: func () -> void {
         form.close();
@@ -123,7 +123,7 @@ form = new CustomForm("wallet.main", {tr("wallet.gui.title")}) {
 ```lcui
 import "generic.lcui";
 
-quote = new PaginatedForm("market.quote", {tr("market.gui.title")}, GUIManager::value("market.quote.items"), 10) {
+let quote = new PaginatedForm("market.quote", {tr("market.gui.title")}, GUIManager::value("market.quote.items"), 10) {
     label({tr("market.gui.quote.list.label")}, new TextOptions());
     PageControls();
     closeButton();
@@ -172,25 +172,24 @@ quote = new PaginatedForm("market.quote", {tr("market.gui.title")}, GUIManager::
 语句之间可以使用 `;` 分隔，也可以使用换行分隔。同一行内存在多条语句时必须使用 `;`，推荐每条语句都以 `;` 结尾：
 
 ```lcui
-a = 1; b = 2;   // 同一行需要 ;
+let a = 1; let b = 2;   // 同一行需要 ;
 
-c = 3           // 换行可以省略 ;
-d = 4;
+let c = 3           // 换行可以省略 ;
+let d = 4;
 ```
 
 ## 变量与类型
 
-### 变量声明（let / const）
+### 变量声明（let）
 
-所有变量绑定都必须通过 `let`（可变）或 `const`（不可变）显式声明，不再支持无关键字的直接赋值隐式创建变量：
+所有变量绑定都必须用 `let` 显式声明，不再支持无关键字的直接赋值隐式创建变量：
 
 ```lcui
 let a = 1;          // 可变变量，动态类型
 let count: int = 1; // 可变变量，带类型标注
-const pi = 3.14;    // 不可变常量，初始化后不可重新赋值
 ```
 
-`let` 声明的变量可随时重新赋值，类型仍可动态变化；`const` 声明的常量再次赋值会报错。该约束只作用于局部变量与全局变量的绑定，函数参数、类字段与 `optional`/`variant` 成员仍使用原有的结构化声明语法。
+`let` 声明的变量可随时重新赋值，类型仍可动态变化。`const` 不是语句级关键字，它只用于 `trait` / `impl` 中的关联常量（例如 `const G = 9.8;`）。该约束只作用于局部变量与全局变量的绑定，函数参数、类字段与 `optional`/`variant` 成员仍使用原有的结构化声明语法。
 
 ### 动态变量
 
@@ -204,13 +203,13 @@ let b = [1, 2, 3];
 
 ### 类型标注
 
-使用 `变量名: 类型 = 值` 声明带类型的变量，类型声明必须同时提供初始值：
+使用 `let 变量名: 类型 = 值` 声明带类型的变量，类型声明必须同时提供初始值：
 
 ```lcui
-count: int = 1;
-name: string = "LOICollection";
-flag: bool = true;
-score: float = 1.5;
+let count: int = 1;
+let name: string = "LOICollection";
+let flag: bool = true;
+let score: float = 1.5;
 ```
 
 类型标注会进行赋值检查，类型不匹配或声明后赋其他类型的值都会报错。
@@ -235,8 +234,8 @@ score: float = 1.5;
 `optional<T>` 可以保存 `T` 类型的一个值，也可以是空值 `None`：
 
 ```lcui
-value: optional<int> = 1;
-empty: optional<string> = None;
+let value: optional<int> = 1;
+let empty: optional<string> = None;
 
 value.has_value;    // true
 value.value;        // 1
@@ -259,7 +258,7 @@ empty.value;        // 报错：optional 为空
 `variant<T1, T2, ...>` 只能保存声明列表中的某一种类型，赋值时会校验：
 
 ```lcui
-data: variant<string, bool, int> = 1;
+let data: variant<string, bool, int> = 1;
 data.type;      // "int"
 data.value;     // 1
 data = "test";  // 合法
@@ -276,8 +275,8 @@ data = 1.5;     // 报错：float 不在声明列表中
 using Value = variant<string, bool, int>;
 using Count = int;
 
-a: Value = 1;
-b: Count = 3;
+let a: Value = 1;
+let b: Count = 3;
 ```
 
 别名可以链式引用（`using B = A;`），但不能自引用，也不能重复定义。
@@ -287,7 +286,7 @@ b: Count = 3;
 数组使用 `[元素1, 元素2, ...]` 创建，支持任意混合类型：
 
 ```lcui
-items = [1, "a", true];
+let items = [1, "a", true];
 items[0];       // 1
 items.length;   // 3
 
@@ -312,12 +311,12 @@ items[1] = "b"; // 修改已有元素（索引等于当前长度时同样会追�
 | `sort` | `arr.sort([cmp])` | 原地排序；`cmp` 为 `func(a, b) -> int`，省略时要求元素两两可比较 |
 
 ```lcui
-items = [3, 1, 2];
+let items = [3, 1, 2];
 items.push(4);        // items = [3, 1, 2, 4]，返回 4
 items.sort();         // items = [1, 2, 3, 4]
-names = items.join(",");   // "1,2,3,4"
+let names = items.join(",");   // "1,2,3,4"
 
-words = ["b", "a"];
+let words = ["b", "a"];
 words.sort(func (a, b) -> int {
     return if (a < b) [ -1 : 1 ];
 });
@@ -349,11 +348,11 @@ words.sort(func (a, b) -> int {
 "a,b,c".split(",");         // ["a", "b", "c"]
 "hello".startsWith("he");   // true
 
-value: optional<int> = "42".toInt();
+let value: optional<int> = "42".toInt();
 value.has_value;            // true
 value.value;                // 42
 
-bad: optional<int> = "abc".toInt();
+let bad: optional<int> = "abc".toInt();
 bad.has_value;              // false
 ```
 
@@ -362,7 +361,7 @@ bad.has_value;              // false
 `Map` 是保持插入序的键值容器，键支持 `int` / `float` / `string` / `bool`（值相等即同键）：
 
 ```lcui
-m = new Map();
+let m = new Map();
 m.set("apple", 3);
 m.set("banana", 5);
 m.get("apple");         // 3
@@ -407,28 +406,28 @@ for (k in m.keys) [
 `=` 可与算术运算符组合为复合赋值，左侧只求值一次（对 `arr[i] += 1`、`obj.field += 1` 尤为重要）：
 
 ```lcui
-a = 10;
+let a = 10;
 a += 5;    // 15
 a -= 3;    // 12
 a *= 2;    // 24
 a /= 4;    // 6
 a %= 4;    // 2
 
-arr = [1, 2, 3];
+let arr = [1, 2, 3];
 arr[1] += 10;   // arr = [1, 12, 3]
 ```
 
 `++` / `--` 为自增 / 自减，前后缀语义一致，等价于 `+= 1` / `-= 1`：
 
 ```lcui
-i = 0;
+let i = 0;
 i++;      // i = 1
 ++i;      // i = 2
 i--;      // i = 1
 ```
 
 > [!WARNING]
-> `++` / `--` 作为表达式参与运算时返回的是**更新后的新值**（前缀语义），与 C/C++ 的后缀 `i++` 返回旧值不同：`i = 5; j = i++;` 得到 `j == 6` 而不是 `5`。如需旧值，请先保存再自增。
+> `++` / `--` 作为表达式参与运算时返回的是**更新后的新值**（前缀语义），与 C/C++ 的后缀 `i++` 返回旧值不同：`let i = 5; let j = i++;` 得到 `j == 6` 而不是 `5`。如需旧值，请先保存再自增。
 
 > 历史版本中 `++i` 会被解析为双重一元正号（值不变），引入前缀自增后语义改变；实际脚本中几乎不会出现这种写法，但属于已知的破坏性变更。
 
@@ -437,15 +436,15 @@ i--;      // i = 1
 `??`（空值合并）在左侧为 `None` 或空 `optional` 时取右侧的值，否则取左侧；`0`、`""`、`false` **不会**触发合并（与真值规则无关）：
 
 ```lcui
-name = value ?? "默认";
-count = 0 ?? 10;    // 0：0 不是 None，不触发合并
+let name = value ?? "默认";
+let count = 0 ?? 10;    // 0：0 不是 None，不触发合并
 ```
 
 `?.`（安全访问）在左侧为 `None` 或空 `optional` 时使整个访问链短路，结果为 `None`，支持字段与索引两种形式：
 
 ```lcui
-len = maybeArr?.length ?? 0;
-item = obj?.data?.[0];
+let len = maybeArr?.length ?? 0;
+let item = obj?.data?.[0];
 ```
 
 `??` 的优先级高于赋值、低于比较运算，且不能与 `&&` / `||` 无括号混用（直接报错，避免歧义）。`x?.y` 的结果可能为 `None`，赋给 `T` 类型标注变量会报错，需搭配 `??` 或使用 `optional<T>`。
@@ -457,10 +456,10 @@ item = obj?.data?.[0];
 对象、数组与函数支持 `==`/`!=`，但比较的是引用：
 
 ```lcui
-a = [1];
-b = [1];
+let a = [1];
+let b = [1];
 a == b;   // false，内容相同但不是同一个数组
-c = a;
+let c = a;
 a == c;   // true
 ```
 
@@ -570,14 +569,14 @@ if (flag) [
 `if` 本身也是表达式，分支中的最后一个值会作为结果返回，可以参与运算或赋值：
 
 ```lcui
-result = if (count > 0) [ 10 : 20 ];
-total = if (flag) [ 1 : 2 ] + 5;
+let result = if (count > 0) [ 10 : 20 ];
+let total = if (flag) [ 1 : 2 ] + 5;
 ```
 
 ### while
 
 ```lcui
-i = 0;
+let i = 0;
 while (i < 5) [
     i++;
 ]
@@ -586,8 +585,8 @@ while (i < 5) [
 ### for
 
 ```lcui
-s = 0;
-for (i = 0; i < 10; i++) [
+let s = 0;
+for (let i = 0; i < 10; i++) [
     if (i % 2 == 0) [ continue; ];
     s += i;
 ]
@@ -600,7 +599,7 @@ for (i = 0; i < 10; i++) [
 `for-in` 用于遍历可迭代对象，可同时获得下标与元素：
 
 ```lcui
-items = ["a", "b", "c"];
+let items = ["a", "b", "c"];
 for (item in items) [
     println(item);
 ]
@@ -693,7 +692,7 @@ func pick(x) {
     return x;
 }
 
-result = add(1, 2);
+let result = add(1, 2);
 ```
 
 函数支持递归与相互递归调用，也支持按参数类型重载：
@@ -718,7 +717,7 @@ id("s");    // 调用 string 版本
 使用 `func (参数) -> 返回类型 { ... }` 定义匿名函数，可以赋值给变量、作为参数传递，并捕获外部局部变量、参数与 `this`：
 
 ```lcui
-double = func (x: int) -> int {
+let double = func (x: int) -> int {
     return x * 2;
 };
 
@@ -746,7 +745,7 @@ public:
     }
 }
 
-dog = new Animal("dog");
+let dog = new Animal("dog");
 dog.name;   // "dog"
 ```
 
@@ -771,7 +770,7 @@ public:
     }
 }
 
-box = new SecretBox();
+let box = new SecretBox();
 box.getSecret();    // 42
 box.secret;         // 报错：私有字段
 ```
@@ -810,7 +809,7 @@ class Dog extends Animal {
     }
 }
 
-dog = new Dog("dog");
+let dog = new Dog("dog");
 dog instanceof Animal;  // true
 ```
 
@@ -893,7 +892,7 @@ impl Iterable for Deck {
     }
 }
 
-deck = new Deck();
+let deck = new Deck();
 for (i, card in deck) [
     println(i + ": " + card);
 ]
@@ -931,7 +930,7 @@ for (i, card in deck) [
 ```lcui
 mc::runCmd("say hello");
 GUIManager::callback("example.submit", [ "data" ]);
-text = std::format({tr("example.gui.info")}, [ 1, "two" ]);
+let text = std::format({tr("example.gui.info")}, [ 1, "two" ]);
 ```
 
 > `GUIManager::open` 与 `GUIManager::switchTo` 中的 `type` 为整数：`1` 为 CustomForm，`2` 为 MessageBox，`3` 为 PaginatedForm，`4` 为 ScriptForm。
@@ -944,8 +943,8 @@ text = std::format({tr("example.gui.info")}, [ 1, "two" ]);
 使用 `{名称}` 或 `{名称(参数)}` 调用宏，例如 `{tr("language.gui.title")}`。`tr` 返回当前玩家语言的翻译文本；`{player}`、`{server_tps}`、`{score(名称)}` 等默认变量也以宏形式使用，完整列表见 [LOICollectionAPI](./api.md)。
 
 ```lcui
-title = {tr("example.gui.title")};
-label = {player} + " -> " + {tr("example.gui.hello")};
+let title = {tr("example.gui.title")};
+let label = {player} + " -> " + {tr("example.gui.hello")};
 ```
 
 ### 透传与阻断 `$`
@@ -953,7 +952,7 @@ label = {player} + " -> " + {tr("example.gui.hello")};
 `$` 用于透传原始文本：`$` 之后到 `}`（或 `;`）之间的内容保持原样，不会参与解析：
 
 ```lcui
-raw = $custom content};
+let raw = $custom content};
 ```
 
 `${变量}` 形式可以阻断变量/宏替换，使内容保留字面形式，例如 `{player_realname} + '->' + ${team}` 中的 `${team}` 会原样输出为 `{team}`。
@@ -980,7 +979,7 @@ raw = $custom content};
 当脚本通过 `GUIManager::open(id, formId, type, ctx)` 打开并传入 `ctx` 数组时，可以使用 `new CtxValue(索引)` 读取对应元素：
 
 ```lcui
-detail = new CtxValue(0);
+let detail = new CtxValue(0);
 form.label(detail.value, new TextOptions());
 ```
 
@@ -1010,11 +1009,11 @@ func makeItems() {
     return [ new Item("Apple", 3), new Item("Banana", 5) ];
 }
 
-items = makeItems();
-selected = new GlobalValue();
+let items = makeItems();
+let selected = new GlobalValue();
 selected.value = "";
 
-form = new CustomForm("example.shop", {tr("example.shop.title")}) {
+let form = new CustomForm("example.shop", {tr("example.shop.title")}) {
     label({tr("example.shop.list")}, new TextOptions());
     button(items[0].format(), on: func () -> void {
         selected.value = items[0].name;
@@ -1081,9 +1080,9 @@ form = new CustomForm("example.shop", {tr("example.shop.title")}) {
 | 优化 | 例子 | 效果 |
 | --- | --- | --- |
 | 常量折叠 | `1 + 2 * 3` | 编译期算成 `PUSH_INT 7`，运行期不再计算 |
-| 变量值转发 | `x = 1; if (x == 1) [...]` | 后续读取 `x` 直接替换为已知值，条件分支随之消除 |
+| 变量值转发 | `let x = 1; if (x == 1) [...]` | 后续读取 `x` 直接替换为已知值，条件分支随之消除 |
 | 纯函数折叠 | `math::abs(-3)`、`math::pow(2, 10)` | 全常量参数的 `math::` 纯函数在编译期求值；`math::random` 等非纯函数不折叠 |
-| 超级指令 | `x = 1`（`DUP` + `STORE_VAR`） | 高频指令对融合为单条 `DUP_STORE` / `DUP_IS_NONE`，一次分发完成两件事 |
+| 超级指令 | `let x = 1`（`DUP` + `STORE_VAR`） | 高频指令对融合为单条 `DUP_STORE` / `DUP_IS_NONE`，一次分发完成两件事 |
 | 跳转窥孔 | 条件跳转后紧跟同目标无条件跳转 | 双重跳转合并，中间不可达代码整体删除 |
 | 死代码删除 | `while (false) [...]`、`if (false) [...]` | 不可达分支整体移除 |
 
@@ -1112,7 +1111,7 @@ form = new CustomForm("example.shop", {tr("example.shop.title")}) {
 - 被导入的文件只能包含顶层定义（`class` / `func` / `using` / `component` / `import`）；不同文件中的同名定义会冲突报错。
 - 每次脚本执行都受执行预算约束（默认 1,000,000 条指令 / 256 层调用帧），超限会终止执行；可按脚本在 `permission.json` 的 `budget` 中调整，见[执行预算与调用深度](#执行预算与调用深度)。
 - `return` 只能在函数内使用；`break`/`continue` 只能在循环内使用。
-- 类型声明（`x: int`）必须同时提供初始值；没有默认值的类字段必须在构造函数中赋值。
+- 类型声明（`let x: int = 0;`）必须同时提供初始值；没有默认值的类字段必须在构造函数中赋值。
 - `None` 只能用于 `optional` 上下文；空 `optional` 直接读取、算术或比较会报错。
 - `%` 仅支持整数；除零、整数溢出会报错。
 - 数组索引必须为 `int`，越界读取或负数索引会报错；索引等于长度时表示追加。

@@ -76,7 +76,7 @@
 ### CustomForm 构造
 
 ```lcui
-form = new CustomForm(id, title);
+let form = new CustomForm(id, title);
 ```
 
 其中 `id` 为注册 ID，`title` 为表单标题（支持 string 或 UIRawMessage/ObservableString）。
@@ -102,11 +102,11 @@ form = new CustomForm(id, title);
 ### CustomForm 示例
 
 ```lcui
-input = new ObservableString("", true);
-count = new ObservableNumber(1, false);
-enabled = new ObservableBoolean(true, true);
+let input = new ObservableString("", true);
+let count = new ObservableNumber(1, false);
+let enabled = new ObservableBoolean(true, true);
 
-form = new CustomForm("example", "Native UI Example");
+let form = new CustomForm("example", "Native UI Example");
 form.header("Hello", new TextOptions());
 form.label("This is a native custom form", new TextOptions());
 form.divider(new DividerOptions());
@@ -135,7 +135,7 @@ form.show(func (closeReason) -> void {
 ### MessageBox 构造
 
 ```lcui
-box = new MessageBox(id, title);
+let box = new MessageBox(id, title);
 ```
 
 ### MessageBox 方法
@@ -159,7 +159,7 @@ box = new MessageBox(id, title);
 ### MessageBox 示例
 
 ```lcui
-box = new MessageBox("confirm", "Confirm");
+let box = new MessageBox("confirm", "Confirm");
 box.body("Are you sure?");
 box.button1("Yes");
 box.button2("No");
@@ -182,7 +182,7 @@ box.show(func (result) -> void {
 ### PaginatedForm 构造
 
 ```lcui
-form = new PaginatedForm(guiId, title, elements[, pageSize]);
+let form = new PaginatedForm(guiId, title, elements[, pageSize]);
 ```
 
 其中 `elements` 为字符串数组（每个字符串为一项），`pageSize` 为每页条数，默认 `10`，最小为 `1`。
@@ -226,9 +226,9 @@ form = new PaginatedForm(guiId, title, elements[, pageSize]);
 ### PaginatedForm 示例
 
 ```lcui
-pages = [ "Apple", "Banana", "Cherry", "Dragon Fruit", "Elderberry" ];
+let pages = [ "Apple", "Banana", "Cherry", "Dragon Fruit", "Elderberry" ];
 
-form = new PaginatedForm("fruits", "Fruit List", pages, 2);
+let form = new PaginatedForm("fruits", "Fruit List", pages, 2);
 form.previousButton("Previous");
 form.nextButton("Next");
 form.chooseButton("Go", "Page number");
@@ -250,10 +250,10 @@ form.show(func (result) -> void {
 ### Observable 构造
 
 ```lcui
-str = new ObservableString("default", true);
-num = new ObservableNumber(0, false);
-flag = new ObservableBoolean(false, true);
-raw = new ObservableUIRawMessage(UIRawMessage.text("hello"), true);
+let str = new ObservableString("default", true);
+let num = new ObservableNumber(0, false);
+let flag = new ObservableBoolean(false, true);
+let raw = new ObservableUIRawMessage(UIRawMessage.text("hello"), true);
 ```
 
 构造参数为（初始值，客户端是否可写）。`clientWritable` 为 `true` 时，玩家可以在界面上修改该数据。
@@ -273,19 +273,19 @@ raw = new ObservableUIRawMessage(UIRawMessage.text("hello"), true);
 `ObservableNumber` / `ObservableString` / `ObservableBoolean` 重载了常用运算符，操作数可以是同类型 Observable 或对应的原生值，且原生值在运算符**任意一侧**均可（`num + 3` 与 `3 + num` 等价），按当前值参与运算并返回普通值：
 
 ```lcui
-num = new ObservableNumber(2, false);
+let num = new ObservableNumber(2, false);
 num + 3;        // 5
 3 + num;        // 5
 num * 2 - 1;    // 3
 num > 2;        // true
 5 == num + 3;   // true
 
-text = new ObservableString("ab", false);
+let text = new ObservableString("ab", false);
 text + "cd";    // "abcd"
 "x" + text;     // "xab"
 text == "ab";   // true
 
-flag = new ObservableBoolean(true, false);
+let flag = new ObservableBoolean(true, false);
 flag == false;  // false
 ```
 
@@ -298,7 +298,7 @@ flag == false;  // false
 ### Observable 示例
 
 ```lcui
-text = new ObservableString("", true);
+let text = new ObservableString("", true);
 text.subscribe(func (value) -> void {
     mc::runCmd("say changed to: " + value);
 });
@@ -319,8 +319,8 @@ text.setData("new value");
 | `UIRawMessage.rawText(array)` | 将多个 `UIRawMessage` 组合为原始文本 |
 
 ```lcui
-title = UIRawMessage.translate("chat.gui.title");
-form = new CustomForm("raw", title);
+let title = UIRawMessage.translate("chat.gui.title");
+let form = new CustomForm("raw", title);
 ```
 
 ## 选项类
@@ -340,12 +340,12 @@ form = new CustomForm("raw", title);
 | `SpacingOptions` | `visible` |
 
 ```lcui
-item = new DropdownItem();
+let item = new DropdownItem();
 item.label = "Option 1";
 item.value = 0;
 item.description = "First option";
 
-options = new DropdownOptions();
+let options = new DropdownOptions();
 options.description = "Choose one";
 options.disabled = false;
 options.visible = true;

@@ -229,16 +229,16 @@ func add(a: int, b: int) -> int {
     return a + b;
 }
 
-result = add(1, 2);
+let result = add(1, 2);
 ```
 
 Anonymous functions (Lambdas) are defined with `func (parameters) -> return type { ... }`, and can be assigned to variables or passed directly as parameters:
 
 ```lcui
-double = func (x: int) -> int {
+let double = func (x: int) -> int {
     return x * 2;
 };
-value = double(3);
+let value = double(3);
 
 form.button("Button", func () -> void {
     mc::runCmd("say Hello");
@@ -272,7 +272,7 @@ class Dog extends Animal {
     }
 }
 
-dog = new Dog("dog");
+let dog = new Dog("dog");
 if (dog instanceof Animal) [
     mc::runCmd("say " + dog.speak());
 ]

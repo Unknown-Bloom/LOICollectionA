@@ -267,25 +267,25 @@ void Parser::synchronize(std::initializer_list<TokenType> stopTokens) {
 好问题！让我切换深度思考模式来回答你。(－∀＝)
 
 ```cpp
-navigateBuy = new GlobalValue();
+let navigateBuy = new GlobalValue();
 navigateBuy.value = false;
 
-navigateTrade = new GlobalValue();
+let navigateTrade = new GlobalValue();
 navigateTrade.value = false;
 
-navigatePersonal = new GlobalValue();
+let navigatePersonal = new GlobalValue();
 navigatePersonal.value = false;
 
-worldbuyOption = new ButtonOptions();
+let worldbuyOption = new ButtonOptions();
 worldbuyOption.tooltip = {tr("market.gui.worldbuy.tooltip")}; // 这里是宏
 
-tradeOption = new ButtonOptions();
+let tradeOption = new ButtonOptions();
 tradeOption.tooltip = {tr("market.gui.trade.tooltip")};
 
-personalOption = new ButtonOptions();
+let personalOption = new ButtonOptions();
 personalOption.tooltip = {tr("market.gui.personal.tooltip")};
 
-marketOpen = new CustomForm("market.open", {tr("market.gui.title")});
+let marketOpen = new CustomForm("market.open", {tr("market.gui.title")});
 marketOpen.label({tr("market.gui.label")}, new TextOptions());
 marketOpen.spacer(new SpacingOptions());
 marketOpen.divider(new DividerOptions());
@@ -532,7 +532,7 @@ graph TD
 据此，一个完整的 `Parser` 流程就成型了。你可能已经注意到 if 语句出现在 parsePrimary 里——这背后正是『表达式优先语言』与『语句优先语言』最根本的设计分界线。
 
 ```cpp
-x = if (condition) [ 1 ] : [ 2 ];
+let x = if (condition) [ 1 ] : [ 2 ];
 ```
 
 这里，if 出现在了赋值号右边。在解析器里，赋值右边的解析入口是什么？是 parseBaseExpression()，然后一路往下走到 parsePrimary()。
@@ -1677,7 +1677,7 @@ PUSH_FLOAT 3.0
 MOD
 ```
 
-`applyArithmetic` 会往 `foldDiag` 里写一条错误。一旦发现折叠会产生运行期错误，优化器立刻收手，把三条指令原样保留——让错误在运行期照常发生，而且带着准确的源码位置。空 Optional 的 `UNWRAP` 同理：`b: optional<string> = None; b` 里的解包指令不会被折叠成"空值"，因为解包空 Optional 是一个必须报错的运行期行为。
+`applyArithmetic` 会往 `foldDiag` 里写一条错误。一旦发现折叠会产生运行期错误，优化器立刻收手，把三条指令原样保留——让错误在运行期照常发生，而且带着准确的源码位置。空 Optional 的 `UNWRAP` 同理：`let b: optional<string> = None; b` 里的解包指令不会被折叠成"空值"，因为解包空 Optional 是一个必须报错的运行期行为。
 
 这其实是整个优化器最重要的原则：**优化只能改变"怎么算"，不能改变"算什么"**。程序该报的错，一个都不能少。
 
@@ -1693,7 +1693,7 @@ MOD
 
 ### 值会穿墙：变量转发
 
-"栈模拟器"只看栈还不够——真实脚本里值最先去的地方是变量。优化器顺手维护了一张 `varSlots` 表：`x = 1` 存进去的是已知标量，后面再遇到 `LOAD_VAR x` 就直接压一个 `TrackedValue{1}`，连变量都不查。这张表在两种情况下会被清空：遇到跳转目标（别的路径可能给 `x` 赋过别的值），以及遇到任何可能执行脚本的指令（函数调用、构造器——它们可能在暗处改写 `x`）。所以 `x = 1; if (x == 1) [ ... ]` 会整条链一起消失：转发让条件变成常量，常量条件让分支变成死代码，死代码在下一轮迭代里被可达性分析扫掉。
+"栈模拟器"只看栈还不够——真实脚本里值最先去的地方是变量。优化器顺手维护了一张 `varSlots` 表：`let x = 1` 存进去的是已知标量，后面再遇到 `LOAD_VAR x` 就直接压一个 `TrackedValue{1}`，连变量都不查。这张表在两种情况下会被清空：遇到跳转目标（别的路径可能给 `x` 赋过别的值），以及遇到任何可能执行脚本的指令（函数调用、构造器——它们可能在暗处改写 `x`）。所以 `let x = 1; if (x == 1) [ ... ]` 会整条链一起消失：转发让条件变成常量，常量条件让分支变成死代码，死代码在下一轮迭代里被可达性分析扫掉。
 
 一轮折叠常常给下一轮喂出新机会（转发让条件变常量、分支消除让赋值变得可达），所以整个流程会**迭代到不动点**：反复跑，直到某一轮什么都没变，才输出最终字节码。
 
@@ -1705,7 +1705,7 @@ MOD
 
 ### 超级指令：两条并一条
 
-上面全是"删指令"，还有一类优化是"并指令"。编译器为 `x = 1` 生成的序列是 `PUSH_INT 1; DUP; STORE_VAR`——`DUP` 复制一份给赋值，原值留在栈上。这两条指令在真实脚本里出现频率极高，于是优化器把它们融合成一条 `DUP_STORE`：一次分发，既存又留。`DUP; IS_NONE`（判空同时保留原值）同理融合成 `DUP_IS_NONE`。
+上面全是"删指令"，还有一类优化是"并指令"。编译器为 `let x = 1` 生成的序列是 `PUSH_INT 1; DUP; STORE_VAR`——`DUP` 复制一份给赋值，原值留在栈上。这两条指令在真实脚本里出现频率极高，于是优化器把它们融合成一条 `DUP_STORE`：一次分发，既存又留。`DUP; IS_NONE`（判空同时保留原值）同理融合成 `DUP_IS_NONE`。
 
 这招就是**超级指令**（super-instruction）：解释器每条指令都要经过一次 switch 分发，把高频序列合成单条指令，等于把两次分发压成一次。条件同样苛刻——两条指令都不能被跳转盯上（跳进来时栈状态未知，融合会改变语义）。
 
@@ -1721,7 +1721,7 @@ MOD
 | 一元运算 | `!true`、`-x` | 同上 |
 | 类型内省 | Optional 的 `.type` / `.has_value` | 直接算成字符串 / 布尔值 |
 | 数组 | `[1, 2, 3][1]` | 字面量数组 + 常量下标可折叠，元素本身是数组时不折 |
-| 变量转发 | `x = 1; x + 2` | 已知标量存入变量后，读取处直接替换为该值 |
+| 变量转发 | `let x = 1; x + 2` | 已知标量存入变量后，读取处直接替换为该值 |
 | 纯函数 | `math::abs(-3)`、`math::pow(2, 10)` | 全常量参数且签名匹配才折；`math::random` 不折 |
 | 恒等元消除 | `x + 0`、`x * 1` | 只在类型提升规则允许时删掉恒等元 |
 | 条件跳转 | `if (true) [...]`、`while (false) [...]` | 常量条件消除 + 不可达代码删除 |
@@ -1823,7 +1823,7 @@ switch (instr.op) {
 
 第二，**循环开头有两道保护**：`diagnostics.hasErrors()` 一旦有错误立刻停下；`executed` 超过一百万次就报"可能是死循环"。服务器上的脚本不能真的无限跑下去，这是解释器最基本的自我保护。
 
-`PUSH_*` 后面的 `cloneValue` 也值得解释：普通常量直接复用，但**数组常量每次执行都会深拷贝**。还记得优化器会把 `[1, 2, 3]` 折叠成常量吗？如果每次执行都共享同一个数组，`a = make(); b = make(); a[0] = 9` 就会把 `b` 也改掉。深拷贝保证每个求值都拿到属于自己的数组。
+`PUSH_*` 后面的 `cloneValue` 也值得解释：普通常量直接复用，但**数组常量每次执行都会深拷贝**。还记得优化器会把 `[1, 2, 3]` 折叠成常量吗？如果每次执行都共享同一个数组，`let a = make(); let b = make(); a[0] = 9` 就会把 `b` 也改掉。深拷贝保证每个求值都拿到属于自己的数组。
 
 ### 调用：帧的压栈与回弹
 
@@ -1861,7 +1861,7 @@ bool VM::pushFrame(Frame&& frame) {
 那为什么第一部分 `market.lcui` 里的 `navigateBuy` 要写成 `new GlobalValue()`？因为 `ObjectRef` 不一样：它是 `shared_ptr`，捕获时复制的是"指针"而不是对象本身。`navigateBuy.value = true` 修改的是所有持有者共享的同一个 `Object::fields`，所以在按钮回调里写进去，`show` 回调里立刻读得到。普通变量做不到这件事：
 
 ```cpp
-navigate = false; // 反例：普通变量是快照
+let navigate = false; // 反例：普通变量是快照
 
 form.button("进入商店", func () -> void {
     navigate = true; // 只改了这个回调 VM 自己的副本
@@ -1876,7 +1876,7 @@ form.show(func (result) -> void {
 ```
 
 ```cpp
-navigate = new GlobalValue(); // 正例：ObjectRef 是共享的
+let navigate = new GlobalValue(); // 正例：ObjectRef 是共享的
 navigate.value = false;
 
 form.button("进入商店", func () -> void {
@@ -2342,7 +2342,7 @@ GUIManager::getInstance().registerValue("menu.title", [](Player& player) -> ll::
 脚本侧：
 
 ```cpp
-title = GUIManager::value("menu.title")[0];
+let title = GUIManager::value("menu.title")[0];
 GUIManager::callback("menu.execute", [ "button1" ]);
 GUIManager::open("menu", "main", 4);
 ```
@@ -2547,7 +2547,7 @@ ll::Expected<ObjectRef> makeMenuForm(const CallbackTypeValues& args, const Callb
 菜单按钮的权限 / Score 检查也顺理成章地塞进原生按钮回调：通过则 `closeReason = 1`，没权限是 `2`，分数不足是 `3`，随后关闭表单；`switchToScriptForm` 的 `finish` 会调用 `makeResult` 把 `MenuFormResult` 交给脚本 `show` 回调。于是脚本侧写出来的东西就是：
 
 ```cpp
-form = new MenuForm("main", "Menu");
+let form = new MenuForm("main", "Menu");
 form.button("商店", action1, func () -> void {
     GUIManager::open("shop", "main", 4);
 }, new ButtonOptions());
@@ -2608,7 +2608,7 @@ ll::Expected<ll::ui::TextValue> toTextValue(const TypedValue& value) {
 选项类的读取则统一走 `readOptional`：字段没设置或值是 `monostate`（none）就用原生默认值，设置了才转换。这带来一个很舒服的脚本体验——`new ButtonOptions()` 之后只用设置想改的字段：
 
 ```cpp
-options = new ButtonOptions();
+let options = new ButtonOptions();
 options.tooltip = "点击购买";
 options.visible = new ObservableBoolean(true, false);
 ```
@@ -2647,7 +2647,7 @@ options.visible = new ObservableBoolean(true, false);
 
 ```cpp
 // 1. 先声明"动作"数据
-button1 = new MenuItemData();
+let button1 = new MenuItemData();
 button1.type = "button";
 button1.title = "Button 1";
 button1.id = "Button1";
@@ -2655,7 +2655,7 @@ button1.run = [ "say Button1" ];
 button1.permission = 0;
 
 // 2. 再声明"表单"：控件绑数据，回调收结果
-form = new MenuForm("main", "Menu Example");
+let form = new MenuForm("main", "Menu Example");
 form.label("This is a menu example", new TextOptions());
 form.button("Button 1", button1, func () -> void {
 }, new ButtonOptions());
@@ -2671,17 +2671,17 @@ form.show(func (result) -> void {
 });
 
 // 3. 对话框同理
-confirmAction = new MenuItemData();
+let confirmAction = new MenuItemData();
 confirmAction.type = "button";
 confirmAction.title = "Confirm";
 confirmAction.run = [ "say Confirm" ];
 
-cancelAction = new MenuItemData();
+let cancelAction = new MenuItemData();
 cancelAction.type = "button";
 cancelAction.title = "Cancel";
 cancelAction.run = [ "say Cancel" ];
 
-box = new MenuMessageBox("Menu1", "Menu 1");
+let box = new MenuMessageBox("Menu1", "Menu 1");
 box.body("This is a menu 1");
 box.button1("Confirm", confirmAction);
 box.button2("Cancel", cancelAction);
@@ -2692,7 +2692,7 @@ box.show(func (result) -> void {
 再看 shop.lcui：
 
 ```cpp
-mainBuy = new ShopData();
+let mainBuy = new ShopData();
 mainBuy.id = "MainBuy";
 mainBuy.type = "buy";
 mainBuy.title = "Buy Shop Example";
@@ -2700,21 +2700,21 @@ mainBuy.content = "This is a shop example";
 mainBuy.exitCommand = "say Exit Shop";
 mainBuy.scoreCommand = "say No score";
 
-apple = new ShopItemData();
+let apple = new ShopItemData();
 apple.type = "commodity";
 apple.title = "Apple";
 apple.introduce = "A red apple";
 apple.number = "Buy number";
 apple.id = "minecraft:apple";
 
-appleScore = new ScoreRequirement();
+let appleScore = new ScoreRequirement();
 appleScore.objective = "money";
 appleScore.value = 100;
 apple.scores = [ appleScore ];
 
 mainBuy.items = [ apple ];
 
-form = new ShopForm("MainBuy", mainBuy);
+let form = new ShopForm("MainBuy", mainBuy);
 form.show(func (result) -> void {
     if (result.closeReason == 1) [
         if (result.resultCode == 1) [
@@ -2759,10 +2759,10 @@ public:
 所以先写一个动作注册表。它就是一个挂在 `GlobalValue` 上的数组，成对存放"名字 → 函数"：
 
 ```cpp
-actions = new GlobalValue();
+let actions = new GlobalValue();
 actions.value = [];
 
-emptyAction = func () -> void {};
+let emptyAction = func () -> void {};
 
 func registerAction(name, callback) -> void {
     actions.value.push(name);
@@ -2770,7 +2770,7 @@ func registerAction(name, callback) -> void {
 }
 
 func findAction(name) {
-    i = 0;
+    let i = 0;
     while (i < actions.value.length) [
         if (actions.value[i] == name) [
             return actions.value[i + 1];
@@ -2787,7 +2787,7 @@ func findAction(name) {
 
 ```cpp
 func renderMenu(declaration) -> void {
-    form = new CustomForm(declaration.id, declaration.title);
+    let form = new CustomForm(declaration.id, declaration.title);
 
     for (item in declaration.items) [
         if (item.type == "open") [
@@ -2801,9 +2801,9 @@ func renderMenu(declaration) -> void {
                 if (item.type == "label") [
                     form.label(item.text, new TextOptions());
                 :
-                    action = findAction(item.actionName);
+                    let action = findAction(item.actionName);
                     form.button(item.text, func () -> void {
-                        allowed = GUIManager::request("my.check", [ item.permission, item.scores ]);
+                        let allowed = GUIManager::request("my.check", [ item.permission, item.scores ]);
                         if (allowed[0]) [
                             action();
                         ]
@@ -2853,14 +2853,14 @@ public:
 }
 
 func renderConfirm(declaration) -> void {
-    box = new MessageBox(declaration.id, declaration.title);
+    let box = new MessageBox(declaration.id, declaration.title);
     box.body(declaration.content);
     box.button1(declaration.confirmText);
     box.button2(declaration.cancelText);
 
     box.show(func (result) -> void {
         if (result.selection) [
-            action = findAction(declaration.cancelAction); // 按钮 2
+            let action = findAction(declaration.cancelAction); // 按钮 2
             action();
         :
             action = findAction(declaration.confirmAction); // 按钮 1（或未选择）
@@ -2881,32 +2881,32 @@ registerAction("buy.apple", func () -> void {
     GUIManager::callback("shop.buy", [ "minecraft:apple", 1 ]);
 });
 
-mainMenu = new MenuDeclaration();
+let mainMenu = new MenuDeclaration();
 mainMenu.id = "example.main";
 mainMenu.title = "示例菜单";
 
-shopItem = new MenuItemDeclaration();
+let shopItem = new MenuItemDeclaration();
 shopItem.text = "打开商店";
 shopItem.type = "open";
 shopItem.target = "example.shop";
 shopItem.formType = 1;
 
-helloItem = new MenuItemDeclaration();
+let helloItem = new MenuItemDeclaration();
 helloItem.text = "打招呼";
 helloItem.type = "button";
 helloItem.actionName = "hello";
 
-quitItem = new MenuItemDeclaration();
+let quitItem = new MenuItemDeclaration();
 quitItem.text = "退出";
 quitItem.type = "close";
 
 mainMenu.items = [ shopItem, helloItem, quitItem ];
 
-shopMenu = new MenuDeclaration();
+let shopMenu = new MenuDeclaration();
 shopMenu.id = "example.shop";
 shopMenu.title = "商店";
 
-buyItem = new MenuItemDeclaration();
+let buyItem = new MenuItemDeclaration();
 buyItem.text = "购买苹果";
 buyItem.type = "button";
 buyItem.actionName = "buy.apple";

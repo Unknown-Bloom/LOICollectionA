@@ -76,7 +76,7 @@ The custom form is the most commonly used native form, supporting controls such 
 ### CustomForm Construction
 
 ```lcui
-form = new CustomForm(id, title);
+let form = new CustomForm(id, title);
 ```
 
 Here `id` is the registration ID and `title` is the form title (supports string or UIRawMessage/ObservableString).
@@ -102,11 +102,11 @@ Here `id` is the registration ID and `title` is the form title (supports string 
 ### CustomForm Example
 
 ```lcui
-input = new ObservableString("", true);
-count = new ObservableNumber(1, false);
-enabled = new ObservableBoolean(true, true);
+let input = new ObservableString("", true);
+let count = new ObservableNumber(1, false);
+let enabled = new ObservableBoolean(true, true);
 
-form = new CustomForm("example", "Native UI Example");
+let form = new CustomForm("example", "Native UI Example");
 form.header("Hello", new TextOptions());
 form.label("This is a native custom form", new TextOptions());
 form.divider(new DividerOptions());
@@ -135,7 +135,7 @@ The dialog is used to show a piece of content to the player and let the player c
 ### MessageBox Construction
 
 ```lcui
-box = new MessageBox(id, title);
+let box = new MessageBox(id, title);
 ```
 
 ### MessageBox Methods
@@ -159,7 +159,7 @@ box = new MessageBox(id, title);
 ### MessageBox Example
 
 ```lcui
-box = new MessageBox("confirm", "Confirm");
+let box = new MessageBox("confirm", "Confirm");
 box.body("Are you sure?");
 box.button1("Yes");
 box.button2("No");
@@ -182,7 +182,7 @@ The paginated form is used to display a large number of entries, showing them pa
 ### PaginatedForm Construction
 
 ```lcui
-form = new PaginatedForm(guiId, title, elements[, pageSize]);
+let form = new PaginatedForm(guiId, title, elements[, pageSize]);
 ```
 
 Here `elements` is a string array (each string is one entry), `pageSize` is the number of entries per page, default `10`, minimum `1`.
@@ -226,9 +226,9 @@ Here `elements` is a string array (each string is one entry), `pageSize` is the 
 ### PaginatedForm Example
 
 ```lcui
-pages = [ "Apple", "Banana", "Cherry", "Dragon Fruit", "Elderberry" ];
+let pages = [ "Apple", "Banana", "Cherry", "Dragon Fruit", "Elderberry" ];
 
-form = new PaginatedForm("fruits", "Fruit List", pages, 2);
+let form = new PaginatedForm("fruits", "Fruit List", pages, 2);
 form.previousButton("Previous");
 form.nextButton("Next");
 form.chooseButton("Go", "Page number");
@@ -250,10 +250,10 @@ Observable data is used for two-way data binding of form controls. After a contr
 ### Observable Construction
 
 ```lcui
-str = new ObservableString("default", true);
-num = new ObservableNumber(0, false);
-flag = new ObservableBoolean(false, true);
-raw = new ObservableUIRawMessage(UIRawMessage.text("hello"), true);
+let str = new ObservableString("default", true);
+let num = new ObservableNumber(0, false);
+let flag = new ObservableBoolean(false, true);
+let raw = new ObservableUIRawMessage(UIRawMessage.text("hello"), true);
 ```
 
 The construction parameters are (initial value, client writable). When `clientWritable` is `true`, the player can modify the data in the interface.
@@ -274,7 +274,7 @@ The construction parameters are (initial value, client writable). When `clientWr
 ### Observable Example
 
 ```lcui
-text = new ObservableString("", true);
+let text = new ObservableString("", true);
 text.subscribe(func (value) -> void {
     mc::runCmd("say changed to: " + value);
 });
@@ -295,8 +295,8 @@ text.setData("new value");
 | `UIRawMessage.rawText(array)` | Combines multiple `UIRawMessage`s into raw text |
 
 ```lcui
-title = UIRawMessage.translate("chat.gui.title");
-form = new CustomForm("raw", title);
+let title = UIRawMessage.translate("chat.gui.title");
+let form = new CustomForm("raw", title);
 ```
 
 ## Option Classes
@@ -316,12 +316,12 @@ Option classes are used to control the display and behavior of the corresponding
 | `SpacingOptions` | `visible` |
 
 ```lcui
-item = new DropdownItem();
+let item = new DropdownItem();
 item.label = "Option 1";
 item.value = 0;
 item.description = "First option";
 
-options = new DropdownOptions();
+let options = new DropdownOptions();
 options.description = "Choose one";
 options.disabled = false;
 options.visible = true;

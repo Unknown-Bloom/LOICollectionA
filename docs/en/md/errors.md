@@ -150,7 +150,7 @@ The integer literal is semantically invalid, usually because the value exceeds t
 **Typical erroneous code**  
 
 ```cpp
-a = 3000000000;   // exceeds the 32-bit signed integer range
+let a = 3000000000;   // exceeds the 32-bit signed integer range
 ```
 
 **Solution**  
@@ -173,7 +173,7 @@ The floating-point literal cannot be correctly converted to a `float` value, usu
 **Typical erroneous code**  
 
 ```cpp
-f = 1e999;   // exceeds the float representable range
+let f = 1e999;   // exceeds the float representable range
 ```
 
 **Solution**  
@@ -324,12 +324,13 @@ An attempt is made to read a variable that has never been assigned or declared.
 **Typical erroneous code**  
 
 ```cpp
-y = x + 1;   // x is never assigned
+let y = x + 1;   // x is read but never assigned
 ```
 
 **Solution**  
 
 - Make sure all variables are assigned before use.  
+- A variable must be declared first: write the first binding as `let x = ...;`, otherwise the compiler reports error 59.  
 - Check that variable names are spelled correctly, paying attention to case.  
 - If the variable should indeed be defined externally, check the initialization order or scope.
 
@@ -890,7 +891,7 @@ A non-existent class is referenced in `new`, member access, or inheritance.
 **Typical Error Code**  
 
 ```cpp
-x = new Missing();          // class does not exist
+let x = new Missing();          // class does not exist
 class B extends Missing {}  // base class does not exist
 ```
 
@@ -971,7 +972,7 @@ class A {
 private:
     secret = 42;
 }
-a = new A();
+let a = new A();
 a.secret;    // private member access
 ```
 
@@ -996,7 +997,7 @@ A member or static member that does not exist in the class was accessed.
 
 ```cpp
 class A { public: x = 1; }
-a = new A();
+let a = new A();
 a.y;    // member y does not exist
 ```
 
@@ -1029,7 +1030,7 @@ func f(x: int) -> int { return x; }
 f("string");        // argument type mismatch
 
 class A { A(x: int) {} }
-a = new A("s");     // constructor argument type mismatch
+let a = new A("s");     // constructor argument type mismatch
 ```
 
 **Solution**  
@@ -1051,7 +1052,7 @@ Calling a method on a non-object value, or accessing a member of a non-object va
 **Typical Error Code**  
 
 ```cpp
-a = 5;
+let a = 5;
 a.x;        // Accessing a member of a non-object
 a.f();      // Calling a method on a non-object
 ```
@@ -1076,7 +1077,7 @@ Indexing a non-array value, or assigning to an index of a non-array value.
 **Typical Error Code**  
 
 ```cpp
-a = 5;
+let a = 5;
 a[0];       // Indexing a non-array
 ```
 
@@ -1130,8 +1131,8 @@ Used a type that does not exist, or passed type arguments to a type that does no
 **Typical Error Code**  
 
 ```cpp
-x: Missing = 1;          // Type does not exist
-x: int<string> = 1;      // int does not accept type arguments
+let x: Missing = 1;      // Type does not exist
+let x: int<string> = 1;  // int does not accept type arguments
 ```
 
 **Solution**  
@@ -1152,12 +1153,13 @@ A typed variable declaration does not provide an initial value.
 **Typical Error Code**  
 
 ```cpp
-x: int;    // Missing initial value
+let x: int;    // missing initial value
 ```
 
 **Solution**  
 
-- Add an initial value to the typed declaration, e.g., `x: int = 0;`.
+- Add an initial value to the typed declaration, e.g., `let x: int = 0;`.  
+- Note that a typed declaration also needs `let` (see entry 59).
 
 ---
 
@@ -1201,7 +1203,7 @@ A function or anonymous function with a declared return type is missing a `retur
 
 ```cpp
 func f() -> int {
-    x = 1;    // No return
+    let x = 1;    // No return
 }
 ```
 
@@ -1293,8 +1295,8 @@ Performing arithmetic or comparison operations on an empty `optional` value.
 **Typical Error Code**  
 
 ```cpp
-x: optional<int> = none;
-y = x + 1;
+let x: optional<int> = None;
+let y = x + 1;
 ```
 
 **Solution**  
@@ -1317,7 +1319,7 @@ Reading or writing a field of a non-object value.
 **Typical Error Code**  
 
 ```cpp
-a = 5;
+let a = 5;
 a.x = 1;    // Writing a field of a non-object
 ```
 
@@ -1483,6 +1485,63 @@ Bar("only-one");                  // error: argument count mismatch, and not ins
 - Move the component definition to the top level of the script.
 - Keep the call argument count consistent with the definition, and make sure component calls are statements inside a declarative UI block.
 - Check whether the components called inside the component body form a cycle.
+
+---
+
+## 59. Variable is not declared (Variable is not declared)
+
+**Explanation**  
+The script contains a keyword-less bare assignment, for example `button1 = new MenuItemData();`. Every variable binding must be declared explicitly with `let`; a bare assignment no longer creates a variable.
+
+**Details**  
+
+- Error message: `Variable 'x' is not declared; write 'let x = ...' to introduce it`.  
+- A single compilation reports every undeclared variable in the script, separated by `;` and annotated with `(at line N, col M)`.  
+- It is raised while the script is being loaded (plugin start or reload), so the script is not enabled and neither its commands nor its forms work.  
+- Both globals and locals inside functions require `let`; only the first binding needs it — later assignments stay keyword-less.
+
+**Typical erroneous code**  
+
+```cpp
+button1 = new MenuItemData();   // error: missing let
+button1.type = "button";
+form = new MenuForm("main", "Menu Example");
+```
+
+**Solution**  
+
+- Add `let` to the first assignment: `let button1 = new MenuItemData();`.  
+- A typed declaration is written `let x: int = 0;` and must provide an initial value.  
+- Member writes (`button1.type = "button"`, `obj.field = v`), index writes (`arr[0] = v`) and function parameters never take `let`.  
+- Do not add `let` to a plain re-assignment, otherwise error 60 is raised instead.  
+- Scripts copied from older documentation examples (for instance `menu.lcui` / `shop.lcui`) are usually written with bare assignments and need `let` added line by line; see [Data Migration](../course/migrate.md).
+
+---
+
+## 60. Variable is already declared in this scope (Variable is already declared in this scope)
+
+**Explanation**  
+The same name is declared with `let` twice inside one scope.
+
+**Details**  
+
+- Error message: `Variable 'x' is already declared in this scope`.  
+- The global scope and every block (function body, `if` / `for` block) keep their own declaration table; a duplicate declaration is rejected instead of shadowing the existing binding.  
+- The most common cause is writing a re-assignment as a declaration: `let x = 1;` followed by another `let x = 2;`.
+
+**Typical erroneous code**  
+
+```cpp
+let x = 1;
+let x = 2;      // error: declared twice in the same scope
+```
+
+**Solution**  
+
+- Assign directly from the second time on: `x = 2;`.  
+- If a separate binding is really needed, use another name or put the binding inside a new block.
+
+---
 
 > [!TIP]
 > You've read this far, take a break and listen to some music(～￣▽￣)～

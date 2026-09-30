@@ -28,35 +28,38 @@ namespace {
 TEST(ConnectionPoolTest, ActiveTransactionIsPerPoolStack) {
     auto pathA = tempConnectionPoolTestDb("A");
     auto pathB = tempConnectionPoolTestDb("B");
-    auto poolA = ConnectionPool::create(pathA.string(), 1);
-    auto poolB = ConnectionPool::create(pathB.string(), 1);
-    ASSERT_TRUE(poolA.has_value());
-    ASSERT_TRUE(poolB.has_value());
 
-    auto connA = (*poolA)->acquire(5000);
-    auto connB = (*poolB)->acquire(5000);
-    ASSERT_TRUE(connA.has_value());
-    ASSERT_TRUE(connB.has_value());
+    {
+        auto poolA = ConnectionPool::create(pathA.string(), 1);
+        auto poolB = ConnectionPool::create(pathB.string(), 1);
+        ASSERT_TRUE(poolA.has_value());
+        ASSERT_TRUE(poolB.has_value());
 
-    EXPECT_EQ((*poolA)->activeTransaction(), nullptr);
-    EXPECT_EQ((*poolB)->activeTransaction(), nullptr);
+        auto connA = (*poolA)->acquire(5000);
+        auto connB = (*poolB)->acquire(5000);
+        ASSERT_TRUE(connA.has_value());
+        ASSERT_TRUE(connB.has_value());
 
-    (*poolA)->bindTransaction(connA->get());
-    EXPECT_EQ((*poolA)->activeTransaction(), connA->get());
-    EXPECT_EQ((*poolB)->activeTransaction(), nullptr);
+        EXPECT_EQ((*poolA)->activeTransaction(), nullptr);
+        EXPECT_EQ((*poolB)->activeTransaction(), nullptr);
 
-    (*poolB)->bindTransaction(connB->get());
+        (*poolA)->bindTransaction(connA->get());
+        EXPECT_EQ((*poolA)->activeTransaction(), connA->get());
+        EXPECT_EQ((*poolB)->activeTransaction(), nullptr);
 
-    EXPECT_EQ((*poolA)->activeTransaction(), connA->get());
-    EXPECT_EQ((*poolB)->activeTransaction(), connB->get());
+        (*poolB)->bindTransaction(connB->get());
 
-    (*poolB)->unbindTransaction(connB->get());
+        EXPECT_EQ((*poolA)->activeTransaction(), connA->get());
+        EXPECT_EQ((*poolB)->activeTransaction(), connB->get());
 
-    EXPECT_EQ((*poolA)->activeTransaction(), connA->get());
-    EXPECT_EQ((*poolB)->activeTransaction(), nullptr);
+        (*poolB)->unbindTransaction(connB->get());
 
-    (*poolA)->unbindTransaction(connA->get());
-    EXPECT_EQ((*poolA)->activeTransaction(), nullptr);
+        EXPECT_EQ((*poolA)->activeTransaction(), connA->get());
+        EXPECT_EQ((*poolB)->activeTransaction(), nullptr);
+
+        (*poolA)->unbindTransaction(connA->get());
+        EXPECT_EQ((*poolA)->activeTransaction(), nullptr);
+    }
 
     dropConnectionPoolTestDb(pathA);
     dropConnectionPoolTestDb(pathB);
@@ -64,15 +67,18 @@ TEST(ConnectionPoolTest, ActiveTransactionIsPerPoolStack) {
 
 TEST(ConnectionPoolTest, SamePoolRebindRoundTrips) {
     auto path = tempConnectionPoolTestDb("rebind");
-    auto pool = ConnectionPool::create(path.string(), 1);
-    ASSERT_TRUE(pool.has_value());
-    auto conn = (*pool)->acquire(5000);
-    ASSERT_TRUE(conn.has_value());
 
-    (*pool)->bindTransaction(conn->get());
-    EXPECT_EQ((*pool)->activeTransaction(), conn->get());
-    (*pool)->unbindTransaction(conn->get());
-    EXPECT_EQ((*pool)->activeTransaction(), nullptr);
+    {
+        auto pool = ConnectionPool::create(path.string(), 1);
+        ASSERT_TRUE(pool.has_value());
+        auto conn = (*pool)->acquire(5000);
+        ASSERT_TRUE(conn.has_value());
+
+        (*pool)->bindTransaction(conn->get());
+        EXPECT_EQ((*pool)->activeTransaction(), conn->get());
+        (*pool)->unbindTransaction(conn->get());
+        EXPECT_EQ((*pool)->activeTransaction(), nullptr);
+    }
 
     dropConnectionPoolTestDb(path);
 }

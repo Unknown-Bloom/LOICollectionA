@@ -362,15 +362,18 @@
 
 > 从 LOICollectionA 1.15.0 起，Menu 不再读取 `menu.json`。请在 `plugins/LOICollectionA/config` 目录下自行创建 `menu.lcui`，在文件内直接定义 `MenuData` 并使用 `MenuForm` 打开。表单 ID 对应 `/menu gui <Id>` 中传入的 Id。
 
+> [!IMPORTANT]
+> 脚本中的变量必须用 `let` 显式声明（`const` 只用于 `impl` / `trait` 中的关联常量），裸赋值不再隐式创建变量。复制下面的示例时请保留 `let`，否则加载脚本时会报 `Variable 'x' is not declared`，脚本不会启用。详见 [lcui 语法](./lcui.md) 与 [数据迁移](../course/migrate.md)。
+
 ```lcui
-button1 = new MenuItemData();
+let button1 = new MenuItemData();
 button1.type = "button";
 button1.title = "Button 1";
 button1.id = "Button1";
 button1.run = [ "say Button1" ];
 button1.permission = 0;
 
-form = new MenuForm("main", "Menu Example");
+let form = new MenuForm("main", "Menu Example");
 form.label("This is a menu example", new TextOptions());
 form.button("Button 1", button1, func () -> void {
 }, new ButtonOptions());
@@ -385,19 +388,19 @@ form.show(func (result) -> void {
     ]
 });
 
-confirmAction = new MenuItemData();
+let confirmAction = new MenuItemData();
 confirmAction.type = "button";
 confirmAction.title = "Confirm";
 confirmAction.run = [ "say Confirm" ];
 confirmAction.permission = 0;
 
-cancelAction = new MenuItemData();
+let cancelAction = new MenuItemData();
 cancelAction.type = "button";
 cancelAction.title = "Cancel";
 cancelAction.run = [ "say Cancel" ];
 cancelAction.permission = 0;
 
-box = new MenuMessageBox("Menu1", "Menu 1");
+let box = new MenuMessageBox("Menu1", "Menu 1");
 box.body("This is a menu 1");
 box.button1("Confirm", confirmAction);
 box.button2("Cancel", cancelAction);
@@ -411,7 +414,7 @@ box.show(func (result) -> void {
 > 从 LOICollectionA 1.15.0 起，Shop 不再读取 `shop.json`。请在 `plugins/LOICollectionA/config` 目录下自行创建 `shop.lcui`，在文件内直接定义 `ShopData` 并使用 `ShopForm` 打开。表单 ID 对应 `/shop gui <Id>` 中传入的 Id。
 
 ```lcui
-mainBuy = new ShopData();
+let mainBuy = new ShopData();
 mainBuy.id = "MainBuy";
 mainBuy.type = "buy";
 mainBuy.title = "Buy Shop Example";
@@ -419,20 +422,20 @@ mainBuy.content = "This is a shop example";
 mainBuy.exitCommand = "say Exit Shop";
 mainBuy.scoreCommand = "say No score";
 
-apple = new ShopItemData();
+let apple = new ShopItemData();
 apple.type = "commodity";
 apple.title = "Apple";
 apple.introduce = "A red apple";
 apple.number = "Buy number";
 apple.id = "minecraft:apple";
-appleScore = new ScoreRequirement();
+let appleScore = new ScoreRequirement();
 appleScore.objective = "money";
 appleScore.value = 100;
 apple.scores = [ appleScore ];
 
 mainBuy.items = [ apple ];
 
-form = new ShopForm("MainBuy", mainBuy);
+let form = new ShopForm("MainBuy", mainBuy);
 form.show(func (result) -> void {
     if (result.closeReason == 1) [
         if (result.resultCode == 1) [

@@ -21,7 +21,7 @@ ScriptLoader (import resolution and merging) -> Lexer (lexical analysis) -> Pars
 ## A Minimal Script
 
 ```lcui
-form = new CustomForm("example.main", {tr("example.gui.title")}) {
+let form = new CustomForm("example.main", {tr("example.gui.title")}) {
     label({tr("example.gui.hello")}, new TextOptions());
     button({tr("generic.gui.close")}, on: func () -> void {
         form.close();
@@ -36,7 +36,7 @@ form = new CustomForm("example.main", {tr("example.gui.title")}) {
 When creating a form, a `{ ... }` block may follow the constructor call to declare controls in display order. Method calls without a receiver inside the block are automatically applied to the form under construction. The minimal script above is fully equivalent to the manually expanded imperative form:
 
 ```lcui
-form = new CustomForm("example.main", {tr("example.gui.title")});
+let form = new CustomForm("example.main", {tr("example.gui.title")});
 form.label({tr("example.gui.hello")}, new TextOptions());
 form.button({tr("generic.gui.close")}, on: func () -> void {
     form.close();
@@ -52,7 +52,7 @@ Key points:
 - **Control flow**: statements such as `if` are allowed inside the block; which controls get added follows the actual execution order. For example, in the built-in `market_store.lcui`, the audit button is only added for admins when reviews are enabled:
 
 ```lcui
-mineForm = new CustomForm("market.store.mine", {tr("market.gui.title")}) {
+let mineForm = new CustomForm("market.store.mine", {tr("market.gui.title")}) {
     /* ... other buttons ... */
     if (GUIManager::request("market.isAdmin", [])[0] && GUIManager::request("market.store.review.enabled", [])[0]) [
         button({tr("market.gui.store.mine.audit")}, on: func () -> void {
@@ -79,7 +79,7 @@ component ConfirmBar(confirmText, onConfirm) {
     closeButton();
 }
 
-form = new CustomForm("wallet.main", {tr("wallet.gui.title")}) {
+let form = new CustomForm("wallet.main", {tr("wallet.gui.title")}) {
     label({tr("wallet.gui.label")}, new TextOptions());
     ConfirmBar(saveLabel(), func () -> void {
         form.close();
@@ -91,7 +91,7 @@ form = new CustomForm("wallet.main", {tr("wallet.gui.title")}) {
 At compile time the above is equivalent to writing directly inside the block:
 
 ```lcui
-form = new CustomForm("wallet.main", {tr("wallet.gui.title")}) {
+let form = new CustomForm("wallet.main", {tr("wallet.gui.title")}) {
     label({tr("wallet.gui.label")}, new TextOptions());
     button(saveLabel(), on: func () -> void {
         form.close();
@@ -123,7 +123,7 @@ The top of a script may use `import` to pull in the top-level definitions (`clas
 ```lcui
 import "generic.lcui";
 
-quote = new PaginatedForm("market.quote", {tr("market.gui.title")}, GUIManager::value("market.quote.items"), 10) {
+let quote = new PaginatedForm("market.quote", {tr("market.gui.title")}, GUIManager::value("market.quote.items"), 10) {
     label({tr("market.gui.quote.list.label")}, new TextOptions());
     PageControls();
     closeButton();
@@ -172,25 +172,24 @@ Strings have no escape characters; the content inside the quotes is preserved as
 Statements can be separated with `;` or with line breaks. Multiple statements on the same line must be separated with `;`; it is recommended to end every statement with `;`:
 
 ```lcui
-a = 1; b = 2;   // A semicolon is required on the same line
+let a = 1; let b = 2;   // A semicolon is required on the same line
 
-c = 3           // The semicolon can be omitted with a line break
-d = 4;
+let c = 3           // The semicolon can be omitted with a line break
+let d = 4;
 ```
 
 ## Variables and Types
 
-### Variable Declarations (let / const)
+### Variable Declarations (let)
 
-Every variable binding must be declared explicitly with `let` (mutable) or `const` (immutable); the keyword-less implicit creation via a bare assignment is no longer supported:
+Every variable binding must be declared with `let`; the keyword-less implicit creation via a bare assignment is no longer supported:
 
 ```lcui
 let a = 1;          // mutable variable, dynamically typed
 let count: int = 1; // mutable variable with a type annotation
-const pi = 3.14;    // immutable constant, cannot be reassigned after initialization
 ```
 
-A `let` variable can be reassigned at any time and its type may still change dynamically; reassigning a `const` constant raises an error. This rule only constrains local and global variable bindings — function parameters, class fields, and `optional`/`variant` members keep their original structural declaration syntax.
+A `let` variable can be reassigned at any time and its type may still change dynamically. `const` is not a statement-level keyword — it only declares associated constants inside `trait` / `impl` bodies (for example `const G = 9.8;`). This rule only constrains local and global variable bindings — function parameters, class fields, and `optional`/`variant` members keep their original structural declaration syntax.
 
 ### Dynamic Variables
 
@@ -204,13 +203,13 @@ let b = [1, 2, 3];
 
 ### Type Annotations
 
-Use `variableName: type = value` to declare a typed variable; a type declaration must also provide an initial value:
+Use `let variableName: type = value` to declare a typed variable; a type declaration must also provide an initial value:
 
 ```lcui
-count: int = 1;
-name: string = "LOICollection";
-flag: bool = true;
-score: float = 1.5;
+let count: int = 1;
+let name: string = "LOICollection";
+let flag: bool = true;
+let score: float = 1.5;
 ```
 
 Type annotations are checked on assignment; assigning a value of a mismatched type, or assigning a value of another type after declaration, raises an error.
@@ -235,8 +234,8 @@ Function parameters, return values, and variables without type annotations are a
 `optional<T>` can hold a value of type `T`, or the null value `None`:
 
 ```lcui
-value: optional<int> = 1;
-empty: optional<string> = None;
+let value: optional<int> = 1;
+let empty: optional<string> = None;
 
 value.has_value;    // true
 value.value;        // 1
@@ -259,7 +258,7 @@ empty.value;        // Error: optional is empty
 `variant<T1, T2, ...>` can only hold one of the types in the declaration list; assignment is validated:
 
 ```lcui
-data: variant<string, bool, int> = 1;
+let data: variant<string, bool, int> = 1;
 data.type;      // "int"
 data.value;     // 1
 data = "test";  // Valid
@@ -276,8 +275,8 @@ data = 1.5;     // Error: float is not in the declaration list
 using Value = variant<string, bool, int>;
 using Count = int;
 
-a: Value = 1;
-b: Count = 3;
+let a: Value = 1;
+let b: Count = 3;
 ```
 
 Aliases can be chained (e.g. `using B = A;`), but cannot be self-referencing or defined more than once.
@@ -287,7 +286,7 @@ Aliases can be chained (e.g. `using B = A;`), but cannot be self-referencing or 
 Arrays are created with `[element1, element2, ...]` and support arbitrary mixed types:
 
 ```lcui
-items = [1, "a", true];
+let items = [1, "a", true];
 items[0];       // 1
 items.length;   // 3
 
@@ -328,10 +327,10 @@ When `+` is used with strings and numeric, boolean, and other types, everything 
 Objects, arrays, and functions support `==`/`!=`, but comparison is by reference:
 
 ```lcui
-a = [1];
-b = [1];
+let a = [1];
+let b = [1];
 a == b;   // false: same contents but not the same array
-c = a;
+let c = a;
 a == c;   // true
 ```
 
@@ -376,14 +375,14 @@ if (flag) [
 `if` itself is also an expression; the last value in a branch is returned as the result and can take part in operations or assignments:
 
 ```lcui
-result = if (count > 0) [ 10 : 20 ];
-total = if (flag) [ 1 : 2 ] + 5;
+let result = if (count > 0) [ 10 : 20 ];
+let total = if (flag) [ 1 : 2 ] + 5;
 ```
 
 ### while
 
 ```lcui
-i = 0;
+let i = 0;
 while (i < 5) [
     i++;
 ]
@@ -392,8 +391,8 @@ while (i < 5) [
 ### for
 
 ```lcui
-s = 0;
-for (i = 0; i < 10; i++) [
+let s = 0;
+for (let i = 0; i < 10; i++) [
     if (i % 2 == 0) [ continue; ];
     s += i;
 ]
@@ -420,7 +419,7 @@ func pick(x) {
     return x;
 }
 
-result = add(1, 2);
+let result = add(1, 2);
 ```
 
 Functions support recursion and mutual recursion, and also support overloading by parameter type:
@@ -445,7 +444,7 @@ Function and class definitions can only appear at the top level of a script; the
 `func (parameters) -> returnType { ... }` defines an anonymous function; it can be assigned to a variable, passed as a parameter, and captures outer local variables, parameters, and `this`:
 
 ```lcui
-double = func (x: int) -> int {
+let double = func (x: int) -> int {
     return x * 2;
 };
 
@@ -473,7 +472,7 @@ public:
     }
 }
 
-dog = new Animal("dog");
+let dog = new Animal("dog");
 dog.name;   // "dog"
 ```
 
@@ -498,7 +497,7 @@ public:
     }
 }
 
-box = new SecretBox();
+let box = new SecretBox();
 box.getSecret();    // 42
 box.secret;         // Error: private field
 ```
@@ -537,7 +536,7 @@ class Dog extends Animal {
     }
 }
 
-dog = new Dog("dog");
+let dog = new Dog("dog");
 dog instanceof Animal;  // true
 ```
 
@@ -620,7 +619,7 @@ impl Iterable for Deck {
     }
 }
 
-deck = new Deck();
+let deck = new Deck();
 for (i, card in deck) [
     println(i + ": " + card);
 ]
@@ -658,7 +657,7 @@ The call format is `Namespace::function(parameters)`, for example:
 ```lcui
 mc::runCmd("say hello");
 GUIManager::callback("example.submit", [ "data" ]);
-text = std::format({tr("example.gui.info")}, [ 1, "two" ]);
+let text = std::format({tr("example.gui.info")}, [ 1, "two" ]);
 ```
 
 > The `type` in `GUIManager::open` and `GUIManager::switchTo` is an integer: `1` is CustomForm, `2` is MessageBox, `3` is PaginatedForm, `4` is ScriptForm.
@@ -671,8 +670,8 @@ text = std::format({tr("example.gui.info")}, [ 1, "two" ]);
 Call a macro with `{name}` or `{name(parameters)}`, for example `{tr("language.gui.title")}`. `tr` returns the translated text for the current player's language; default variables such as `{player}`, `{server_tps}`, and `{score(name)}` are also used in macro form; see [LOICollectionAPI](./api.md) for the full list.
 
 ```lcui
-title = {tr("example.gui.title")};
-label = {player} + " -> " + {tr("example.gui.hello")};
+let title = {tr("example.gui.title")};
+let label = {player} + " -> " + {tr("example.gui.hello")};
 ```
 
 ### Passthrough and Blocking with `$`
@@ -680,7 +679,7 @@ label = {player} + " -> " + {tr("example.gui.hello")};
 `$` is used to pass through raw text: the content between `$` and `}` (or `;`) is kept as-is and does not participate in parsing:
 
 ```lcui
-raw = $custom content};
+let raw = $custom content};
 ```
 
 The `${variable}` form can block variable/macro replacement, keeping the content in literal form; for example, `${team}` in `{player_realname} + '->' + ${team}` is output verbatim as `{team}`.
@@ -706,7 +705,7 @@ The following native classes can be directly `new`ed in a script (overview):
 When a script is opened via `GUIManager::open(id, formId, type, ctx)` and a `ctx` array is passed in, `new CtxValue(index)` can be used to read the corresponding element:
 
 ```lcui
-detail = new CtxValue(0);
+let detail = new CtxValue(0);
 form.label(detail.value, new TextOptions());
 ```
 
@@ -736,11 +735,11 @@ func makeItems() {
     return [ new Item("Apple", 3), new Item("Banana", 5) ];
 }
 
-items = makeItems();
-selected = new GlobalValue();
+let items = makeItems();
+let selected = new GlobalValue();
 selected.value = "";
 
-form = new CustomForm("example.shop", {tr("example.shop.title")}) {
+let form = new CustomForm("example.shop", {tr("example.shop.title")}) {
     label({tr("example.shop.list")}, new TextOptions());
     button(items[0].format(), on: func () -> void {
         selected.value = items[0].name;
@@ -807,9 +806,9 @@ After compilation and before execution, the bytecode passes through an optimizer
 | Optimization | Example | Effect |
 | --- | --- | --- |
 | Constant folding | `1 + 2 * 3` | Folded to `PUSH_INT 7` at compile time; nothing computed at runtime |
-| Variable forwarding | `x = 1; if (x == 1) [...]` | Later reads of `x` are replaced by the known value, and the branch folds away |
+| Variable forwarding | `let x = 1; if (x == 1) [...]` | Later reads of `x` are replaced by the known value, and the branch folds away |
 | Pure-function folding | `math::abs(-3)`, `math::pow(2, 10)` | `math::` pure functions with all-constant arguments evaluate at compile time; impure ones like `math::random` never fold |
-| Super-instructions | `x = 1` (`DUP` + `STORE_VAR`) | Hot instruction pairs fuse into a single `DUP_STORE` / `DUP_IS_NONE`, doing two jobs in one dispatch |
+| Super-instructions | `let x = 1` (`DUP` + `STORE_VAR`) | Hot instruction pairs fuse into a single `DUP_STORE` / `DUP_IS_NONE`, doing two jobs in one dispatch |
 | Jump peephole | A conditional jump immediately followed by an unconditional jump to the same target | The double jump collapses and the unreachable block in between is removed |
 | Dead-code elimination | `while (false) [...]`, `if (false) [...]` | Unreachable branches are removed wholesale |
 
@@ -838,7 +837,7 @@ The current package format version is v2.
 - Imported files may only contain top-level definitions (`class` / `func` / `using` / `component` / `import`); same-named definitions in different files conflict and raise an error.
 - Every script execution is bound by the execution budget (1,000,000 instructions / 256 call frames by default); exceeding it aborts the execution. The budget is tunable per script via `budget` in `permission.json` — see [Execution Budget and Call Depth](#execution-budget-and-call-depth).
 - `return` can only be used inside a function; `break`/`continue` can only be used inside a loop.
-- A type declaration (`x: int`) must also provide an initial value; class fields without a default value must be assigned in the constructor.
+- A type declaration (`let x: int = 0;`) must also provide an initial value; class fields without a default value must be assigned in the constructor.
 - `None` can only be used in an `optional` context; directly reading, performing arithmetic on, or comparing an empty `optional` raises an error.
 - `%` only supports integers; division by zero and integer overflow raise errors.
 - Array indices must be `int`; out-of-bounds reads and negative indices raise errors; an index equal to the length appends an element.
