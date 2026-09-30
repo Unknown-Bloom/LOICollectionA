@@ -325,6 +325,8 @@ if (!ok) {
 
 Databases open in `WAL` mode: `busy_timeout=5s` makes writes **wait** under lock contention instead of failing immediately; readers and writers don't block each other (reads are not blocked by writes). Normal read/write needs no locking—just call as usual.
 
+On top of that, the connection pool adds a second layer of write serialization at the pool level (`tryAcquireWrite`, 5s timeout by default): **only one writer exists for the whole database at any moment**. When several threads call `WriteBatch::begin()` at once, only one takes the write lock and the others wait up to 5s, rather than each grabbing a connection and racing for the write lock until one of them drops with `SQLITE_BUSY` (`database is locked`). Read connections (`acquire()`) use a separate lock and stay concurrent. In short: `WAL + busy_timeout` copes with a single connection's writes being blocked by another connection, while write serialization prevents multiple write transactions from occupying separate connections and mutually excluding each other—together, concurrent writes no longer lose transactions.
+
 ### 9.2 DDL, autocommit, and which connection a transaction owns
 
 SQLite's DDL is **transactional**: `CREATE TABLE` / `DROP TABLE` / `CREATE INDEX` inside a `BEGIN` do **not** implicitly commit—they commit or roll back atomically together with your DML. So "never run DDL in a transaction" is simply wrong. What you actually have to respect is:
@@ -360,6 +362,41 @@ repo->exec("DROP TABLE IF EXISTS t");   // second connection → hits the write 
 ### 9.3 Prefer tx() over per-cell writes
 
 Each `set` carries its own transaction commit. When changing many columns/rows at once, merge them into one commit with `tx()`—it guarantees atomicity and cuts I/O significantly.
+
+### 9.4 Nested transactions (SAVEPOINT)
+
+When the **current thread already holds an active transaction**, opening another `WriteBatch` automatically **nests as a SAVEPOINT** instead of taking a second connection and racing for the write lock again:
+
+```cpp
+auto outer = WriteBatch::begin(repo->store());
+// … open another batch inside the outer transaction …
+auto inner = WriteBatch::begin(repo->store());  // thread already has an active txn → nested as SAVEPOINT
+// inner's changes belong to outer; inner.commit() == RELEASE SAVEPOINT, does not end outer
+// inner.rollback() == ROLLBACK TO SAVEPOINT, undoes only inner's changes
+```
+
+Key points:
+
+- Nesting only happens when "the same thread already holds an active transaction" (the active transaction is `thread_local`, so it never nests across threads). The nested batch reuses the outer transaction's connection and write lock and **does not** request the write lock again, so it can't deadlock with the pool-level serialization in 9.1.
+- A nested batch's `commit()` runs `RELEASE SAVEPOINT` and `rollback()` runs `ROLLBACK TO SAVEPOINT`; neither ends the outer transaction.
+- If the outer transaction is ended prematurely (connection released) before the nested batch closes, that savepoint is gone too; the nested batch's later `commit`/`rollback` safely skips rather than operating on a connection it no longer owns.
+
+> [!TIP]
+> A read inside a transaction returns the transaction connection the current thread holds (`activeTransaction()`), so the nested and outer batches always share one connection—that is exactly what makes SAVEPOINT work. Don't open a second connection with `repo->exec()` inside a transaction (see 9.2).
+
+### 9.5 In-process cache and uncommitted data
+
+`BlockStore` keeps two process-wide caches, `mBlockCache` / `mNameCache`, to speed up reads across transactions. To rule out **phantom reads**, the cache only ever holds *committed-visible* state:
+
+- `mayCache()` is `false` while the **current thread holds an active transaction**. So a read inside a transaction goes through the transaction's own connection (it sees the transaction's own uncommitted writes) but does **not** back-fill the process cache.
+- After the transaction **commits**, the thread no longer holds a transaction, and subsequent reads populate the cache normally (the data is now a persisted snapshot).
+- After the transaction **rolls back**, the uncommitted writes were **never in the cache** to begin with, so no ghost rows can linger.
+
+> [!IMPORTANT]
+> The cost: the thread holding a write transaction gets no cache acceleration for the duration of that transaction (every read goes straight to the database). This trades a little performance for the guarantee that the process cache never contains uncommitted data. If your code reads the same row repeatedly inside a transaction, move that read out of the transaction, or accept the miss.
+
+> [!TIP]
+> This also means: uncommitted data read inside a transaction is only valid on that transaction's connection and vanishes on rollback—it can never "poison" other threads, nor the same thread's reads taken outside the transaction.
 
 ## 10. Error handling
 
