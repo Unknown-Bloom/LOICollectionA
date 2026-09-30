@@ -48,20 +48,18 @@ using I18nUtilsTools::tr;
 using LOICollection::data::FindMode;
 
 namespace LOICollection::server::Plugins {
-
-    static long long nowEpochSeconds() {
-        return std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-    }
-
     struct MarketAuction::Impl {
         std::shared_ptr<BlockRepository> db;
         std::shared_ptr<BlockRepository> settingsDb;
+
         const Config::C_Market& options;
+
         std::shared_ptr<ll::io::Logger> logger;
+
         TimerManager& timerManager;
         BlacklistProvider blacklistProvider;
         TaxRateProvider taxRateProvider;
+
         std::optional<StoreAuctionTable> mTable;
         std::optional<StoreSaleTable> mSale;
         std::optional<MarketTable> market;
@@ -143,7 +141,7 @@ namespace LOICollection::server::Plugins {
         if (mName.empty())
             return false;
 
-        long long mEndAt = nowEpochSeconds() + static_cast<long long>(durationSeconds);
+        long long mEndAt = SystemUtils::getEpochSeconds() + static_cast<long long>(durationSeconds);
         std::string mId = SystemUtils::getCurrentTimestamp();
 
         auto& t = *this->mImpl->mTable;
@@ -224,7 +222,7 @@ namespace LOICollection::server::Plugins {
                     return false;
 
                 long long endAt = SystemUtils::toLongLong(data.at("end_at"), 0);
-                if (nowEpochSeconds() >= endAt)
+                if (SystemUtils::getEpochSeconds() >= endAt)
                     return false;
                 if (data.at("settled") == "1")
                     return false;
@@ -262,10 +260,8 @@ namespace LOICollection::server::Plugins {
 
                         int antiSnipe = this->mImpl->options.StoreAuctionAntiSnipeSeconds;
                         long long newEndAt = endAt;
-                        if (antiSnipe > 0 &&
-                            nowEpochSeconds() >= endAt - static_cast<long long>(antiSnipe)) {
+                        if (antiSnipe > 0 && SystemUtils::getEpochSeconds() >= endAt - static_cast<long long>(antiSnipe))
                             newEndAt = endAt + static_cast<long long>(antiSnipe);
-                        }
 
                         auto& t = *this->mImpl->mTable;
 
@@ -510,7 +506,7 @@ namespace LOICollection::server::Plugins {
                     if (data.at("settled") == "1")
                         continue;
 
-                    if (nowEpochSeconds() < SystemUtils::toLongLong(data.at("end_at"), 0))
+                    if (SystemUtils::getEpochSeconds() < SystemUtils::toLongLong(data.at("end_at"), 0))
                         continue;
 
                     if (!data.at("bidder_uuid").empty()) {

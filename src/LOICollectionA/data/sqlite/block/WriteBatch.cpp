@@ -1,5 +1,4 @@
 #include <atomic>
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -14,13 +13,9 @@
 
 #include "LOICollectionA/data/sqlite/block/WriteBatch.h"
 
-namespace {
-    constexpr int kAcquireTimeoutMs = 5000;
-
-    std::string nextSavepoint() {
-        static std::atomic<std::uint64_t> seq{0};
-        return "wb_sp_" + std::to_string(seq.fetch_add(1, std::memory_order_relaxed) + 1);
-    }
+std::string WriteBatch::nextSavepoint() {
+    static std::atomic<std::uint64_t> seq{0};
+    return "wb_sp_" + std::to_string(seq.fetch_add(1, std::memory_order_relaxed) + 1);
 }
 
 ll::Expected<std::unique_ptr<WriteBatch>> WriteBatch::begin(BlockStore& store) {
@@ -28,20 +23,16 @@ ll::Expected<std::unique_ptr<WriteBatch>> WriteBatch::begin(BlockStore& store) {
     if (!pool)
         return ll::makeStringError("write batch requires a connection pool");
 
-    // SQLite allows a single writer per database file, so a second concurrent
-    // transaction on another pooled connection is rejected with SQLITE_BUSY
-    // ("database is locked"). Nest into the transaction this thread already
-    // holds as a savepoint instead of opening another one.
     if (SQLiteConnection* active = pool->activeTransaction()) {
         auto txn = std::make_unique<StorageTransaction>(
-            std::shared_ptr<SQLiteConnection>(active, [](SQLiteConnection*) {}),
+            std::shared_ptr<SQLiteConnection>(active, [](SQLiteConnection*) -> void {}),
             pool,
-            nextSavepoint());
+            WriteBatch::nextSavepoint()
+        );
+
         return std::unique_ptr<WriteBatch>(new WriteBatch(store, std::move(txn)));
     }
 
-    // Serialize writers: a competing transaction waits for the lock rather than
-    // failing outright.
     if (!pool->tryAcquireWrite(kAcquireTimeoutMs))
         return ll::makeStringError("timed out waiting for the database write lock");
 
@@ -62,9 +53,7 @@ ll::Expected<std::unique_ptr<WriteBatch>> WriteBatch::begin(BlockStore& store) {
     }
 }
 
-WriteBatch::WriteBatch(BlockStore& store, std::unique_ptr<StorageTransaction> txn)
-    : mStore(&store), mTxn(std::move(txn)) {}
-
+WriteBatch::WriteBatch(BlockStore& store, std::unique_ptr<StorageTransaction> txn) : mStore(&store), mTxn(std::move(txn)) {}
 WriteBatch::~WriteBatch() = default;
 
 ll::Expected<BlockId> WriteBatch::append(
@@ -76,13 +65,15 @@ ll::Expected<BlockId> WriteBatch::append(
     auto res = mStore->implCreateBlock(*mTxn->connection(), parent, kind, name, payload, id);
     if (!res.has_value())
         return ll::makeStringError(res.error().message());
+
     return id;
 }
 
 ll::Expected<std::vector<BlockId>> WriteBatch::appendMany(
     BlockId parent,
     std::int32_t kind,
-    std::span<const std::pair<std::string_view, std::string_view>> namePayloads) {
+    std::span<const std::pair<std::string_view, std::string_view>> namePayloads
+) {
     std::vector<BlockId> ids;
     ids.reserve(namePayloads.size());
 
@@ -92,11 +83,13 @@ ll::Expected<std::vector<BlockId>> WriteBatch::appendMany(
             return ll::makeStringError(id.error().message());
         ids.emplace_back(*id);
     }
+
     return ids;
 }
 
 ll::Expected<BlockId> WriteBatch::upsertRow(
-    BlockId parent, std::string_view name, std::string_view payload) {
+    BlockId parent, std::string_view name, std::string_view payload
+) {
     if (mFinished)
         return ll::makeStringError("write batch already finished");
     return mStore->implUpsertRow(*mTxn->connection(), parent, name, payload);
@@ -105,38 +98,45 @@ ll::Expected<BlockId> WriteBatch::upsertRow(
 ll::Expected<void> WriteBatch::setPayload(BlockId id, std::string_view payload) {
     if (mFinished)
         return ll::makeStringError("write batch already finished");
+
     return mStore->implSetPayload(*mTxn->connection(), id, payload);
 }
 
 ll::Expected<void> WriteBatch::control(BlockId id, BlockLifecycle to) {
     if (mFinished)
         return ll::makeStringError("write batch already finished");
+
     return mStore->implControl(*mTxn->connection(), id, to);
 }
 
 ll::Expected<void> WriteBatch::setProp(BlockId id, PropKey key, std::int64_t value) {
     if (mFinished)
         return ll::makeStringError("write batch already finished");
+
     return mStore->implSetProp(*mTxn->connection(), id, key, PayloadType::Int, value, 0.0, {});
 }
 
 ll::Expected<void> WriteBatch::setProp(BlockId id, PropKey key, double value) {
     if (mFinished)
         return ll::makeStringError("write batch already finished");
+
     return mStore->implSetProp(*mTxn->connection(), id, key, PayloadType::Double, 0, value, {});
 }
 
 ll::Expected<void> WriteBatch::setProp(BlockId id, PropKey key, std::string_view value) {
     if (mFinished)
         return ll::makeStringError("write batch already finished");
+
     return mStore->implSetProp(*mTxn->connection(), id, key, PayloadType::Text, 0, 0.0, value);
 }
 
 ll::Expected<void> WriteBatch::setProp(
     BlockId id, PropKey key, PayloadType type,
-    std::int64_t ival, double rval, std::string_view tval) {
+    std::int64_t ival, double rval, std::string_view tval
+) {
     if (mFinished)
         return ll::makeStringError("write batch already finished");
+
     return mStore->implSetProp(*mTxn->connection(), id, key, type, ival, rval, tval);
 }
 
@@ -145,14 +145,17 @@ ll::Expected<void> WriteBatch::exec(std::string_view sql) {
         return ll::makeStringError("write batch already finished");
 
     auto& db = mTxn->connection()->database();
+
     int rc = db.tryExec(std::string(sql));
     if (rc != SQLITE_OK)
         return ll::makeStringError(std::string(db.getErrorMsg()));
+
     return {};
 }
 
 ll::Expected<void> WriteBatch::execCells(
-    std::string_view key, std::string_view sql, std::span<const BlockProp> params) {
+    std::string_view key, std::string_view sql, std::span<const BlockProp> params
+) {
     if (mFinished)
         return ll::makeStringError("write batch already finished");
 
@@ -160,8 +163,10 @@ ll::Expected<void> WriteBatch::execCells(
     auto stmt = conn.statements().ensure(key, sql);
     if (!stmt)
         return ll::makeStringError("prepare statement '" + std::string(key) + "' failed");
+
     stmt->reset();
     stmt->clearBindings();
+
     int idx = 1;
     for (auto const& p : params) {
         if (p.type == PayloadType::Int)
@@ -171,22 +176,27 @@ ll::Expected<void> WriteBatch::execCells(
         else
             stmt->bind(idx++, p.textValue);
     }
+
     int rc = stmt->tryExecuteStep();
+
     stmt->reset();
     if (rc != SQLITE_DONE)
         return ll::makeStringError(std::string(conn.database().getErrorMsg()));
+
     return {};
 }
 
 ll::Expected<std::int32_t> WriteBatch::intern(std::string_view name) {
     if (mFinished)
         return ll::makeStringError("write batch already finished");
+
     return mStore->resolveKey(*mTxn->connection(), name);
 }
 
 ll::Expected<void> WriteBatch::link(BlockId src, BlockId dst, std::int32_t kind) {
     if (mFinished)
         return ll::makeStringError("write batch already finished");
+
     return mStore->implLink(*mTxn->connection(), src, dst, kind);
 }
 
@@ -197,6 +207,7 @@ ll::Expected<bool> WriteBatch::commit() {
     auto ok = mTxn->commit();
     if (ok.has_value())
         mFinished = true;
+
     return ok;
 }
 
@@ -207,5 +218,6 @@ ll::Expected<bool> WriteBatch::rollback() {
     auto ok = mTxn->rollback();
     if (ok.has_value())
         mFinished = true;
+
     return ok;
 }

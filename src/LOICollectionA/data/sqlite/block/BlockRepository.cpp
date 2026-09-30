@@ -1,3 +1,9 @@
+#include <memory>
+#include <string>
+#include <string_view>
+
+#include <ll/api/Expected.h>
+
 #include "LOICollectionA/data/sqlite/connection/ConnectionPool.h"
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"

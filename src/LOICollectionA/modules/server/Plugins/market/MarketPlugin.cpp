@@ -64,8 +64,6 @@
 
 #include "LOICollectionA/ConfigPlugin.h"
 
-#include "LOICollectionA/frontend/AST.h"
-
 #include "LOICollectionA/include/form/GUIManager.h"
 
 #include "LOICollectionA/include/server/Plugins/market/MarketPlugin.h"
@@ -92,8 +90,6 @@ namespace LOICollection::server::Plugins {
         int Days = 0;
         std::string Rate;
     };
-
-
 
     struct MarketPlugin::Impl {
         std::shared_ptr<TimerManager> mTimerManager;

@@ -8,6 +8,12 @@
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
 namespace SystemUtils {
+    std::int64_t getEpochSeconds() {
+        return std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()
+        ).count();
+    }
+
     std::string getCurrentTimestamp() {
         auto mTimeNow = std::chrono::system_clock::now();
         return std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>(mTimeNow.time_since_epoch()).count());

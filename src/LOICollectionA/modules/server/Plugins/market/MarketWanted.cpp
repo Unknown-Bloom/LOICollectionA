@@ -1,11 +1,11 @@
-#include <algorithm>
-#include <chrono>
 #include <cmath>
+#include <chrono>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 #include <utility>
+#include <optional>
+#include <algorithm>
 #include <unordered_map>
 
 #include <fmt/core.h>
@@ -50,20 +50,19 @@ using I18nUtilsTools::tr;
 using LOICollection::data::FindMode;
 
 namespace LOICollection::server::Plugins {
-
-    static long long nowEpochSeconds() {
-        return std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-    }
-
     struct MarketWanted::Impl {
         std::shared_ptr<BlockRepository> db;
         std::shared_ptr<BlockRepository> settingsDb;
+
         const Config::C_Market& options;
+
         std::shared_ptr<ll::io::Logger> logger;
+
         TimerManager& timerManager;
+
         BlacklistProvider blacklistProvider;
         TaxRateProvider taxRateProvider;
+
         std::optional<StoreWantedTable> mTable;
         std::optional<StoreSaleTable> mSale;
         std::optional<MarketTable> market;
@@ -144,73 +143,72 @@ namespace LOICollection::server::Plugins {
 
         return this->mImpl->mTable->find(FindMode::And, {
             { StoreWantedCol::wanted_uuid, mUuid }
-        })
-            .and_then([this, mUuid, mScoreboard, mFrozen, mName, mItemStack = std::move(mItemStack), unitPrice, amount, &player](const std::vector<std::string>& items) -> ll::Expected<bool> {
-                if (static_cast<int>(items.size()) >= this->mImpl->options.StoreWantedMaxPerPlayer)
-                    return false;
+        }).and_then([this, mUuid, mScoreboard, mFrozen, mName, mItemStack, unitPrice, amount, &player](const std::vector<std::string>& items) -> ll::Expected<bool> {
+            if (static_cast<int>(items.size()) >= this->mImpl->options.StoreWantedMaxPerPlayer)
+                return false;
 
-                if (ScoreboardUtils::getScore(player, mScoreboard) < mFrozen) {
-                    return LanguagePlugin::getShared()->getLanguage(player)
-                        .transform([&player](const std::string& language) -> bool {
-                            player.sendMessage(tr(language, "market.gui.sell.sellItem.tips3"));
+            if (ScoreboardUtils::getScore(player, mScoreboard) < mFrozen) {
+                return LanguagePlugin::getShared()->getLanguage(player)
+                    .transform([&player](const std::string& language) -> bool {
+                        player.sendMessage(tr(language, "market.gui.sell.sellItem.tips3"));
 
-                            return false;
-                        });
-                }
-
-                ScoreboardUtils::reduceScore(player, mScoreboard, static_cast<int>(mFrozen));
-
-                long long mExpireAt = nowEpochSeconds() + static_cast<long long>(this->mImpl->options.StoreWantedExpireDays) * 86'400LL;
-                std::string mId = SystemUtils::getCurrentTimestamp();
-
-                auto& t = *this->mImpl->mTable;
-                auto tx = t.tx();
-                if (!tx.has_value())
-                    return ll::Unexpected(tx.error());
-
-                auto r = tx->set(mId, StoreWantedCol::wanted_uuid, mUuid)
-                    .and_then([&]() -> ll::Expected<void> {
-                        return tx->set(mId, StoreWantedCol::wanted_name, player.getRealName());
-                    })
-                    .and_then([&]() -> ll::Expected<void> {
-                        return tx->set(mId, StoreWantedCol::item_type, mItemStack.getTypeName());
-                    })
-                    .and_then([&]() -> ll::Expected<void> {
-                        return tx->set(mId, StoreWantedCol::item_data, mItemStack.save(*SaveContextFactory::createCloneSaveContext())->toSnbt(SnbtFormat::Minimize, 0));
-                    })
-                    .and_then([&]() -> ll::Expected<void> {
-                        return tx->set(mId, StoreWantedCol::item_name, mName);
-                    })
-                    .and_then([&]() -> ll::Expected<void> {
-                        return tx->set(mId, StoreWantedCol::unit_price, static_cast<long long>(unitPrice));
-                    })
-                    .and_then([&]() -> ll::Expected<void> {
-                        return tx->set(mId, StoreWantedCol::amount_total, static_cast<long long>(amount));
-                    })
-                    .and_then([&]() -> ll::Expected<void> {
-                        return tx->set(mId, StoreWantedCol::amount_filled, 0LL);
-                    })
-                    .and_then([&]() -> ll::Expected<void> {
-                        return tx->set(mId, StoreWantedCol::expire_at, mExpireAt);
+                        return false;
                     });
+            }
 
-                if (!r.has_value()) {
-                    (void)tx->rollback();
+            ScoreboardUtils::reduceScore(player, mScoreboard, static_cast<int>(mFrozen));
 
-                    return ll::Unexpected(r.error());
-                }
+            long long mExpireAt = SystemUtils::getEpochSeconds() + static_cast<long long>(this->mImpl->options.StoreWantedExpireDays) * 86'400LL;
+            std::string mId = SystemUtils::getCurrentTimestamp();
 
-                auto c = tx->commit();
-                if (!c.has_value()) {
-                    (void)tx->rollback();
+            auto& t = *this->mImpl->mTable;
+            auto tx = t.tx();
+            if (!tx.has_value())
+                return ll::Unexpected(tx.error());
 
-                    return ll::Unexpected(c.error());
-                }
+            auto r = tx->set(mId, StoreWantedCol::wanted_uuid, mUuid)
+                .and_then([&]() -> ll::Expected<void> {
+                    return tx->set(mId, StoreWantedCol::wanted_name, player.getRealName());
+                })
+                .and_then([&]() -> ll::Expected<void> {
+                    return tx->set(mId, StoreWantedCol::item_type, mItemStack.getTypeName());
+                })
+                .and_then([&]() -> ll::Expected<void> {
+                    return tx->set(mId, StoreWantedCol::item_data, mItemStack.save(*SaveContextFactory::createCloneSaveContext())->toSnbt(SnbtFormat::Minimize, 0));
+                })
+                .and_then([&]() -> ll::Expected<void> {
+                    return tx->set(mId, StoreWantedCol::item_name, mName);
+                })
+                .and_then([&]() -> ll::Expected<void> {
+                    return tx->set(mId, StoreWantedCol::unit_price, static_cast<long long>(unitPrice));
+                })
+                .and_then([&]() -> ll::Expected<void> {
+                    return tx->set(mId, StoreWantedCol::amount_total, static_cast<long long>(amount));
+                })
+                .and_then([&]() -> ll::Expected<void> {
+                    return tx->set(mId, StoreWantedCol::amount_filled, 0LL);
+                })
+                .and_then([&]() -> ll::Expected<void> {
+                    return tx->set(mId, StoreWantedCol::expire_at, mExpireAt);
+                });
 
-                this->mImpl->logger->info(fmt::runtime(tr({}, "market.log20")), player.getRealName(), mName);
+            if (!r.has_value()) {
+                (void)tx->rollback();
 
-                return true;
-            });
+                return ll::Unexpected(r.error());
+            }
+
+            auto c = tx->commit();
+            if (!c.has_value()) {
+                (void)tx->rollback();
+
+                return ll::Unexpected(c.error());
+            }
+
+            this->mImpl->logger->info(fmt::runtime(tr({}, "market.log20")), player.getRealName(), mName);
+
+            return true;
+        });
     }
 
     ll::Expected<bool> MarketWanted::cancelWanted(Player& player, const std::string& id) {
@@ -269,7 +267,7 @@ namespace LOICollection::server::Plugins {
                     return false;
 
                 long long expireAt = SystemUtils::toLongLong(data.at("expire_at"), 0);
-                if (nowEpochSeconds() >= expireAt)
+                if (SystemUtils::getEpochSeconds() >= expireAt)
                     return ll::makeErrorCodeError(MarketPlugin::makeErrorCode(MarketPluginErrorCode::WantedExpired));
 
                 int total = SystemUtils::toInt(data.at("amount_total"), 0);
@@ -603,7 +601,7 @@ namespace LOICollection::server::Plugins {
                     if (data.empty())
                         continue;
 
-                    if (nowEpochSeconds() < SystemUtils::toLongLong(data.at("expire_at"), 0))
+                    if (SystemUtils::getEpochSeconds() < SystemUtils::toLongLong(data.at("expire_at"), 0))
                         continue;
 
                     int total = SystemUtils::toInt(data.at("amount_total"), 0);

@@ -1,10 +1,9 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <fstream>
 #include <algorithm>
 #include <filesystem>
-#include <fstream>
-#include <iterator>
 
 #include <ll/api/Config.h>
 #include <ll/api/Expected.h>
@@ -92,6 +91,7 @@ namespace LOICollection {
         ServiceProvider::getInstance().registerInstance<std::string>(std::make_shared<std::string>(dataFilePath.string()), "DataPath");
         ServiceProvider::getInstance().registerInstance<std::string>(std::make_shared<std::string>(guiFilePath.string()), "GuiPath");
         ServiceProvider::getInstance().registerInstance<std::string>(std::make_shared<std::string>(configDataPath.string()), "ConfigPath");
+        
         if (auto settingsDb = BlockRepository::open((dataFilePath / "settings.db").string(), 4); !settingsDb.has_value()) {
             settingsDb.error().log(logger);
             return false;

@@ -21,12 +21,6 @@ namespace LOICollection::frontend {
         size_t declarativeDepth = 0;
         size_t parseDepth = 0;
 
-        // Expression nesting budget counted in DepthGuard hits, not syntactic
-        // levels: one parenthesized level crosses parsePrimary/parsePower/
-        // parseUnary (~11 unrolled frames, ~3 guards) before recursing, so a
-        // debug build spends roughly 10 stack frames per guard. 256 keeps the
-        // deepest legal input (~85 nesting levels) inside a 1 MB thread stack;
-        // 1024 overflowed the stack before the check could fire.
         static constexpr size_t kMaxParseDepth = 256;
 
         struct DepthGuard {

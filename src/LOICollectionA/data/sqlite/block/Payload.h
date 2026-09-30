@@ -1,15 +1,10 @@
 #pragma once
 
-#include <cstddef>
-
-#include <cstdint>
-
 #include <string>
-#include <string_view>
 #include <vector>
-
-#include <optional>
 #include <utility>
+#include <optional>
+#include <string_view>
 
 #include "LOICollectionA/base/Macro.h"
 
@@ -27,8 +22,11 @@ enum class PayloadType : std::uint8_t {
 struct PayloadField {
     LOICollection::PropKey key = 0;
     PayloadType type = PayloadType::Null;
+
     std::int64_t intValue = 0;
+
     double realValue = 0.0;
+    
     std::string_view textValue;
 };
 
@@ -65,6 +63,7 @@ public:
                     owned.assign(field.textValue);
                     field.textValue = owned;
                 }
+
                 std::forward<F>(f)(field);
             } else {
                 break;

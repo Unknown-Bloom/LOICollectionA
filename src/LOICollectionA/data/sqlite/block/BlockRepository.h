@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstddef>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -23,13 +22,13 @@ public:
     LOICOLLECTION_A_NDAPI static ll::Expected<std::shared_ptr<BlockRepository>> fromStore(
         std::shared_ptr<BlockStore> store);
 
-    [[nodiscard]] BlockStore& store() noexcept { return *mStore; }
+    LOICOLLECTION_A_NDAPI BlockStore& store() noexcept { return *mStore; }
 
-    [[nodiscard]] ll::Expected<std::optional<std::string>> metaGet(std::string_view key);
-    [[nodiscard]] ll::Expected<void> metaSet(std::string_view key, std::string_view value);
-    [[nodiscard]] ll::Expected<void> metaDel(std::string_view key);
+    LOICOLLECTION_A_NDAPI ll::Expected<std::optional<std::string>> metaGet(std::string_view key);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> metaSet(std::string_view key, std::string_view value);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> metaDel(std::string_view key);
 
-    [[nodiscard]] ll::Expected<void> exec(std::string_view sql);
+    LOICOLLECTION_A_NDAPI ll::Expected<void> exec(std::string_view sql);
 
 private:
     explicit BlockRepository(std::shared_ptr<BlockStore> store);

@@ -36,15 +36,15 @@ protected:
         std::filesystem::remove_all(tempDir);
     }
 
-    static std::unique_ptr<BehaviorEventLog> makeLog(std::string_view root) {
-        auto log = BehaviorEventLog::create(*storage, root);
+    static std::unique_ptr<LOICollection::server::Plugins::BehaviorEventLog> makeLog(std::string_view root) {
+        auto log = LOICollection::server::Plugins::BehaviorEventLog::create(*storage, root);
         if (!log.has_value())
             return nullptr;
 
         return std::move(log.value());
     }
 
-    static BehaviorEventLog::PreparedEvent makeEvent(
+    static LOICollection::server::Plugins::BehaviorEventLog::PreparedEvent makeEvent(
         std::string_view name,
         std::string_view type,
         std::int64_t timestamp,
@@ -52,7 +52,7 @@ protected:
         std::int64_t y,
         std::int64_t z,
         std::int64_t dimension) {
-        BehaviorEventLog::PreparedEvent event;
+        LOICollection::server::Plugins::BehaviorEventLog::PreparedEvent event;
         event.name = std::string(name);
         event.type = std::string(type);
         event.timestamp = timestamp;
@@ -79,7 +79,7 @@ TEST_F(BehaviorEventLogTest, AppendManyWritesEveryEvent) {
     auto log = makeLog("append_many");
     ASSERT_NE(log, nullptr);
 
-    std::vector<BehaviorEventLog::PreparedEvent> events;
+    std::vector<LOICollection::server::Plugins::BehaviorEventLog::PreparedEvent> events;
     events.emplace_back(makeEvent("PlayerChat", "Normal", 100, 1, 2, 3, 0));
     events.emplace_back(makeEvent("PlayerDie", "Normal", 200, 4, 5, 6, 1));
     events.emplace_back(makeEvent("PlayerPlaceBlock", "Operable", 300, 7, 8, 9, 2));
@@ -97,7 +97,7 @@ TEST_F(BehaviorEventLogTest, ReadRestoresEventFields) {
     auto log = makeLog("read_fields");
     ASSERT_NE(log, nullptr);
 
-    std::vector<BehaviorEventLog::PreparedEvent> events;
+    std::vector<LOICollection::server::Plugins::BehaviorEventLog::PreparedEvent> events;
     events.emplace_back(makeEvent("PlayerChat", "Normal", 100, -114514, 64, -32, 1));
 
     auto ids = log->appendMany(events);
@@ -120,7 +120,7 @@ TEST_F(BehaviorEventLogTest, ReadManySkipsUnknownIds) {
     auto log = makeLog("read_many");
     ASSERT_NE(log, nullptr);
 
-    std::vector<BehaviorEventLog::PreparedEvent> events;
+    std::vector<LOICollection::server::Plugins::BehaviorEventLog::PreparedEvent> events;
     events.emplace_back(makeEvent("PlayerChat", "Normal", 100, 0, 0, 0, 0));
 
     auto ids = log->appendMany(events);
@@ -138,7 +138,7 @@ TEST_F(BehaviorEventLogTest, QueryByNameTypeDimensionAndPosition) {
     auto log = makeLog("query_props");
     ASSERT_NE(log, nullptr);
 
-    std::vector<BehaviorEventLog::PreparedEvent> events;
+    std::vector<LOICollection::server::Plugins::BehaviorEventLog::PreparedEvent> events;
     events.emplace_back(makeEvent("PlayerChat", "Normal", 100, 10, 20, 30, 0));
     events.emplace_back(makeEvent("PlayerDie", "Normal", 200, 10, 20, 30, 1));
     events.emplace_back(makeEvent("PlayerPlaceBlock", "Operable", 300, 40, 50, 60, 2));
@@ -171,7 +171,7 @@ TEST_F(BehaviorEventLogTest, QueryByTimeRange) {
     auto log = makeLog("query_time");
     ASSERT_NE(log, nullptr);
 
-    std::vector<BehaviorEventLog::PreparedEvent> events;
+    std::vector<LOICollection::server::Plugins::BehaviorEventLog::PreparedEvent> events;
     events.emplace_back(makeEvent("PlayerChat", "Normal", 100, 0, 0, 0, 0));
     events.emplace_back(makeEvent("PlayerDie", "Normal", 500, 0, 0, 0, 0));
 
@@ -189,7 +189,7 @@ TEST_F(BehaviorEventLogTest, ArchiveBeforeHidesExpiredEvents) {
     auto log = makeLog("archive");
     ASSERT_NE(log, nullptr);
 
-    std::vector<BehaviorEventLog::PreparedEvent> events;
+    std::vector<LOICollection::server::Plugins::BehaviorEventLog::PreparedEvent> events;
     events.emplace_back(makeEvent("PlayerChat", "Normal", 100, 0, 0, 0, 0));
     events.emplace_back(makeEvent("PlayerDie", "Normal", 900, 0, 0, 0, 0));
 
@@ -215,7 +215,7 @@ TEST_F(BehaviorEventLogTest, EraseRemovesEvents) {
     auto log = makeLog("erase");
     ASSERT_NE(log, nullptr);
 
-    std::vector<BehaviorEventLog::PreparedEvent> events;
+    std::vector<LOICollection::server::Plugins::BehaviorEventLog::PreparedEvent> events;
     events.emplace_back(makeEvent("PlayerChat", "Normal", 100, 0, 0, 0, 0));
     events.emplace_back(makeEvent("PlayerDie", "Normal", 200, 0, 0, 0, 0));
 

@@ -11,6 +11,8 @@
 #include "LOICollectionA/base/Macro.h"
 #include "LOICollectionA/base/Ownership.h"
 
+#include "LOICollectionA/include/server/Plugins/behaviorevent/BehaviorEventLog.h"
+
 #include "LOICollectionA/include/ModuleBase.h"
 #include "LOICollectionA/include/ModManager.h"
 
@@ -116,6 +118,8 @@ namespace LOICollection::server::Plugins {
             std::function<void(ll::event::Event&, Event&)> process,
             std::function<std::string(std::string, ll::event::Event&)> formatter
         );
+
+        ll::Expected<std::vector<BlockId>> select(BehaviorEventLog& log, std::vector<std::pair<std::string, std::string>> const& conditions, size_t limit);
 
         void startWriteDatabaseTask();
         void startCleanDatabaseTask();

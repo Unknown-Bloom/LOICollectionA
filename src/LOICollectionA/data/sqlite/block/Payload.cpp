@@ -1,17 +1,17 @@
-#include "LOICollectionA/data/sqlite/block/Payload.h"
-
-#include <cstring>
-
 #include <bit>
-
 #include <limits>
+#include <string>
 #include <type_traits>
+
+#include "LOICollectionA/data/sqlite/block/Payload.h"
 
 namespace {
     template <typename T>
     void appendInt(std::vector<std::byte>& out, T value) {
         static_assert(std::is_trivially_copyable_v<T>);
+
         using U = std::make_unsigned_t<T>;
+        
         U raw = std::bit_cast<U>(value);
         for (size_t i = 0; i < sizeof(T); ++i)
             out.push_back(static_cast<std::byte>((raw >> (8 * i)) & 0xFF));
@@ -29,10 +29,13 @@ namespace {
         const size_t len = sizeof(T);
         if (static_cast<size_t>(end - it) < len)
             return std::nullopt;
+
         using U = std::make_unsigned_t<T>;
+
         U raw = 0;
         for (size_t i = 0; i < len; ++i)
             raw |= U(static_cast<std::uint8_t>(*it++)) << (8 * i);
+
         return std::bit_cast<T>(raw);
     }
 
@@ -40,9 +43,11 @@ namespace {
         std::string_view::const_iterator& it, std::string_view::const_iterator const& end) {
         if (static_cast<size_t>(end - it) < 8)
             return std::nullopt;
+
         std::uint64_t raw = 0;
         for (size_t i = 0; i < 8; ++i)
-            raw |= std::uint64_t(static_cast<std::uint8_t>(*it++)) << (8 * i);
+            raw |= static_cast<std::uint64_t>(static_cast<std::uint8_t>(*it++)) << (8 * i);
+
         return std::bit_cast<double>(raw);
     }
 }
@@ -103,6 +108,7 @@ std::optional<PayloadField> PayloadReader::readField(std::string_view::const_ite
             auto v = readInt<std::int64_t>(it, mData.end());
             if (!v)
                 return std::nullopt;
+            
             field.intValue = *v;
             break;
         }
@@ -110,6 +116,7 @@ std::optional<PayloadField> PayloadReader::readField(std::string_view::const_ite
             auto v = readDouble(it, mData.end());
             if (!v)
                 return std::nullopt;
+
             field.realValue = *v;
             break;
         }
@@ -117,11 +124,13 @@ std::optional<PayloadField> PayloadReader::readField(std::string_view::const_ite
             auto len = readInt<std::int32_t>(it, mData.end());
             if (!len || *len < 0)
                 return std::nullopt;
-            size_t n = static_cast<size_t>(*len);
+
+            auto n = static_cast<size_t>(*len);
             if (static_cast<size_t>(mData.end() - it) < n)
                 return std::nullopt;
+
             field.textValue = std::string_view(&*it, n);
-            it += n;
+            it += static_cast<long long>(n);
             break;
         }
         default:

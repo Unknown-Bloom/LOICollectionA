@@ -1,27 +1,25 @@
 #pragma once
 
-#include <algorithm>
 #include <array>
-#include <charconv>
-#include <cstdint>
-#include <optional>
+#include <tuple>
+#include <mutex>
 #include <ranges>
 #include <string>
+#include <vector>
+#include <utility>
+#include <algorithm>
+#include <charconv>
+#include <optional>
 #include <string_view>
-#include <tuple>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
-#include <utility>
-#include <mutex>
-#include <vector>
 
 #include <SQLiteCpp/SQLiteCpp.h>
 
 #include <ll/api/Expected.h>
 #include <magic_enum/magic_enum.hpp>
 
-#include "LOICollectionA/base/Macro.h"
 #include "LOICollectionA/data/sqlite/block/BlockError.h"
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 #include "LOICollectionA/data/sqlite/block/BlockStore.h"
@@ -29,7 +27,6 @@
 #include "LOICollectionA/data/sqlite/block/WriteBatch.h"
 
 namespace LOICollection::data {
-
     enum class FindMode { And, Or };
 
     enum class CellAffinity { Text, Integer, Real };
@@ -81,13 +78,16 @@ namespace LOICollection::data {
             auto [p, ec] = std::to_chars(buf, buf + sizeof(buf), v);
             if (ec != std::errc())
                 return ll::makeStringError("cell encode integer failed");
+
             return std::string(buf, p);
         }
         static ll::Expected<T> decode(std::string const& s) {
             T v{};
+
             auto [p, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
             if (ec != std::errc() || p != s.data() + s.size())
                 return ll::makeStringError("cell decode integer failed");
+
             return v;
         }
     };
@@ -99,6 +99,7 @@ namespace LOICollection::data {
             auto [p, ec] = std::to_chars(buf, buf + sizeof(buf), v);
             if (ec != std::errc())
                 return ll::makeStringError("cell encode float failed");
+
             return std::string(buf, p);
         }
         static ll::Expected<T> decode(std::string const& s) {
@@ -106,6 +107,7 @@ namespace LOICollection::data {
             auto [p, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
             if (ec != std::errc() || p != s.data() + s.size())
                 return ll::makeStringError("cell decode float failed");
+
             return static_cast<T>(v);
         }
     };
@@ -118,48 +120,46 @@ namespace LOICollection::data {
 
     using RowCells = std::unordered_map<PropKey, BlockProp>;
 
-    namespace {
-        std::string_view asByteView(std::vector<std::byte> const& b) noexcept {
-            return std::string_view(reinterpret_cast<char const*>(b.data()), b.size());
-        }
+    inline std::string_view asByteView(std::vector<std::byte> const& b) noexcept {
+        return std::string_view{ reinterpret_cast<char const*>(b.data()), b.size()} ;
+    }
 
-        RowCells decodeRow(std::string_view blob) {
-            RowCells cells;
-            if (blob.empty())
-                return cells;
-            PayloadReader reader(blob);
-            reader.forEach([&](PayloadField const& f) {
-                BlockProp p;
-                p.key = f.key;
-                p.type = f.type;
-                p.intValue = f.intValue;
-                p.realValue = f.realValue;
-                p.textValue = std::string(f.textValue);
-                cells[p.key] = std::move(p);
-            });
+    inline RowCells decodeRow(std::string_view blob) {
+        RowCells cells;
+        if (blob.empty())
             return cells;
-        }
+        PayloadReader reader(blob);
+        reader.forEach([&](PayloadField const& f) -> void {
+            BlockProp p;
+            p.key = f.key;
+            p.type = f.type;
+            p.intValue = f.intValue;
+            p.realValue = f.realValue;
+            p.textValue = std::string(f.textValue);
+            cells[p.key] = std::move(p);
+        });
+        return cells;
+    }
 
-        RowCells cellsOf(BlockRecord const& rec) {
-            if (!rec.payload.empty())
-                return decodeRow(asByteView(rec.payload));
-            RowCells cells;
-            for (auto const& p : rec.props)
-                cells[p.key] = p;
-            return cells;
-        }
+    inline RowCells cellsOf(BlockRecord const& rec) {
+        if (!rec.payload.empty())
+            return decodeRow(asByteView(rec.payload));
+        RowCells cells;
+        for (auto const& p : rec.props)
+            cells[p.key] = p;
+        return cells;
+    }
 
-        std::string cellToString(BlockProp const& p) {
-            switch (p.type) {
-                case PayloadType::Int: return std::to_string(p.intValue);
-                case PayloadType::Double: {
-                    char buf[64];
-                    auto [q, ec] = std::to_chars(buf, buf + sizeof(buf), p.realValue);
-                    return std::string(buf, q);
-                }
-                case PayloadType::Text: return p.textValue;
-                default: return std::string{};
+    inline std::string cellToString(BlockProp const& p) {
+        switch (p.type) {
+            case PayloadType::Int: return std::to_string(p.intValue);
+            case PayloadType::Double: {
+                char buf[64];
+                auto [q, ec] = std::to_chars(buf, buf + sizeof(buf), p.realValue);
+                return std::string{buf, q};
             }
+            case PayloadType::Text: return p.textValue;
+            default: return std::string{};
         }
     }
 
@@ -207,6 +207,7 @@ namespace LOICollection::data {
                         v |= (1 << j);
                 s.push_back("0123456789abcdef"[v]);
             }
+
             return s;
         }
 
@@ -231,10 +232,12 @@ namespace LOICollection::data {
             p.key = key;
             p.type = PayloadType::Int;
             p.intValue = static_cast<std::int64_t>(v);
+
             char buf[32];
             auto [q, ec] = std::to_chars(buf, buf + sizeof(buf), p.intValue);
             if (ec != std::errc())
                 return ll::makeStringError("cell encode integer failed");
+
             p.textValue.assign(buf, q);
             return p;
         }
@@ -244,10 +247,12 @@ namespace LOICollection::data {
             p.key = key;
             p.type = PayloadType::Double;
             p.realValue = static_cast<double>(v);
+
             char buf[64];
             auto [q, ec] = std::to_chars(buf, buf + sizeof(buf), p.realValue);
             if (ec != std::errc())
                 return ll::makeStringError("cell encode float failed");
+            
             p.textValue.assign(buf, q);
             return p;
         }
@@ -257,6 +262,7 @@ namespace LOICollection::data {
             auto s = CellCodec<T>::encode(v);
             if (!s.has_value())
                 return ll::makeStringError(s.error().message());
+
             BlockProp p;
             p.key = key;
             p.type = PayloadType::Text;
@@ -271,6 +277,7 @@ namespace LOICollection::data {
             } else if constexpr (std::is_same_v<T, bool>) {
                 if (p.type == PayloadType::Text)
                     return p.textValue == "1" || p.textValue == "true";
+
                 return p.intValue != 0;
             } else if constexpr (std::is_integral_v<T>) {
                 if (p.type == PayloadType::Text) {
@@ -278,8 +285,10 @@ namespace LOICollection::data {
                     auto [ptr, ec] = std::from_chars(p.textValue.data(), p.textValue.data() + p.textValue.size(), v);
                     if (ec != std::errc() || ptr != p.textValue.data() + p.textValue.size())
                         return ll::makeStringError("cell decode integer failed");
+
                     return v;
                 }
+
                 return static_cast<T>(p.intValue);
             } else if constexpr (std::is_floating_point_v<T>) {
                 if (p.type == PayloadType::Text) {
@@ -287,8 +296,10 @@ namespace LOICollection::data {
                     auto [ptr, ec] = std::from_chars(p.textValue.data(), p.textValue.data() + p.textValue.size(), v);
                     if (ec != std::errc())
                         return ll::makeStringError("cell decode float failed");
+
                     return static_cast<T>(v);
                 }
+
                 return static_cast<T>(p.realValue);
             } else {
                 return CellCodec<T>::decode(p.textValue);
@@ -324,10 +335,12 @@ namespace LOICollection::data {
             for (std::size_t i = 0; i < N; ++i) {
                 if (i)
                     fp.push_back(',');
+
                 fp.append(names[i]);
                 fp.push_back(':');
                 fp.append(affinityName(kAffinity[i]));
             }
+
             return fp;
         }
 
@@ -361,8 +374,8 @@ namespace LOICollection::data {
 
         std::string cellSql(std::size_t i) const {
             std::string q = quoted(i);
-            return "INSERT INTO \"" + mSide + "\"(id," + q + ") VALUES(?,?) ON CONFLICT(id) DO UPDATE SET "
-                 + q + "=?";
+
+            return "INSERT INTO \"" + mSide + "\"(id," + q + ") VALUES(?,?) ON CONFLICT(id) DO UPDATE SET " + q + "=?";
         }
 
         std::string cellKey(std::size_t i) const { return "sideSet:" + mSide + ":" + std::to_string(i); }
@@ -380,6 +393,7 @@ namespace LOICollection::data {
                         p.textValue.data() + p.textValue.size(), v);
                     out.intValue = (ec == std::errc()) ? v : 0;
                 }
+
                 out.textValue = std::to_string(out.intValue);
             } else if (a == CellAffinity::Real) {
                 out.type = PayloadType::Double;
@@ -391,6 +405,7 @@ namespace LOICollection::data {
                         p.textValue.data() + p.textValue.size(), v);
                     out.realValue = (ec == std::errc()) ? v : 0.0;
                 }
+
                 char buf[64];
                 auto [q, ec] = std::to_chars(buf, buf + sizeof(buf), out.realValue);
                 out.textValue.assign(buf, q);
@@ -398,6 +413,7 @@ namespace LOICollection::data {
                 out.type = PayloadType::Text;
                 out.textValue = cellToString(p);
             }
+
             return out;
         }
 
@@ -405,6 +421,7 @@ namespace LOICollection::data {
             SQLite::Statement& stmt, int col, PropKey key, CellAffinity a) {
             if (stmt.getColumn(col).isNull())
                 return std::nullopt;
+
             BlockProp p;
             p.key = key;
             if (a == CellAffinity::Integer) {
@@ -414,6 +431,7 @@ namespace LOICollection::data {
             } else if (a == CellAffinity::Real) {
                 p.type = PayloadType::Double;
                 p.realValue = stmt.getColumn(col).getDouble();
+
                 char buf[64];
                 auto [q, ec] = std::to_chars(buf, buf + sizeof(buf), p.realValue);
                 p.textValue.assign(buf, q);
@@ -421,6 +439,7 @@ namespace LOICollection::data {
                 p.type = PayloadType::Text;
                 p.textValue = columnToString(stmt.getColumn(col));
             }
+
             return p;
         }
 
@@ -428,17 +447,22 @@ namespace LOICollection::data {
             BlockProp idParam;
             idParam.type = PayloadType::Int;
             idParam.intValue = id;
+
             BlockProp value = serializeCell(cell, kAffinity[i]);
             BlockProp params[3] = {idParam, value, value};
+
             auto b = WriteBatch::begin(mRepo.store());
             if (!b.has_value())
                 return ll::makeStringError(b.error().message());
+
             auto r = (*b)->execCells(cellKey(i), cellSql(i), params);
             if (!r.has_value())
                 return ll::makeStringError(r.error().message());
+
             auto c = (*b)->commit();
             if (!c.has_value())
                 return ll::makeStringError(c.error().message());
+
             return {};
         }
 
@@ -453,6 +477,7 @@ namespace LOICollection::data {
 
             RowCells cells;
             bool found = false;
+
             BlockProp idParam;
             idParam.type = PayloadType::Int;
             idParam.intValue = id;
@@ -466,14 +491,17 @@ namespace LOICollection::data {
                             cells[static_cast<PropKey>(i)] = std::move(*p);
                     }
                 });
+
             if (!r.has_value())
                 return ll::makeStringError(r.error().message());
+
             if (found)
                 return cells;
 
             auto rec = mRepo.store().load(id);
             if (!rec.has_value())
                 return ll::makeStringError(rec.error().message());
+
             return cellsOf(rec.value());
         }
 
@@ -481,6 +509,7 @@ namespace LOICollection::data {
             BlockProp p;
             p.key = static_cast<PropKey>(slot);
             p.textValue = val;
+
             if (kAffinity[slot] == CellAffinity::Integer) {
                 std::int64_t v{};
                 auto [ptr, ec] = std::from_chars(val.data(), val.data() + val.size(), v);
@@ -499,6 +528,7 @@ namespace LOICollection::data {
                 }
             }
             p.type = PayloadType::Text;
+
             return p;
         }
 
@@ -507,6 +537,7 @@ namespace LOICollection::data {
             auto stored = mRepo.metaGet("sidecol:" + mName);
             if (!stored.has_value())
                 return ll::makeStringError(stored.error().message());
+
             if (stored.value().has_value() && stored.value().value() == want)
                 return {};
 
@@ -516,9 +547,12 @@ namespace LOICollection::data {
                 auto info = mRepo.store().withQuery(
                     "sideInfo:" + mSide, "PRAGMA table_info(\"" + mSide + "\")",
                     std::span<const BlockProp>(),
-                    [&](SQLite::Statement& stmt) { oldCols.emplace_back(columnToString(stmt.getColumn(1))); });
+                    [&](SQLite::Statement& stmt) { oldCols.emplace_back(columnToString(stmt.getColumn(1))); }
+                );
+
                 if (!info.has_value())
                     return ll::makeStringError(info.error().message());
+
                 if (oldCols.size() > 1) {
                     std::string sel = "SELECT \"id\"";
                     for (std::size_t j = 1; j < oldCols.size(); ++j)
@@ -530,15 +564,17 @@ namespace LOICollection::data {
                             BlockId id = stmt.getColumn(0).getInt64();
                             RowCells cells;
                             for (std::size_t j = 1; j < oldCols.size(); ++j) {
-                                PropKey k = static_cast<PropKey>(j - 1);
+                                auto k = static_cast<PropKey>(j - 1);
                                 BlockProp p;
                                 p.key = k;
                                 p.type = PayloadType::Text;
                                 p.textValue = columnToString(stmt.getColumn(static_cast<int>(j)));
                                 cells[k] = std::move(p);
                             }
+
                             oldSide[id] = std::move(cells);
                         });
+                        
                     if (!snap.has_value())
                         return ll::makeStringError(snap.error().message());
                 }
@@ -547,6 +583,7 @@ namespace LOICollection::data {
             auto dropped = mRepo.store().exec("DROP TABLE IF EXISTS \"" + mSide + "\"");
             if (!dropped.has_value())
                 return ll::makeStringError(dropped.error().message());
+
             auto made = mRepo.store().exec(sideDdl());
             if (!made.has_value())
                 return ll::makeStringError(made.error().message());
@@ -566,35 +603,46 @@ namespace LOICollection::data {
             auto rows = mRepo.store().records(mRoot, kTypedRowKind, 0);
             if (!rows.has_value())
                 return ll::makeStringError(rows.error().message());
+
             for (auto const& rec : rows.value()) {
                 if (rec.state == BlockLifecycle::Deleted)
                     continue;
+
                 std::vector<BlockProp> params;
                 params.reserve(N + 1);
+
                 BlockProp idParam;
                 idParam.type = PayloadType::Int;
                 idParam.intValue = rec.id;
                 params.push_back(idParam);
+
                 RowCells cells = cellsOf(rec);
                 auto it = oldSide.find(rec.id);
-                if (it != oldSide.end())
+                if (it != oldSide.end()) {
                     for (auto const& [k, p] : it->second)
                         cells[k] = p;
+                }
+                
                 bool any = false;
                 for (std::size_t i = 0; i < N; ++i) {
                     auto cit = cells.find(static_cast<PropKey>(i));
+
                     BlockProp v;
                     v.key = static_cast<PropKey>(i);
+
                     if (cit == cells.end()) {
                         v.type = PayloadType::Null;
                         params.push_back(v);
                         continue;
                     }
+
                     any = true;
                     params.push_back(serializeCell(cit->second, kAffinity[i]));
                 }
+
                 if (!any)
                     continue;
+
                 auto r = (*b)->execCells("sideBackfill:" + mSide, insert, params);
                 if (!r.has_value())
                     return ll::makeStringError(r.error().message());
@@ -603,23 +651,28 @@ namespace LOICollection::data {
             auto c = (*b)->commit();
             if (!c.has_value())
                 return ll::makeStringError(c.error().message());
+
             auto w = mRepo.metaSet("sidecol:" + mName, want);
             if (!w.has_value())
                 return ll::makeStringError(w.error().message());
+
             return {};
         }
 
         [[nodiscard]] ll::Expected<BlockId> root() {
             if (mRoot != 0)
                 return mRoot;
+
             auto r = mRepo.store().load(0, mName);
             if (r.has_value()) {
                 mRoot = r.value().id;
                 return mRoot;
             }
+
             auto c = mRepo.store().createBlock(0, 0, mName);
             if (!c.has_value())
                 return ll::makeStringError(c.error().message());
+
             mRoot = c.value();
             return mRoot;
         }
@@ -628,11 +681,13 @@ namespace LOICollection::data {
             for (auto const& [k, p] : cells) {
                 if (!indexedAt(k))
                     continue;
+
                 auto tv = cellToString(p);
                 auto r = mRepo.store().setProp(id, k, p.type, p.intValue, p.realValue, tv);
                 if (!r.has_value())
                     return ll::makeStringError(r.error().message());
             }
+
             return {};
         }
 
@@ -640,26 +695,32 @@ namespace LOICollection::data {
             auto ch = mRepo.store().children(mRoot, -1);
             if (!ch.has_value())
                 return ll::makeStringError(ch.error().message());
+
             auto b = WriteBatch::begin(mRepo.store());
             if (!b.has_value())
                 return ll::makeStringError(b.error().message());
+
             for (auto id : ch.value()) {
                 auto rec = mRepo.store().load(id);
                 if (!rec.has_value() || rec.value().state == BlockLifecycle::Deleted)
                     continue;
+
                 auto cells = cellsOf(rec.value());
                 for (auto const& [k, p] : cells) {
                     if (!indexedAt(k))
                         continue;
+
                     auto tv = cellToString(p);
                     auto r = (*b)->setProp(id, k, p.type, p.intValue, p.realValue, tv);
                     if (!r.has_value())
                         return ll::makeStringError(r.error().message());
                 }
             }
+
             auto c = (*b)->commit();
             if (!c.has_value())
                 return ll::makeStringError(c.error().message());
+
             return {};
         }
 
@@ -681,6 +742,7 @@ namespace LOICollection::data {
 
         [[nodiscard]] static ll::Expected<TypedTable> open(BlockRepository& repo, std::string_view name) {
             BlockId rootId = 0;
+
             auto r = repo.store().load(0, name);
             if (r.has_value()) {
                 rootId = r.value().id;
@@ -706,6 +768,7 @@ namespace LOICollection::data {
             auto stored = repo.metaGet(metaKey);
             if (!stored.has_value())
                 return ll::makeStringError(stored.error().message());
+
             if (stored.value().has_value() && !stored.value()->empty()) {
                 std::string_view s = *stored.value();
                 auto a = s.find('\x1e');
@@ -724,6 +787,7 @@ namespace LOICollection::data {
                         BlockError::makeErrorCode(BlockError::BlockErrorCode::SchemaMismatch));
                 if (storedN != std::to_string(N) || storedMask != mask)
                     schemaDirty = true;
+
                 if (storedMask != mask)
                     needIndexBackfill = true;
             } else {
@@ -736,14 +800,17 @@ namespace LOICollection::data {
                 if (!bf.has_value())
                     return ll::makeStringError(bf.error().message());
             }
+
             auto side = table.ensureSide();
             if (!side.has_value())
                 return ll::makeStringError(side.error().message());
+
             if (schemaDirty) {
                 auto w = repo.metaSet(metaKey, want);
                 if (!w.has_value())
                     return ll::makeStringError(w.error().message());
             }
+            
             return table;
         }
 
@@ -756,33 +823,41 @@ namespace LOICollection::data {
             auto cell = makeCell(colKey(col.value), v);
             if (!cell.has_value())
                 return ll::makeStringError(cell.error().message());
-            std::size_t slot = static_cast<std::size_t>(colKey(col.value));
+
+            auto slot = static_cast<std::size_t>(colKey(col.value));
 
             auto found = mRepo.store().idOf(rid.value(), rowKey);
             if (!found.has_value())
                 return ll::makeStringError(found.error().message());
+
             if (found.value().has_value())
                 return writeCell(*found.value(), slot, cell.value());
 
             auto b = WriteBatch::begin(mRepo.store());
             if (!b.has_value())
                 return ll::makeStringError(b.error().message());
+
             auto made = (*b)->upsertRow(rid.value(), rowKey);
             if (!made.has_value())
                 return ll::makeStringError(made.error().message());
+
             BlockProp idParam;
             idParam.type = PayloadType::Int;
             idParam.intValue = *made;
             BlockProp value = serializeCell(cell.value(), kAffinity[slot]);
             BlockProp params[3] = {idParam, value, value};
+
             auto r = (*b)->execCells(cellKey(slot), cellSql(slot), params);
             if (!r.has_value())
                 return ll::makeStringError(r.error().message());
+
             auto c = (*b)->commit();
             if (!c.has_value())
                 return ll::makeStringError(c.error().message());
+
             return {};
         }
+        
         template <class T>
         [[nodiscard]] ll::Expected<void> set(std::string_view rowKey, E col, T const& v) {
             return set(rowKey, Key{col}, v);
@@ -800,16 +875,19 @@ namespace LOICollection::data {
             if (!id.value().has_value())
                 return def;
 
-            std::size_t slot = static_cast<std::size_t>(colKey(col.value));
+            auto slot = static_cast<std::size_t>(colKey(col.value));
             std::optional<BlockProp> got;
             BlockProp idParam;
             idParam.type = PayloadType::Int;
             idParam.intValue = *id.value();
+            
             auto queried = mRepo.store().withQuery(
                 "sideGet:" + mSide + ":" + std::to_string(slot),
                 "SELECT " + quoted(slot) + " FROM \"" + mSide + "\" WHERE id=?",
                 std::span<const BlockProp>(&idParam, 1),
-                [&](SQLite::Statement& stmt) { got = readColumn(stmt, 0, colKey(col.value), kAffinity[slot]); });
+                [&](SQLite::Statement& stmt) { got = readColumn(stmt, 0, colKey(col.value), kAffinity[slot]); }
+            );
+
             if (!queried.has_value())
                 return ll::makeStringError(queried.error().message());
 
@@ -828,8 +906,10 @@ namespace LOICollection::data {
                 cells = decodeRow(view.payload);
                 fromPayload = true;
             });
+
             if (!viewed.has_value())
                 return ll::makeStringError(viewed.error().message());
+
             if (!fromPayload) {
                 auto rec = mRepo.store().load(*id.value());
                 if (!rec.has_value() || rec.value().state == BlockLifecycle::Deleted)
@@ -840,11 +920,14 @@ namespace LOICollection::data {
             auto it = cells.find(colKey(col.value));
             if (it == cells.end())
                 return def;
+
             auto v = readCell<T>(it->second);
             if (!v.has_value())
                 return ll::makeStringError(v.error().message());
+
             return std::move(v.value());
         }
+
         template <class T>
         [[nodiscard]] ll::Expected<T> get(std::string_view rowKey, E col, T const& def = T{}) {
             return get(rowKey, Key{col}, def);
@@ -854,11 +937,14 @@ namespace LOICollection::data {
             auto rid = root();
             if (!rid.has_value())
                 return ll::makeStringError(rid.error().message());
+
             auto id = mRepo.store().idOf(rid.value(), rowKey);
             if (!id.has_value())
                 return ll::makeStringError(id.error().message());
+
             if (!id.value().has_value())
                 return {};
+
             return mRepo.store().control(*id.value(), BlockLifecycle::Deleted);
         }
 
@@ -866,9 +952,11 @@ namespace LOICollection::data {
             auto rid = root();
             if (!rid.has_value())
                 return ll::makeStringError(rid.error().message());
+
             auto id = mRepo.store().idOf(rid.value(), rowKey);
             if (!id.has_value())
                 return ll::makeStringError(id.error().message());
+            
             return id.value().has_value();
         }
 
@@ -876,13 +964,16 @@ namespace LOICollection::data {
             auto rid = root();
             if (!rid.has_value())
                 return ll::makeStringError(rid.error().message());
+
             auto ch = mRepo.store().childNames(rid.value());
             if (!ch.has_value())
                 return ll::makeStringError(ch.error().message());
+
             std::vector<std::string> keys;
             keys.reserve(ch.value().size());
             for (auto const& entry : ch.value())
                 keys.emplace_back(entry.second);
+
             return keys;
         }
 
@@ -893,6 +984,7 @@ namespace LOICollection::data {
             auto opt = magic_enum::enum_cast<E>(s);
             if (!opt)
                 return ll::makeStringError(std::string("unknown column: ").append(s));
+
             return *opt;
         }
 
@@ -902,6 +994,7 @@ namespace LOICollection::data {
                 if (it == cells.end() || cellToString(it->second) != val)
                     return false;
             }
+
             return true;
         }
 
@@ -911,6 +1004,7 @@ namespace LOICollection::data {
                 if (it != cells.end() && cellToString(it->second) == val)
                     return true;
             }
+
             return false;
         }
 
@@ -919,6 +1013,7 @@ namespace LOICollection::data {
             auto rid = root();
             if (!rid.has_value())
                 return ll::makeStringError(rid.error().message());
+            
             if (conds.empty())
                 return list();
 
@@ -928,11 +1023,14 @@ namespace LOICollection::data {
             params.reserve(conds.size());
             for (std::size_t i = 0; i < conds.size(); ++i) {
                 auto const& [col, val] = conds[i];
-                std::size_t slot = static_cast<std::size_t>(colKey(col.value));
+
+                auto slot = static_cast<std::size_t>(colKey(col.value));
                 if (i)
                     sql += (mode == FindMode::Or ? " OR " : " AND ");
+
                 sql += "s." + quoted(slot);
                 sql += " = ?";
+
                 params.push_back(condProp(slot, val));
             }
             sql += ")";
@@ -944,11 +1042,15 @@ namespace LOICollection::data {
             std::string fkey = "sideFind:" + mSide + (mode == FindMode::And ? ":A:" : ":O:");
             for (auto const& [col, val] : conds)
                 fkey += std::to_string(colKey(col.value)) + ",";
+
             auto r = mRepo.store().withQuery(
                 fkey, sql, params,
-                [&](SQLite::Statement& stmt) { out.emplace_back(columnToString(stmt.getColumn(0))); });
+                [&](SQLite::Statement& stmt) { out.emplace_back(columnToString(stmt.getColumn(0))); }
+            );
+
             if (!r.has_value())
                 return ll::makeStringError(r.error().message());
+
             return out;
         }
 
@@ -957,6 +1059,7 @@ namespace LOICollection::data {
             auto keys = find(mode, conds);
             if (!keys.has_value())
                 return ll::makeStringError(keys.error().message());
+
             return keys.value().empty() ? std::string{} : keys.value().front();
         }
 
@@ -966,6 +1069,7 @@ namespace LOICollection::data {
             auto keys = find(mode, conds);
             if (!keys.has_value())
                 return ll::makeStringError(keys.error().message());
+
             std::vector<T> out;
             out.reserve(keys.value().size());
             for (auto const& k : keys.value()) {
@@ -974,6 +1078,7 @@ namespace LOICollection::data {
                     return ll::makeStringError(v.error().message());
                 out.push_back(std::move(v.value()));
             }
+
             return out;
         }
 
@@ -981,19 +1086,24 @@ namespace LOICollection::data {
             auto rid = root();
             if (!rid.has_value())
                 return ll::makeStringError(rid.error().message());
+
             auto id = mRepo.store().idOf(rid.value(), rowKey);
             if (!id.has_value())
                 return ll::makeStringError(id.error().message());
+
             std::unordered_map<std::string, std::string> out;
             if (!id.value().has_value())
                 return out;
+
             auto cells = readSideCells(*id.value());
             if (!cells.has_value())
                 return ll::makeStringError(cells.error().message());
+
             auto names = magic_enum::enum_names<E>();
             for (auto const& [k, p] : cells.value()) {
                 if (static_cast<std::size_t>(k) >= names.size())
                     continue;
+
                 std::string v;
                 switch (p.type) {
                     case PayloadType::Int: v = std::to_string(p.intValue); break;
@@ -1006,8 +1116,10 @@ namespace LOICollection::data {
                     case PayloadType::Text: v = p.textValue; break;
                     default: break;
                 }
+
                 out[std::string(names[k])] = std::move(v);
             }
+
             return out;
         }
 
@@ -1017,10 +1129,12 @@ namespace LOICollection::data {
                 auto col = parseColumn(cn);
                 if (!col.has_value())
                     return ll::makeStringError(col.error().message());
+
                 auto r = set(rowKey, Key{*col}, cv);
                 if (!r.has_value())
                     return ll::makeStringError(r.error().message());
             }
+
             return {};
         }
 
@@ -1044,6 +1158,7 @@ namespace LOICollection::data {
                 mPending[std::string(rowKey)][colKey(col.value)] = std::move(cell.value());
                 return {};
             }
+
             template <class T>
             [[nodiscard]] ll::Expected<void> set(std::string_view rowKey, E col, T const& v) {
                 return set(rowKey, Key{col}, v);
@@ -1054,6 +1169,7 @@ namespace LOICollection::data {
                 std::string key(rowKey);
                 if (mDeleted.contains(key))
                     return def;
+
                 auto pit = mPending.find(key);
                 if (pit != mPending.end()) {
                     auto it = pit->second.find(colKey(col.value));
@@ -1064,22 +1180,29 @@ namespace LOICollection::data {
                         return std::move(v.value());
                     }
                 }
+
                 auto id = mRepo.store().idOf(mRoot, rowKey);
                 if (!id.has_value())
                     return ll::makeStringError(id.error().message());
+                
                 if (!id.value().has_value())
                     return def;
+
                 auto cells = mOwner.readSideCells(*id.value());
                 if (!cells.has_value())
                     return ll::makeStringError(cells.error().message());
+
                 auto it = cells.value().find(colKey(col.value));
                 if (it == cells.value().end())
                     return def;
+
                 auto v = readCell<T>(it->second);
                 if (!v.has_value())
                     return ll::makeStringError(v.error().message());
+
                 return std::move(v.value());
             }
+
             template <class T>
             [[nodiscard]] ll::Expected<T> get(std::string_view rowKey, E col, T const& def = T{}) {
                 return get(rowKey, Key{col}, def);
@@ -1091,6 +1214,7 @@ namespace LOICollection::data {
                     return false;
                 if (mPending.contains(key))
                     return true;
+
                 auto r = mRepo.store().load(mRoot, rowKey);
                 return r.has_value() && r.value().state != BlockLifecycle::Deleted;
             }
@@ -1109,6 +1233,7 @@ namespace LOICollection::data {
                     auto rid = mTx->upsertRow(mRoot, rowKey);
                     if (!rid.has_value())
                         return ll::makeStringError(rid.error().message());
+
                     BlockId id = *rid;
 
                     RowCells merged = std::move(cells);
@@ -1122,6 +1247,7 @@ namespace LOICollection::data {
 
                     std::string cols = "id";
                     std::vector<BlockProp> params;
+
                     BlockProp idParam;
                     idParam.type = PayloadType::Int;
                     idParam.intValue = id;
@@ -1130,14 +1256,17 @@ namespace LOICollection::data {
                         cols += "," + mOwner.quoted(static_cast<std::size_t>(k));
                         params.push_back(serializeCell(p, kAffinity[static_cast<std::size_t>(k)]));
                     }
+                    
                     std::string insert = "INSERT OR REPLACE INTO \"" + mOwner.mSide + "\"(" + cols + ") VALUES(?";
                     for (std::size_t i = 1; i < params.size(); ++i)
                         insert += ",?";
                     insert += ")";
+
                     auto pr = mTx->execCells("sideBatch:" + mOwner.mSide + ":" + cols, insert, params);
                     if (!pr.has_value())
                         return ll::makeStringError(pr.error().message());
                 }
+
                 for (auto& rowKey : mDeleted) {
                     auto rec = mRepo.store().load(mRoot, rowKey);
                     if (rec.has_value() && rec.value().state != BlockLifecycle::Deleted) {
@@ -1146,8 +1275,10 @@ namespace LOICollection::data {
                             return ll::makeStringError(r.error().message());
                     }
                 }
+
                 return mTx->commit();
             }
+
             [[nodiscard]] ll::Expected<bool> rollback() { return mTx->rollback(); }
         };
 
@@ -1155,9 +1286,11 @@ namespace LOICollection::data {
             auto b = WriteBatch::begin(mRepo.store());
             if (!b.has_value())
                 return ll::makeStringError(b.error().message());
+
             auto rid = root();
             if (!rid.has_value())
                 return ll::makeStringError(rid.error().message());
+
             return Batch(*this, mRepo, std::move(*b), rid.value());
         }
     };
@@ -1166,15 +1299,17 @@ namespace LOICollection::data {
         auto root = repo.store().load(0, name);
         if (!root.has_value())
             return ll::makeStringError(root.error().message());
+
         auto children = repo.store().childNames(root.value().id);
         if (!children.has_value())
             return ll::makeStringError(children.error().message());
+
         for (auto const& entry : children.value()) {
             auto removed = repo.store().control(entry.first, BlockLifecycle::Deleted);
             if (!removed.has_value())
                 return ll::makeStringError(removed.error().message());
         }
+
         return {};
     }
-
 }

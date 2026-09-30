@@ -1,5 +1,6 @@
 #include <atomic>
 #include <chrono>
+#include <limits>
 #include <memory>
 #include <ranges>
 #include <string>
@@ -10,7 +11,6 @@
 #include <algorithm>
 #include <functional>
 #include <filesystem>
-#include <limits>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -94,86 +94,6 @@
 
 #include "LOICollectionA/include/server/Plugins/behaviorevent/BehaviorEventPlugin.h"
 #include "LOICollectionA/include/server/Plugins/behaviorevent/BehaviorEventLog.h"
-
-namespace {
-    std::int64_t epochSeconds() {
-        return std::chrono::duration_cast<std::chrono::seconds>(
-                   std::chrono::system_clock::now().time_since_epoch())
-            .count();
-    }
-
-    std::string fieldOf(BehaviorEventLog::Row const& row, std::string_view key) {
-        auto it = row.find(std::string(key));
-        return it == row.end() ? std::string{} : it->second;
-    }
-
-    std::vector<BlockId> parseIds(std::vector<std::string> const& ids) {
-        return ids
-            | std::views::transform([](std::string const& id) -> BlockId {
-                  return SystemUtils::toLongLong(id);
-              })
-            | std::ranges::to<std::vector<BlockId>>();
-    }
-
-    std::vector<std::string> formatIds(std::vector<BlockId> const& ids) {
-        return ids
-            | std::views::transform([](BlockId id) -> std::string { return std::to_string(id); })
-            | std::ranges::to<std::vector<std::string>>();
-    }
-
-    ll::Expected<std::vector<BlockId>> select(
-        BehaviorEventLog& log, std::vector<std::pair<std::string, std::string>> const& conditions, size_t limit) {
-        std::optional<std::vector<BlockId>> candidates;
-        std::optional<std::int64_t> posX;
-        std::optional<std::int64_t> posY;
-        std::optional<std::int64_t> posZ;
-
-        auto narrow = [&](ll::Expected<std::vector<BlockId>> ids) -> ll::Expected<void> {
-            if (!ids)
-                return ll::makeStringError(ids.error().message());
-
-            if (!candidates) {
-                candidates = std::move(*ids);
-
-                return {};
-            }
-
-            std::unordered_set<BlockId> keep(ids->begin(), ids->end());
-            std::erase_if(*candidates, [&keep](BlockId id) -> bool { return !keep.contains(id); });
-
-            return {};
-        };
-
-        for (auto const& [key, value] : conditions) {
-            if (key == "event_name") {
-                if (auto r = narrow(log.byName(value, limit)); !r)
-                    return ll::makeStringError(r.error().message());
-            } else if (key == "event_type") {
-                if (auto r = narrow(log.byType(value, limit)); !r)
-                    return ll::makeStringError(r.error().message());
-            } else if (key == "position_dimension") {
-                if (auto r = narrow(log.byDimension(SystemUtils::toLongLong(value), limit)); !r)
-                    return ll::makeStringError(r.error().message());
-            } else if (key == "position_x") {
-                posX = SystemUtils::toLongLong(value);
-            } else if (key == "position_y") {
-                posY = SystemUtils::toLongLong(value);
-            } else if (key == "position_z") {
-                posZ = SystemUtils::toLongLong(value);
-            }
-        }
-
-        if (posX && posY && posZ) {
-            if (auto r = narrow(log.byPosition(*posX, *posY, *posZ, limit)); !r)
-                return ll::makeStringError(r.error().message());
-        }
-
-        if (candidates)
-            return *candidates;
-
-        return log.all(limit);
-    }
-}
 
 struct Traits : moodycamel::ConcurrentQueueDefaultTraits {
     static const size_t BLOCK_SIZE = 1024;
@@ -300,6 +220,60 @@ namespace LOICollection::server::Plugins {
         mImpl->mListeners.emplace(name, listener);
     }
 
+    ll::Expected<std::vector<BlockId>> BehaviorEventPlugin::select(
+        BehaviorEventLog& log, std::vector<std::pair<std::string, std::string>> const& conditions, size_t limit
+    ) {
+        std::optional<std::vector<BlockId>> candidates;
+        std::optional<std::int64_t> posX;
+        std::optional<std::int64_t> posY;
+        std::optional<std::int64_t> posZ;
+
+        auto narrow = [&](ll::Expected<std::vector<BlockId>> ids) -> ll::Expected<void> {
+            if (!ids)
+                return ll::makeStringError(ids.error().message());
+
+            if (!candidates) {
+                candidates = std::move(*ids);
+
+                return {};
+            }
+
+            std::unordered_set<BlockId> keep(ids->begin(), ids->end());
+            std::erase_if(*candidates, [&keep](BlockId id) -> bool { return !keep.contains(id); });
+
+            return {};
+        };
+
+        for (auto const& [key, value] : conditions) {
+            if (key == "event_name") {
+                if (auto r = narrow(log.byName(value, limit)); !r)
+                    return ll::makeStringError(r.error().message());
+            } else if (key == "event_type") {
+                if (auto r = narrow(log.byType(value, limit)); !r)
+                    return ll::makeStringError(r.error().message());
+            } else if (key == "position_dimension") {
+                if (auto r = narrow(log.byDimension(SystemUtils::toLongLong(value), limit)); !r)
+                    return ll::makeStringError(r.error().message());
+            } else if (key == "position_x") {
+                posX = SystemUtils::toLongLong(value);
+            } else if (key == "position_y") {
+                posY = SystemUtils::toLongLong(value);
+            } else if (key == "position_z") {
+                posZ = SystemUtils::toLongLong(value);
+            }
+        }
+
+        if (posX && posY && posZ) {
+            if (auto r = narrow(log.byPosition(*posX, *posY, *posZ, limit)); !r)
+                return ll::makeStringError(r.error().message());
+        }
+
+        if (candidates)
+            return *candidates;
+
+        return log.all(limit);
+    }
+
     void BehaviorEventPlugin::startWriteDatabaseTask() {
         this->mImpl->mTimerManager->loopSchedule("WirteDatabaseTask", std::chrono::minutes(this->mImpl->options.RefreshIntervalInMinutes), [this]() -> void {
             if (!this->mImpl->WriteDatabaseTaskRunning.load(std::memory_order_acquire))
@@ -332,7 +306,7 @@ namespace LOICollection::server::Plugins {
                 BehaviorEventLog::PreparedEvent mPrepared;
                 mPrepared.name = mEvent.eventName;
                 mPrepared.type = mEvent.eventType;
-                mPrepared.timestamp = epochSeconds();
+                mPrepared.timestamp = SystemUtils::getEpochSeconds();
                 mPrepared.posX = mEvent.posX;
                 mPrepared.posY = mEvent.posY;
                 mPrepared.posZ = mEvent.posZ;
@@ -960,7 +934,9 @@ namespace LOICollection::server::Plugins {
 
         return this->getBehaviorEventLog()->all(limit > 0 ? static_cast<size_t>(limit) : 0)
             .transform([](const std::vector<BlockId>& ids) -> std::vector<std::string> {
-                return formatIds(ids);
+                return ids
+                    | std::views::transform([](BlockId id) -> std::string { return std::to_string(id); })
+                    | std::ranges::to<std::vector<std::string>>();
             });
     }
 
@@ -969,11 +945,14 @@ namespace LOICollection::server::Plugins {
             return ll::makeErrorCodeError(makeErrorCode(BehaviorEventPluginErrorCode::Invalid));
 
         return this->getBehaviorEventLog()->byTimeRange(
-                   epochSeconds() - static_cast<std::int64_t>(hours) * 3600,
+                   SystemUtils::getEpochSeconds() - static_cast<std::int64_t>(hours) * 3600,
                    std::numeric_limits<std::int64_t>::max(),
-                   limit > 0 ? static_cast<size_t>(limit) : 0)
+                   limit > 0 ? static_cast<size_t>(limit) : 0
+            )
             .transform([](const std::vector<BlockId>& ids) -> std::vector<std::string> {
-                return formatIds(ids);
+                return ids
+                    | std::views::transform([](BlockId id) -> std::string { return std::to_string(id); })
+                    | std::ranges::to<std::vector<std::string>>();
             });
     }
 
@@ -983,8 +962,6 @@ namespace LOICollection::server::Plugins {
 
         const size_t maxRows = limit > 0 ? static_cast<size_t>(limit) : 0;
 
-        // A caller-supplied filter decides which values are accepted, so the
-        // condition values are placeholders and must not narrow the query.
         return (filter ? this->getBehaviorEventLog()->all(maxRows)
                        : select(*this->getBehaviorEventLog(), conditions, maxRows))
             .and_then([this](const std::vector<BlockId>& ids) -> ll::Expected<BehaviorEventLog::Rows> {
@@ -1020,12 +997,12 @@ namespace LOICollection::server::Plugins {
             .transform([dimension, filter = std::move(filter)](BehaviorEventLog::Rows mData) -> std::vector<std::string> {
                 std::vector<std::string> mResult;
                 for (auto& [id, data] : mData) {
-                    if (SystemUtils::toInt(fieldOf(data, "position_dimension"), 0) != dimension)
+                    if (SystemUtils::toInt(readBehaviorEventLogFieldOf(data, "position_dimension"), 0) != dimension)
                         continue;
 
-                    int x = SystemUtils::toInt(fieldOf(data, "position_x"), 0);
-                    int y = SystemUtils::toInt(fieldOf(data, "position_y"), 0);
-                    int z = SystemUtils::toInt(fieldOf(data, "position_z"), 0);
+                    int x = SystemUtils::toInt(readBehaviorEventLogFieldOf(data, "position_x"), 0);
+                    int y = SystemUtils::toInt(readBehaviorEventLogFieldOf(data, "position_y"), 0);
+                    int z = SystemUtils::toInt(readBehaviorEventLogFieldOf(data, "position_z"), 0);
 
                     if (filter(x, y, z))
                         mResult.emplace_back(id);
@@ -1039,7 +1016,13 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(BehaviorEventPluginErrorCode::Invalid));
 
-        return this->getBehaviorEventLog()->read(parseIds(ids))
+        auto data = ids
+            | std::views::transform([](std::string const& id) -> BlockId {
+                  return SystemUtils::toLongLong(id);
+              })
+            | std::ranges::to<std::vector<BlockId>>();
+
+        return this->getBehaviorEventLog()->read(data)
             .transform([&ids](BehaviorEventLog::Rows mData) -> std::vector<std::string> {
                 std::unordered_map<std::string, std::string> events;
                 for (auto& key : ids) {
@@ -1048,12 +1031,12 @@ namespace LOICollection::server::Plugins {
                         continue;
 
                     std::string id = std::format("{}_{}.{}.{}.{}:{}",
-                        fieldOf(it->second, "event_name"),
-                        fieldOf(it->second, "event_time"),
-                        fieldOf(it->second, "position_x"),
-                        fieldOf(it->second, "position_y"),
-                        fieldOf(it->second, "position_z"),
-                        fieldOf(it->second, "position_dimension")
+                        readBehaviorEventLogFieldOf(it->second, "event_name"),
+                        readBehaviorEventLogFieldOf(it->second, "event_time"),
+                        readBehaviorEventLogFieldOf(it->second, "position_x"),
+                        readBehaviorEventLogFieldOf(it->second, "position_y"),
+                        readBehaviorEventLogFieldOf(it->second, "position_z"),
+                        readBehaviorEventLogFieldOf(it->second, "position_dimension")
                     );
 
                     events[id] = key;
@@ -1070,7 +1053,7 @@ namespace LOICollection::server::Plugins {
         BehaviorEventLog::PreparedEvent mPrepared;
         mPrepared.name = event.eventName;
         mPrepared.type = event.eventType;
-        mPrepared.timestamp = epochSeconds();
+        mPrepared.timestamp = SystemUtils::getEpochSeconds();
         mPrepared.posX = event.posX;
         mPrepared.posY = event.posY;
         mPrepared.posZ = event.posZ;
@@ -1088,7 +1071,11 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(BehaviorEventPluginErrorCode::Invalid));
 
-        std::vector<std::vector<BlockId>> chunks = parseIds(ids)
+        std::vector<std::vector<BlockId>> chunks = ids
+            | std::views::transform([](std::string const& id) -> BlockId {
+                  return SystemUtils::toLongLong(id);
+              })
+            | std::ranges::to<std::vector<BlockId>>()
             | std::views::chunk(std::max(this->mImpl->options.SingleBacktrackingQuantity, 1))
             | std::ranges::to<std::vector<std::vector<BlockId>>>();
 
@@ -1100,11 +1087,11 @@ namespace LOICollection::server::Plugins {
                     .and_then([this, chunk](BehaviorEventLog::Rows mData) -> ll::Expected<void> {
                         for (auto& [id, data] : mData) {
                             BlockPos mPosition(
-                                SystemUtils::toInt(fieldOf(data, "position_x"), 0),
-                                SystemUtils::toInt(fieldOf(data, "position_y"), 0),
-                                SystemUtils::toInt(fieldOf(data, "position_z"), 0)
+                                SystemUtils::toInt(readBehaviorEventLogFieldOf(data, "position_x"), 0),
+                                SystemUtils::toInt(readBehaviorEventLogFieldOf(data, "position_y"), 0),
+                                SystemUtils::toInt(readBehaviorEventLogFieldOf(data, "position_z"), 0)
                             );
-                            int mDimension = SystemUtils::toInt(fieldOf(data, "position_dimension"), 0);
+                            int mDimension = SystemUtils::toInt(readBehaviorEventLogFieldOf(data, "position_dimension"), 0);
 
                             if (data.contains("event_operable")) {
                                 CompoundTag mNbt = CompoundTag::fromSnbt(data.at("event_operable"))->mTags;
@@ -1132,7 +1119,7 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(BehaviorEventPluginErrorCode::Invalid));
 
-        return this->getBehaviorEventLog()->archiveBefore(epochSeconds() - static_cast<std::int64_t>(hours) * 3600)
+        return this->getBehaviorEventLog()->archiveBefore(SystemUtils::getEpochSeconds() - static_cast<std::int64_t>(hours) * 3600)
             .transform([](size_t) -> void {});
     }
 

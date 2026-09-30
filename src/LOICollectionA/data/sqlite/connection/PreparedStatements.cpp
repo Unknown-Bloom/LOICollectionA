@@ -1,4 +1,8 @@
 #include <array>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <unordered_map>
 
 #include <SQLiteCpp/SQLiteCpp.h>
 
@@ -87,14 +91,17 @@ observer<SQLite::Statement> PreparedStatements::ensure(std::string_view name, st
             return it->second.statement.get();
 
         std::unique_ptr<SQLite::Statement> stmt;
+
         try {
             stmt = std::make_unique<SQLite::Statement>(mDb, std::string(sql));
         } catch (...) {
             return nullptr;
         }
+
         auto* ref = stmt.get();
         it->second.statement = std::move(stmt);
         it->second.sql = std::string(sql);
+
         return ref;
     }
 
@@ -114,6 +121,7 @@ observer<SQLite::Statement> PreparedStatements::get(std::string_view name) noexc
     for (const auto& [n, sql] : kCatalog)
         if (n == name)
             return this->ensure(n, sql);
+    
     return nullptr;
 }
 

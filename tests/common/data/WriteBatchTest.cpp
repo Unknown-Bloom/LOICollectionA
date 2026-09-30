@@ -29,9 +29,6 @@ namespace {
 
 }
 
-// A nested savepoint rollback must not destroy the enclosing transaction: the
-// outer write survives and the inner write is gone from both the database and
-// the process cache.
 TEST(WriteBatchTest, NestedRollbackKeepsOuterWrite) {
     auto path = tempWriteBatchTestDb("nested");
     auto repo = BlockRepository::open(path.string(), 4);
@@ -57,9 +54,6 @@ TEST(WriteBatchTest, NestedRollbackKeepsOuterWrite) {
     dropWriteBatchTestDb(path);
 }
 
-// A row read inside its own transaction must not survive a rollback as a cached
-// phantom (I3: uncommitted data must not escape the transaction into the
-// process cache).
 TEST(WriteBatchTest, UncommittedReadIsNotCachedAfterRollback) {
     auto path = tempWriteBatchTestDb("phantom");
     auto repo = BlockRepository::open(path.string(), 4);
@@ -87,9 +81,6 @@ TEST(WriteBatchTest, UncommittedReadIsNotCachedAfterRollback) {
     dropWriteBatchTestDb(path);
 }
 
-// §3: two pools on the same thread with overlapping transactions. Opening a
-// transaction on the second pool must not break the first pool's connection
-// affinity, and ending the second must restore the first instead of clearing it.
 TEST(WriteBatchTest, TwoPoolOverlappingTransactions) {
     auto pathA = tempWriteBatchTestDb("two-a");
     auto pathB = tempWriteBatchTestDb("two-b");
@@ -107,11 +98,11 @@ TEST(WriteBatchTest, TwoPoolOverlappingTransactions) {
 
     auto b = WriteBatch::begin(storeB);
     ASSERT_TRUE(b.has_value());
-    // A's own uncommitted write must still be visible through A's connection.
+
     EXPECT_TRUE(storeA.load(0, "ownA").has_value());
 
     ASSERT_TRUE((*b)->rollback().has_value());
-    // After B ends, A's binding is restored, not cleared.
+
     EXPECT_TRUE(storeA.load(0, "ownA").has_value());
 
     ASSERT_TRUE((*a)->commit().has_value());
@@ -120,9 +111,6 @@ TEST(WriteBatchTest, TwoPoolOverlappingTransactions) {
     dropWriteBatchTestDb(pathB);
 }
 
-// Many threads opening write transactions on the same file must serialize
-// through the pool write lock and never fail with SQLITE_BUSY, and must not
-// deadlock. (§2, I2.)
 TEST(WriteBatchTest, ConcurrentWritesDoNotDeadlockOrBusy) {
     auto path = tempWriteBatchTestDb("concurrent");
     auto repo = BlockRepository::open(path.string(), 4);
@@ -160,9 +148,6 @@ TEST(WriteBatchTest, ConcurrentWritesDoNotDeadlockOrBusy) {
     dropWriteBatchTestDb(path);
 }
 
-// cbfc8f1c2: each set must write to its own column. Writing distinct properties
-// to the same block must not collide through the prepared-statement cache and
-// leave the wrong value in either column.
 TEST(WriteBatchTest, PropsWriteDistinctColumns) {
     auto path = tempWriteBatchTestDb("props");
     BlockId id = 0;

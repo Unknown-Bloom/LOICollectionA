@@ -1,12 +1,10 @@
 #pragma once
 
-#include <cstdint>
-#include <memory>
 #include <span>
-#include <string>
-#include <string_view>
-#include <utility>
+#include <memory>
 #include <vector>
+#include <utility>
+#include <string_view>
 
 #include <ll/api/Expected.h>
 
@@ -26,19 +24,21 @@ public:
     WriteBatch(WriteBatch&&) = delete;
     WriteBatch& operator=(WriteBatch&&) = delete;
 
-    LOICOLLECTION_A_NDAPI static ll::Expected<std::unique_ptr<WriteBatch>> begin(
-        BlockStore& store);
+    LOICOLLECTION_A_NDAPI static ll::Expected<std::unique_ptr<WriteBatch>> begin(BlockStore& store);
 
     LOICOLLECTION_A_NDAPI ll::Expected<BlockId> append(
-        BlockId parent, std::int32_t kind, std::string_view name, std::string_view payload = {});
+        BlockId parent, std::int32_t kind, std::string_view name, std::string_view payload = {}
+    );
 
     LOICOLLECTION_A_NDAPI ll::Expected<std::vector<BlockId>> appendMany(
         BlockId parent,
         std::int32_t kind,
-        std::span<const std::pair<std::string_view, std::string_view>> namePayloads);
+        std::span<const std::pair<std::string_view, std::string_view>> namePayloads
+    );
 
     LOICOLLECTION_A_NDAPI ll::Expected<BlockId> upsertRow(
-        BlockId parent, std::string_view name, std::string_view payload = {});
+        BlockId parent, std::string_view name, std::string_view payload = {}
+    );
 
     LOICOLLECTION_A_NDAPI ll::Expected<void> setPayload(BlockId id, std::string_view payload);
 
@@ -49,12 +49,14 @@ public:
     LOICOLLECTION_A_NDAPI ll::Expected<void> setProp(BlockId id, PropKey key, std::string_view value);
     LOICOLLECTION_A_NDAPI ll::Expected<void> setProp(
         BlockId id, PropKey key, PayloadType type,
-        std::int64_t ival, double rval, std::string_view tval);
+        std::int64_t ival, double rval, std::string_view tval
+    );
 
     LOICOLLECTION_A_NDAPI ll::Expected<void> exec(std::string_view sql);
 
     LOICOLLECTION_A_NDAPI ll::Expected<void> execCells(
-        std::string_view key, std::string_view sql, std::span<const BlockProp> params);
+        std::string_view key, std::string_view sql, std::span<const BlockProp> params
+    );
 
     LOICOLLECTION_A_NDAPI ll::Expected<std::int32_t> intern(std::string_view name);
 
@@ -64,9 +66,14 @@ public:
     LOICOLLECTION_A_NDAPI ll::Expected<bool> rollback();
 
 private:
-    LOICOLLECTION_A_API explicit WriteBatch(BlockStore& store, std::unique_ptr<StorageTransaction> txn);
+    explicit WriteBatch(BlockStore& store, std::unique_ptr<StorageTransaction> txn);
+
+    static std::string nextSavepoint();
 
     observer<BlockStore> mStore = nullptr;
     std::unique_ptr<StorageTransaction> mTxn;
+
+    static constexpr int kAcquireTimeoutMs = 5000;
+
     bool mFinished = false;
 };
