@@ -378,6 +378,7 @@ auto inner = WriteBatch::begin(repo->store());  // 同一线程已有活跃事�
 要点：
 
 - 嵌套发生的前提是"同一线程已持有活跃事务"（活动事务是 `thread_local`，所以**不会**跨线程嵌套）。嵌套 batch 复用外层事务的连接与写锁，**不会**再申请写锁，因此不会与 9.1 的写串行化死锁。
+- 活动事务是**按池记录**的（每池一个栈），不是全局单槽：同一线程可同时持有两个不同库（如 `market.db` 与 `settings.db`）的事务而互不干扰——在一个池上开事务不会让另一个池的连接亲和（I1）或缓存门控（I3）失效。
 - 嵌套 batch 的 `commit()` 执行 `RELEASE SAVEPOINT`，`rollback()` 执行 `ROLLBACK TO SAVEPOINT`；两者都**不**结束外层事务。
 - 若外层事务在嵌套 batch 结束前被提前结束（连接已释放），该 savepoint 随之失效，嵌套 batch 再 `commit`/`rollback` 会安全跳过，不会凭空操作一条已不属于它的连接。
 

@@ -378,6 +378,7 @@ auto inner = WriteBatch::begin(repo->store());  // thread already has an active 
 Key points:
 
 - Nesting only happens when "the same thread already holds an active transaction" (the active transaction is `thread_local`, so it never nests across threads). The nested batch reuses the outer transaction's connection and write lock and **does not** request the write lock again, so it can't deadlock with the pool-level serialization in 9.1.
+- The active transaction is tracked **per pool** (a stack per pool), not as a single global slot: one thread can hold open transactions on two different databases at once (e.g. `market.db` and `settings.db`) without interfering—opening a transaction on one pool never breaks another pool's connection affinity (I1) or cache guard (I3).
 - A nested batch's `commit()` runs `RELEASE SAVEPOINT` and `rollback()` runs `ROLLBACK TO SAVEPOINT`; neither ends the outer transaction.
 - If the outer transaction is ended prematurely (connection released) before the nested batch closes, that savepoint is gone too; the nested batch's later `commit`/`rollback` safely skips rather than operating on a connection it no longer owns.
 

@@ -12,6 +12,8 @@
 
 #include "LOICollectionA/data/sqlite/connection/ConnectionPool.h"
 
+#include "LOICollectionA/base/Ownership.h"
+
 namespace {
     constexpr auto kPragmas = std::to_array<std::string_view>({
         "PRAGMA journal_mode = WAL;",
@@ -66,8 +68,8 @@ ll::Expected<void> SQLiteConnection::applyPragmas() {
 
 ConnectionPool::~ConnectionPool() = default;
 
-thread_local ConnectionPool const* ConnectionPool::sActiveTxnPool = nullptr;
-thread_local SQLiteConnection* ConnectionPool::sActiveTxnConn = nullptr;
+thread_local std::vector<std::pair<observer<ConnectionPool const>, observer<SQLiteConnection>>>
+    ConnectionPool::sActiveTxns;
 
 ConnectionPool::ConnectionPool(std::string path) : mPath(std::move(path)) {}
 
@@ -132,24 +134,33 @@ void ConnectionPool::release(std::shared_ptr<SQLiteConnection> conn) {
     this->mCond.notify_one();
 }
 
-void ConnectionPool::bindTransaction(SQLiteConnection* conn) {
+void ConnectionPool::bindTransaction(observer<SQLiteConnection> conn) {
     std::unique_lock lock(this->mMutex);
     this->mInTxn.insert(conn);
-    sActiveTxnPool = this;
-    sActiveTxnConn = conn;
+    sActiveTxns.push_back({this, conn});
 }
 
-void ConnectionPool::unbindTransaction(SQLiteConnection* conn) {
+void ConnectionPool::unbindTransaction(observer<SQLiteConnection> conn) {
     std::unique_lock lock(this->mMutex);
     this->mInTxn.erase(conn);
-    if (sActiveTxnPool == this && sActiveTxnConn == conn) {
-        sActiveTxnPool = nullptr;
-        sActiveTxnConn = nullptr;
+    // Drop only this pool's entry that carries conn, scanning from the top so a
+    // re-entrant bind (defensive) is undone in LIFO order. Other pools' entries
+    // stay on the stack, so their connection affinity survives an inner pool's
+    // transaction ending.
+    for (auto it = sActiveTxns.rbegin(); it != sActiveTxns.rend(); ++it) {
+        if (it->first == this && it->second == conn) {
+            sActiveTxns.erase(std::next(it).base());
+            break;
+        }
     }
 }
 
 SQLiteConnection* ConnectionPool::activeTransaction() const noexcept {
-    return sActiveTxnPool == this ? sActiveTxnConn : nullptr;
+    for (auto it = sActiveTxns.rbegin(); it != sActiveTxns.rend(); ++it) {
+        if (it->first == this)
+            return it->second;
+    }
+    return nullptr;
 }
 
 bool ConnectionPool::tryAcquireWrite(int timeout) {
