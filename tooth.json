@@ -9,6 +9,8 @@
         "tags": [
             "collection",
             "tietu",
+            "server",
+            "client",
             "platform:levilamina",
             "type:mod"
         ],
@@ -31,6 +33,28 @@
                             "type": "dir",
                             "src": "LOICollectionA/",
                             "dest": "plugins/LOICollectionA/"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "label": "client",
+            "platform": "win-x64",
+            "dependencies": {
+                "github.com/LiteLDev/LeviLamina#client": "26.20.*"
+            },
+            "assets": [
+                {
+                    "type": "zip",
+                    "urls": [
+                        "https://{{tooth}}/releases/download/v{{version}}/LOICollectionA-client-windows-x64.zip"
+                    ],
+                    "placements": [
+                        {
+                            "type": "dir",
+                            "src": "LOICollectionA/",
+                            "dest": "mods/LOICollectionA/"
                         }
                     ]
                 }
