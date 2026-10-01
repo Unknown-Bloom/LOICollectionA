@@ -22,6 +22,10 @@ add_requires(
     "gtest v1.17.0"
 )
 
+if not is_server then
+    add_requires("imgui", {configs = {shared = false, win32 = true, dx11 = true}})
+end
+
 set_toolchains("clang-cl")
  
 if not has_config("vs_runtime") then
@@ -83,11 +87,13 @@ target("LOICollectionA")
         add_defines("DEBUG")
 
         add_packages("gtest")
-        
+
         add_files("tests/**.cpp")
         add_includedirs("tests")
     elseif is_mode("release") then
         add_defines("NDEBUG")
+
+        remove_files("tests/**.cpp")
     end
 
     if is_server then
@@ -126,6 +132,12 @@ target("LOICollectionA")
         "asio",
         "sqlitecpp"
     )
+
+    if not is_server then
+        add_packages("imgui")
+
+        add_syslinks("windowsapp", "user32", "d3d11", "d3d12", "dxgi", "ole32")
+    end
 
     set_exceptions("none")
     set_kind("shared")

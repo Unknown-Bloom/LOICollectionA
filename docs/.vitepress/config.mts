@@ -25,17 +25,15 @@ export default withMermaid(
   lastUpdated: true,
 
   markdown: {
-    // 禁用 markdown-it-attrs：避免 {version_mc} 等宏被解析为 HTML 属性而吞掉内容
     attrs: { disable: true },
     lineNumbers: false,
     theme: { light: 'github-light', dark: 'github-dark' },
     languages: [lcuiGrammar, logGrammar],
-    // 渲染 Markdown 时统计当前页字数与预计阅读时间，并注入到 frontmatter
     config(md) {
       md.render = withWordCountAndReadingTime(md.render, {
-        cjk: 330, // 中日韩字符阅读速度：字/分钟
-        noCjk: 200, // 其他语言阅读速度：词/分钟
-        other: 1000, // 全角标点等：字符/分钟
+        cjk: 330,
+        noCjk: 200, 
+        other: 1000, 
       })
     },
   },
@@ -54,7 +52,6 @@ export default withMermaid(
   },
 
   buildEnd(siteConfig) {
-    // GitHub Pages 需要 .nojekyll 以跳过 Jekyll 处理
     fs.writeFileSync(path.join(siteConfig.outDir, '.nojekyll'), '')
   },
 

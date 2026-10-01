@@ -163,9 +163,6 @@ ConnectionPool               # SQLite 连接池（WAL 模式）
 
 所有方法统一返回 `ll::Expected<T>`，用 `and_then` / `transform` / `or_else` 链式处理，不使用异常。用法详见 [模块开发指南](./module.md) 的"数据层"章节，以及完整的 [SQLite 层使用教程](./sqlite.md)。
 
-> [!NOTE]
-> 数据层完整 API、Schema 定义、条件查询、事务与错误码速查见 [SQLite 层使用教程](./sqlite.md)。
-
 > [!WARNING]
 > 数据层约束：**`VACUUM` 等少数语句不能在事务内执行**，必须走 `BlockRepository::exec()`（自动提交）；而 `CREATE` / `DROP TABLE` / `CREATE INDEX` 等 DDL 在 SQLite 中是事务性的，可以安全地与 DML 放在同一个 `WriteBatch` 里。**事务开着时不要调用 `repo->exec()`**——它会另取一条连接，撞上本事务持有的写锁。事务内的读取会复用事务自己的连接，不会向池子再申请。详见教程第 9 节。
 

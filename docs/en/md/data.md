@@ -265,6 +265,37 @@ When you upgrade the plugin version, newly added configuration items are automat
             "RedStone": 0, // Redstone high-frequency detection, where the value is the frequency per second (disabled when 0)
             "OrderedUI": false // Whether to enable ordered UI
         }
+    },
+    "ClientConfig": { // Client configuration (only takes effect for client targets)
+        "Music": { // Client "NetEase Cloud Music playback notification" module configuration
+            "ModuleEnabled": true, // Whether to enable this module
+            "SourceAppFilters": [ // Media source whitelist; matches a substring of SourceAppUserModelId; leave empty to allow any source
+                "cloudmusic",
+                "netease"
+            ],
+            "IgnorePaused": true, // Whether to also show when paused (true means do not show)
+            "HoldDuration": 8.0, // Hold duration (in seconds)
+            "CardMaxWidth": 420.0, // Card maximum width (pixels)
+            "CardMinWidth": 300.0, // Card minimum width (pixels)
+            "CardPadding": 12.0, // Card padding (pixels)
+            "TitleFontSize": 24.0, // Title font size
+            "ArtistFontSize": 16.0, // Artist font size
+            "AlbumFontSize": 14.0, // Album font size
+            "LineSpacing": 8.0, // Line spacing between lines (pixels)
+            "CoverSize": 64.0, // Cover side length inside the card (pixels); set to 0 to disable the cover
+            "SlideDistance": 48.0, // Horizontal offset for slide-in / slide-out (pixels)
+            "VisualizerHeight": 22.0, // Audio visualizer height (pixels); set to 0 to disable and skip audio capture
+            "VisualizerBarGap": 2.0, // Visualizer bar gap (pixels)
+            "EnterDuration": 0.5, // Slide-in animation duration (in seconds)
+            "ExitDuration": 0.4 // Slide-out animation duration (in seconds)
+        }
+    },
+    "ScriptPermission": { // LCUI sandbox permissions
+        "PermissionFilePath": "gui/permission.json" // Permission file location
+    },
+    "LanguageServer": { // LCUI language server
+        "enabled": true, // Whether to enable
+        "port": 9257 // Local port
     }
 }
 ```

@@ -265,6 +265,37 @@
             "RedStone": 0, // 红石高频检测，其中为每秒频率（为 0 时不启用）
             "OrderedUI": false // 是否启用有序 UI
         }
+    },
+    "ClientConfig": { // 客户端配置（仅在客户端目标下生效）
+        "Music": { // 客户端「网易云音乐播放通知」模块配置
+            "ModuleEnabled": true, // 是否启用该模块
+            "SourceAppFilters": [ // 媒体来源白名单，匹配 SourceAppUserModelId 子串，留空表示不限来源
+                "cloudmusic",
+                "netease"
+            ],
+            "IgnorePaused": true, // 暂停时是否也弹出（true 为不弹）
+            "HoldDuration": 8.0, // 停留时间（单位为秒）
+            "CardMaxWidth": 420.0, // 卡片最大宽度（像素）
+            "CardMinWidth": 300.0, // 卡片最小宽度（像素）
+            "CardPadding": 12.0, // 卡片内边距（像素）
+            "TitleFontSize": 24.0, // 标题字号
+            "ArtistFontSize": 16.0, // 歌手字号
+            "AlbumFontSize": 14.0, // 专辑字号
+            "LineSpacing": 8.0, // 各行之间的行距（像素）
+            "CoverSize": 64.0, // 卡片内封面边长（像素），设为 0 关闭封面
+            "SlideDistance": 48.0, // 滑入 / 滑出的水平位移（像素）
+            "VisualizerHeight": 22.0, // 音频可视化高度（像素），设为 0 关闭并跳过音频采集
+            "VisualizerBarGap": 2.0, // 可视化条间距（像素）
+            "EnterDuration": 0.5, // 滑入动画时长（单位为秒）
+            "ExitDuration": 0.4 // 滑出动画时长（单位为秒）
+        }
+    },
+    "ScriptPermission": { // LCUI 沙箱权限
+        "PermissionFilePath": "gui/permission.json" // 权限文件位置
+    },
+    "LanguageServer": { // LCUI 语言服务
+        "enabled": true, // 是否启用
+        "port": 9257 // 本地端口
     }
 }
 ```

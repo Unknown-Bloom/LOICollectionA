@@ -304,6 +304,40 @@ namespace Config {
         std::string PermissionFilePath = "gui/permission.json";
     };
 
+    struct C_Music {
+        bool ModuleEnabled = true;
+
+        std::vector<std::string> SourceAppFilters{ "cloudmusic", "netease" };
+
+        bool IgnorePaused = true;
+
+        double HoldDuration = 8.0;
+
+        float CardMaxWidth = 420.0f;
+        float CardMinWidth = 300.0f;
+        float CardPadding = 12.0f;
+
+        float TitleFontSize = 24.0f;
+        float ArtistFontSize = 16.0f;
+        float AlbumFontSize = 14.0f;
+
+        float LineSpacing = 8.0f;
+
+        float CoverSize = 64.0f;
+
+        float SlideDistance = 48.0f;
+
+        float VisualizerHeight = 22.0f;
+        float VisualizerBarGap = 2.0f;
+
+        float EnterDuration = 0.5f;
+        float ExitDuration = 0.4f;
+    };
+
+    struct C_ClientConfig {
+        C_Music Music;
+    };
+
     struct C_LanguageServer {
         bool enabled = false;
         std::uint16_t port = 9257;
@@ -314,6 +348,7 @@ namespace Config {
         std::string ConsoleLanguage = "system";
 
         C_ServerConfig ServerConfig;
+        C_ClientConfig ClientConfig;
         C_ScriptPermission ScriptPermission;
         C_LanguageServer LanguageServer;
     };
