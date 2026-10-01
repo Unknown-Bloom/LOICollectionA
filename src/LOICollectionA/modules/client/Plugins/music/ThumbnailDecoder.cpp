@@ -112,7 +112,6 @@ namespace LOICollection::client::Plugins::music {
         if (FAILED(scaler->CopyPixels(nullptr, stride, static_cast<UINT>(pixels.size()), pixels.data())))
             return false;
 
-        // WIC 的 32bppRGBA 实际给出 BGRA 字节序，这里换回真正的 RGBA。
         for (size_t index = 0; index + 3 < pixels.size(); index += 4)
             std::swap(pixels[index], pixels[index + 2]);
 

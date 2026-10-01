@@ -85,12 +85,12 @@ namespace LOICollection::client::Plugins::music::audio {
 
                 float frequency = this->Tuning.MinFrequency
                                 * std::pow(this->Tuning.MaxFrequency / this->Tuning.MinFrequency, ratio);
-                float bin = frequency / nyquist * static_cast<float>(this->FftSize / 2);
+                float bin = frequency / nyquist * static_cast<float>(static_cast<float>(this->FftSize) / 2);
 
                 this->BandEdges.push_back(static_cast<std::size_t>(std::clamp(
                     bin,
                     1.0f,
-                    static_cast<float>(this->FftSize / 2 - 1)
+                    static_cast<float>(static_cast<float>(this->FftSize) / 2 - 1)
                 )));
             }
         }
@@ -151,7 +151,7 @@ namespace LOICollection::client::Plugins::music::audio {
     };
 
     SpectrumAnalyzer::SpectrumAnalyzer(std::size_t fftSize, std::size_t bandCount, SpectrumTuning tuning)
-    : mImpl(std::make_unique<Impl>(fftSize, bandCount, tuning)) {}
+        : mImpl(std::make_unique<Impl>(fftSize, bandCount, tuning)) {}
 
     SpectrumAnalyzer::~SpectrumAnalyzer() = default;
 

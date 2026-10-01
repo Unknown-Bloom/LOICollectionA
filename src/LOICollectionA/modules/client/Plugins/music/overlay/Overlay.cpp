@@ -74,10 +74,10 @@ namespace LOICollection::client::Plugins::music::overlay {
             };
 
             FontSource const sources[] = {
-                { "C:\\Windows\\Fonts\\segoeui.ttf", nullptr                              },
-                { "C:\\Windows\\Fonts\\msyh.ttc",    io.Fonts->GetGlyphRangesChineseFull() },
-                { "C:\\Windows\\Fonts\\meiryo.ttc",  io.Fonts->GetGlyphRangesJapanese()    },
-                { "C:\\Windows\\Fonts\\malgun.ttf",  io.Fonts->GetGlyphRangesKorean()      },
+                { R"(C:\Windows\Fonts\segoeui.ttf)", nullptr                              },
+                { R"(C:\Windows\Fonts\msyh.ttc)",    io.Fonts->GetGlyphRangesChineseFull() },
+                { R"(C:\Windows\Fonts\meiryo.ttc)",  io.Fonts->GetGlyphRangesJapanese()    },
+                { R"(C:\Windows\Fonts\malgun.ttf)",  io.Fonts->GetGlyphRangesKorean()      },
             };
 
             auto build = [&sources, &io](float size) -> ImFont* {
