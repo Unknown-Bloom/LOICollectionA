@@ -13,17 +13,17 @@ option("target_type")
 option_end()
 
 add_requires("sqlitecpp 3.3.3", {configs = {shared = false}})
-add_requires("levilamina 26.20.7", {configs = {target_type = get_config("target_type")}})
+add_requires("levilamina 26.51.6", {configs = {target_type = get_config("target_type")}})
 add_requires(
     "levibuildscript",
     "preloader 1.15.7",
     "nlohmann_json 3.12.0",
-    "asio",
+    "asio 1.36.0",
     "gtest v1.17.0"
 )
 
 if not is_server then
-    add_requires("imgui", {configs = {shared = false, win32 = true, dx11 = true}})
+    add_requires("imgui v1.92.9+b", {configs = {shared = false, win32 = true, dx11 = true}})
 end
 
 set_toolchains("clang-cl")
@@ -32,7 +32,7 @@ if not has_config("vs_runtime") then
     set_runtimes("MD")
 end
 
-set_version("1.17.0")
+set_version("1.17.1")
 
 includes("scripts/modpacker.lua")
 

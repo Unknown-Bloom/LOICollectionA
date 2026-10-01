@@ -1,3 +1,11 @@
+#include <atomic>
+#include <string>
+#include <thread>
+
+#include <asio.hpp>
+
+#include "LOICollectionA/frontend/lsp/LanguageServer.h"
+
 #include "LOICollectionA/frontend/lsp/Server.h"
 
 namespace LOICollection::frontend::lsp {
@@ -5,10 +13,10 @@ namespace LOICollection::frontend::lsp {
         asio::error_code ec;
         const asio::ip::tcp::endpoint endpoint(asio::ip::address_v4::loopback(), port);
 
-        acceptor_.open(endpoint.protocol(), ec);
-        if (!ec) acceptor_.set_option(asio::socket_base::reuse_address(true), ec);
-        if (!ec) acceptor_.bind(endpoint, ec);
-        if (!ec) acceptor_.listen(asio::socket_base::max_listen_connections, ec);
+        ec = acceptor_.open(endpoint.protocol(), ec);
+        if (!ec) ec = acceptor_.set_option(asio::socket_base::reuse_address(true), ec);
+        if (!ec) ec = acceptor_.bind(endpoint, ec);
+        if (!ec) ec = acceptor_.listen(asio::socket_base::max_listen_connections, ec);
         if (ec) return ec;
 
         running_.store(true);
@@ -90,7 +98,7 @@ namespace LOICollection::frontend::lsp {
         running_.store(false);
 
         asio::error_code ec;
-        acceptor_.close(ec);
+        ec = acceptor_.close(ec);
         io_.stop();
 
         if (worker_.joinable())

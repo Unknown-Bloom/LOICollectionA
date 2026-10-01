@@ -12,6 +12,7 @@
 #include <mc/world/actor/player/Player.h>
 
 #include <mc/network/NetworkSystem.h>
+#include <mc/network/MinecraftPackets.h>
 #include <mc/network/MinecraftPacketIds.h>
 #include <mc/network/ServerNetworkHandler.h>
 #include <mc/network/PacketHandlerDispatcherInstance.h>
@@ -98,10 +99,11 @@ namespace LOICollection::server::ProtableTool {
             
             auto it = std::prev(this->mImpl->mFormLists[mIdentifierHash].end());
 
-            ModalFormRequestPacket request;
-            request.mFormId = it->first;
-            request.mFormJSON = it->second;
-            request.sendToClient(event.getNetworkIdentifier(), event.getSubClientId());
+            auto request = static_pointer_cast<ModalFormRequestPacket>(MinecraftPackets::createPacket(MinecraftPacketIds::ShowModalForm));
+
+            request->mFormId = it->first;
+            request->mFormJSON = it->second;
+            request->sendToClient(event.getNetworkIdentifier(), event.getSubClientId());
             
             this->mImpl->mFormLists[mIdentifierHash].erase(it);
         });

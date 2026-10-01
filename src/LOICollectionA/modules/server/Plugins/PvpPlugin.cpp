@@ -181,7 +181,7 @@ namespace LOICollection::server::Plugins {
                 .or_else(modules::defaultErrorHandler<PvpPlugin>);
         });
         this->mImpl->PlayerHurtEventListener = eventBus.emplaceListener<LOICollection::server::Events::PlayerHurtEvent>([this](LOICollection::server::Events::PlayerHurtEvent& event) mutable -> void {
-            if (!event.getSource().isRemotePlayer() || event.getSource().isSimulatedPlayer() || event.self().isSimulatedPlayer())
+            if (!event.getSource().isPlayer() || event.getSource().isSimulatedPlayer() || event.self().isSimulatedPlayer())
                 return;
 
             switch (event.getReason()) {

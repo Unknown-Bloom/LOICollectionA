@@ -1,12 +1,9 @@
 #pragma once
 
-#define ASIO_STANDALONE
+#include <atomic>
+#include <thread>
 
 #include <asio.hpp>
-#include <atomic>
-#include <cstdint>
-#include <string>
-#include <thread>
 
 #include "LOICollectionA/frontend/lsp/LanguageServer.h"
 

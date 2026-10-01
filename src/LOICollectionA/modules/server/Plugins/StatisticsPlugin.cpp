@@ -333,11 +333,11 @@ namespace LOICollection::server::Plugins {
                     event.source().isChildEntitySource() ? event.source().getEntityUniqueID() : event.source().getDamagingEntityUniqueID(), false
                 );
 
-                if (mSource && mSource->isRemotePlayer() && event.self().isRemotePlayer())
+                if (mSource && mSource->isPlayer() && event.self().isPlayer())
                     this->addStatistic(*static_cast<Player*>(mSource), StatisticType::kills, 1).or_else(modules::defaultErrorHandler<StatisticsPlugin>);
             }
 
-            if (event.self().isRemotePlayer() && option.Death)
+            if (event.self().isPlayer() && option.Death)
                 this->addStatistic(static_cast<Player&>(event.self()), StatisticType::deaths, 1).or_else(modules::defaultErrorHandler<StatisticsPlugin>);
         }));
 

@@ -117,21 +117,15 @@ namespace LOICollection::LOICollectionAPI {
             return static_cast<int>(player.getPosition().z);
         });
         cbu.registerVariable("player_pos_respawn", [](Player& player) -> std::string {
-            return player.hasRespawnPosition() ? player.getExpectedSpawnPosition().toString() : "None";
+            return player.getExpectedSpawnPosition().toString();
         });
         cbu.registerVariable("player_pos_respawn_x", [](Player& player) -> frontend::TypedValue {
-            if (!player.hasRespawnPosition()) return "None";
-
             return static_cast<int>(player.getExpectedSpawnPosition().x);
         });
         cbu.registerVariable("player_pos_respawn_y", [](Player& player) -> frontend::TypedValue {
-            if (!player.hasRespawnPosition()) return "None";
-
             return static_cast<int>(player.getExpectedSpawnPosition().y);
         });
         cbu.registerVariable("player_pos_respawn_z", [](Player& player) -> frontend::TypedValue {
-            if (!player.hasRespawnPosition()) return "None";
-
             return static_cast<int>(player.getExpectedSpawnPosition().z);
         });
         cbu.registerVariable("player_pos_block", [](Player& player) -> std::string {

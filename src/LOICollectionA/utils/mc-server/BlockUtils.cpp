@@ -66,7 +66,7 @@ namespace BlockUtils {
         auto mDimension = ll::service::getLevel()->getDimension(dimension).lock();
         BlockSource& mBlockSource = mDimension->getBlockSourceFromMainChunkSource();
         if (auto mBlock = Block::tryGetFromRegistry(nbt); mBlock.has_value()) 
-            mBlockSource.setBlock(pos, mBlock.value(), 3, nullptr, nullptr, BlockChangeContext::structureChange());
+            mBlockSource.setBlock(pos, mBlock.value(), 3, nullptr, BlockChangeContext(StatelessBlockChangeContext::Commands));
     }
 
     void setBlockEntity(const BlockPos& pos, int dimension, const CompoundTag& nbt) {

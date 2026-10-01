@@ -78,7 +78,7 @@ namespace LOICollection::server::ProtableTool {
                                 ll::service::getLevel()->getOrCreateDimension(it.first).lock()->getBlockSourceFromMainChunkSource(),
                                 it2->first,
                                 true,
-                                BlockChangeContext::structureChange()
+                                BlockChangeContext(StatelessBlockChangeContext::Commands)
                             );
                             
                             this->getLogger()->info("RedStone: {}({})", it2->first.toString(), it.first);

@@ -397,7 +397,10 @@ namespace LOICollection::server::Plugins {
             if (event.getPacket().getId() != MinecraftPacketIds::Login)
                 return;
 
-            std::string mUuid = static_cast<LoginPacket const&>(event.getPacket()).mConnectionRequest->mRawToken->mDataInfo.get("extraData", {}).get("identity", "None").asString("None");
+            std::string mUuid = static_cast<LoginPacket const&>(event.getPacket()).mConnectionRequest->mRawToken->and_then([](auto& args) -> std::optional<std::string> {
+                return args.mDataInfo.get("extraData", {}).get("identity", "None").asString("None");
+            }).value_or("None");
+            
             std::string mIp = event.getNetworkIdentifier().getIPAndPort().substr(0, event.getNetworkIdentifier().getIPAndPort().find_last_of(':'));
             std::string mClientId = static_cast<LoginPacket const&>(event.getPacket()).mConnectionRequest->getDeviceId();
 

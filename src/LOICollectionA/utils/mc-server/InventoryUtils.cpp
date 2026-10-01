@@ -30,7 +30,7 @@ namespace InventoryUtils {
         for (int i = 0; i < inventory->getContainerSize() && mNumber > 0; ++i) {
             const ItemStack& mItemObject = inventory->getItem(i);
 
-            if (mItemObject.matches(item)) {
+            if (mItemObject.matchesItem(item)) {
                 int mCount = std::min(static_cast<int>(mItemObject.mCount), mNumber);
 
                 inventory->removeItem(i, mCount);
@@ -71,7 +71,7 @@ namespace InventoryUtils {
         for (int i = 0; i < mItemInventory->getContainerSize() && mNumber > 0; ++i) {
             const ItemStack& mItemObject = mItemInventory->getItem(i);
 
-            if (mItemObject.matches(item))
+            if (mItemObject.matchesItem(item))
                 mNumber -= static_cast<int>(mItemObject.mCount);
         }
 

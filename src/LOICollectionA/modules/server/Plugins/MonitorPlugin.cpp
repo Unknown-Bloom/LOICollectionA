@@ -33,12 +33,13 @@
 #include <mc/world/actor/SynchedActorDataEntityWrapper.h>
 #include <mc/world/actor/player/Player.h>
 
+#include <mc/network/MinecraftPackets.h>
 #include <mc/network/NetworkIdentifier.h>
 #include <mc/network/MinecraftPacketIds.h>
 #include <mc/network/packet/TextPacket.h>
 #include <mc/network/packet/SetScorePacket.h>
-#include <mc/network/packet/ScorePacketInfo.h>
 #include <mc/network/packet/SetActorDataPacket.h>
+#include <mc/network/packet/ChangeFakePlayerScore.h>
 #include <mc/network/packet/RemoveObjectivePacket.h>
 #include <mc/network/packet/AvailableCommandsPacket.h>
 #include <mc/network/packet/SetDisplayObjectivePacket.h>
@@ -64,9 +65,6 @@
 #include "LOICollectionA/ConfigPlugin.h"
 
 #include "LOICollectionA/include/server/Plugins/MonitorPlugin.h"
-
-SetScorePacket::SetScorePacket() { mType = ScorePacketType::Change; }
-SetDisplayObjectivePacketPayload::SetDisplayObjectivePacketPayload() { mSortOrder = ObjectiveSortOrder::Ascending; }
 
 using I18nUtilsTools::tr;
 
@@ -154,8 +152,8 @@ namespace LOICollection::server::Plugins {
                         SetActorDataPacket packet(mTarget.getRuntimeID(), mTarget.mEntityData, 
                             nullptr, mTarget.mLevel->getCurrentTick().tickID, false
                         );
-                        packet.mPackedItems.clear();
-                        packet.mPackedItems.emplace_back(DataItem::create(ActorDataIDs::FilteredName, mNameTag));
+                        packet.mPackedItems->clear();
+                        packet.mPackedItems->emplace_back(DataItem::create(ActorDataIDs::FilteredName, mNameTag));
                         packet.sendToClients();
 
                         return true;
@@ -341,8 +339,10 @@ namespace LOICollection::server::Plugins {
 
             auto packet = static_cast<TextPacket const&>(event.getPacket());
             
-            bool result = std::any_of(mTextPacketType.begin(), mTextPacketType.end(), [target = packet.getMessage()](const std::string& item) -> bool {
-                return target.find(item) != std::string::npos;
+            bool result = std::any_of(mTextPacketType.begin(), mTextPacketType.end(), [target = packet.mBody.get()](const std::string& item) -> bool {
+                return std::visit([](auto&& arg) -> std::string {
+                    return arg.mMessage;
+                }, target).find(item) != std::string::npos;
             });
 
             std::string mAuthor = std::visit([](auto&& arg) -> std::string {
@@ -405,23 +405,18 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(MonitorPluginErrorCode::Invalid));
 
-        std::vector<ScorePacketInfo> infos;
-        for (auto& item : data) {
-            ScorePacketInfo info;
-            info.mScoreboardId->mRawID = item.second;
-            info.mObjectiveName = id;
-            info.mIdentityType = IdentityDefinition::Type::FakePlayer;
-            info.mScoreValue = item.second;
-            info.mFakePlayerName = item.first;
+        auto packet = static_pointer_cast<SetScorePacket>(MinecraftPackets::createPacket(MinecraftPacketIds::SetScore));
 
-            infos.emplace_back(info);
+        for (auto& item : data) {
+            ChangeFakePlayerScore change;
+            change.mScoreboardId->mRawID = item.second;
+            change.mObjectiveName        = id;
+            change.mScoreValue           = item.second;
+            change.mFakePlayerName       = item.first;
+            packet->mScoreInfo->emplace_back(change);
         }
 
-        SetScorePacket packet;
-        packet.mType = ScorePacketType::Change;
-        packet.mScoreInfo = infos;
-
-        packet.sendTo(player);
+        packet->sendTo(player);
 
         return {};
     }

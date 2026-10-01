@@ -603,8 +603,7 @@ namespace LOICollection::server::Plugins {
                                 ItemStack itemStack = ItemStack::fromTag(CompoundTag::fromSnbt(value.value("id", ""))->mTags);
                                 InventoryUtils::giveItem(player, itemStack, static_cast<int>(itemStack.mCount));
                             } else {
-                                Bedrock::Safety::RedactableString mRedactableString;
-                                mRedactableString.mUnredactedString = value.value("name", "");
+                                Bedrock::Safety::RedactableString mRedactableString(value.value("name", ""));
                                 
                                 auto itemStack = std::make_unique<ItemStack>();
                                 itemStack->reinit(value.value("id", ""), 1, value.value("specialvalue", 0));

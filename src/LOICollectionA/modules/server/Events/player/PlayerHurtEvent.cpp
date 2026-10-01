@@ -10,11 +10,10 @@
 
 #include <mc/world/actor/Mob.h>
 #include <mc/world/actor/Actor.h>
+#include <mc/world/actor/HurtParameters.h>
 #include <mc/world/actor/ActorHurtResult.h>
 #include <mc/world/actor/ActorDamageSource.h>
-#include <mc/world/actor/HurtEffectsSettings.h>
 #include <mc/world/actor/player/Player.h>
-#include <mc/entity/components_json_legacy/ProjectileComponent.h>
 
 #include <mc/legacy/ActorUniqueID.h>
 
@@ -42,118 +41,43 @@ namespace LOICollection::server::Events {
     }
 
     LL_TYPE_INSTANCE_HOOK(
-        PlayerHurtEventHook1,
+        PlayerHurtEventHook,
         HookPriority::Normal,
         Mob,
-        &Mob::hurt,
+        &Mob::$_hurt,
         ActorHurtResult,
         ActorDamageSource const& source,
         float damage,
-        bool knock,
-        bool ignite
+        HurtParameters const& hurtParameters
     ) {
-        if (!this->isRemotePlayer() || !source.isEntitySource() || this->getOrCreateUniqueID().rawID == source.getEntityUniqueID().rawID)
-            return origin(source, damage, knock, ignite);
+        if (!this->isPlayer() || !source.isEntitySource() || this->getOrCreateUniqueID().rawID == source.getEntityUniqueID().rawID)
+            return origin(source, damage, hurtParameters);
 
         Actor* mSource = ll::service::getLevel()->fetchEntity(
             source.isChildEntitySource() ? source.getEntityUniqueID() : source.getDamagingEntityUniqueID(), false
         );
         if (!mSource)
-            return origin(source, damage, knock, ignite);
+            return origin(source, damage, hurtParameters);
 
-        PlayerHurtEvent event(*reinterpret_cast<Player*>(this), *mSource, static_cast<int>(damage), knock, ignite, PlayerHurtReason::Hurt);
+        PlayerHurtEvent event(
+            *reinterpret_cast<Player*>(this),
+            *mSource,
+            static_cast<int>(damage),
+            hurtParameters.mKnockback,
+            hurtParameters.mIgnition,
+            source.mCause == SharedTypes::Legacy::ActorDamageCause::Projectile ? PlayerHurtReason::Projectile :
+            source.mCause == SharedTypes::Legacy::ActorDamageCause::Piston ? PlayerHurtReason::Effect : PlayerHurtReason::Hurt
+        );
         ll::event::EventBus::getInstance().publish(event);
         if (event.isCancelled())
             return { false, false };
 
-        return origin(source, damage, knock, ignite);
+        return origin(source, damage, hurtParameters);
     };
-
-    LL_TYPE_INSTANCE_HOOK(
-        PlayerHurtEventHook2,
-        HookPriority::Normal,
-        Mob,
-        &Mob::$hurtEffects,
-        void,
-        ActorDamageSource const& source,
-        float damage,
-        HurtEffectsSettings const& settings
-    ) {
-        if (!this->isRemotePlayer() || !source.isEntitySource() || this->getOrCreateUniqueID().rawID == source.getEntityUniqueID().rawID)
-            return origin(source, damage, settings);
-
-        Actor* mSource = ll::service::getLevel()->fetchEntity(
-            source.isChildEntitySource() ? source.getEntityUniqueID() : source.getDamagingEntityUniqueID(), false
-        );
-        if (!mSource)
-            return origin(source, damage, settings);
-
-        PlayerHurtEvent event(
-            *reinterpret_cast<Player*>(this),
-            *mSource, static_cast<int>(damage),
-            (settings.mKnockback == HurtEffectsSettings::ApplyKnockback::Yes ? true : false),
-            (settings.mIgnition == HurtEffectsSettings::Ignite::Yes ? true : false),
-            PlayerHurtReason::Effect
-        );
-        ll::event::EventBus::getInstance().publish(event);
-        if (event.isCancelled()) 
-            return;
-
-        origin(source, damage, settings);
-    };
-
-    LL_TYPE_INSTANCE_HOOK(
-        PlayerHurtEventHook3,
-        HookPriority::Normal,
-        Mob,
-        &Mob::getDamageAfterResistanceEffect,
-        float,
-        ActorDamageSource const& source,
-        float damage
-    ) {
-        if (!this->isRemotePlayer() || !source.isEntitySource() || this->getOrCreateUniqueID().rawID == source.getEntityUniqueID().rawID)
-            return origin(source, damage);
-        
-        Actor* mSource = ll::service::getLevel()->fetchEntity(
-            source.isChildEntitySource() ? source.getEntityUniqueID() : source.getDamagingEntityUniqueID(), false
-        );
-        if (!mSource)
-            return origin(source, damage);
-
-        PlayerHurtEvent event(*reinterpret_cast<Player*>(this), *mSource, static_cast<int>(damage), false, false, PlayerHurtReason::Effect);
-        ll::event::EventBus::getInstance().publish(event);
-        if (event.isCancelled()) 
-            return 0.0f;
-
-        return origin(source, damage);
-    };
-
-    LL_TYPE_INSTANCE_HOOK(
-        PlayerHurtEventHook4,
-        HookPriority::Normal,
-        ProjectileComponent,
-        &ProjectileComponent::onHit,
-        void,
-        Actor& owner,
-        HitResult const& hitResult
-    ) {
-        Actor* mHitEntity = hitResult.getEntity();
-        Player* mOwner = owner.getPlayerOwner();
-
-        if ((!mHitEntity || !mOwner) || !mOwner->isRemotePlayer() || !mHitEntity->isRemotePlayer() || owner.getOrCreateUniqueID().rawID == mHitEntity->getOrCreateUniqueID().rawID)
-            return origin(owner, hitResult);
-
-        PlayerHurtEvent event(*reinterpret_cast<Player*>(mHitEntity), *mOwner, 0, false, false, PlayerHurtReason::Projectile);
-        ll::event::EventBus::getInstance().publish(event);
-        if (event.isCancelled()) 
-            return;
-
-        origin(owner, hitResult);
-    }
 
     static std::unique_ptr<ll::event::EmitterBase> PlayerHurtEmitterFactory();
     class PlayerHurtEventEmitter : public ll::event::Emitter<PlayerHurtEmitterFactory, PlayerHurtEvent> {
-        ll::memory::HookRegistrar<PlayerHurtEventHook1, PlayerHurtEventHook2, PlayerHurtEventHook3, PlayerHurtEventHook4> hook;
+        ll::memory::HookRegistrar<PlayerHurtEventHook> hook;
     };
 
     static std::unique_ptr<ll::event::EmitterBase> PlayerHurtEmitterFactory() {

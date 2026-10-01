@@ -12,9 +12,11 @@
 #include <mc/world/level/block/Block.h>
 #include <mc/world/level/dimension/Dimension.h>
 
+#include <mc/scripting/modules/minecraft/events/ScriptBlockBreakingEventListener.h>
 #include <mc/scripting/modules/minecraft/events/ScriptBlockGlobalEventListener.h>
 
 #include "LOICollectionA/include/server/Events/world/BlockExplodedEvent.h"
+
 
 namespace LOICollection::server::Events {
     const BlockPos& BlockExplodedEvent::getPosition() const {

@@ -59,8 +59,12 @@ namespace LOICollection::server::Events {
 
         optional_ref<Level> level = ll::service::getLevel();
         ScoreboardId identity = level->getScoreboard().getScoreboardId(player);
-        for (ScoreInfo& info : level->getScoreboard().getIdScores(identity))
-            mScores[mActorUniqueId][info.mObjective->mName] = info.mValue;
+
+        for (Objective const* obj : level->getScoreboard().getObjectives()) {
+            auto it = obj->mScores->find(identity);
+            if (it != obj->mScores->end())
+                mScores[mActorUniqueId][obj->mName] = it->second;
+        }
 
         origin(source, connectionRequest, player);
     }

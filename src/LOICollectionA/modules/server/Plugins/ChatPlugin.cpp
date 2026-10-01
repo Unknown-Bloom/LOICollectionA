@@ -201,7 +201,7 @@ namespace LOICollection::server::Plugins {
                 return output.error(tr(origin.getLocaleCode(), "commands.generic.permission"));
 
             Actor* entity = origin.getEntity();
-            if (entity == nullptr || !entity->isRemotePlayer())
+            if (entity == nullptr || !entity->isPlayer())
                 return output.error(tr(origin.getLocaleCode(), "commands.generic.target"));
             Player& player = *static_cast<Player*>(entity);
 
@@ -212,7 +212,7 @@ namespace LOICollection::server::Plugins {
         });
         command.overload().text("setting").execute([](CommandOrigin const& origin, CommandOutput& output) -> void {
             Actor* entity = origin.getEntity();
-            if (entity == nullptr || !entity->isRemotePlayer())
+            if (entity == nullptr || !entity->isPlayer())
                 return output.error(tr(origin.getLocaleCode(), "commands.generic.target"));
             Player& player = *static_cast<Player*>(entity);
             
