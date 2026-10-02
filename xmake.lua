@@ -32,7 +32,7 @@ if not has_config("vs_runtime") then
     set_runtimes("MD")
 end
 
-set_version("1.17.1")
+set_version("1.17.2")
 
 includes("scripts/modpacker.lua")
 

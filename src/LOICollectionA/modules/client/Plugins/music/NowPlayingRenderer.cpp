@@ -7,11 +7,12 @@
 
 #include <ll/api/io/Logger.h>
 
+#include "LOICollectionA/include/client/display/overlay/Overlay.h"
+#include "LOICollectionA/include/client/display/overlay/OverlayTexture.h"
+
 #include "LOICollectionA/include/client/Plugins/music/MusicText.h"
 #include "LOICollectionA/include/client/Plugins/music/NowPlayingToast.h"
 #include "LOICollectionA/include/client/Plugins/music/NowPlayingRenderer.h"
-#include "LOICollectionA/include/client/Plugins/music/overlay/Overlay.h"
-#include "LOICollectionA/include/client/Plugins/music/overlay/OverlayTexture.h"
 
 namespace LOICollection::client::Plugins::music {
     std::string shortAppName(std::string_view sourceAppId) {
@@ -59,7 +60,7 @@ namespace LOICollection::client::Plugins::music {
         explicit Impl(NowPlayingToast& value) : Toast(value) {}
 
         void releaseCover() {
-            overlay::destroyTexture(this->CoverTexture);
+            display::overlay::destroyTexture(this->CoverTexture);
             this->OwnedArtworkKey.clear();
         }
     };
@@ -129,7 +130,7 @@ namespace LOICollection::client::Plugins::music {
             if (track.hasArtwork()) {
                 ImTextureID texture { 0 };
 
-                if (overlay::createTexture(track.Artwork.Pixels, track.Artwork.Width, track.Artwork.Height, texture)) {
+                if (display::overlay::createTexture(track.Artwork.Pixels, track.Artwork.Width, track.Artwork.Height, texture)) {
                     this->mImpl->CoverTexture    = texture;
                     this->mImpl->OwnedArtworkKey = artworkKey;
 
@@ -176,7 +177,7 @@ namespace LOICollection::client::Plugins::music {
         const NowPlayingLayout&     layout = this->mImpl->Layout;
 
         NowPlayingCard card = toast.getCard([&style](std::string_view text, float fontSize) -> float {
-            ImFont* font = fontSize >= style.TitleFontSize ? overlay::getTitleFont() : overlay::getArtistFont();
+            ImFont* font = fontSize >= style.TitleFontSize ? display::overlay::getTitleFont() : display::overlay::getArtistFont();
 
             if (font == nullptr)
                 font = ImGui::GetFont();
@@ -269,8 +270,8 @@ namespace LOICollection::client::Plugins::music {
 
         float textY0 = y0 + topPadding + std::max(0.0f, (contentHeight - textHeight) * 0.5f);
 
-        ImFont* titleFont  = overlay::getTitleFont();
-        ImFont* artistFont = overlay::getArtistFont();
+        ImFont* titleFont  = display::overlay::getTitleFont();
+        ImFont* artistFont = display::overlay::getArtistFont();
 
         if (titleFont == nullptr)
             titleFont = ImGui::GetFont();

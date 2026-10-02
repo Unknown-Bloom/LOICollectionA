@@ -334,8 +334,21 @@ namespace Config {
         float ExitDuration = 0.4f;
     };
 
+    struct C_LoadingScreen {
+        bool ModuleEnabled = true;
+
+        std::vector<std::string> RouteKeywords{ "loading", "preloading" };
+
+        std::string Title = "LOADING";
+        std::vector<std::string> Tips{ "Loading terrain..." };
+
+        float CubeSize = 19.0f;
+        float BarWidth = 440.0f;
+    };
+
     struct C_ClientConfig {
         C_Music Music;
+        C_LoadingScreen LoadingScreen;
     };
 
     struct C_LanguageServer {

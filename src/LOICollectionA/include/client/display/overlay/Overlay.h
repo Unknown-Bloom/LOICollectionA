@@ -16,13 +16,16 @@ struct DXGI_PRESENT_PARAMETERS;
 
 #include "LOICollectionA/base/Macro.h"
 
-namespace LOICollection::client::Plugins::music::overlay {
+namespace LOICollection::client::display::overlay {
     using PresentFn             = std::int32_t(__stdcall*)(IDXGISwapChain*, std::uint32_t, std::uint32_t);
     using Present1Fn            = std::int32_t(__stdcall*)(IDXGISwapChain1*, std::uint32_t, std::uint32_t, DXGI_PRESENT_PARAMETERS const*);
     using ResizeBuffersFn       = std::int32_t(__stdcall*)(IDXGISwapChain*, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t);
     using ExecuteCommandListsFn = void(__stdcall*)(ID3D12CommandQueue*, std::uint32_t, ID3D12CommandList* const*);
 
-    using RenderCallback = std::function<void(float deltaTime, float screenWidth, float screenHeight)>;
+    using RenderCallback       = std::function<void(float deltaTime, float screenWidth, float screenHeight)>;
+    using RenderCallbackHandle = std::uint64_t;
+
+    using InputBlocker = std::function<bool()>;
 
     struct OverlayTuning {
         float TitleFontSize { 24.0f };
@@ -93,7 +96,13 @@ namespace LOICollection::client::Plugins::music::overlay {
 
     LOICOLLECTION_A_NDAPI ExecuteCommandListsFn getOriginalExecuteCommandLists();
 
+    LOICOLLECTION_A_API RenderCallbackHandle addRenderCallback(RenderCallback callback);
+
+    LOICOLLECTION_A_API void removeRenderCallback(RenderCallbackHandle handle);
+
     LOICOLLECTION_A_API void setRenderCallback(RenderCallback callback);
+
+    LOICOLLECTION_A_API void setInputBlocker(InputBlocker blocker);
 
     LOICOLLECTION_A_NDAPI ImFont* getTitleFont();
     LOICOLLECTION_A_NDAPI ImFont* getArtistFont();

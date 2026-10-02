@@ -1,5 +1,8 @@
 #include <atomic>
 #include <filesystem>
+#include <mutex>
+#include <utility>
+#include <vector>
 
 #define D3D12_FEATURE_DATA_D3D12_OPTIONS D3D12_FEATURE_DATA_D3D12_OPTIONS_LEGACY
 #define D3D12_FEATURE_DATA_ARCHITECTURE  D3D12_FEATURE_DATA_ARCHITECTURE_LEGACY
@@ -22,11 +25,13 @@
 
 #include <ll/api/memory/Hook.h>
 
-#include "LOICollectionA/include/client/Plugins/music/overlay/Overlay.h"
+#include "LOICollectionA/include/client/display/overlay/Overlay.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-namespace LOICollection::client::Plugins::music::overlay {
+namespace LOICollection::client::display::overlay {
+    void removePatches();
+
     namespace {
         struct OverlayHookTargets {
             void* Present {};
@@ -60,12 +65,66 @@ namespace LOICollection::client::Plugins::music::overlay {
         std::atomic_bool g_initializing { false };
         std::atomic_bool g_shuttingDown { false };
 
+        std::atomic_uint g_hookConsumers { 0 };
+
         std::atomic<ULONGLONG> g_lastFrameTick { 0 };
 
         ImFont* g_titleFont { nullptr };
         ImFont* g_artistFont { nullptr };
 
-        RenderCallback g_renderCallback;
+        std::mutex                                            g_renderCallbackMutex;
+        std::vector<std::pair<RenderCallbackHandle, RenderCallback>> g_renderCallbacks;
+        std::atomic<RenderCallbackHandle>                     g_nextCallbackHandle { 1 };
+
+        std::mutex      g_inputBlockerMutex;
+        InputBlocker    g_inputBlocker;
+
+        bool shouldBlockMessage(UINT message) {
+            switch (message) {
+                case WM_MOUSEMOVE:
+                case WM_LBUTTONDOWN:
+                case WM_LBUTTONUP:
+                case WM_LBUTTONDBLCLK:
+                case WM_RBUTTONDOWN:
+                case WM_RBUTTONUP:
+                case WM_RBUTTONDBLCLK:
+                case WM_MBUTTONDOWN:
+                case WM_MBUTTONUP:
+                case WM_MBUTTONDBLCLK:
+                case WM_XBUTTONDOWN:
+                case WM_XBUTTONUP:
+                case WM_XBUTTONDBLCLK:
+                case WM_MOUSEWHEEL:
+                case WM_MOUSEHWHEEL:
+                case WM_KEYDOWN:
+                case WM_KEYUP:
+                case WM_SYSKEYDOWN:
+                case WM_SYSKEYUP:
+                case WM_CHAR:
+                case WM_SYSCHAR:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        void dispatchRenderCallbacks(float deltaTime, float width, float height) {
+            std::vector<RenderCallback> snapshot;
+
+            {
+                std::scoped_lock lock(g_renderCallbackMutex);
+
+                snapshot.reserve(g_renderCallbacks.size());
+
+                for (auto const& entry : g_renderCallbacks)
+                    snapshot.push_back(entry.second);
+            }
+
+            for (auto const& callback : snapshot) {
+                if (callback)
+                    callback(deltaTime, width, height);
+            }
+        }
 
         void applyFonts(ImGuiIO& io) {
             struct FontSource {
@@ -115,6 +174,18 @@ namespace LOICollection::client::Plugins::music::overlay {
         LRESULT __stdcall wndProcHook(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
             if (g_imguiReady && !g_shuttingDown.load(std::memory_order_acquire))
                 ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam);
+
+            if (shouldBlockMessage(message)) {
+                InputBlocker blocker;
+
+                {
+                    std::scoped_lock lock(g_inputBlockerMutex);
+                    blocker = g_inputBlocker;
+                }
+
+                if (blocker && blocker())
+                    return 0;
+            }
 
             return ::CallWindowProcW(g_originalWndProc, hWnd, message, wParam, lParam);
         }
@@ -187,8 +258,7 @@ namespace LOICollection::client::Plugins::music::overlay {
             ImGui_ImplWin32_NewFrame();
             ImGui::NewFrame();
 
-            if (g_renderCallback)
-                g_renderCallback(deltaTime, width, height);
+            dispatchRenderCallbacks(deltaTime, width, height);
 
             ImGui::Render();
             ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
@@ -198,7 +268,7 @@ namespace LOICollection::client::Plugins::music::overlay {
         }
 
         void renderImGui(IDXGISwapChain* swapChain) {
-            if (!g_imguiReady || g_shuttingDown.load(std::memory_order_acquire) || !g_renderCallback)
+            if (!g_imguiReady || g_shuttingDown.load(std::memory_order_acquire))
                 return;
 
             DXGI_SWAP_CHAIN_DESC description {};
@@ -327,6 +397,101 @@ namespace LOICollection::client::Plugins::music::overlay {
             target = address;
 
             return true;
+        }
+
+        bool installHooks() {
+            HWND window = ::FindWindowW(L"Minecraft", nullptr);
+            if (window == nullptr)
+                window = ::GetForegroundWindow();
+
+            if (window == nullptr)
+                return false;
+
+            DXGI_SWAP_CHAIN_DESC description {};
+            description.BufferCount       = 1;
+            description.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            description.BufferUsage       = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+            description.OutputWindow      = window;
+            description.SampleDesc.Count  = 1;
+            description.Windowed          = TRUE;
+            description.SwapEffect        = DXGI_SWAP_EFFECT_DISCARD;
+
+            D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
+
+            ID3D11Device*        dummyDevice { nullptr };
+            IDXGISwapChain*      dummySwapChain { nullptr };
+            ID3D11DeviceContext* dummyContext { nullptr };
+
+            HRESULT result = ::D3D11CreateDeviceAndSwapChain(
+                nullptr,
+                D3D_DRIVER_TYPE_HARDWARE,
+                nullptr,
+                0,
+                &featureLevel,
+                1,
+                D3D11_SDK_VERSION,
+                &description,
+                &dummySwapChain,
+                &dummyDevice,
+                nullptr,
+                &dummyContext
+            );
+
+            if (SUCCEEDED(result) && dummySwapChain != nullptr) {
+                void** vtable = *reinterpret_cast<void***>(dummySwapChain);
+
+                patchPresent(vtable[g_tuning.SwapChainPresentIndex]);
+                patchResizeBuffers(vtable[g_tuning.SwapChainResizeBuffersIndex]);
+
+                IDXGISwapChain1* dummySwapChain1 { nullptr };
+
+                if (SUCCEEDED(dummySwapChain->QueryInterface(__uuidof(IDXGISwapChain1), reinterpret_cast<void**>(&dummySwapChain1)))) {
+                    patchPresent1((*reinterpret_cast<void***>(dummySwapChain1))[g_tuning.SwapChainPresent1Index]);
+
+                    dummySwapChain1->Release();
+                }
+
+                dummySwapChain->Release();
+                dummyDevice->Release();
+                dummyContext->Release();
+            }
+
+            ID3D12Device* d3d12Device { nullptr };
+
+            if (SUCCEEDED(::D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), reinterpret_cast<void**>(&d3d12Device)))) {
+                D3D12_COMMAND_QUEUE_DESC queueDescription {};
+                queueDescription.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+
+                ID3D12CommandQueue* dummyQueue { nullptr };
+
+                if (SUCCEEDED(d3d12Device->CreateCommandQueue(&queueDescription, __uuidof(ID3D12CommandQueue), reinterpret_cast<void**>(&dummyQueue)))) {
+                    patchExecuteCommandLists((*reinterpret_cast<void***>(dummyQueue))[g_tuning.CommandQueueExecuteCommandListsIndex]);
+
+                    dummyQueue->Release();
+                }
+
+                d3d12Device->Release();
+            }
+
+            return true;
+        }
+
+        void uninstallHooks() {
+            g_shuttingDown.store(true, std::memory_order_release);
+
+            ::Sleep(static_cast<DWORD>(g_tuning.ShutdownWaitMs));
+
+            if (g_originalWndProc != nullptr && g_window != nullptr) {
+                ::SetWindowLongPtrW(g_window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(g_originalWndProc));
+                g_originalWndProc = nullptr;
+            }
+
+            releaseResources();
+
+            removePatches();
+
+            g_shuttingDown.store(false, std::memory_order_release);
+            g_lastFrameTick.store(0, std::memory_order_release);
         }
     }
 
@@ -478,106 +643,34 @@ namespace LOICollection::client::Plugins::music::overlay {
     }
 
     bool applyHooks() {
-        if (g_hooksInstalled.load(std::memory_order_acquire))
+        if (g_hookConsumers.fetch_add(1, std::memory_order_acq_rel) > 0)
             return true;
 
-        HWND window = ::FindWindowW(L"Minecraft", nullptr);
-        if (window == nullptr)
-            window = ::GetForegroundWindow();
+        if (g_hooksInstalled.load(std::memory_order_acquire) || installHooks()) {
+            g_hooksInstalled.store(true, std::memory_order_release);
 
-        if (window == nullptr)
-            return false;
-
-        DXGI_SWAP_CHAIN_DESC description {};
-        description.BufferCount       = 1;
-        description.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        description.BufferUsage       = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-        description.OutputWindow      = window;
-        description.SampleDesc.Count  = 1;
-        description.Windowed          = TRUE;
-        description.SwapEffect        = DXGI_SWAP_EFFECT_DISCARD;
-
-        D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
-
-        ID3D11Device*        dummyDevice { nullptr };
-        IDXGISwapChain*      dummySwapChain { nullptr };
-        ID3D11DeviceContext* dummyContext { nullptr };
-
-        HRESULT result = ::D3D11CreateDeviceAndSwapChain(
-            nullptr,
-            D3D_DRIVER_TYPE_HARDWARE,
-            nullptr,
-            0,
-            &featureLevel,
-            1,
-            D3D11_SDK_VERSION,
-            &description,
-            &dummySwapChain,
-            &dummyDevice,
-            nullptr,
-            &dummyContext
-        );
-
-        if (SUCCEEDED(result) && dummySwapChain != nullptr) {
-            void** vtable = *reinterpret_cast<void***>(dummySwapChain);
-
-            patchPresent(vtable[g_tuning.SwapChainPresentIndex]);
-            patchResizeBuffers(vtable[g_tuning.SwapChainResizeBuffersIndex]);
-
-            IDXGISwapChain1* dummySwapChain1 { nullptr };
-
-            if (SUCCEEDED(dummySwapChain->QueryInterface(__uuidof(IDXGISwapChain1), reinterpret_cast<void**>(&dummySwapChain1)))) {
-                patchPresent1((*reinterpret_cast<void***>(dummySwapChain1))[g_tuning.SwapChainPresent1Index]);
-
-                dummySwapChain1->Release();
-            }
-
-            dummySwapChain->Release();
-            dummyDevice->Release();
-            dummyContext->Release();
+            return true;
         }
 
-        ID3D12Device* d3d12Device { nullptr };
+        g_hookConsumers.fetch_sub(1, std::memory_order_acq_rel);
 
-        if (SUCCEEDED(::D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), reinterpret_cast<void**>(&d3d12Device)))) {
-            D3D12_COMMAND_QUEUE_DESC queueDescription {};
-            queueDescription.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-
-            ID3D12CommandQueue* dummyQueue { nullptr };
-
-            if (SUCCEEDED(d3d12Device->CreateCommandQueue(&queueDescription, __uuidof(ID3D12CommandQueue), reinterpret_cast<void**>(&dummyQueue)))) {
-                patchExecuteCommandLists((*reinterpret_cast<void***>(dummyQueue))[g_tuning.CommandQueueExecuteCommandListsIndex]);
-
-                dummyQueue->Release();
-            }
-
-            d3d12Device->Release();
-        }
-
-        g_hooksInstalled.store(true, std::memory_order_release);
-
-        return true;
+        return false;
     }
 
     void removeHooks() {
+        unsigned int previous = g_hookConsumers.load(std::memory_order_acquire);
+
+        while (previous > 0
+            && !g_hookConsumers.compare_exchange_weak(previous, previous - 1, std::memory_order_acq_rel))
+        {}
+
+        if (previous != 1)
+            return;
+
         if (!g_hooksInstalled.exchange(false, std::memory_order_acq_rel))
             return;
 
-        g_shuttingDown.store(true, std::memory_order_release);
-
-        ::Sleep(static_cast<DWORD>(g_tuning.ShutdownWaitMs));
-
-        if (g_originalWndProc != nullptr && g_window != nullptr) {
-            ::SetWindowLongPtrW(g_window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(g_originalWndProc));
-            g_originalWndProc = nullptr;
-        }
-
-        releaseResources();
-
-        removePatches();
-
-        g_shuttingDown.store(false, std::memory_order_release);
-        g_lastFrameTick.store(0, std::memory_order_release);
+        uninstallHooks();
     }
 
     PresentFn getOriginalPresent() {
@@ -596,8 +689,43 @@ namespace LOICollection::client::Plugins::music::overlay {
         return reinterpret_cast<ExecuteCommandListsFn>(g_originals.ExecuteCommandLists);
     }
 
+    RenderCallbackHandle addRenderCallback(RenderCallback callback) {
+        if (!callback)
+            return 0;
+
+        RenderCallbackHandle handle = g_nextCallbackHandle.fetch_add(1, std::memory_order_acq_rel);
+
+        {
+            std::scoped_lock lock(g_renderCallbackMutex);
+            g_renderCallbacks.emplace_back(handle, std::move(callback));
+        }
+
+        return handle;
+    }
+
+    void removeRenderCallback(RenderCallbackHandle handle) {
+        std::scoped_lock lock(g_renderCallbackMutex);
+
+        for (auto it = g_renderCallbacks.begin(); it != g_renderCallbacks.end(); ++it) {
+            if (it->first == handle) {
+                g_renderCallbacks.erase(it);
+                return;
+            }
+        }
+    }
+
     void setRenderCallback(RenderCallback callback) {
-        g_renderCallback = std::move(callback);
+        std::scoped_lock lock(g_renderCallbackMutex);
+
+        g_renderCallbacks.clear();
+
+        if (callback)
+            g_renderCallbacks.emplace_back(0, std::move(callback));
+    }
+
+    void setInputBlocker(InputBlocker blocker) {
+        std::scoped_lock lock(g_inputBlockerMutex);
+        g_inputBlocker = std::move(blocker);
     }
 
     ImFont* getTitleFont() {

@@ -6,10 +6,10 @@
 
 #include <imgui.h>
 
-#include "LOICollectionA/include/client/Plugins/music/overlay/Overlay.h"
-#include "LOICollectionA/include/client/Plugins/music/overlay/OverlayTexture.h"
+#include "LOICollectionA/include/client/display/overlay/Overlay.h"
+#include "LOICollectionA/include/client/display/overlay/OverlayTexture.h"
 
-namespace LOICollection::client::Plugins::music::overlay {
+namespace LOICollection::client::display::overlay {
     bool createTexture(
         const std::vector<uint8_t>& pixels,
         uint32_t                    width,

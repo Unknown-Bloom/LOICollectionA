@@ -7,7 +7,7 @@
 
 #include "LOICollectionA/base/Macro.h"
 
-namespace LOICollection::client::Plugins::music::overlay {
+namespace LOICollection::client::display::overlay {
     LOICOLLECTION_A_NDAPI bool createTexture(
         const std::vector<uint8_t>& pixels,
         uint32_t                    width,

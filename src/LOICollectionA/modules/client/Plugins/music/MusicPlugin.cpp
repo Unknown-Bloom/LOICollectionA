@@ -16,12 +16,14 @@
 
 #include "LOICollectionA/ConfigPlugin.h"
 
-#include "LOICollectionA/include/client/Plugins/music/MusicPlugin.h"
 #include "LOICollectionA/include/client/Plugins/music/MediaSessionSource.h"
 #include "LOICollectionA/include/client/Plugins/music/NowPlayingToast.h"
 #include "LOICollectionA/include/client/Plugins/music/NowPlayingRenderer.h"
 #include "LOICollectionA/include/client/Plugins/music/audio/LoopbackCapture.h"
-#include "LOICollectionA/include/client/Plugins/music/overlay/Overlay.h"
+
+#include "LOICollectionA/include/client/display/overlay/Overlay.h"
+
+#include "LOICollectionA/include/client/Plugins/music/MusicPlugin.h"
 
 namespace LOICollection::client::Plugins::music {
     struct MusicPlugin::Impl {
@@ -48,6 +50,8 @@ namespace LOICollection::client::Plugins::music {
 
         std::atomic_bool ModuleEnabled { false };
         std::atomic_bool Registered { false };
+
+        display::overlay::RenderCallbackHandle RenderHandle { 0 };
 
         std::shared_ptr<ll::io::Logger> logger;
     };
@@ -241,23 +245,25 @@ namespace LOICollection::client::Plugins::music {
         this->mImpl->Renderer = std::make_unique<NowPlayingRenderer>(this->mImpl->Toast);
         this->mImpl->Renderer->setLogger(this->mImpl->logger);
 
-        if (!overlay::applyHooks()) {
+        if (!display::overlay::applyHooks()) {
             this->mImpl->Renderer.reset();
 
             return ll::makeErrorCodeError(makeErrorCode(MusicPluginErrorCode::Invalid));
         }
 
-        overlay::setRenderCallback([this](float deltaTime, float screenWidth, float screenHeight) -> void {
-            if (!this->mImpl->Renderer)
-                return;
+        this->mImpl->RenderHandle = display::overlay::addRenderCallback(
+            [this](float deltaTime, float screenWidth, float screenHeight) -> void {
+                if (!this->mImpl->Renderer)
+                    return;
 
-            if (this->mImpl->Audio && this->mImpl->Audio->isRunning()) {
-                this->mImpl->Audio->analyze(this->mImpl->Spectrum);
-                this->mImpl->Renderer->setSpectrum(this->mImpl->Spectrum);
+                if (this->mImpl->Audio && this->mImpl->Audio->isRunning()) {
+                    this->mImpl->Audio->analyze(this->mImpl->Spectrum);
+                    this->mImpl->Renderer->setSpectrum(this->mImpl->Spectrum);
+                }
+
+                this->mImpl->Renderer->render(deltaTime, screenWidth, screenHeight);
             }
-
-            this->mImpl->Renderer->render(deltaTime, screenWidth, screenHeight);
-        });
+        );
 
         this->mImpl->Registered.store(true, std::memory_order_release);
 
@@ -287,7 +293,8 @@ namespace LOICollection::client::Plugins::music {
 
         this->stopPoll();
 
-        overlay::setRenderCallback(nullptr);
+        display::overlay::removeRenderCallback(this->mImpl->RenderHandle);
+        this->mImpl->RenderHandle = 0;
 
         if (this->mImpl->Audio)
             this->mImpl->Audio->stop();
@@ -295,7 +302,7 @@ namespace LOICollection::client::Plugins::music {
         if (this->mImpl->Renderer)
             this->mImpl->Renderer->releaseResources();
 
-        overlay::removeHooks();
+        display::overlay::removeHooks();
 
         return true;
     }
