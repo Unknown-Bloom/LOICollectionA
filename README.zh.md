@@ -50,10 +50,13 @@ LOICollectionA 是运行在 [LeviLamina](https://github.com/LiteLDev/LeviLamina)
 | Pvp | 玩家自行开关 PVP | ✅ |
 | Wallet | 玩家经济，支持转账、红包与财富排行 | ✅ |
 | Chat | 聊天称号与玩家聊天黑名单 | ✅ |
+| Language | 玩家语言偏好，配套语言选择 GUI | ➖ |
 | Notice | 创建带优先级的公告与通知 | ✅ |
 | Market | 玩家之间的交易市场 | ✅ |
 | BehaviorEvent | 将玩家与世界的行为事件记录到数据库 | ✅ |
 | Statistics | 统计在线时长、击杀、死亡、破坏方块等数据 | ✅ |
+
+> `Language` 没有配置开关：它始终启用，用于记录每位玩家的语言偏好。
 
 ### 附加模块
 
@@ -65,7 +68,7 @@ LOICollectionA 是运行在 [LeviLamina](https://github.com/LiteLDev/LeviLamina)
 
 ## 快速开始
 
-> 前置要求：已安装 [lip](https://github.com/LiteLDev/lip) 的 LeviLamina 服务端（26.20.x）。
+> 前置要求：已安装 [lip](https://github.com/LiteLDev/lip) 的 LeviLamina 服务端（26.50.x）。
 
 1. 在服务端根目录执行以下命令：
 

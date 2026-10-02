@@ -76,6 +76,7 @@ export default withMermaid(
             items: [
               { text: '快速开始', link: '/md/start' },
               { text: '适配版本', link: '/md/version' },
+              { text: '模块总览', link: '/md/modules' },
               { text: '数据文件', link: '/md/data' },
               { text: '命令列表', link: '/md/command' },
               { text: 'LOICollectionAPI', link: '/md/api' },
@@ -89,10 +90,13 @@ export default withMermaid(
             items: [
               { text: '架构概览', link: '/dev/architecture' },
               { text: '模块开发指南', link: '/dev/module' },
+              { text: '自定义事件', link: '/dev/events' },
               { text: 'SQLite 层使用教程', link: '/dev/sqlite' },
+              { text: '插件 API 参考', link: '/dev/plugin-api' },
               { text: 'API 扩展指南', link: '/dev/api-extension' },
               { text: 'LCUI 语言服务', link: '/dev/lsp' },
               { text: '构建与测试', link: '/dev/build' },
+              { text: '测试指南', link: '/dev/testing' },
               { text: '环境配置', link: '/dev/config' },
             ],
           },
@@ -156,6 +160,7 @@ export default withMermaid(
             items: [
               { text: 'Quick Start', link: '/en/md/start' },
               { text: 'Version Compatibility', link: '/en/md/version' },
+              { text: 'Modules Overview', link: '/en/md/modules' },
               { text: 'Data Files', link: '/en/md/data' },
               { text: 'Commands', link: '/en/md/command' },
               { text: 'LOICollectionAPI', link: '/en/md/api' },
@@ -169,10 +174,13 @@ export default withMermaid(
             items: [
               { text: 'Architecture Overview', link: '/en/dev/architecture' },
               { text: 'Module Development Guide', link: '/en/dev/module' },
+              { text: 'Custom Events', link: '/en/dev/events' },
               { text: 'SQLite Layer Tutorial', link: '/en/dev/sqlite' },
+              { text: 'Plugin API Reference', link: '/en/dev/plugin-api' },
               { text: 'API Extension Guide', link: '/en/dev/api-extension' },
               { text: 'LCUI Language Service', link: '/en/dev/lsp' },
               { text: 'Build and Test', link: '/en/dev/build' },
+              { text: 'Testing Guide', link: '/en/dev/testing' },
               { text: 'Environment Configuration', link: '/en/dev/config' },
             ],
           },

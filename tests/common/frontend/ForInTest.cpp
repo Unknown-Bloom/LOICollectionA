@@ -54,7 +54,7 @@ namespace {
             return true;
         }();
 
-        (void)registered;
+        static_cast<void>(registered);
     }
 }
 

@@ -1,7 +1,7 @@
 # 模块开发指南
 
 > [!NOTE]
-> 以下内容以 `BlacklistPlugin`（黑名单模块）为示例，取自 LOICollectionA 1.17.0 的代码结构，对于后续版本可能会有所不同。
+> 以下内容以 `BlacklistPlugin`（黑名单模块）为示例，取自 LOICollectionA 1.17.1 的代码结构，对于后续版本可能会有所不同。
 
 本文介绍如何为 LOICollectionA 开发一个 C++ 模块。在开始之前，请先阅读 [架构概览](./architecture.md) 了解模块框架与服务容器。
 
@@ -322,7 +322,7 @@ void XxxPlugin::registeryCommand() {
 
 ## 监听事件
 
-使用 LeviLamina 的 `ll::event::EventBus`，可以监听原版事件与模块自定义事件（`include/server/Events/*`）：
+使用 LeviLamina 的 `ll::event::EventBus`，可以监听原版事件与模块自定义事件（完整清单见 [自定义事件](./events.md)）：
 
 ```cpp
 void XxxPlugin::listenEvent() {

@@ -1,7 +1,7 @@
 # LCUI Language Service
 
 > [!NOTE]
-> The following content is taken from the code structure of LOICollectionA 1.17.0 and may differ in later versions.
+> The following content is taken from the code structure of LOICollectionA 1.17.1 and may differ in later versions.
 
 ## Purpose
 

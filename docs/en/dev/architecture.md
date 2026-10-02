@@ -1,7 +1,7 @@
 # Architecture Overview
 
 > [!NOTE]
-> The following content is taken from the code structure of LOICollectionA 1.17.0 and may differ in later versions.
+> The following content is taken from the code structure of LOICollectionA 1.17.1 and may differ in later versions.
 
 LOICollectionA is a C++ plugin (NativeMod) based on [LeviLamina](https://github.com/LiteLDev/LeviLamina), with an overall **microkernel architecture**: the core only handles configuration loading, service registration, and module scheduling, while all features are implemented independently as **modules**, which can be toggled on demand in the configuration file.
 
@@ -31,7 +31,7 @@ The module framework is located at `src/LOICollectionA/include/` and contains th
 
 ### ModuleBase (Module Base Class)
 
-All modules inherit from `LOICollection::modules::ModuleBase` and need to implement four pure virtual methods:
+All modules inherit from `LOICollection::modules::ModuleBase` and need to implement six pure virtual methods:
 
 ```cpp
 class ModuleBase {
@@ -123,11 +123,11 @@ src/LOICollectionA/
 │   ├─ ModuleBase.h / ModManager.h / ModulePriority.h
 │   ├─ CallbackUtils.h       # LOICollectionAPI variable registration entry
 │   ├─ form/GUIManager.h     # GUI manager
-│   ├─ server/Events/        # custom event types (network packets, player scoreboard changes, etc.)
+│   ├─ server/Events/        # custom event types (see [Custom Events](./events.md))
 │   └─ server/Plugins/       # public interfaces of each module (BlacklistPlugin.h, etc.)
 ├─ modules/                  # module implementations (client/ and server/ isolated by platform)
 ├─ utils/                    # utilities: I18nUtils, MathUtils, mc-server toolkit
-tests/                       # gtest tests (common/ cross-platform, server/, client/)
+tests/                       # gtest tests (common/ cross-platform, server/ server-only, client/ reserved and empty)
 ```
 
 ## Dual-Platform Support

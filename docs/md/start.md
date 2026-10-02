@@ -20,7 +20,7 @@ lip install github.com/loitietu/LOICollectionA
 - 对于安装指定版本的可以执行以下命令
 
 ```bash
-lip install github.com/loitietu/LOICollectionA@v1.17.0
+lip install github.com/loitietu/LOICollectionA@v1.17.1
 ```
 
 - 对于进行版本更新的可以执行以下命令
@@ -31,7 +31,7 @@ lip install --upgrade github.com/loitietu/LOICollectionA
 
 > [!TIP]
 > 在进行版本更新时，请确保目标版本是否需要数据迁移。  
-> 如需进行数据迁移，请先备份插件数据，然后在 `Github` 库中的 `scripts/migrate` 文件夹中找到对应版本的 `migrate.py` 文件，按照 [说明](../course/migrate.md) 进行数据迁移。
+> 如需进行数据迁移，请先备份插件数据，然后在 `Github` 库中的 `scripts/migrate` 文件夹中找到对应版本的迁移脚本（如 `migrate147.py`、`migrate162.py`、`migrate170.py`、`migrate1100.py`，以及 1.17.0 块存储改造使用的 `migrate_block.py`），按照 [说明](../course/migrate.md) 进行数据迁移。
 
 - 安装完成后,您可以在 `plugins` 文件夹中找到 LOICollectionA 的安装文件
 - 双击服务端根目录下的 `bedrock_server_mod.exe` 文件以启动服务器
@@ -45,7 +45,7 @@ lip install --upgrade github.com/loitietu/LOICollectionA
 
 | 名称 | 版本 |
 | --- | --- |
-| LeviLamina | 26.20.x |
+| LeviLamina | 26.51.6 |
 
 > 请您手动下载版本兼容的前置组件。若不确定版本兼容性，建议改用 lip 安装。
 

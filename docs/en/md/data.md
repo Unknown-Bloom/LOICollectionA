@@ -301,7 +301,7 @@ When you upgrade the plugin version, newly added configuration items are automat
 ```
 
 > [!NOTE]
-> The above content is taken from the configuration file structure of LOICollectionA 1.17.0. The configuration file structure of later versions may differ.
+> The above content is taken from the configuration file structure of LOICollectionA 1.17.1. The configuration file structure of later versions may differ.
 
 ## Module Data Files
 
@@ -327,7 +327,7 @@ Since 1.17.0 module data is stored through exactly two carriers:
 | `behaviorevent.db` | BehaviorEvent (behavior event logs) |
 
 > [!WARNING]
-> 1.17.0 moves the data layer to block storage and **does not migrate data written by older versions**. Back up `plugins/LOICollectionA/data` before upgrading and follow [Data Migration](../course/migrate.md).
+> 1.17.0 moves the data layer to block storage, and the plugin does **not** replay old data at start-up. To keep it, run `scripts/migrate/migrate_block.py` by hand; back up `plugins/LOICollectionA/data` first and follow [Data Migration](../course/migrate.md) for the full procedure.
 
 > [!TIP]
 > In most cases, you do not need to modify data files manually, because most data files have built-in editors during the use of `LOICollectionA`. Starting from 1.15.0, Menu and Shop have been changed to edit lcui data files directly, and in-game editors are no longer provided.

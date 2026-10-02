@@ -69,13 +69,28 @@
 ## 对于 1.16.0 版本升至 1.17.0 版本
 
 > [!WARNING]
-> 1.17.0 将数据层换成块存储（`BlockRepository` + `TypedTable`，详见 [架构概览](../dev/architecture.md#数据层)）。**没有**自动迁移脚本：旧版本写入的数据表不再被读取。
+> 1.17.0 将数据层换成块存储（`BlockRepository` + `TypedTable`，详见 [架构概览](../dev/architecture.md#数据层)）。插件**不会**在启动时自动重放旧数据：旧版本写入的表不再被读取，需要手动运行迁移脚本或自行录入。
 
 1. 升级前先备份整个 `plugins/LOICollectionA/data` 目录（以及 `config`、`gui` 目录）。
-2. 升级后首次启动时，插件会在每个 `.db` 文件中创建块模型的系统表（`dict` / `block` / `prop` / `link` / `meta`），随后从空数据开始运行。
-3. 旧数据并未被删除，只是保留在各自数据库文件的旧表里（例如 `Wallet`、`Blacklist`、`Market` 这类以业务名命名的表）。需要保留这些内容时，请用 SQLite 工具从旧表导出，再通过游戏内界面或命令重新录入。
-4. `notice.json`、`cdk.json`、`config.json` 仍是 JSON 文件，不受本次改动影响，无需迁移。
-5. 自行编写的脚本（`config/menu.lcui`、`config/shop.lcui`，以及您在 `gui` 目录下改过的脚本）如果是从早期示例复制而来的，通常是无关键字的裸赋值写法。脚本语言要求所有变量绑定都用 `let` 显式声明，裸赋值不再隐式创建变量，否则加载脚本时会报 `Variable 'xxx' is not declared; write 'let xxx = ...' to introduce it`，该脚本不会被启用（启动日志里是 `ERROR [LOICollectionA]` 级别）。请给每个变量的**首次**赋值补上 `let`：
+2. 请下载 `scripts/migrate/migrate_block.py` 文件并将其放入 `插件` 根目录下（即 `plugins/LOICollectionA/` 的上一级目录，脚本默认在该目录下查找数据库文件）
+3. 建议先执行一次试运行，确认将要迁移的表与行数无误：
+
+    ```bash
+    python migrate_block.py --data-dir plugins/LOICollectionA/data --dry-run
+    ```
+
+4. 确认无误后去掉 `--dry-run` 正式执行迁移：
+
+    ```bash
+    python migrate_block.py --data-dir plugins/LOICollectionA/data
+    ```
+
+5. 该脚本会把旧版 `SQLiteStorage` 键值表原地改写为块模型的 `block` / `prop` / `link` / `meta` 结构，并按文件路由：`blacklist.db`、`mute.db`、`tpa.db`、`chat.db`、`market.db` 中的表在各自文件内迁移，而注册到共享 `SettingsDB` 服务的表（`Market`、`MarketTax`、`Language`、`Pvp`、`Chat`、`Tpa`、`Wallet` 等）统一在 `settings.db` 内迁移。所有业务列都会被保留，`col_<rootId>` 边表与 `schema:` / `sidecol:` 指纹由插件在首次打开数据库时重建。
+6. 有两张旧表**不会**被迁移：`Notice`（当前版本用 JSON 而非 SQLite 存储公告）与 `statistics.db` 中的 `Language`（当前代码只读取 `settings.db` 中的 `Language`，该副本才是权威数据）。这两张表会原样保留在磁盘上。
+7. 如果不想使用脚本，也可以手动迁移：升级后首次启动时，插件会在每个 `.db` 文件中创建块模型的系统表（`dict` / `block` / `prop` / `link` / `meta`），随后从空数据开始运行。
+8. 不做迁移时旧数据也并未被删除，只是保留在各自数据库文件的旧表里（例如 `Wallet`、`Blacklist`、`Market` 这类以业务名命名的表）。需要保留这些内容时，请用 SQLite 工具从旧表导出，再通过游戏内界面或命令重新录入。
+9. `notice.json`、`cdk.json`、`config.json` 仍是 JSON 文件，不受本次改动影响，无需迁移。
+10. 自行编写的脚本（`config/menu.lcui`、`config/shop.lcui`，以及您在 `gui` 目录下改过的脚本）如果是从早期示例复制而来的，通常是无关键字的裸赋值写法。脚本语言要求所有变量绑定都用 `let` 显式声明，裸赋值不再隐式创建变量，否则加载脚本时会报 `Variable 'xxx' is not declared; write 'let xxx = ...' to introduce it`，该脚本不会被启用（启动日志里是 `ERROR [LOICollectionA]` 级别）。请给每个变量的**首次**赋值补上 `let`：
 
     ```lcui
     // 升级前

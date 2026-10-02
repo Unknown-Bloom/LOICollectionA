@@ -50,10 +50,13 @@ All modules below can be enabled or disabled in the configuration file.
 | Pvp | Per-player PvP toggle | ✅ |
 | Wallet | Player economy with transfers, red envelopes, and wealth rankings | ✅ |
 | Chat | Chat titles and per-player chat blacklist | ✅ |
+| Language | Per-player language preference with a selection GUI | ➖ |
 | Notice | Create and schedule announcements with priorities | ✅ |
 | Market | Player-to-player marketplace | ✅ |
 | BehaviorEvent | Record player and world behavior events to a database | ✅ |
 | Statistics | Track online time, kills, deaths, blocks, and more | ✅ |
+
+> `Language` has no configuration switch: it is always enabled and persists each player's language choice.
 
 ### Additional Modules
 
@@ -65,7 +68,7 @@ All modules below can be enabled or disabled in the configuration file.
 
 ## Quick Start
 
-> Requirements: a LeviLamina server (26.20.x) with [lip](https://github.com/LiteLDev/lip) installed.
+> Requirements: a LeviLamina server (26.50.x) with [lip](https://github.com/LiteLDev/lip) installed.
 
 1. Run the following command in your server directory:
 

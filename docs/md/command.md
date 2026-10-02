@@ -174,7 +174,7 @@
 - `/tpa gui`
   - 打开 Tpa GUI。
 
-- `tpa invite <tpa|tphere> <Target: target>`
+- `/tpa invite <tpa|tphere> <Target: target>`
   - 向目标发送传送请求。
   - 其中 `<tpa|tphere>` 为传送类型。
   - 其中 `<Target: target>` 为目标选择器。

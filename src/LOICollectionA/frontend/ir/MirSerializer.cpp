@@ -1,4 +1,8 @@
-#include <cstring>
+#include <memory>
+#include <ranges>
+#include <string>
+#include <vector>
+#include <optional>
 
 #include "LOICollectionA/frontend/ir/MirSerializer.h"
 
@@ -67,11 +71,11 @@ namespace LOICollection::frontend::ir {
                 return true;
             }
 
-            bool done() const { return this->pos == this->blob.size(); }
+            [[nodiscard]] bool done() const { return this->pos == this->blob.size(); }
 
-            size_t position() const { return this->pos; }
+            [[nodiscard]] size_t position() const { return this->pos; }
 
-            size_t remaining() const { return this->blob.size() - this->pos; }
+            [[nodiscard]] size_t remaining() const { return this->blob.size() - this->pos; }
 
         private:
             const std::string& blob;
@@ -87,20 +91,6 @@ namespace LOICollection::frontend::ir {
 
         constexpr size_t kDigestSize = 32;
         constexpr size_t kMaxDepth = 64;
-
-        constexpr uint8_t TYPEKIND_UNKNOWN = 0;
-        constexpr uint8_t TYPEKIND_INT = 1;
-        constexpr uint8_t TYPEKIND_FLOAT = 2;
-        constexpr uint8_t TYPEKIND_STRING = 3;
-        constexpr uint8_t TYPEKIND_BOOL = 4;
-        constexpr uint8_t TYPEKIND_OBJECT = 5;
-        constexpr uint8_t TYPEKIND_FUNCTION = 6;
-        constexpr uint8_t TYPEKIND_VOID = 7;
-        constexpr uint8_t TYPEKIND_ARRAY = 8;
-        constexpr uint8_t TYPEKIND_VARIANT = 9;
-        constexpr uint8_t TYPEKIND_OPTIONAL = 10;
-        constexpr uint8_t TYPEKIND_GENERIC = 11;
-        constexpr uint8_t TYPEKIND_NONE = 12;
 
         void writeTypeInfo(Writer& writer, const TypeInfo& type) {
             writer.u8(static_cast<uint8_t>(type.kind));
@@ -121,7 +111,7 @@ namespace LOICollection::frontend::ir {
                 return false;
 
             uint8_t kind = 0;
-            if (!reader.u8(kind) || kind > TYPEKIND_NONE)
+            if (!reader.u8(kind) || kind > static_cast<uint8_t>(TypeKind::None))
                 return false;
 
             type.kind = static_cast<TypeKind>(kind);
@@ -158,15 +148,6 @@ namespace LOICollection::frontend::ir {
         }
 
         bool writeValue(Writer& writer, const ValueNode::ValueType& value) {
-            
-            
-            
-            
-            
-            
-            
-            
-            
             struct Frame {
                 const std::vector<ValueNode::ValueType>* items;
 
@@ -369,9 +350,9 @@ namespace LOICollection::frontend::ir {
                     writer.u64(instr.loc.offset);
                 }
 
-                for (auto it = current->methodBodies.rbegin(); it != current->methodBodies.rend(); ++it)
-                    if (*it)
-                        pending.push_back(it->get());
+                for (const auto & methodBodie : std::ranges::reverse_view(current->methodBodies))
+                    if (methodBodie)
+                        pending.push_back(methodBodie.get());
             }
         }
 

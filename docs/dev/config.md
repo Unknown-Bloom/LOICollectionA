@@ -14,7 +14,7 @@
     ```lua
     package("LOICollectionA")
         add_urls("https://github.com/loitietu/LOICollectionA.git")
-        add_versions("1.15.0", "91d4330e6dcec905e0df491b9d32f96f5bb3ccc6")
+        add_versions("1.17.1", "250d28ab2a915ddc321952c4c981f8c20c70877e")
 
         on_install(function (package)
             import("package.tools.xmake").install(package)
@@ -23,7 +23,7 @@
     ```
 
     > [!WARNING]
-    > `add_versions` 中的提交哈希必须与 `add_urls` 仓库中的真实提交一致。请以 [GitHub 仓库](https://github.com/loitietu/LOICollectionA) 的 tag（如 `v1.15.0`）对应的提交哈希为准，示例中的哈希来自 v1.15.0 标签。
+    > `add_versions` 中的提交哈希必须与 `add_urls` 仓库中的真实提交一致。请以 [GitHub 仓库](https://github.com/loitietu/LOICollectionA) 的 tag（如 `v1.17.1`）对应的提交哈希为准，示例中的哈希来自 v1.17.1 标签。
 
 2. 保存并关闭 `xmake.lua` 文件。
 

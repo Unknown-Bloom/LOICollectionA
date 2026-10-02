@@ -1,7 +1,7 @@
 # Module Development Guide
 
 > [!NOTE]
-> The following content uses `BlacklistPlugin` (the blacklist module) as an example, taken from the code structure of LOICollectionA 1.17.0; it may differ in later versions.
+> The following content uses `BlacklistPlugin` (the blacklist module) as an example, taken from the code structure of LOICollectionA 1.17.1; it may differ in later versions.
 
 This article explains how to develop a C++ module for LOICollectionA. Before getting started, please read [Architecture Overview](./architecture.md) to learn about the module framework and the service container.
 
@@ -322,7 +322,7 @@ Here `operation` is the command parameter struct defined in the module (refer to
 
 ## Listening for Events
 
-Use LeviLamina's `ll::event::EventBus` to listen for vanilla events and module-defined events (`include/server/Events/*`):
+Use LeviLamina's `ll::event::EventBus` to listen for vanilla events and module-defined events (see [Custom Events](./events.md) for the full list):
 
 ```cpp
 void XxxPlugin::listenEvent() {

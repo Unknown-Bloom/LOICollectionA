@@ -167,7 +167,13 @@ namespace LOICollection::frontend::ir::opt {
         const int size = static_cast<int>(mChunk.code.size());
 
         std::vector<MirInstr> code;
+        std::vector<int> oldIndex;
         std::vector<int> newIndex(size, -1);
+
+        auto emit = [&code, &oldIndex](const MirInstr& instr, int origin) -> void {
+            code.push_back(instr);
+            oldIndex.push_back(origin);
+        };
 
         int slotBase = mChunk.slotCount;
         std::size_t inlined = 0;
@@ -187,7 +193,7 @@ namespace LOICollection::frontend::ir::opt {
                 const int receiver = call.src1 + call.imm;
 
                 for (int a = 0; a < target->argCount; ++a)
-                    code.push_back({ MirOp::MOVE, 0, base + a, call.src1 + a, -1, -1, 0, {}, call.loc });
+                    emit({ MirOp::MOVE, 0, base + a, call.src1 + a, -1, -1, 0, {}, call.loc }, -1);
 
                 const std::size_t bodySize = body.code.size();
 
@@ -206,7 +212,7 @@ namespace LOICollection::frontend::ir::opt {
                 for (std::size_t b = 0; b < retIdx; ++b) {
                     MirInstr instr = body.code[b];
                     if (instr.op == MirOp::LOAD_THIS) {
-                        code.push_back({ MirOp::MOVE, 0, instr.dst + base, receiver, -1, -1, 0, {}, instr.loc });
+                        emit({ MirOp::MOVE, 0, instr.dst + base, receiver, -1, -1, 0, {}, instr.loc }, -1);
                         continue;
                     }
                     if (usesConstantPool(instr.op))
@@ -214,14 +220,13 @@ namespace LOICollection::frontend::ir::opt {
                     if (instr.op == MirOp::LOAD_SLOT || instr.op == MirOp::STORE_SLOT)
                         instr.operand += base;
                     remap(instr, base);
-                    code.push_back(instr);
+                    emit(instr, -1);
                 }
 
                 if (retIdx < bodySize) {
                     const int retSrc = body.code[retIdx].src1;
                     if (call.dst >= 0 && retSrc >= 0)
-                        code.push_back({ MirOp::MOVE, 0, call.dst,
-                                         retSrc + base, -1, -1, 0, {}, call.loc });
+                        emit({ MirOp::MOVE, 0, call.dst, retSrc + base, -1, -1, 0, {}, call.loc }, -1);
                 }
 
                 slotBase = base + body.slotCount;
@@ -230,15 +235,20 @@ namespace LOICollection::frontend::ir::opt {
             }
 
             newIndex[i] = static_cast<int>(code.size());
-            code.push_back(call);
+            emit(call, i);
         }
 
-        for (auto& instr : code) {
-            if (!isBranch(instr.op))
+        for (std::size_t n = 0; n < code.size(); ++n) {
+            MirInstr& instr = code[n];
+            if (!isBranch(instr.op) || oldIndex[n] < 0)
                 continue;
-            const int target = instr.operand;
-            if (target >= 0 && target < size)
-                instr.operand = newIndex[target];
+
+            const int target = oldIndex[n] + 1 + instr.operand;
+            if (target >= 0 && target < size && newIndex[target] >= 0) {
+                instr.operand = newIndex[target] - static_cast<int>(n) - 1;
+            } else if (target == size) {
+                instr.operand = static_cast<int>(code.size()) - static_cast<int>(n) - 1;
+            }
         }
 
         mChunk.slotCount = slotBase;

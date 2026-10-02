@@ -39,7 +39,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
             
             co_await std::chrono::seconds(1);
 
-            (void)RUN_ALL_TESTS();
+            static_cast<void>(RUN_ALL_TESTS());
 
             sp.destroy();
         }).launch(ll::thread::ServerThreadExecutor::getDefault());

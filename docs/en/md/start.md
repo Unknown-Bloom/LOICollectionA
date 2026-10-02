@@ -20,7 +20,7 @@ lip install github.com/loitietu/LOICollectionA
 - To install a specific version, run the following command
 
 ```bash
-lip install github.com/loitietu/LOICollectionA@v1.17.0
+lip install github.com/loitietu/LOICollectionA@v1.17.1
 ```
 
 - To update the version, run the following command
@@ -31,7 +31,7 @@ lip install --upgrade github.com/loitietu/LOICollectionA
 
 > [!TIP]
 > When updating the version, please make sure whether the target version requires data migration.  
-> If data migration is required, please back up the plugin data first, then find the `migrate.py` file for the corresponding version in the `scripts/migrate` folder of the `Github` repository, and perform the data migration according to the [instructions](../course/migrate.md).
+> If data migration is required, please back up the plugin data first, then find the migration script for the corresponding version in the `scripts/migrate` folder of the `Github` repository (such as `migrate147.py`, `migrate162.py`, `migrate170.py`, `migrate1100.py`, and `migrate_block.py` for the 1.17.0 block-storage rework), and perform the data migration according to the [instructions](../course/migrate.md).
 
 - After installation, you can find the LOICollectionA installation files in the `plugins` folder
 - Double-click the `bedrock_server_mod.exe` file in the server root directory to start the server
@@ -45,7 +45,7 @@ lip install --upgrade github.com/loitietu/LOICollectionA
 
 | Name | Version |
 | --- | --- |
-| LeviLamina | 26.20.x |
+| LeviLamina | 26.51.6 |
 
 > Please manually download the version-compatible prerequisite components. If you are unsure about version compatibility, it is recommended to use lip installation instead.
 

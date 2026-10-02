@@ -49,7 +49,7 @@ namespace {
         ir::VM vm(diagnostics);
         vm.setBudget(budget);
         if (chunk)
-            (void)vm.run(chunk, {});
+            static_cast<void>(vm.run(chunk, {}));
 
         return vm.report().violation;
     }

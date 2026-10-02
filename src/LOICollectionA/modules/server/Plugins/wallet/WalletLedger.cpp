@@ -34,6 +34,8 @@
 using I18nUtilsTools::tr;
 
 namespace LOICollection::server::Plugins {
+    using LOICollection::data::FindMode;
+
     struct WalletLedger::Impl {
         std::shared_ptr<BlockRepository> db;
         const Config::C_Wallet& options;

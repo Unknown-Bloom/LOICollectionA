@@ -4,6 +4,8 @@
 
 #include <mc/world/level/Level.h>
 
+#include <mc/world/actor/player/Player.h>
+
 #include <mc/world/scores/Objective.h>
 #include <mc/world/scores/ScoreInfo.h>
 #include <mc/world/scores/Scoreboard.h>

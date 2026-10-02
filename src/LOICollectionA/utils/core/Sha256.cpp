@@ -105,7 +105,12 @@ namespace LOICollection::utils {
         this->update(data.data(), data.size());
     }
 
-    std::string Sha256::digest() {
+    std::string Sha256::digest() const {
+        Sha256 final = *this;
+        return final.finalize();
+    }
+
+    std::string Sha256::finalize() {
         uint64_t bitLength = this->mTotalLength * 8;
 
         uint8_t padding = 0x80;

@@ -174,7 +174,7 @@ And the plugins provide the following commands for simple interaction:
 - `/tpa gui`
   - Open the Tpa GUI.
 
-- `tpa invite <tpa|tphere> <Target: target>`
+- `/tpa invite <tpa|tphere> <Target: target>`
   - Send a teleport request to the target.
   - Here, `<tpa|tphere>` is the teleport type.
   - Here, `<Target: target>` is the target selector.

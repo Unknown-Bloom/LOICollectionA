@@ -29,6 +29,7 @@ ll::Expected<std::shared_ptr<BlockRepository>> BlockRepository::fromStore(
     std::shared_ptr<BlockStore> store) {
     if (!store)
         return ll::makeStringError("null block store");
+    
     return std::shared_ptr<BlockRepository>(new BlockRepository(std::move(store)));
 }
 

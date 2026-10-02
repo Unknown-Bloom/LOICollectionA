@@ -51,7 +51,7 @@ namespace {
             return true;
         }();
 
-        (void)registered;
+        static_cast<void>(registered);
     }
 
     std::string errorsOf(const std::string& source) {

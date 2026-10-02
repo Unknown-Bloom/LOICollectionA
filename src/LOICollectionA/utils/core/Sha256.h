@@ -12,7 +12,7 @@ namespace LOICollection::utils {
         void update(const void* data, size_t size);
         void update(const std::string& data);
 
-        std::string digest();
+        [[nodiscard]] std::string digest() const;
 
         static std::string compute(const std::string& data);
 
@@ -20,6 +20,8 @@ namespace LOICollection::utils {
 
     private:
         void processBlock(const uint8_t* block);
+
+        std::string finalize();
 
         uint32_t mState[8];
         uint64_t mTotalLength;

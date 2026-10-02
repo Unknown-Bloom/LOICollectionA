@@ -193,14 +193,14 @@ namespace LOICollection::server::Plugins {
                 });
 
             if (!r.has_value()) {
-                (void)tx->rollback();
+                static_cast<void>(tx->rollback());
 
                 return ll::Unexpected(r.error());
             }
 
             auto c = tx->commit();
             if (!c.has_value()) {
-                (void)tx->rollback();
+                static_cast<void>(tx->rollback());
 
                 return ll::Unexpected(c.error());
             }
@@ -359,14 +359,14 @@ namespace LOICollection::server::Plugins {
             ? tx->del(id)
             : tx->set(id, StoreWantedCol::amount_filled, static_cast<long long>(filled));
         if (!updateResult.has_value()) {
-            (void)tx->rollback();
+            static_cast<void>(tx->rollback());
 
             return ll::Unexpected(updateResult.error());
         }
 
         auto commitResult = tx->commit();
         if (!commitResult.has_value()) {
-            (void)tx->rollback();
+            static_cast<void>(tx->rollback());
 
             return ll::Unexpected(commitResult.error());
         }
@@ -459,14 +459,14 @@ namespace LOICollection::server::Plugins {
                 })
             : tx->set(id, StoreWantedCol::amount_filled, static_cast<long long>(filled));
         if (!r.has_value()) {
-            (void)tx->rollback();
+            static_cast<void>(tx->rollback());
 
             return ll::Unexpected(r.error());
         }
 
         auto commitResult = tx->commit();
         if (!commitResult.has_value()) {
-            (void)tx->rollback();
+            static_cast<void>(tx->rollback());
 
             return ll::Unexpected(commitResult.error());
         }
@@ -481,14 +481,14 @@ namespace LOICollection::server::Plugins {
 
         auto delResult = tx->del(id);
         if (!delResult.has_value()) {
-            (void)tx->rollback();
+            static_cast<void>(tx->rollback());
 
             return ll::Unexpected(delResult.error());
         }
 
         auto commitResult = tx->commit();
         if (!commitResult.has_value()) {
-            (void)tx->rollback();
+            static_cast<void>(tx->rollback());
 
             return ll::Unexpected(commitResult.error());
         }
@@ -529,14 +529,14 @@ namespace LOICollection::server::Plugins {
             });
 
         if (!r.has_value()) {
-            (void)tx->rollback();
+            static_cast<void>(tx->rollback());
 
             return ll::Unexpected(r.error());
         }
 
         auto commitResult = tx->commit();
         if (!commitResult.has_value()) {
-            (void)tx->rollback();
+            static_cast<void>(tx->rollback());
 
             return ll::Unexpected(commitResult.error());
         }

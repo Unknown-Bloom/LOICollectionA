@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
@@ -131,6 +132,68 @@ TEST(MirSerializerTest, RoundTripPreservesBehavior) {
     ASSERT_TRUE(restored.has_value());
 
     EXPECT_EQ(runChunk(std::make_shared<MirChunk>(std::move(*restored))), "42");
+}
+
+TEST(MirSerializerTest, RoundTripPreservesEveryTypeKind) {
+    const std::vector<TypeKind> kinds = {
+        TypeKind::Unknown, TypeKind::Int, TypeKind::Float, TypeKind::String, TypeKind::Bool,
+        TypeKind::Object, TypeKind::Function, TypeKind::Void, TypeKind::Array, TypeKind::Variant,
+        TypeKind::Optional, TypeKind::Generic, TypeKind::Trait, TypeKind::None
+    };
+
+    MirChunk chunk;
+    for (const TypeKind kind : kinds) {
+        MirInstr instr;
+        instr.op = MirOp::HALT;
+        instr.type.kind = kind;
+        chunk.code.push_back(instr);
+    }
+
+    auto blob = MirSerializer::serialize(chunk, headerFor(kSource));
+    ASSERT_TRUE(blob.has_value());
+
+    auto restored = MirSerializer::deserialize(blob.value(), headerFor(kSource));
+    ASSERT_TRUE(restored.has_value());
+    ASSERT_EQ(restored->code.size(), kinds.size());
+
+    for (std::size_t i = 0; i < kinds.size(); ++i)
+        EXPECT_EQ(restored->code.at(i).type.kind, kinds.at(i)) << "kind index " << i;
+}
+
+TEST(MirSerializerTest, RoundTripPreservesNestedTypeInfo) {
+    MirChunk chunk;
+    chunk.code.resize(2);
+
+    chunk.code[0].op = MirOp::HALT;
+    chunk.code[0].type.kind = TypeKind::Variant;
+    chunk.code[0].type.className = "ProbeClass";
+    chunk.code[0].type.typeVar = "T";
+    chunk.code[0].type.variantOptions.push_back(TypeInfo{ TypeKind::Int });
+    chunk.code[0].type.variantOptions.push_back(TypeInfo{ TypeKind::None });
+
+    chunk.code[1].op = MirOp::RETURN;
+    chunk.code[1].type.kind = TypeKind::Optional;
+    chunk.code[1].type.optionalInner = std::make_shared<TypeInfo>(TypeInfo{ TypeKind::Trait });
+
+    auto blob = MirSerializer::serialize(chunk, headerFor(kSource));
+    ASSERT_TRUE(blob.has_value());
+
+    auto restored = MirSerializer::deserialize(blob.value(), headerFor(kSource));
+    ASSERT_TRUE(restored.has_value());
+    ASSERT_EQ(restored->code.size(), 2u);
+
+    const TypeInfo& variant = restored->code.at(0).type;
+    EXPECT_EQ(variant.kind, TypeKind::Variant);
+    EXPECT_EQ(variant.className, "ProbeClass");
+    EXPECT_EQ(variant.typeVar, "T");
+    ASSERT_EQ(variant.variantOptions.size(), 2u);
+    EXPECT_EQ(variant.variantOptions.at(0).kind, TypeKind::Int);
+    EXPECT_EQ(variant.variantOptions.at(1).kind, TypeKind::None);
+
+    const TypeInfo& optional = restored->code.at(1).type;
+    EXPECT_EQ(optional.kind, TypeKind::Optional);
+    ASSERT_NE(optional.optionalInner, nullptr);
+    EXPECT_EQ(optional.optionalInner->kind, TypeKind::Trait);
 }
 
 TEST(MirSerializerTest, RoundTripIsStableAcrossCycles) {

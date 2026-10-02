@@ -301,7 +301,7 @@
 ```
 
 > [!NOTE]
-> 以上内容取自 LOICollectionA 1.17.0 的配置文件结构，对于后续版本的配置文件结构可能会有所不同。
+> 以上内容取自 LOICollectionA 1.17.1 的配置文件结构，对于后续版本的配置文件结构可能会有所不同。
 
 ## 模块数据文件
 
@@ -328,7 +328,7 @@
 | `behaviorevent.db` | BehaviorEvent（行为事件日志） |
 
 > [!WARNING]
-> 1.17.0 把数据层换成了块存储，**旧版本写入的数据不会被自动迁移**。升级前请备份 `plugins/LOICollectionA/data` 目录，升级步骤见 [数据迁移](../course/migrate.md)。
+> 1.17.0 把数据层换成了块存储，插件**不会**在启动时重放旧数据。需要保留旧数据时，请手动运行 `scripts/migrate/migrate_block.py`；升级前请先备份 `plugins/LOICollectionA/data` 目录，完整步骤见 [数据迁移](../course/migrate.md)。
 
 > [!TIP]
 > 通常情况下，您不需要手动修改数据文件，因为在使用 `LOICollectionA` 的过程中，大部分数据文件都存在内部编辑器。从 1.15.0 起，Menu 与 Shop 改为直接编辑 lcui 数据文件，不再提供游戏内编辑器。

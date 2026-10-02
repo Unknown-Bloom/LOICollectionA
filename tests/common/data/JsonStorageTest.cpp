@@ -176,7 +176,7 @@ TEST_F(JsonStorageTest, ThreadSafetySetAndGet) {
                 auto val = storage.get<int>("shared_key");
                 if (val.has_value()) {
                     volatile int v = val.value();
-                    (void)v;
+                    static_cast<void>(v);
                 }
             }
         });

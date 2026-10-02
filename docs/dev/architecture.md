@@ -1,7 +1,7 @@
 # 架构概览
 
 > [!NOTE]
-> 以下内容取自 LOICollectionA 1.17.0 的代码结构，对于后续版本可能会有所不同。
+> 以下内容取自 LOICollectionA 1.17.1 的代码结构，对于后续版本可能会有所不同。
 
 LOICollectionA 是一个基于 [LeviLamina](https://github.com/LiteLDev/LeviLamina) 的 C++ 插件（NativeMod），整体采用**微内核架构**：核心只负责配置加载、服务注册与模块调度，所有功能以 **模块（Module）** 为单位独立实现，可在配置文件中按需开关。
 
@@ -31,7 +31,7 @@ LL_REGISTER_MOD(LOICollection::A, LOICollection::A::getInstance());
 
 ### ModuleBase（模块基类）
 
-所有模块继承 `LOICollection::modules::ModuleBase`，需要实现四个纯虚方法：
+所有模块继承 `LOICollection::modules::ModuleBase`，需要实现六个纯虚方法：
 
 ```cpp
 class ModuleBase {
@@ -122,11 +122,11 @@ src/LOICollectionA/
 │   ├─ ModuleBase.h / ModManager.h / ModulePriority.h
 │   ├─ CallbackUtils.h       # LOICollectionAPI 变量注册入口
 │   ├─ form/GUIManager.h     # GUI 管理器
-│   ├─ server/Events/        # 自定义事件类型（网络包、玩家计分板变更等）
+│   ├─ server/Events/        # 自定义事件类型（详见 [自定义事件](./events.md)）
 │   └─ server/Plugins/       # 各模块公开接口（BlacklistPlugin.h 等）
 ├─ modules/                  # 模块实现（client/ 与 server/ 按平台隔离）
 ├─ utils/                    # 工具：I18nUtils、MathUtils、mc-server 工具集
-tests/                       # gtest 测试（common/ 跨平台、server/、client/）
+tests/                       # gtest 测试（common/ 跨平台、server/ 仅服务端、client/ 预留为空）
 ```
 
 ## 双平台支持

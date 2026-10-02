@@ -69,13 +69,28 @@ Here, `data migration` refers to migrating the specified lower-version data in `
 ## For upgrading from version 1.16.0 to version 1.17.0
 
 > [!WARNING]
-> 1.17.0 replaces the data layer with block storage (`BlockRepository` + `TypedTable`, see [Architecture Overview](../dev/architecture.md#data-layer)). There is **no** automatic migration script: tables written by older versions are no longer read.
+> 1.17.0 replaces the data layer with block storage (`BlockRepository` + `TypedTable`, see [Architecture Overview](../dev/architecture.md#data-layer)). The plugin does **not** replay old data automatically at start-up: tables written by older versions are no longer read, so you must either run the migration script by hand or re-enter the data yourself.
 
 1. Back up the whole `plugins/LOICollectionA/data` directory (and `config`, `gui`) before upgrading.
-2. On the first start after upgrading, the plugin creates the block-model system tables (`dict` / `block` / `prop` / `link` / `meta`) in every `.db` file and then runs on empty data.
-3. Your old data is not deleted — it stays in the legacy tables of each database file (tables named after the feature, such as `Wallet`, `Blacklist`, `Market`). To keep it, export those tables with a SQLite tool and re-enter the data through the in-game UI or commands.
-4. `notice.json`, `cdk.json` and `config.json` remain plain JSON files and are unaffected — no migration needed.
-5. Scripts you wrote yourself (`config/menu.lcui`, `config/shop.lcui`, and any script you edited under `gui`) are usually copies of older examples and therefore use keyword-less bare assignments. Every variable binding must be declared with `let`; a bare assignment no longer creates a variable, so such a script fails to load with `Variable 'xxx' is not declared; write 'let xxx = ...' to introduce it` and is not enabled (the start-up log shows it at `ERROR [LOICollectionA]` level). Add `let` to the **first** assignment of every variable:
+2. Download `scripts/migrate/migrate_block.py` and put it in the plugin root directory (the parent of `plugins/LOICollectionA/`, where the script looks for the database files by default).
+3. Run a dry run first to confirm which tables and how many rows will be migrated:
+
+    ```bash
+    python migrate_block.py --data-dir plugins/LOICollectionA/data --dry-run
+    ```
+
+4. Once the output looks right, drop `--dry-run` to perform the migration for real:
+
+    ```bash
+    python migrate_block.py --data-dir plugins/LOICollectionA/data
+    ```
+
+5. The script rewrites the legacy `SQLiteStorage` key/value tables in place into the block model's `block` / `prop` / `link` / `meta` structure, routing by file: tables in `blacklist.db`, `mute.db`, `tpa.db`, `chat.db` and `market.db` are migrated inside their own file, while tables registered against the shared `SettingsDB` service (`Market`, `MarketTax`, `Language`, `Pvp`, `Chat`, `Tpa`, `Wallet`, and their siblings) are migrated inside `settings.db`. Every domain column is preserved; the `col_<rootId>` side table and the `schema:` / `sidecol:` fingerprints are rebuilt by the plugin the first time it opens the database.
+6. Two legacy tables are intentionally **not** migrated: `Notice` (the current build stores notices as JSON, not SQLite) and `Language` inside `statistics.db` (the current code only reads the `Language` table in `settings.db`, which is the authoritative copy). Both are left untouched on disk.
+7. If you prefer not to use the script, you can migrate manually instead: on the first start after upgrading, the plugin creates the block-model system tables (`dict` / `block` / `prop` / `link` / `meta`) in every `.db` file and then runs on empty data.
+8. Without a migration your old data is still not deleted — it stays in the legacy tables of each database file (tables named after the feature, such as `Wallet`, `Blacklist`, `Market`). To keep it, export those tables with a SQLite tool and re-enter the data through the in-game UI or commands.
+9. `notice.json`, `cdk.json` and `config.json` remain plain JSON files and are unaffected — no migration needed.
+10. Scripts you wrote yourself (`config/menu.lcui`, `config/shop.lcui`, and any script you edited under `gui`) are usually copies of older examples and therefore use keyword-less bare assignments. Every variable binding must be declared with `let`; a bare assignment no longer creates a variable, so such a script fails to load with `Variable 'xxx' is not declared; write 'let xxx = ...' to introduce it` and is not enabled (the start-up log shows it at `ERROR [LOICollectionA]` level). Add `let` to the **first** assignment of every variable:
 
     ```lcui
     // before the upgrade
