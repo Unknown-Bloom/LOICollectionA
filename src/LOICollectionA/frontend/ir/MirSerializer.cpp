@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <cstring>
 
 #include "LOICollectionA/frontend/ir/MirSerializer.h"
 

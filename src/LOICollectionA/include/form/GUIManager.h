@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <functional>
+#include <unordered_map>
 
 #include <ll/api/Expected.h>
 
@@ -32,6 +33,8 @@ namespace ScriptFormClass {
 namespace LOICollection::frontend {
     struct ArrayValue;
     using ArrayRef = std::shared_ptr<ArrayValue>;
+
+    struct GlobalsTable;
 }
 
 namespace LOICollection::form {
@@ -102,6 +105,8 @@ namespace LOICollection::form {
 
         ll::Expected<std::string> readFile(const std::string& path);
         ll::Expected<void> writeFile(const std::string& path, const std::string& content);
+
+        LOICOLLECTION_A_NDAPI std::shared_ptr<frontend::GlobalsTable> scriptGlobals(const std::string& id);
 
         struct Impl;
         std::unique_ptr<Impl> mImpl;

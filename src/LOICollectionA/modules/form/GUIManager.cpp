@@ -78,6 +78,7 @@ namespace {
 namespace LOICollection::form {
     struct GUIManager::Impl {
         std::unordered_map<std::string, std::shared_ptr<frontend::ir::MirChunk>> cache;
+        std::unordered_map<std::string, std::shared_ptr<frontend::GlobalsTable>> globals;
 
         std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<CustomFormClass::CustomFormHandle>>> forms;
         std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<MessageBoxClass::MessageBoxHandle>>> boxs;
@@ -91,6 +92,13 @@ namespace LOICollection::form {
 
     GUIManager::GUIManager() : mImpl(std::make_unique<Impl>()) {}
     GUIManager::~GUIManager() = default;
+
+    std::shared_ptr<frontend::GlobalsTable> GUIManager::scriptGlobals(const std::string& id) {
+        if (auto it = this->mImpl->globals.find(id); it != this->mImpl->globals.end())
+            return it->second;
+
+        return this->mImpl->globals[id] = std::make_shared<frontend::GlobalsTable>();
+    }
 
     GUIManager& GUIManager::getInstance() {
         static GUIManager instance;
@@ -184,6 +192,7 @@ namespace LOICollection::form {
                             ->warn("script '{}' has a stale debug package — loaded without debug info", id);
 
                 this->mImpl->cache.insert_or_assign(id, std::make_shared<frontend::ir::MirChunk>(std::move(*chunk)));
+                this->mImpl->globals.insert_or_assign(id, std::make_shared<frontend::GlobalsTable>());
                 warnIfMissingPermission(id);
                 return {};
             }
@@ -208,6 +217,7 @@ namespace LOICollection::form {
         }
 
         this->mImpl->cache.insert_or_assign(id, compiled);
+        this->mImpl->globals.insert_or_assign(id, std::make_shared<frontend::GlobalsTable>());
         warnIfMissingPermission(id);
 
         return {};
@@ -219,7 +229,7 @@ namespace LOICollection::form {
             return ll::makeStringError("execute: No corresponding bytecode cache was found");
 
         frontend::DiagnosticEngine diagnostics;
-        frontend::ir::VM mVM(diagnostics);
+        frontend::ir::VM mVM(diagnostics, this->scriptGlobals(id));
         mVM.setBudget(frontend::sandbox::budgetForScript(id));
 
         frontend::Context context;
@@ -235,7 +245,7 @@ namespace LOICollection::form {
     ll::Expected<void> GUIManager::open(const std::string& id, const std::string& formId, Player& player, const frontend::ArrayRef& ctx) {
         frontend::DiagnosticEngine diagnostics;
 
-        frontend::ir::VM mVM(diagnostics);
+        frontend::ir::VM mVM(diagnostics, this->scriptGlobals(id));
         mVM.setBudget(frontend::sandbox::budgetForScript(id));
 
         if (this->mImpl->cache.contains(id)) {
@@ -273,7 +283,7 @@ namespace LOICollection::form {
     ) {
         frontend::DiagnosticEngine diagnostics;
 
-        frontend::ir::VM mVM(diagnostics);
+        frontend::ir::VM mVM(diagnostics, this->scriptGlobals(id));
         mVM.setBudget(frontend::sandbox::budgetForScript(id));
 
         if (this->mImpl->cache.contains(id)) {
@@ -584,12 +594,13 @@ namespace LOICollection::form {
     }
 
     void GUIManager::releaseAllUI() {
-        this->mImpl->cache.clear();
-
         releaseHandles(this->mImpl->forms);
         releaseHandles(this->mImpl->boxs);
         releaseHandles(this->mImpl->paginatedForms);
         releaseHandles(this->mImpl->scriptForms);
+
+        this->mImpl->cache.clear();
+        this->mImpl->globals.clear();
     }
 
     ll::Expected<std::shared_ptr<CustomFormClass::CustomFormHandle>> GUIManager::getCustomFormUI(const std::string& id, Player& player) {

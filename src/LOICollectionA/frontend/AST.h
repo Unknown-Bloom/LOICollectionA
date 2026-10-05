@@ -1145,7 +1145,7 @@ namespace LOICollection::frontend {
         }
     };
 
-    using GlobalsTable = std::unordered_map<std::string, ValueNode::ValueType>;
+    struct GlobalsTable : std::unordered_map<std::string, ValueNode::ValueType> {};
 
     struct FunctionRef {
         std::shared_ptr<const ir::MirChunk> owner;

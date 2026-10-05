@@ -331,10 +331,14 @@ namespace LOICollection::frontend::ir {
             ~CallDepthGuard() { --depth; }
         } depthGuard{ nativeCallDepth };
 
-        auto snapshot = func->globals.lock();
-        VM vm(diagnostics, snapshot
-            ? std::make_shared<GlobalsTable>(*snapshot)
-            : std::make_shared<GlobalsTable>());
+        auto globals = func->globals.lock();
+        if (!globals) {
+            diagnostics.addError({ 0, 0, 0 },
+                "Script context expired: the callback was invoked after its script instance was released");
+            return ValueNode::ValueType{};
+        }
+
+        VM vm(diagnostics, std::move(globals));
 
         if (budget)
             vm.setBudget(*budget);

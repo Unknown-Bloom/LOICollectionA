@@ -109,29 +109,39 @@ TEST(ReceiverBindingTest, BoundCallbackDoesNotRetainReceiver) {
         "b.keep(func () -> int { return this.v; }); "
         "b",
         diagnostics);
-    ASSERT_NE(chunk, nullptr);
+    ASSERT_NE(chunk, nullptr) << diagnostics.getErrorMessage();
 
     std::weak_ptr<Object> watched;
     {
-        ir::VM vm(diagnostics);
+        auto globals = std::make_shared<GlobalsTable>();
+
+        ir::VM vm(diagnostics, globals);
         auto result = vm.run(chunk, {});
-        ASSERT_FALSE(diagnostics.hasErrors());
+        ASSERT_FALSE(diagnostics.hasErrors()) << diagnostics.getErrorMessage();
         ASSERT_TRUE(std::holds_alternative<ObjectRef>(result));
 
         watched = std::get<ObjectRef>(result);
+
+        EXPECT_FALSE(watched.expired())
+            << "the receiver is reachable while its script globals hold it";
+
+        (*globals)["b"] = std::monostate{};
     }
 
-    EXPECT_TRUE(watched.expired());
+    EXPECT_TRUE(watched.expired())
+        << "dropping the last external reference must release the receiver: "
+           "the bound callback must not keep it alive through `this` or its captures";
 }
 
-TEST(ReceiverBindingTest, CallbackDoesNotRetainGlobals) {
+TEST(ReceiverBindingTest, CallbackKeepsResolvingTopLevelNames) {
     DiagnosticEngine diagnostics;
-    auto chunk = compile("let g = 1; let f = func () -> int { return g; }; f", diagnostics);
+    auto chunk = compile("let g = 1; let f = func () -> int { return g + 1; }; f", diagnostics);
     ASSERT_NE(chunk, nullptr);
 
+    auto globals = std::make_shared<GlobalsTable>();
     FunctionRefPtr func;
     {
-        ir::VM vm(diagnostics);
+        ir::VM vm(diagnostics, globals);
         auto result = vm.run(chunk, {});
         ASSERT_FALSE(diagnostics.hasErrors());
         ASSERT_TRUE(std::holds_alternative<FunctionRefPtr>(result));
@@ -139,5 +149,9 @@ TEST(ReceiverBindingTest, CallbackDoesNotRetainGlobals) {
         func = std::get<FunctionRefPtr>(result);
     }
 
-    EXPECT_TRUE(func->globals.expired());
+    DiagnosticEngine callDiagnostics;
+    auto value = ir::VM::callFunctionRef(func, {}, {}, callDiagnostics);
+
+    EXPECT_FALSE(callDiagnostics.hasErrors()) << callDiagnostics.getErrorMessage();
+    EXPECT_EQ(ir::VM::valueToString(value), "2");
 }
