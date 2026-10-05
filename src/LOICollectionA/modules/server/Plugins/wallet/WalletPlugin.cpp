@@ -248,12 +248,18 @@ namespace LOICollection::server::Plugins {
             return {};
         }
 
-        return this->mImpl->wallet->get<long long>(target, "score", 0)
-            .and_then([this, target, score](long long walletScore) -> ll::Expected<void> {
-                return this->mImpl->wallet->set(target, "score", walletScore + score)
-                    .transform([this, target, walletScore, score]() -> void {
-                        this->updateBalanceSnapshot(target, walletScore + score)
-                            .or_else(modules::defaultErrorHandler<WalletPlugin>);
+        return this->mImpl->wallet->has(target)
+            .and_then([this, target, score](bool exists) -> ll::Expected<void> {
+                if (!exists)
+                    return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::NotFound));
+
+                return this->mImpl->wallet->get<long long>(target, "score", 0)
+                    .and_then([this, target, score](long long walletScore) -> ll::Expected<void> {
+                        return this->mImpl->wallet->set(target, "score", walletScore + score)
+                            .transform([this, target, walletScore, score]() -> void {
+                                this->updateBalanceSnapshot(target, walletScore + score)
+                                    .or_else(modules::defaultErrorHandler<WalletPlugin>);
+                            });
                     });
             });
     }
