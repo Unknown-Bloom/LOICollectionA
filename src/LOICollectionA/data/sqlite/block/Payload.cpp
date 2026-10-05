@@ -70,7 +70,7 @@ std::optional<PayloadField> PayloadReader::readField(std::string_view::const_ite
             break;
         }
         case PayloadType::Double: {
-            auto v = Bytes::read(it, mData.end());
+            auto v = Bytes::read<double>(it, mData.end());
             if (!v)
                 return std::nullopt;
 
