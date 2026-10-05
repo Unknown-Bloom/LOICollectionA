@@ -652,7 +652,14 @@ namespace LOICollection::server::Plugins {
                         this->mImpl->mSettling.erase(uuid);
                     });
 
-                    return this->mImpl->wallet->set(uuid, "score", 0LL)
+                    auto batch = this->mImpl->wallet->tx();
+                    if (!batch.has_value())
+                        return ll::Unexpected(batch.error());
+
+                    return batch.value().set(uuid, "score", 0LL)
+                        .and_then([&batch]() -> ll::Expected<void> {
+                            return batch.value().commit().transform([](bool) -> void {});
+                        })
                         .transform([this, uuid, score, &event]() -> void {
                             ScoreboardUtils::addScore(event.self(), this->mImpl->options.TargetScoreboard, static_cast<int>(score));
 
