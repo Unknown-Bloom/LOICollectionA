@@ -29,6 +29,14 @@
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
+namespace LOICollection::client::display::overlay {
+    bool patchPresent(void* target);
+    bool patchPresent1(void* target);
+    bool patchResizeBuffers(void* target);
+    bool patchExecuteCommandLists(void* target);
+    void removePatches();
+}
+
 namespace LOICollection::client::display::overlay::detail {
     struct OverlayHookTargets {
         void* Present {};
@@ -494,8 +502,6 @@ namespace LOICollection::client::display::overlay::detail {
 
 namespace LOICollection::client::display::overlay {
     using namespace detail;
-
-    void removePatches();
 
     std::int32_t __stdcall presentDetour(IDXGISwapChain* swapChain, std::uint32_t syncInterval, std::uint32_t flags) {
         auto original = reinterpret_cast<PresentFn>(g_originals.Present);
