@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 
 #include <fmt/core.h>
 
@@ -21,6 +22,8 @@
 
 #include "LOICollectionA/include/CallbackUtils.h"
 #include "LOICollectionA/include/server/Plugins/LanguagePlugin.h"
+
+#include "LOICollectionA/base/ScopeGuard.h"
 
 #include "LOICollectionA/include/server/Events/modules/RedEnvelopeCompletedEvent.h"
 
@@ -57,6 +60,7 @@ namespace LOICollection::server::Plugins {
         TransferProvider transferProvider;
 
         ll::ConcurrentDenseMap<std::string, std::vector<RedEnvelopeEntry>> mRedEnvelopes;
+        std::unordered_set<std::string> mRefunding;
 
         Impl(
             std::shared_ptr<BlockRepository> db_,
@@ -430,6 +434,13 @@ namespace LOICollection::server::Plugins {
     ll::Expected<bool> WalletRedEnvelope::refundEnvelope(const std::string& id) {
         auto& envelope = *this->mImpl->envelope;
 
+        if (!this->mImpl->mRefunding.insert(id).second)
+            return false;
+
+        auto guard = make_scope_guard([this, &id]() -> void {
+            this->mImpl->mRefunding.erase(id);
+        });
+
         auto exists = envelope.has(id);
         if (!exists.has_value())
             return ll::Unexpected(exists.error());
@@ -456,7 +467,7 @@ namespace LOICollection::server::Plugins {
         if (!senderName.has_value())
             return ll::Unexpected(senderName.error());
 
-        long long remaining = capacity.value();
+        long long remaining = std::max<long long>(0, capacity.value());
         if (remaining > 0) {
             auto refund = this->mImpl->transferProvider(senderUuid.value(), static_cast<int>(remaining));
             if (!refund.has_value())
