@@ -14,95 +14,97 @@
 
 using namespace LOICollection::frontend;
 
-namespace ArrayClass {
-    namespace {
-        bool valuesEqual(const TypedValue& left, const TypedValue& right) {
-            if (auto li = std::get_if<int>(&left)) {
-                if (auto ri = std::get_if<int>(&right)) return *li == *ri;
-                if (auto rf = std::get_if<float>(&right)) return *li == *rf;
-                return false;
-            }
-            if (auto lf = std::get_if<float>(&left)) {
-                if (auto ri = std::get_if<int>(&right)) return *lf == *ri;
-                if (auto rf = std::get_if<float>(&right)) return *lf == *rf;
-                return false;
-            }
-            if (auto ls = std::get_if<std::string>(&left)) {
-                if (auto rs = std::get_if<std::string>(&right)) return *ls == *rs;
-                return false;
-            }
-            if (auto lb = std::get_if<bool>(&left)) {
-                if (auto rb = std::get_if<bool>(&right)) return *lb == *rb;
-                return false;
-            }
-            if (auto lo = std::get_if<ObjectRef>(&left)) {
-                if (auto ro = std::get_if<ObjectRef>(&right)) return *lo == *ro;
-                return false;
-            }
-            if (auto la = std::get_if<ArrayRef>(&left)) {
-                if (auto ra = std::get_if<ArrayRef>(&right)) return *la == *ra;
-                return false;
-            }
-
+namespace ArrayClass::detail {
+    bool valuesEqual(const TypedValue& left, const TypedValue& right) {
+        if (auto li = std::get_if<int>(&left)) {
+            if (auto ri = std::get_if<int>(&right)) return *li == *ri;
+            if (auto rf = std::get_if<float>(&right)) return *li == *rf;
+            return false;
+        }
+        if (auto lf = std::get_if<float>(&left)) {
+            if (auto ri = std::get_if<int>(&right)) return *lf == *ri;
+            if (auto rf = std::get_if<float>(&right)) return *lf == *rf;
+            return false;
+        }
+        if (auto ls = std::get_if<std::string>(&left)) {
+            if (auto rs = std::get_if<std::string>(&right)) return *ls == *rs;
+            return false;
+        }
+        if (auto lb = std::get_if<bool>(&left)) {
+            if (auto rb = std::get_if<bool>(&right)) return *lb == *rb;
+            return false;
+        }
+        if (auto lo = std::get_if<ObjectRef>(&left)) {
+            if (auto ro = std::get_if<ObjectRef>(&right)) return *lo == *ro;
+            return false;
+        }
+        if (auto la = std::get_if<ArrayRef>(&left)) {
+            if (auto ra = std::get_if<ArrayRef>(&right)) return *la == *ra;
             return false;
         }
 
-        ll::Expected<TypedValue> sortByComparator(const ArrayRef& arr, const FunctionRefPtr& comparator) {
-            DiagnosticEngine diagnostics;
-            bool failed = false;
+        return false;
+    }
 
-            
+    ll::Expected<TypedValue> sortByComparator(const ArrayRef& arr, const FunctionRefPtr& comparator) {
+        DiagnosticEngine diagnostics;
+        bool failed = false;
+
+        
 
 
 
-            auto less = [&](const TypedValue& left, const TypedValue& right) -> bool {
-                if (failed)
-                    return false;
-
-                auto result = ir::VM::callFunctionRef(comparator, { left, right }, {}, diagnostics);
-                if (diagnostics.hasErrors())
-                    failed = true;
-
-                if (auto ri = std::get_if<int>(&result))
-                    return *ri < 0;
-                if (auto rf = std::get_if<float>(&result))
-                    return *rf < 0;
-
-                failed = true;
+        auto less = [&](const TypedValue& left, const TypedValue& right) -> bool {
+            if (failed)
                 return false;
-            };
 
-            std::vector<TypedValue>& elements = arr->elements;
-            const size_t count = elements.size();
-            std::vector<TypedValue> buffer(count);
+            auto result = ir::VM::callFunctionRef(comparator, { left, right }, {}, diagnostics);
+            if (diagnostics.hasErrors())
+                failed = true;
 
-            for (size_t width = 1; width < count && !failed; width *= 2) {
-                for (size_t lo = 0; lo < count; lo += 2 * width) {
-                    size_t mid = std::min(lo + width, count);
-                    size_t hi = std::min(lo + 2 * width, count);
-                    size_t i = lo, j = mid, k = lo;
+            if (auto ri = std::get_if<int>(&result))
+                return *ri < 0;
+            if (auto rf = std::get_if<float>(&result))
+                return *rf < 0;
 
-                    while (i < mid && j < hi) {
-                        if (less(elements[j], elements[i]))
-                            buffer[k++] = std::move(elements[j++]);
-                        else
-                            buffer[k++] = std::move(elements[i++]);
-                    }
-                    while (i < mid)
-                        buffer[k++] = std::move(elements[i++]);
-                    while (j < hi)
+            failed = true;
+            return false;
+        };
+
+        std::vector<TypedValue>& elements = arr->elements;
+        const size_t count = elements.size();
+        std::vector<TypedValue> buffer(count);
+
+        for (size_t width = 1; width < count && !failed; width *= 2) {
+            for (size_t lo = 0; lo < count; lo += 2 * width) {
+                size_t mid = std::min(lo + width, count);
+                size_t hi = std::min(lo + 2 * width, count);
+                size_t i = lo, j = mid, k = lo;
+
+                while (i < mid && j < hi) {
+                    if (less(elements[j], elements[i]))
                         buffer[k++] = std::move(elements[j++]);
+                    else
+                        buffer[k++] = std::move(elements[i++]);
                 }
-
-                std::swap_ranges(elements.begin(), elements.begin() + static_cast<std::ptrdiff_t>(count), buffer.begin());
+                while (i < mid)
+                    buffer[k++] = std::move(elements[i++]);
+                while (j < hi)
+                    buffer[k++] = std::move(elements[j++]);
             }
 
-            if (failed)
-                return ll::makeStringError("Comparator failed or returned a non-numeric value");
-
-            return arr;
+            std::swap_ranges(elements.begin(), elements.begin() + static_cast<std::ptrdiff_t>(count), buffer.begin());
         }
+
+        if (failed)
+            return ll::makeStringError("Comparator failed or returned a non-numeric value");
+
+        return arr;
     }
+}
+
+namespace ArrayClass {
+    using namespace detail;
 
     ll::Expected<TypedValue> length(const TypedValue& self, const CallbackTypeValues&) {
         return static_cast<int>(std::get<ArrayRef>(self)->elements.size());

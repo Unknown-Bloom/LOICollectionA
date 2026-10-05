@@ -13,114 +13,116 @@
 #include "LOICollectionA/include/client/Plugins/loading/LoadingScreenDetector.h"
 #include "LOICollectionA/include/client/Plugins/loading/LoadingAnimationRenderer.h"
 
-namespace LOICollection::client::Plugins::loading {
-    namespace {
-        constexpr float Pi = 3.14159265358979323846f;
+namespace LOICollection::client::Plugins::loading::detail {
+    constexpr float Pi = 3.14159265358979323846f;
 
-        float clamp01(float value) {
-            return value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
-        }
-
-        float lerp(float a, float b, float t) {
-            return a + (b - a) * t;
-        }
-
-        float easeOutCubic(float t) {
-            float inv = 1.0f - clamp01(t);
-            return 1.0f - inv * inv * inv;
-        }
-
-        float easeInCubic(float t) {
-            t = clamp01(t);
-            return t * t * t;
-        }
-
-        float easeInOutSine(float t) {
-            return 0.5f - 0.5f * std::cos(clamp01(t) * Pi);
-        }
-
-        float smoothstep(float t) {
-            t = clamp01(t);
-            return t * t * (3.0f - 2.0f * t);
-        }
-
-        float hash01(int seed) {
-            float x = std::sin(static_cast<float>(seed) * 12.9898f + 78.233f) * 43758.5453f;
-            return x - std::floor(x);
-        }
-
-        ImU32 withAlpha(ImU32 color, float alpha) {
-            auto a = static_cast<unsigned int>((color >> 24) & 0xFFu);
-            a = static_cast<unsigned int>(static_cast<float>(a) * clamp01(alpha));
-
-            return (color & 0x00FFFFFFu) | (static_cast<ImU32>(a) << 24);
-        }
-
-        struct VoxelMetrics {
-            float W; 
-            float T; 
-            float D; 
-            float Gap; 
-            float TopExtent;
-            float BottomExtent;
-        };
-
-        VoxelMetrics voxelMetrics(float cubeSize, float heightScale) {
-            VoxelMetrics m{};
-
-            m.W = cubeSize;
-            m.T = cubeSize * 0.5f;
-            m.D = cubeSize * heightScale;
-            m.Gap = 1.04f;
-
-            m.TopExtent = 2.0f * m.D * m.Gap + m.T;
-            m.BottomExtent = 4.0f * m.T * m.Gap + m.T + m.D;
-
-            return m;
-        }
-
-        void drawCube(
-            ImDrawList* drawList,
-            ImVec2 center,
-            float size,
-            float heightScale,
-            float scale,
-            float alpha,
-            ImU32 topColor,
-            ImU32 leftColor,
-            ImU32 rightColor,
-            float shine
-        ) {
-            float s = size * scale;
-            float w = s;
-            float t = s * 0.5f;
-            float d = s * heightScale;
-
-            ImVec2 tp { center.x, center.y - t };
-            ImVec2 rp { center.x + w, center.y };
-            ImVec2 bp { center.x, center.y + t };
-            ImVec2 lp { center.x - w, center.y };
-
-            drawList->AddQuadFilled(
-                lp,
-                bp,
-                ImVec2(bp.x, bp.y + d),
-                ImVec2(lp.x, lp.y + d),
-                withAlpha(leftColor, alpha)
-            );
-            drawList->AddQuadFilled(
-                rp,
-                bp,
-                ImVec2(bp.x, bp.y + d),
-                ImVec2(rp.x, rp.y + d),
-                withAlpha(rightColor, alpha)
-            );
-            drawList->AddQuadFilled(tp, rp, bp, lp, withAlpha(topColor, alpha));
-
-            if (shine > 0.001f)
-                drawList->AddQuadFilled(tp, rp, bp, lp, withAlpha(IM_COL32(255, 255, 255, 70), alpha * shine));
-        }
+    float clamp01(float value) {
+        return value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
     }
+
+    float lerp(float a, float b, float t) {
+        return a + (b - a) * t;
+    }
+
+    float easeOutCubic(float t) {
+        float inv = 1.0f - clamp01(t);
+        return 1.0f - inv * inv * inv;
+    }
+
+    float easeInCubic(float t) {
+        t = clamp01(t);
+        return t * t * t;
+    }
+
+    float easeInOutSine(float t) {
+        return 0.5f - 0.5f * std::cos(clamp01(t) * Pi);
+    }
+
+    float smoothstep(float t) {
+        t = clamp01(t);
+        return t * t * (3.0f - 2.0f * t);
+    }
+
+    float hash01(int seed) {
+        float x = std::sin(static_cast<float>(seed) * 12.9898f + 78.233f) * 43758.5453f;
+        return x - std::floor(x);
+    }
+
+    ImU32 withAlpha(ImU32 color, float alpha) {
+        auto a = static_cast<unsigned int>((color >> 24) & 0xFFu);
+        a = static_cast<unsigned int>(static_cast<float>(a) * clamp01(alpha));
+
+        return (color & 0x00FFFFFFu) | (static_cast<ImU32>(a) << 24);
+    }
+
+    struct VoxelMetrics {
+        float W; 
+        float T; 
+        float D; 
+        float Gap; 
+        float TopExtent;
+        float BottomExtent;
+    };
+
+    VoxelMetrics voxelMetrics(float cubeSize, float heightScale) {
+        VoxelMetrics m{};
+
+        m.W = cubeSize;
+        m.T = cubeSize * 0.5f;
+        m.D = cubeSize * heightScale;
+        m.Gap = 1.04f;
+
+        m.TopExtent = 2.0f * m.D * m.Gap + m.T;
+        m.BottomExtent = 4.0f * m.T * m.Gap + m.T + m.D;
+
+        return m;
+    }
+
+    void drawCube(
+        ImDrawList* drawList,
+        ImVec2 center,
+        float size,
+        float heightScale,
+        float scale,
+        float alpha,
+        ImU32 topColor,
+        ImU32 leftColor,
+        ImU32 rightColor,
+        float shine
+    ) {
+        float s = size * scale;
+        float w = s;
+        float t = s * 0.5f;
+        float d = s * heightScale;
+
+        ImVec2 tp { center.x, center.y - t };
+        ImVec2 rp { center.x + w, center.y };
+        ImVec2 bp { center.x, center.y + t };
+        ImVec2 lp { center.x - w, center.y };
+
+        drawList->AddQuadFilled(
+            lp,
+            bp,
+            ImVec2(bp.x, bp.y + d),
+            ImVec2(lp.x, lp.y + d),
+            withAlpha(leftColor, alpha)
+        );
+        drawList->AddQuadFilled(
+            rp,
+            bp,
+            ImVec2(bp.x, bp.y + d),
+            ImVec2(rp.x, rp.y + d),
+            withAlpha(rightColor, alpha)
+        );
+        drawList->AddQuadFilled(tp, rp, bp, lp, withAlpha(topColor, alpha));
+
+        if (shine > 0.001f)
+            drawList->AddQuadFilled(tp, rp, bp, lp, withAlpha(IM_COL32(255, 255, 255, 70), alpha * shine));
+    }
+}
+
+namespace LOICollection::client::Plugins::loading {
+    using namespace detail;
 
     struct LoadingAnimationRenderer::Impl {
         std::shared_ptr<ll::io::Logger> Logger;

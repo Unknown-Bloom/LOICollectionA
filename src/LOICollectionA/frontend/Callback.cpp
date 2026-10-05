@@ -8,59 +8,61 @@
 
 #include "LOICollectionA/frontend/Callback.h"
 
-namespace LOICollection::frontend {
-    namespace {
-        bool matchesArgTypes(const CallbackTypeValues& values, const CallbackTypeArgs& types) {
-            if (values.size() != types.size())
-                return false;
+namespace LOICollection::frontend::detail {
+    bool matchesArgTypes(const CallbackTypeValues& values, const CallbackTypeArgs& types) {
+        if (values.size() != types.size())
+            return false;
 
-            for (size_t i = 0; i < values.size(); ++i) {
-                bool matched = std::visit([&types, i](auto&& arg) -> bool {
-                    using T = std::decay_t<decltype(arg)>;
+        for (size_t i = 0; i < values.size(); ++i) {
+            bool matched = std::visit([&types, i](auto&& arg) -> bool {
+                using T = std::decay_t<decltype(arg)>;
 
-                    if constexpr (std::is_same_v<T, int>)
-                        return types[i] == ParamType::INT;
-                    else if constexpr (std::is_same_v<T, float>)
-                        return types[i] == ParamType::FLOAT;
-                    else if constexpr (std::is_same_v<T, std::string>)
-                        return types[i] == ParamType::STRING;
-                    else if constexpr (std::is_same_v<T, bool>)
-                        return types[i] == ParamType::BOOL;
-                    else if constexpr (std::is_same_v<T, ObjectRef>)
-                        return types[i] == ParamType::OBJECT;
-                    else if constexpr (std::is_same_v<T, FunctionRefPtr>)
-                        return types[i] == ParamType::FUNCTION;
-                    else if constexpr (std::is_same_v<T, ArrayRef>)
-                        return types[i] == ParamType::ARRAY;
-                    else
-                        return false;
-                }, values[i]);
-
-                if (!matched)
+                if constexpr (std::is_same_v<T, int>)
+                    return types[i] == ParamType::INT;
+                else if constexpr (std::is_same_v<T, float>)
+                    return types[i] == ParamType::FLOAT;
+                else if constexpr (std::is_same_v<T, std::string>)
+                    return types[i] == ParamType::STRING;
+                else if constexpr (std::is_same_v<T, bool>)
+                    return types[i] == ParamType::BOOL;
+                else if constexpr (std::is_same_v<T, ObjectRef>)
+                    return types[i] == ParamType::OBJECT;
+                else if constexpr (std::is_same_v<T, FunctionRefPtr>)
+                    return types[i] == ParamType::FUNCTION;
+                else if constexpr (std::is_same_v<T, ArrayRef>)
+                    return types[i] == ParamType::ARRAY;
+                else
                     return false;
-            }
+            }, values[i]);
 
-            return true;
+            if (!matched)
+                return false;
         }
 
-        std::string canonicalSignature(const Signature& sig) {
-            std::string out = sig.name + "/" + std::to_string(sig.argsCount) + (sig.isCombination ? "/c" : "/p");
-            for (const auto& arg : sig.args)
-                out += ":" + std::to_string(static_cast<int>(arg));
-
-            return out;
-        }
-
-        std::string canonicalShape(std::vector<std::string> parts) {
-            std::sort(parts.begin(), parts.end());
-
-            std::string out;
-            for (auto& part : parts)
-                out += std::move(part) + "\n";
-
-            return out;
-        }
+        return true;
     }
+
+    std::string canonicalSignature(const Signature& sig) {
+        std::string out = sig.name + "/" + std::to_string(sig.argsCount) + (sig.isCombination ? "/c" : "/p");
+        for (const auto& arg : sig.args)
+            out += ":" + std::to_string(static_cast<int>(arg));
+
+        return out;
+    }
+
+    std::string canonicalShape(std::vector<std::string> parts) {
+        std::sort(parts.begin(), parts.end());
+
+        std::string out;
+        for (auto& part : parts)
+            out += std::move(part) + "\n";
+
+        return out;
+    }
+}
+
+namespace LOICollection::frontend {
+    using namespace detail;
 
     std::vector<ParamType> valuesToTypes(const CallbackTypeValues& values, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
         std::vector<ParamType> argTypes;

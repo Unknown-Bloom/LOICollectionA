@@ -12,19 +12,21 @@
 
 #include "LOICollectionA/frontend/ir/Compiler.h"
 
+namespace LOICollection::frontend::ir::detail {
+    std::string qualifiedName(const VariableNode& node) {
+        return node.isStaticField ? node.staticClassName + "::" + node.name : node.name;
+    }
+
+    std::string qualifiedName(const MemberAccessNode& node) {
+        return node.isStaticAccess
+            ? node.staticClassName + "::" + node.memberName
+            : node.memberName;
+    }
+}
+
 namespace LOICollection::frontend::ir {
 
-    namespace {
-        std::string qualifiedName(const VariableNode& node) {
-            return node.isStaticField ? node.staticClassName + "::" + node.name : node.name;
-        }
-
-        std::string qualifiedName(const MemberAccessNode& node) {
-            return node.isStaticAccess
-                ? node.staticClassName + "::" + node.memberName
-                : node.memberName;
-        }
-    }
+    using namespace detail;
 
     Compiler::Compiler(DiagnosticEngine& diag) : current(std::ref(chunk)), diagnostics(diag) {}
 

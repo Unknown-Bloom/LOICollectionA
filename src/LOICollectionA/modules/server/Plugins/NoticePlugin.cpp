@@ -51,7 +51,7 @@
 
 using I18nUtilsTools::tr;
 
-namespace {
+namespace LOICollection::server::Plugins::detail {
     std::vector<std::string> getSortedNoticeIds(JsonStorage& db) {
         nlohmann::ordered_json data = db.get();
 
@@ -74,6 +74,8 @@ namespace {
 }
 
 namespace LOICollection::server::Plugins {
+    using namespace detail;
+
     enum class NoticeObject;
 
     constexpr inline auto NoticeObjectName = ll::command::enum_name_v<NoticeObject>;

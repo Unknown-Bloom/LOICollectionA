@@ -10,35 +10,37 @@
 
 using namespace LOICollection::frontend;
 
-namespace LOICollection::server::Plugins {
-    namespace {
-        std::string scoreReadString(const ObjectRef& obj, const std::string& field, const std::string& def = "") {
-            auto it = obj->find(field);
-            if (it == nullptr)
-                return def;
-            return std::holds_alternative<std::string>(*it) ? std::get<std::string>(*it) : def;
-        }
-
-        int scoreReadInt(const ObjectRef& obj, const std::string& field, int def = 0) {
-            auto it = obj->find(field);
-            if (it == nullptr)
-                return def;
-            if (std::holds_alternative<int>(*it))
-                return std::get<int>(*it);
-            if (std::holds_alternative<float>(*it))
-                return static_cast<int>(std::get<float>(*it));
+namespace LOICollection::server::Plugins::detail {
+    std::string scoreReadString(const ObjectRef& obj, const std::string& field, const std::string& def = "") {
+        auto it = obj->find(field);
+        if (it == nullptr)
             return def;
-        }
-
-        ObjectRef makeScoreObject(const ScoreRequirement& score) {
-            auto obj = std::make_shared<Object>();
-            obj->className = "ScoreRequirement";
-            obj->classIndex = -1;
-            obj->assign("objective", score.objective);
-            obj->assign("value", score.value);
-            return obj;
-        }
+        return std::holds_alternative<std::string>(*it) ? std::get<std::string>(*it) : def;
     }
+
+    int scoreReadInt(const ObjectRef& obj, const std::string& field, int def = 0) {
+        auto it = obj->find(field);
+        if (it == nullptr)
+            return def;
+        if (std::holds_alternative<int>(*it))
+            return std::get<int>(*it);
+        if (std::holds_alternative<float>(*it))
+            return static_cast<int>(std::get<float>(*it));
+        return def;
+    }
+
+    ObjectRef makeScoreObject(const ScoreRequirement& score) {
+        auto obj = std::make_shared<Object>();
+        obj->className = "ScoreRequirement";
+        obj->classIndex = -1;
+        obj->assign("objective", score.objective);
+        obj->assign("value", score.value);
+        return obj;
+    }
+}
+
+namespace LOICollection::server::Plugins {
+    using namespace detail;
 
     std::vector<ScoreRequirement> readScores(const frontend::ObjectRef& obj, const std::string& field) {
         std::vector<ScoreRequirement> result;

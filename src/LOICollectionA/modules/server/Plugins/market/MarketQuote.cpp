@@ -23,33 +23,35 @@
 
 #include "LOICollectionA/include/server/Plugins/market/MarketQuote.h"
 
-namespace LOICollection::server::Plugins {
-    namespace {
-        constexpr long long DAY_SECONDS = 86'400LL;
-        constexpr long long WINDOW_7D = 7LL * DAY_SECONDS;
-        constexpr long long WINDOW_30D = 30LL * DAY_SECONDS;
+namespace LOICollection::server::Plugins::detail {
+    constexpr long long DAY_SECONDS = 86'400LL;
+    constexpr long long WINDOW_7D = 7LL * DAY_SECONDS;
+    constexpr long long WINDOW_30D = 30LL * DAY_SECONDS;
 
-        int normalizeDays(int days) {
-            return days <= 7 ? 7 : 30;
-        }
-
-        struct QuoteStat {
-            int count7d = 0;
-            int count30d = 0;
-            long long volume7d = 0;
-            long long volume30d = 0;
-            long long tax7d = 0;
-            long long tax30d = 0;
-            int validCount7d = 0;
-            long long validSum7d = 0;
-            int validCount30d = 0;
-            long long validSum30d = 0;
-            int min30d = 0;
-            int max30d = 0;
-            int lastPrice = 0;
-            long long lastTime = 0;
-        };
+    int normalizeDays(int days) {
+        return days <= 7 ? 7 : 30;
     }
+
+    struct QuoteStat {
+        int count7d = 0;
+        int count30d = 0;
+        long long volume7d = 0;
+        long long volume30d = 0;
+        long long tax7d = 0;
+        long long tax30d = 0;
+        int validCount7d = 0;
+        long long validSum7d = 0;
+        int validCount30d = 0;
+        long long validSum30d = 0;
+        int min30d = 0;
+        int max30d = 0;
+        int lastPrice = 0;
+        long long lastTime = 0;
+    };
+}
+
+namespace LOICollection::server::Plugins {
+    using namespace detail;
 
     struct MarketQuote::Impl {
         std::shared_ptr<BlockRepository> db;

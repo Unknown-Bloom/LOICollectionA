@@ -4,34 +4,36 @@
 
 #include "LOICollectionA/frontend/ir/opt/analysis/LoopAnalysis.h"
 
-namespace LOICollection::frontend::ir::opt {
-    namespace {
-        void depthFirstSearch(
-            int block,
-            const ControlFlowGraph& cfg,
-            std::vector<int>& state,
-            std::vector<std::pair<int, int>>& backEdges
-        ) {
-            state[block] = 1;
+namespace LOICollection::frontend::ir::opt::detail {
+    void depthFirstSearch(
+        int block,
+        const ControlFlowGraph& cfg,
+        std::vector<int>& state,
+        std::vector<std::pair<int, int>>& backEdges
+    ) {
+        state[block] = 1;
 
-            for (const int successor : cfg.blocks()[block].successors) {
-                if (successor < 0 || successor >= cfg.size())
-                    continue;
+        for (const int successor : cfg.blocks()[block].successors) {
+            if (successor < 0 || successor >= cfg.size())
+                continue;
 
-                if (state[successor] == 1)
-                    backEdges.emplace_back(block, successor);
-                else if (state[successor] == 0)
-                    depthFirstSearch(successor, cfg, state, backEdges);
-            }
-
-            state[block] = 2;
+            if (state[successor] == 1)
+                backEdges.emplace_back(block, successor);
+            else if (state[successor] == 0)
+                depthFirstSearch(successor, cfg, state, backEdges);
         }
 
-        void append(std::vector<int>& into, int value) {
-            if (std::ranges::find(into, value) == into.end())
-                into.push_back(value);
-        }
+        state[block] = 2;
     }
+
+    void append(std::vector<int>& into, int value) {
+        if (std::ranges::find(into, value) == into.end())
+            into.push_back(value);
+    }
+}
+
+namespace LOICollection::frontend::ir::opt {
+    using namespace detail;
 
     bool NaturalLoop::contains(int block) const {
         return std::ranges::find(blocks, block) != blocks.end();

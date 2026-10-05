@@ -12,7 +12,7 @@
 
 #include "LOICollectionA/data/sqlite/connection/StorageTransaction.h"
 
-namespace {
+namespace LOICollection::data::detail {
     std::string transactionFailedMessage(std::string_view base) {
         if (auto ep = std::current_exception()) {
             try {
@@ -25,6 +25,8 @@ namespace {
         return std::string(base);
     }
 }
+
+using namespace LOICollection::data::detail;
 
 StorageTransaction::StorageTransaction(std::shared_ptr<SQLiteConnection> conn, observer<ConnectionPool> pool)
         : mConnection(std::move(conn)), mPool(pool) {

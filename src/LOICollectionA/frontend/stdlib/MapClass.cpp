@@ -12,50 +12,52 @@
 
 using namespace LOICollection::frontend;
 
-namespace MapClass {
+namespace MapClass::detail {
     struct MapHandle : NativeHandle {
         std::vector<std::pair<TypedValue, TypedValue>> entries;
     };
 
-    namespace {
-        MapHandle& handleOf(const ObjectRef& self) {
-            return *static_cast<MapHandle*>(self->native.get());
+    MapHandle& handleOf(const ObjectRef& self) {
+        return *static_cast<MapHandle*>(self->native.get());
+    }
+
+    bool keyEquals(const TypedValue& left, const TypedValue& right) {
+        if (auto li = std::get_if<int>(&left)) {
+            if (auto ri = std::get_if<int>(&right)) return *li == *ri;
+            if (auto rf = std::get_if<float>(&right)) return *li == *rf;
+            return false;
         }
-
-        bool keyEquals(const TypedValue& left, const TypedValue& right) {
-            if (auto li = std::get_if<int>(&left)) {
-                if (auto ri = std::get_if<int>(&right)) return *li == *ri;
-                if (auto rf = std::get_if<float>(&right)) return *li == *rf;
-                return false;
-            }
-            if (auto lf = std::get_if<float>(&left)) {
-                if (auto ri = std::get_if<int>(&right)) return *lf == *ri;
-                if (auto rf = std::get_if<float>(&right)) return *lf == *rf;
-                return false;
-            }
-            if (auto ls = std::get_if<std::string>(&left)) {
-                if (auto rs = std::get_if<std::string>(&right)) return *ls == *rs;
-                return false;
-            }
-            if (auto lb = std::get_if<bool>(&left)) {
-                if (auto rb = std::get_if<bool>(&right)) return *lb == *rb;
-                return false;
-            }
-
+        if (auto lf = std::get_if<float>(&left)) {
+            if (auto ri = std::get_if<int>(&right)) return *lf == *ri;
+            if (auto rf = std::get_if<float>(&right)) return *lf == *rf;
+            return false;
+        }
+        if (auto ls = std::get_if<std::string>(&left)) {
+            if (auto rs = std::get_if<std::string>(&right)) return *ls == *rs;
+            return false;
+        }
+        if (auto lb = std::get_if<bool>(&left)) {
+            if (auto rb = std::get_if<bool>(&right)) return *lb == *rb;
             return false;
         }
 
-        void syncFields(const ObjectRef& self) {
-            auto& handle = handleOf(self);
-
-            auto keys = std::make_shared<ArrayValue>();
-            keys->elements.reserve(handle.entries.size());
-            for (const auto& [key, value] : handle.entries)
-                keys->elements.push_back(key);
-
-            self->assign("keys", keys);
-        }
+        return false;
     }
+
+    void syncFields(const ObjectRef& self) {
+        auto& handle = handleOf(self);
+
+        auto keys = std::make_shared<ArrayValue>();
+        keys->elements.reserve(handle.entries.size());
+        for (const auto& [key, value] : handle.entries)
+            keys->elements.push_back(key);
+
+        self->assign("keys", keys);
+    }
+}
+
+namespace MapClass {
+    using namespace detail;
 
     ll::Expected<ObjectRef> makeMap(const CallbackTypeValues&) {
         auto handle = std::make_shared<MapHandle>();

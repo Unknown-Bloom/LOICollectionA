@@ -2,12 +2,14 @@
 
 #include "LOICollectionA/frontend/ir/opt/passes/DeadStorePass.h"
 
-namespace LOICollection::frontend::ir::opt {
-    namespace {
-        bool closesBlock(MirOp op) {
-            return isJump(op) || isTerminator(op) || canWriteVariables(op);
-        }
+namespace LOICollection::frontend::ir::opt::detail {
+    bool closesBlock(MirOp op) {
+        return isJump(op) || isTerminator(op) || canWriteVariables(op);
     }
+}
+
+namespace LOICollection::frontend::ir::opt {
+    using namespace detail;
 
     void DeadStorePass::run(bool enabled) {
         mPending.clear();

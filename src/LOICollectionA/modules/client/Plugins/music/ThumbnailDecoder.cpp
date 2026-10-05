@@ -11,32 +11,34 @@
 
 using Microsoft::WRL::ComPtr;
 
-namespace LOICollection::client::Plugins::music {
-    namespace {
-        struct ComInitializer {
-            ComInitializer() {
-                static_cast<void>(::CoInitializeEx(nullptr, COINIT_MULTITHREADED));
-            }
-        };
-
-        IWICImagingFactory* imagingFactory() {
-            static ComInitializer              initializer;
-            static ComPtr<IWICImagingFactory> factory = []() -> ComPtr<IWICImagingFactory> {
-                ComPtr<IWICImagingFactory> instance;
-
-                static_cast<void>(::CoCreateInstance(
-                    CLSID_WICImagingFactory2,
-                    nullptr,
-                    CLSCTX_INPROC_SERVER,
-                    IID_PPV_ARGS(instance.GetAddressOf())
-                ));
-
-                return instance;
-            }();
-
-            return factory.Get();
+namespace LOICollection::client::Plugins::music::detail {
+    struct ComInitializer {
+        ComInitializer() {
+            static_cast<void>(::CoInitializeEx(nullptr, COINIT_MULTITHREADED));
         }
+    };
+
+    IWICImagingFactory* imagingFactory() {
+        static ComInitializer              initializer;
+        static ComPtr<IWICImagingFactory> factory = []() -> ComPtr<IWICImagingFactory> {
+            ComPtr<IWICImagingFactory> instance;
+
+            static_cast<void>(::CoCreateInstance(
+                CLSID_WICImagingFactory2,
+                nullptr,
+                CLSCTX_INPROC_SERVER,
+                IID_PPV_ARGS(instance.GetAddressOf())
+            ));
+
+            return instance;
+        }();
+
+        return factory.Get();
     }
+}
+
+namespace LOICollection::client::Plugins::music {
+    using namespace detail;
 
     bool decodeThumbnail(const std::vector<uint8_t>& source, uint32_t maxEdge, NowPlayingArtwork& artwork) {
         artwork = NowPlayingArtwork{};

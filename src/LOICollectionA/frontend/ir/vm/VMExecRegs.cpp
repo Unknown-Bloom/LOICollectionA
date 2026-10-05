@@ -16,19 +16,21 @@
 
 #include "LOICollectionA/frontend/ir/VM.h"
 
+namespace LOICollection::frontend::ir::detail {
+    bool splitStaticMemberName(const std::string& name, std::string& className, std::string& fieldName) {
+        auto pos = name.find("::");
+        if (pos == std::string::npos || pos == 0 || pos + 2 >= name.size())
+            return false;
+
+        className = name.substr(0, pos);
+        fieldName = name.substr(pos + 2);
+        return !className.empty() && !fieldName.empty();
+    }
+}
+
 namespace LOICollection::frontend::ir {
 
-    namespace {
-        bool splitStaticMemberName(const std::string& name, std::string& className, std::string& fieldName) {
-            auto pos = name.find("::");
-            if (pos == std::string::npos || pos == 0 || pos + 2 >= name.size())
-                return false;
-
-            className = name.substr(0, pos);
-            fieldName = name.substr(pos + 2);
-            return !className.empty() && !fieldName.empty();
-        }
-    }
+    using namespace detail;
 
     void VM::storeVariable(
         const MirChunk& chunk,

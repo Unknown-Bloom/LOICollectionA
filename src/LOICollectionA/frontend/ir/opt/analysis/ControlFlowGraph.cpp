@@ -4,12 +4,14 @@
 
 #include "LOICollectionA/frontend/ir/opt/analysis/ControlFlowGraph.h"
 
-namespace LOICollection::frontend::ir::opt {
-    namespace {
-        int jumpTarget(const MirInstr& instr, int at) {
-            return at + 1 + instr.operand;
-        }
+namespace LOICollection::frontend::ir::opt::detail {
+    int jumpTarget(const MirInstr& instr, int at) {
+        return at + 1 + instr.operand;
     }
+}
+
+namespace LOICollection::frontend::ir::opt {
+    using namespace detail;
 
     std::vector<int> ControlFlowGraph::leaders(const std::vector<MirInstr>& code) {
         const int size = static_cast<int>(code.size());

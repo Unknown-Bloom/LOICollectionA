@@ -29,471 +29,473 @@
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-namespace LOICollection::client::display::overlay {
-    void removePatches();
+namespace LOICollection::client::display::overlay::detail {
+    struct OverlayHookTargets {
+        void* Present {};
+        void* Present1 {};
+        void* ResizeBuffers {};
+        void* ExecuteCommandLists {};
+    };
 
-    namespace {
-        struct OverlayHookTargets {
-            void* Present {};
-            void* Present1 {};
-            void* ResizeBuffers {};
-            void* ExecuteCommandLists {};
-        };
+    struct OverlayHookOriginals {
+        ll::memory::FuncPtr Present {};
+        ll::memory::FuncPtr Present1 {};
+        ll::memory::FuncPtr ResizeBuffers {};
+        ll::memory::FuncPtr ExecuteCommandLists {};
+    };
 
-        struct OverlayHookOriginals {
-            ll::memory::FuncPtr Present {};
-            ll::memory::FuncPtr Present1 {};
-            ll::memory::FuncPtr ResizeBuffers {};
-            ll::memory::FuncPtr ExecuteCommandLists {};
-        };
+    OverlayTuning g_tuning;
 
-        OverlayTuning g_tuning;
+    OverlayHookTargets   g_targets;
+    OverlayHookOriginals g_originals;
 
-        OverlayHookTargets   g_targets;
-        OverlayHookOriginals g_originals;
+    ID3D11Device*       g_device { nullptr };
+    ID3D11DeviceContext* g_context { nullptr };
+    ID3D11On12Device*   g_d3d11On12 { nullptr };
+    ID3D12CommandQueue* g_gameQueue { nullptr };
 
-        ID3D11Device*       g_device { nullptr };
-        ID3D11DeviceContext* g_context { nullptr };
-        ID3D11On12Device*   g_d3d11On12 { nullptr };
-        ID3D12CommandQueue* g_gameQueue { nullptr };
+    HWND    g_window { nullptr };
+    WNDPROC g_originalWndProc { nullptr };
+    bool    g_imguiReady { false };
 
-        HWND    g_window { nullptr };
-        WNDPROC g_originalWndProc { nullptr };
-        bool    g_imguiReady { false };
+    std::atomic_bool g_hooksInstalled { false };
+    std::atomic_bool g_initializing { false };
+    std::atomic_bool g_shuttingDown { false };
 
-        std::atomic_bool g_hooksInstalled { false };
-        std::atomic_bool g_initializing { false };
-        std::atomic_bool g_shuttingDown { false };
+    std::atomic_uint g_hookConsumers { 0 };
 
-        std::atomic_uint g_hookConsumers { 0 };
+    std::atomic<ULONGLONG> g_lastFrameTick { 0 };
 
-        std::atomic<ULONGLONG> g_lastFrameTick { 0 };
+    ImFont* g_titleFont { nullptr };
+    ImFont* g_artistFont { nullptr };
 
-        ImFont* g_titleFont { nullptr };
-        ImFont* g_artistFont { nullptr };
+    std::mutex                                            g_renderCallbackMutex;
+    std::vector<std::pair<RenderCallbackHandle, RenderCallback>> g_renderCallbacks;
+    std::atomic<RenderCallbackHandle>                     g_nextCallbackHandle { 1 };
 
-        std::mutex                                            g_renderCallbackMutex;
-        std::vector<std::pair<RenderCallbackHandle, RenderCallback>> g_renderCallbacks;
-        std::atomic<RenderCallbackHandle>                     g_nextCallbackHandle { 1 };
+    std::mutex      g_inputBlockerMutex;
+    InputBlocker    g_inputBlocker;
 
-        std::mutex      g_inputBlockerMutex;
-        InputBlocker    g_inputBlocker;
+    bool shouldBlockMessage(UINT message) {
+        switch (message) {
+            case WM_MOUSEMOVE:
+            case WM_LBUTTONDOWN:
+            case WM_LBUTTONUP:
+            case WM_LBUTTONDBLCLK:
+            case WM_RBUTTONDOWN:
+            case WM_RBUTTONUP:
+            case WM_RBUTTONDBLCLK:
+            case WM_MBUTTONDOWN:
+            case WM_MBUTTONUP:
+            case WM_MBUTTONDBLCLK:
+            case WM_XBUTTONDOWN:
+            case WM_XBUTTONUP:
+            case WM_XBUTTONDBLCLK:
+            case WM_MOUSEWHEEL:
+            case WM_MOUSEHWHEEL:
+            case WM_KEYDOWN:
+            case WM_KEYUP:
+            case WM_SYSKEYDOWN:
+            case WM_SYSKEYUP:
+            case WM_CHAR:
+            case WM_SYSCHAR:
+                return true;
+            default:
+                return false;
+        }
+    }
 
-        bool shouldBlockMessage(UINT message) {
-            switch (message) {
-                case WM_MOUSEMOVE:
-                case WM_LBUTTONDOWN:
-                case WM_LBUTTONUP:
-                case WM_LBUTTONDBLCLK:
-                case WM_RBUTTONDOWN:
-                case WM_RBUTTONUP:
-                case WM_RBUTTONDBLCLK:
-                case WM_MBUTTONDOWN:
-                case WM_MBUTTONUP:
-                case WM_MBUTTONDBLCLK:
-                case WM_XBUTTONDOWN:
-                case WM_XBUTTONUP:
-                case WM_XBUTTONDBLCLK:
-                case WM_MOUSEWHEEL:
-                case WM_MOUSEHWHEEL:
-                case WM_KEYDOWN:
-                case WM_KEYUP:
-                case WM_SYSKEYDOWN:
-                case WM_SYSKEYUP:
-                case WM_CHAR:
-                case WM_SYSCHAR:
-                    return true;
-                default:
-                    return false;
-            }
+    void dispatchRenderCallbacks(float deltaTime, float width, float height) {
+        std::vector<RenderCallback> snapshot;
+
+        {
+            std::scoped_lock lock(g_renderCallbackMutex);
+
+            snapshot.reserve(g_renderCallbacks.size());
+
+            for (auto const& entry : g_renderCallbacks)
+                snapshot.push_back(entry.second);
         }
 
-        void dispatchRenderCallbacks(float deltaTime, float width, float height) {
-            std::vector<RenderCallback> snapshot;
-
-            {
-                std::scoped_lock lock(g_renderCallbackMutex);
-
-                snapshot.reserve(g_renderCallbacks.size());
-
-                for (auto const& entry : g_renderCallbacks)
-                    snapshot.push_back(entry.second);
-            }
-
-            for (auto const& callback : snapshot) {
-                if (callback)
-                    callback(deltaTime, width, height);
-            }
+        for (auto const& callback : snapshot) {
+            if (callback)
+                callback(deltaTime, width, height);
         }
+    }
 
-        void applyFonts(ImGuiIO& io) {
-            struct FontSource {
-                char const*    path;
-                ImWchar const* ranges;
-            };
+    void applyFonts(ImGuiIO& io) {
+        struct FontSource {
+            char const*    path;
+            ImWchar const* ranges;
+        };
 
-            FontSource const sources[] = {
-                { R"(C:\Windows\Fonts\segoeui.ttf)", nullptr                              },
-                { R"(C:\Windows\Fonts\msyh.ttc)",    io.Fonts->GetGlyphRangesChineseFull() },
-                { R"(C:\Windows\Fonts\meiryo.ttc)",  io.Fonts->GetGlyphRangesJapanese()    },
-                { R"(C:\Windows\Fonts\malgun.ttf)",  io.Fonts->GetGlyphRangesKorean()      },
-            };
+        FontSource const sources[] = {
+            { R"(C:\Windows\Fonts\segoeui.ttf)", nullptr                              },
+            { R"(C:\Windows\Fonts\msyh.ttc)",    io.Fonts->GetGlyphRangesChineseFull() },
+            { R"(C:\Windows\Fonts\meiryo.ttc)",  io.Fonts->GetGlyphRangesJapanese()    },
+            { R"(C:\Windows\Fonts\malgun.ttf)",  io.Fonts->GetGlyphRangesKorean()      },
+        };
 
-            auto build = [&sources, &io](float size) -> ImFont* {
-                ImFontConfig config;
-                config.OversampleH = 1;
-                config.OversampleV = 1;
+        auto build = [&sources, &io](float size) -> ImFont* {
+            ImFontConfig config;
+            config.OversampleH = 1;
+            config.OversampleV = 1;
 
-                ImFont* primary { nullptr };
+            ImFont* primary { nullptr };
 
-                for (auto const& source : sources) {
-                    if (!std::filesystem::exists(source.path))
-                        continue;
+            for (auto const& source : sources) {
+                if (!std::filesystem::exists(source.path))
+                    continue;
 
-                    ImFont* font = io.Fonts->AddFontFromFileTTF(source.path, size, &config, source.ranges);
+                ImFont* font = io.Fonts->AddFontFromFileTTF(source.path, size, &config, source.ranges);
 
-                    if (font == nullptr)
-                        continue;
-
-                    if (primary == nullptr)
-                        primary = font;
-
-                    config.MergeMode = true;
-                }
+                if (font == nullptr)
+                    continue;
 
                 if (primary == nullptr)
-                    primary = io.Fonts->AddFontDefault();
+                    primary = font;
 
-                return primary;
-            };
+                config.MergeMode = true;
+            }
 
-            g_titleFont  = build(g_tuning.TitleFontSize);
-            g_artistFont = build(g_tuning.ArtistFontSize);
+            if (primary == nullptr)
+                primary = io.Fonts->AddFontDefault();
+
+            return primary;
+        };
+
+        g_titleFont  = build(g_tuning.TitleFontSize);
+        g_artistFont = build(g_tuning.ArtistFontSize);
+    }
+
+    LRESULT __stdcall wndProcHook(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
+        if (g_imguiReady && !g_shuttingDown.load(std::memory_order_acquire))
+            ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam);
+
+        if (shouldBlockMessage(message)) {
+            InputBlocker blocker;
+
+            {
+                std::scoped_lock lock(g_inputBlockerMutex);
+                blocker = g_inputBlocker;
+            }
+
+            if (blocker && blocker())
+                return 0;
         }
 
-        LRESULT __stdcall wndProcHook(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
-            if (g_imguiReady && !g_shuttingDown.load(std::memory_order_acquire))
-                ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam);
+        return ::CallWindowProcW(g_originalWndProc, hWnd, message, wParam, lParam);
+    }
 
-            if (shouldBlockMessage(message)) {
-                InputBlocker blocker;
+    void initializeOnPresent(IDXGISwapChain* swapChain) {
+        if (g_initializing.exchange(true))
+            return;
 
-                {
-                    std::scoped_lock lock(g_inputBlockerMutex);
-                    blocker = g_inputBlocker;
+        if (FAILED(swapChain->GetDevice(__uuidof(ID3D11Device), reinterpret_cast<void**>(&g_device)))) {
+            if (g_gameQueue != nullptr) {
+                ID3D12Device* d3d12Device { nullptr };
+
+                if (SUCCEEDED(swapChain->GetDevice(__uuidof(ID3D12Device), reinterpret_cast<void**>(&d3d12Device)))) {
+                    ::D3D11On12CreateDevice(
+                        d3d12Device,
+                        D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                        nullptr,
+                        0,
+                        reinterpret_cast<IUnknown**>(&g_gameQueue),
+                        1,
+                        0,
+                        &g_device,
+                        &g_context,
+                        nullptr
+                    );
+
+                    if (g_device != nullptr)
+                        g_device->QueryInterface(__uuidof(ID3D11On12Device), reinterpret_cast<void**>(&g_d3d11On12));
+
+                    d3d12Device->Release();
                 }
-
-                if (blocker && blocker())
-                    return 0;
             }
-
-            return ::CallWindowProcW(g_originalWndProc, hWnd, message, wParam, lParam);
+        } else {
+            g_device->GetImmediateContext(&g_context);
         }
 
-        void initializeOnPresent(IDXGISwapChain* swapChain) {
-            if (g_initializing.exchange(true))
-                return;
+        if (g_device == nullptr) {
+            g_initializing.store(false);
 
-            if (FAILED(swapChain->GetDevice(__uuidof(ID3D11Device), reinterpret_cast<void**>(&g_device)))) {
-                if (g_gameQueue != nullptr) {
-                    ID3D12Device* d3d12Device { nullptr };
-
-                    if (SUCCEEDED(swapChain->GetDevice(__uuidof(ID3D12Device), reinterpret_cast<void**>(&d3d12Device)))) {
-                        ::D3D11On12CreateDevice(
-                            d3d12Device,
-                            D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-                            nullptr,
-                            0,
-                            reinterpret_cast<IUnknown**>(&g_gameQueue),
-                            1,
-                            0,
-                            &g_device,
-                            &g_context,
-                            nullptr
-                        );
-
-                        if (g_device != nullptr)
-                            g_device->QueryInterface(__uuidof(ID3D11On12Device), reinterpret_cast<void**>(&g_d3d11On12));
-
-                        d3d12Device->Release();
-                    }
-                }
-            } else {
-                g_device->GetImmediateContext(&g_context);
-            }
-
-            if (g_device == nullptr) {
-                g_initializing.store(false);
-
-                return;
-            }
-
-            DXGI_SWAP_CHAIN_DESC description {};
-            swapChain->GetDesc(&description);
-
-            g_window = description.OutputWindow != nullptr ? description.OutputWindow : ::FindWindowW(L"Minecraft", nullptr);
-
-            if (g_window != nullptr)
-                g_originalWndProc = reinterpret_cast<WNDPROC>(
-                    ::SetWindowLongPtrW(g_window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(wndProcHook))
-                );
-
-            ImGui::CreateContext();
-
-            ImGuiIO& io = ImGui::GetIO();
-            io.IniFilename = nullptr;
-
-            applyFonts(io);
-
-            ImGui_ImplWin32_Init(g_window);
-            ImGui_ImplDX11_Init(g_device, g_context);
-
-            g_imguiReady = true;
+            return;
         }
 
-        void drawFrame(ID3D11RenderTargetView* renderTarget, float deltaTime, float width, float height) {
-            g_context->OMSetRenderTargets(1, &renderTarget, nullptr);
+        DXGI_SWAP_CHAIN_DESC description {};
+        swapChain->GetDesc(&description);
 
-            ImGui_ImplDX11_NewFrame();
-            ImGui_ImplWin32_NewFrame();
-            ImGui::NewFrame();
+        g_window = description.OutputWindow != nullptr ? description.OutputWindow : ::FindWindowW(L"Minecraft", nullptr);
 
-            dispatchRenderCallbacks(deltaTime, width, height);
+        if (g_window != nullptr)
+            g_originalWndProc = reinterpret_cast<WNDPROC>(
+                ::SetWindowLongPtrW(g_window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(wndProcHook))
+            );
 
-            ImGui::Render();
-            ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+        ImGui::CreateContext();
 
-            ID3D11RenderTargetView* nullTarget { nullptr };
-            g_context->OMSetRenderTargets(1, &nullTarget, nullptr);
-        }
+        ImGuiIO& io = ImGui::GetIO();
+        io.IniFilename = nullptr;
 
-        void renderImGui(IDXGISwapChain* swapChain) {
-            if (!g_imguiReady || g_shuttingDown.load(std::memory_order_acquire))
-                return;
+        applyFonts(io);
 
-            DXGI_SWAP_CHAIN_DESC description {};
-            swapChain->GetDesc(&description);
+        ImGui_ImplWin32_Init(g_window);
+        ImGui_ImplDX11_Init(g_device, g_context);
 
-            float width  = static_cast<float>(description.BufferDesc.Width);
-            float height = static_cast<float>(description.BufferDesc.Height);
+        g_imguiReady = true;
+    }
 
-            if (width <= 0.0f || height <= 0.0f)
-                return;
+    void drawFrame(ID3D11RenderTargetView* renderTarget, float deltaTime, float width, float height) {
+        g_context->OMSetRenderTargets(1, &renderTarget, nullptr);
 
-            ULONGLONG now       = ::GetTickCount64();
-            ULONGLONG previous  = g_lastFrameTick.exchange(now);
-            float     deltaTime = previous == 0 ? 0.0f : static_cast<float>(now - previous) / 1000.0f;
+        ImGui_ImplDX11_NewFrame();
+        ImGui_ImplWin32_NewFrame();
+        ImGui::NewFrame();
 
-            if (deltaTime > static_cast<float>(g_tuning.MaxFrameDeltaTime))
-                deltaTime = static_cast<float>(g_tuning.MaxFrameDeltaTime);
+        dispatchRenderCallbacks(deltaTime, width, height);
 
-            if (g_d3d11On12 != nullptr) {
-                UINT bufferIndex = 0;
+        ImGui::Render();
+        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 
-                IDXGISwapChain3* swapChain3 { nullptr };
+        ID3D11RenderTargetView* nullTarget { nullptr };
+        g_context->OMSetRenderTargets(1, &nullTarget, nullptr);
+    }
 
-                if (SUCCEEDED(swapChain->QueryInterface(__uuidof(IDXGISwapChain3), reinterpret_cast<void**>(&swapChain3)))) {
-                    bufferIndex = swapChain3->GetCurrentBackBufferIndex();
-                    swapChain3->Release();
-                }
+    void renderImGui(IDXGISwapChain* swapChain) {
+        if (!g_imguiReady || g_shuttingDown.load(std::memory_order_acquire))
+            return;
 
-                ID3D12Resource* backBuffer { nullptr };
+        DXGI_SWAP_CHAIN_DESC description {};
+        swapChain->GetDesc(&description);
 
-                if (FAILED(swapChain->GetBuffer(bufferIndex, __uuidof(ID3D12Resource), reinterpret_cast<void**>(&backBuffer))))
-                    return;
+        float width  = static_cast<float>(description.BufferDesc.Width);
+        float height = static_cast<float>(description.BufferDesc.Height);
 
-                ID3D11Resource*    wrapped { nullptr };
-                D3D11_RESOURCE_FLAGS flags { D3D11_BIND_RENDER_TARGET };
+        if (width <= 0.0f || height <= 0.0f)
+            return;
 
-                if (SUCCEEDED(g_d3d11On12->CreateWrappedResource(
-                        backBuffer,
-                        &flags,
-                        D3D12_RESOURCE_STATE_PRESENT,
-                        D3D12_RESOURCE_STATE_PRESENT,
-                        __uuidof(ID3D11Resource),
-                        reinterpret_cast<void**>(&wrapped)
-                    ))) {
-                    ID3D11RenderTargetView* renderTarget { nullptr };
-                    g_device->CreateRenderTargetView(wrapped, nullptr, &renderTarget);
+        ULONGLONG now       = ::GetTickCount64();
+        ULONGLONG previous  = g_lastFrameTick.exchange(now);
+        float     deltaTime = previous == 0 ? 0.0f : static_cast<float>(now - previous) / 1000.0f;
 
-                    g_d3d11On12->AcquireWrappedResources(&wrapped, 1);
+        if (deltaTime > static_cast<float>(g_tuning.MaxFrameDeltaTime))
+            deltaTime = static_cast<float>(g_tuning.MaxFrameDeltaTime);
 
-                    if (renderTarget != nullptr)
-                        drawFrame(renderTarget, deltaTime, width, height);
+        if (g_d3d11On12 != nullptr) {
+            UINT bufferIndex = 0;
 
-                    g_d3d11On12->ReleaseWrappedResources(&wrapped, 1);
-                    wrapped->Release();
+            IDXGISwapChain3* swapChain3 { nullptr };
 
-                    if (renderTarget != nullptr)
-                        renderTarget->Release();
-
-                    g_context->Flush();
-                }
-
-                backBuffer->Release();
-
-                return;
+            if (SUCCEEDED(swapChain->QueryInterface(__uuidof(IDXGISwapChain3), reinterpret_cast<void**>(&swapChain3)))) {
+                bufferIndex = swapChain3->GetCurrentBackBufferIndex();
+                swapChain3->Release();
             }
 
-            ID3D11Texture2D* backBuffer { nullptr };
+            ID3D12Resource* backBuffer { nullptr };
 
-            if (FAILED(swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backBuffer))))
+            if (FAILED(swapChain->GetBuffer(bufferIndex, __uuidof(ID3D12Resource), reinterpret_cast<void**>(&backBuffer))))
                 return;
 
-            ID3D11RenderTargetView* renderTarget { nullptr };
-            g_device->CreateRenderTargetView(backBuffer, nullptr, &renderTarget);
-            backBuffer->Release();
+            ID3D11Resource*    wrapped { nullptr };
+            D3D11_RESOURCE_FLAGS flags { D3D11_BIND_RENDER_TARGET };
 
-            if (renderTarget != nullptr) {
-                drawFrame(renderTarget, deltaTime, width, height);
-                renderTarget->Release();
-            }
-        }
+            if (SUCCEEDED(g_d3d11On12->CreateWrappedResource(
+                    backBuffer,
+                    &flags,
+                    D3D12_RESOURCE_STATE_PRESENT,
+                    D3D12_RESOURCE_STATE_PRESENT,
+                    __uuidof(ID3D11Resource),
+                    reinterpret_cast<void**>(&wrapped)
+                ))) {
+                ID3D11RenderTargetView* renderTarget { nullptr };
+                g_device->CreateRenderTargetView(wrapped, nullptr, &renderTarget);
 
-        void releaseResources() {
-            if (g_imguiReady) {
-                ImGui_ImplDX11_Shutdown();
-                ImGui_ImplWin32_Shutdown();
-                ImGui::DestroyContext();
+                g_d3d11On12->AcquireWrappedResources(&wrapped, 1);
 
-                g_imguiReady = false;
-            }
+                if (renderTarget != nullptr)
+                    drawFrame(renderTarget, deltaTime, width, height);
 
-            if (g_context != nullptr) {
-                ID3D11RenderTargetView* nullTarget { nullptr };
-                g_context->OMSetRenderTargets(1, &nullTarget, nullptr);
-                g_context->ClearState();
+                g_d3d11On12->ReleaseWrappedResources(&wrapped, 1);
+                wrapped->Release();
+
+                if (renderTarget != nullptr)
+                    renderTarget->Release();
+
                 g_context->Flush();
             }
 
-            if (g_d3d11On12 != nullptr) {
-                g_d3d11On12->Release();
-                g_d3d11On12 = nullptr;
-            }
+            backBuffer->Release();
 
-            if (g_context != nullptr) {
-                g_context->Release();
-                g_context = nullptr;
-            }
-
-            if (g_device != nullptr) {
-                g_device->Release();
-                g_device = nullptr;
-            }
-
-            if (g_gameQueue != nullptr) {
-                g_gameQueue->Release();
-                g_gameQueue = nullptr;
-            }
+            return;
         }
 
-        bool patchHook(void*& target, void* address, ll::memory::FuncPtr detour, ll::memory::FuncPtr* original) {
-            if (target != nullptr)
-                return true;
+        ID3D11Texture2D* backBuffer { nullptr };
 
-            if (ll::memory::hook(address, detour, original, g_tuning.Priority, g_tuning.SuspendThreads) == 0)
-                return false;
+        if (FAILED(swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backBuffer))))
+            return;
 
-            target = address;
+        ID3D11RenderTargetView* renderTarget { nullptr };
+        g_device->CreateRenderTargetView(backBuffer, nullptr, &renderTarget);
+        backBuffer->Release();
 
-            return true;
-        }
-
-        bool installHooks() {
-            HWND window = ::FindWindowW(L"Minecraft", nullptr);
-            if (window == nullptr)
-                window = ::GetForegroundWindow();
-
-            if (window == nullptr)
-                return false;
-
-            DXGI_SWAP_CHAIN_DESC description {};
-            description.BufferCount       = 1;
-            description.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-            description.BufferUsage       = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-            description.OutputWindow      = window;
-            description.SampleDesc.Count  = 1;
-            description.Windowed          = TRUE;
-            description.SwapEffect        = DXGI_SWAP_EFFECT_DISCARD;
-
-            D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
-
-            ID3D11Device*        dummyDevice { nullptr };
-            IDXGISwapChain*      dummySwapChain { nullptr };
-            ID3D11DeviceContext* dummyContext { nullptr };
-
-            HRESULT result = ::D3D11CreateDeviceAndSwapChain(
-                nullptr,
-                D3D_DRIVER_TYPE_HARDWARE,
-                nullptr,
-                0,
-                &featureLevel,
-                1,
-                D3D11_SDK_VERSION,
-                &description,
-                &dummySwapChain,
-                &dummyDevice,
-                nullptr,
-                &dummyContext
-            );
-
-            if (SUCCEEDED(result) && dummySwapChain != nullptr) {
-                void** vtable = *reinterpret_cast<void***>(dummySwapChain);
-
-                patchPresent(vtable[g_tuning.SwapChainPresentIndex]);
-                patchResizeBuffers(vtable[g_tuning.SwapChainResizeBuffersIndex]);
-
-                IDXGISwapChain1* dummySwapChain1 { nullptr };
-
-                if (SUCCEEDED(dummySwapChain->QueryInterface(__uuidof(IDXGISwapChain1), reinterpret_cast<void**>(&dummySwapChain1)))) {
-                    patchPresent1((*reinterpret_cast<void***>(dummySwapChain1))[g_tuning.SwapChainPresent1Index]);
-
-                    dummySwapChain1->Release();
-                }
-
-                dummySwapChain->Release();
-                dummyDevice->Release();
-                dummyContext->Release();
-            }
-
-            ID3D12Device* d3d12Device { nullptr };
-
-            if (SUCCEEDED(::D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), reinterpret_cast<void**>(&d3d12Device)))) {
-                D3D12_COMMAND_QUEUE_DESC queueDescription {};
-                queueDescription.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-
-                ID3D12CommandQueue* dummyQueue { nullptr };
-
-                if (SUCCEEDED(d3d12Device->CreateCommandQueue(&queueDescription, __uuidof(ID3D12CommandQueue), reinterpret_cast<void**>(&dummyQueue)))) {
-                    patchExecuteCommandLists((*reinterpret_cast<void***>(dummyQueue))[g_tuning.CommandQueueExecuteCommandListsIndex]);
-
-                    dummyQueue->Release();
-                }
-
-                d3d12Device->Release();
-            }
-
-            return true;
-        }
-
-        void uninstallHooks() {
-            g_shuttingDown.store(true, std::memory_order_release);
-
-            ::Sleep(static_cast<DWORD>(g_tuning.ShutdownWaitMs));
-
-            if (g_originalWndProc != nullptr && g_window != nullptr) {
-                ::SetWindowLongPtrW(g_window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(g_originalWndProc));
-                g_originalWndProc = nullptr;
-            }
-
-            releaseResources();
-
-            removePatches();
-
-            g_shuttingDown.store(false, std::memory_order_release);
-            g_lastFrameTick.store(0, std::memory_order_release);
+        if (renderTarget != nullptr) {
+            drawFrame(renderTarget, deltaTime, width, height);
+            renderTarget->Release();
         }
     }
+
+    void releaseResources() {
+        if (g_imguiReady) {
+            ImGui_ImplDX11_Shutdown();
+            ImGui_ImplWin32_Shutdown();
+            ImGui::DestroyContext();
+
+            g_imguiReady = false;
+        }
+
+        if (g_context != nullptr) {
+            ID3D11RenderTargetView* nullTarget { nullptr };
+            g_context->OMSetRenderTargets(1, &nullTarget, nullptr);
+            g_context->ClearState();
+            g_context->Flush();
+        }
+
+        if (g_d3d11On12 != nullptr) {
+            g_d3d11On12->Release();
+            g_d3d11On12 = nullptr;
+        }
+
+        if (g_context != nullptr) {
+            g_context->Release();
+            g_context = nullptr;
+        }
+
+        if (g_device != nullptr) {
+            g_device->Release();
+            g_device = nullptr;
+        }
+
+        if (g_gameQueue != nullptr) {
+            g_gameQueue->Release();
+            g_gameQueue = nullptr;
+        }
+    }
+
+    bool patchHook(void*& target, void* address, ll::memory::FuncPtr detour, ll::memory::FuncPtr* original) {
+        if (target != nullptr)
+            return true;
+
+        if (ll::memory::hook(address, detour, original, g_tuning.Priority, g_tuning.SuspendThreads) == 0)
+            return false;
+
+        target = address;
+
+        return true;
+    }
+
+    bool installHooks() {
+        HWND window = ::FindWindowW(L"Minecraft", nullptr);
+        if (window == nullptr)
+            window = ::GetForegroundWindow();
+
+        if (window == nullptr)
+            return false;
+
+        DXGI_SWAP_CHAIN_DESC description {};
+        description.BufferCount       = 1;
+        description.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        description.BufferUsage       = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        description.OutputWindow      = window;
+        description.SampleDesc.Count  = 1;
+        description.Windowed          = TRUE;
+        description.SwapEffect        = DXGI_SWAP_EFFECT_DISCARD;
+
+        D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
+
+        ID3D11Device*        dummyDevice { nullptr };
+        IDXGISwapChain*      dummySwapChain { nullptr };
+        ID3D11DeviceContext* dummyContext { nullptr };
+
+        HRESULT result = ::D3D11CreateDeviceAndSwapChain(
+            nullptr,
+            D3D_DRIVER_TYPE_HARDWARE,
+            nullptr,
+            0,
+            &featureLevel,
+            1,
+            D3D11_SDK_VERSION,
+            &description,
+            &dummySwapChain,
+            &dummyDevice,
+            nullptr,
+            &dummyContext
+        );
+
+        if (SUCCEEDED(result) && dummySwapChain != nullptr) {
+            void** vtable = *reinterpret_cast<void***>(dummySwapChain);
+
+            patchPresent(vtable[g_tuning.SwapChainPresentIndex]);
+            patchResizeBuffers(vtable[g_tuning.SwapChainResizeBuffersIndex]);
+
+            IDXGISwapChain1* dummySwapChain1 { nullptr };
+
+            if (SUCCEEDED(dummySwapChain->QueryInterface(__uuidof(IDXGISwapChain1), reinterpret_cast<void**>(&dummySwapChain1)))) {
+                patchPresent1((*reinterpret_cast<void***>(dummySwapChain1))[g_tuning.SwapChainPresent1Index]);
+
+                dummySwapChain1->Release();
+            }
+
+            dummySwapChain->Release();
+            dummyDevice->Release();
+            dummyContext->Release();
+        }
+
+        ID3D12Device* d3d12Device { nullptr };
+
+        if (SUCCEEDED(::D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), reinterpret_cast<void**>(&d3d12Device)))) {
+            D3D12_COMMAND_QUEUE_DESC queueDescription {};
+            queueDescription.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+
+            ID3D12CommandQueue* dummyQueue { nullptr };
+
+            if (SUCCEEDED(d3d12Device->CreateCommandQueue(&queueDescription, __uuidof(ID3D12CommandQueue), reinterpret_cast<void**>(&dummyQueue)))) {
+                patchExecuteCommandLists((*reinterpret_cast<void***>(dummyQueue))[g_tuning.CommandQueueExecuteCommandListsIndex]);
+
+                dummyQueue->Release();
+            }
+
+            d3d12Device->Release();
+        }
+
+        return true;
+    }
+
+    void uninstallHooks() {
+        g_shuttingDown.store(true, std::memory_order_release);
+
+        ::Sleep(static_cast<DWORD>(g_tuning.ShutdownWaitMs));
+
+        if (g_originalWndProc != nullptr && g_window != nullptr) {
+            ::SetWindowLongPtrW(g_window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(g_originalWndProc));
+            g_originalWndProc = nullptr;
+        }
+
+        releaseResources();
+
+        removePatches();
+
+        g_shuttingDown.store(false, std::memory_order_release);
+        g_lastFrameTick.store(0, std::memory_order_release);
+    }
+}
+
+namespace LOICollection::client::display::overlay {
+    using namespace detail;
+
+    void removePatches();
 
     std::int32_t __stdcall presentDetour(IDXGISwapChain* swapChain, std::uint32_t syncInterval, std::uint32_t flags) {
         auto original = reinterpret_cast<PresentFn>(g_originals.Present);

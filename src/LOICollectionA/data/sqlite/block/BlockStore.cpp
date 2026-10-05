@@ -1,4 +1,3 @@
-#include <chrono>
 #include <string>
 #include <utility>
 #include <optional>
@@ -9,6 +8,8 @@
 
 #include <SQLiteCpp/SQLiteCpp.h>
 
+#include "LOICollectionA/utils/core/SystemUtils.h"
+
 #include "LOICollectionA/data/sqlite/block/BlockError.h"
 #include "LOICollectionA/data/sqlite/block/ColumnText.h"
 #include "LOICollectionA/data/sqlite/connection/ConnectionPool.h"
@@ -16,13 +17,7 @@
 
 #include "LOICollectionA/data/sqlite/block/BlockStore.h"
 
-namespace {
-    std::int64_t nowMs() {
-        return std::chrono::duration_cast<std::chrono::milliseconds>(
-                   std::chrono::system_clock::now().time_since_epoch())
-            .count();
-    }
-
+namespace LOICollection::data::detail {
     void bindPayload(SQLite::Statement& stmt, int index, std::string_view payload) {
         if (payload.empty())
             stmt.bind(index);
@@ -177,6 +172,8 @@ namespace {
         return std::to_string(parent) + '\x1f' + std::string(name);
     }
 }
+
+using namespace LOICollection::data::detail;
 
 BlockStore::BlockStore(std::shared_ptr<ConnectionPool> pool) : mPool(std::move(pool)) {}
 
@@ -364,7 +361,7 @@ ll::Expected<void> BlockStore::implCreateBlock(
     stmt->bind(4, static_cast<std::int64_t>(BlockLifecycle::Active));
 
     bindPayload(*stmt, 5, payload);
-    const std::int64_t ts = nowMs();
+    const std::int64_t ts = SystemUtils::getEpochMilliseconds();
     stmt->bind(6, ts);
     stmt->bind(7, ts);
     int rc = stmt->tryExecuteStep();
@@ -417,7 +414,7 @@ ll::Expected<BlockId> BlockStore::implUpsertRow(
 
     bindPayload(*stmt, 5, payload);
 
-    const std::int64_t ts = nowMs();
+    const std::int64_t ts = SystemUtils::getEpochMilliseconds();
     stmt->bind(6, ts);
     stmt->bind(7, ts);
     int rc = stmt->tryExecuteStep();
@@ -617,7 +614,7 @@ ll::Expected<void> BlockStore::implSetPayload(SQLiteConnection& conn, BlockId id
 
     bindPayload(*stmt, 1, payload);
 
-    stmt->bind(2, nowMs());
+    stmt->bind(2, SystemUtils::getEpochMilliseconds());
     stmt->bind(3, id);
 
     int rc = stmt->tryExecuteStep();
@@ -653,7 +650,7 @@ ll::Expected<void> BlockStore::implControl(SQLiteConnection& conn, BlockId id, B
 
     stmt->reset();
     stmt->bind(1, static_cast<std::int64_t>(to));
-    stmt->bind(2, nowMs());
+    stmt->bind(2, SystemUtils::getEpochMilliseconds());
     stmt->bind(3, id);
 
     int rc = stmt->tryExecuteStep();

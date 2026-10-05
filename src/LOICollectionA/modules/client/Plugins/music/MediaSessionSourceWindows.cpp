@@ -15,87 +15,89 @@
 #include "LOICollectionA/include/client/Plugins/music/MediaSessionSource.h"
 #include "LOICollectionA/include/client/Plugins/music/NowPlaying.h"
 
-namespace LOICollection::client::Plugins::music {
-    namespace {
-        namespace MediaControl = winrt::Windows::Media::Control;
-        namespace Streams      = winrt::Windows::Storage::Streams;
+namespace LOICollection::client::Plugins::music::detail {
+    namespace MediaControl = winrt::Windows::Media::Control;
+    namespace Streams      = winrt::Windows::Storage::Streams;
 
-        std::string toUtf8(std::wstring_view source) {
-            if (source.empty())
-                return {};
+    std::string toUtf8(std::wstring_view source) {
+        if (source.empty())
+            return {};
 
-            int length = ::WideCharToMultiByte(
-                CP_UTF8,
-                0,
-                source.data(),
-                static_cast<int>(source.size()),
-                nullptr,
-                0,
-                nullptr,
-                nullptr
-            );
-            if (length <= 0)
-                return {};
+        int length = ::WideCharToMultiByte(
+            CP_UTF8,
+            0,
+            source.data(),
+            static_cast<int>(source.size()),
+            nullptr,
+            0,
+            nullptr,
+            nullptr
+        );
+        if (length <= 0)
+            return {};
 
-            std::string result(static_cast<size_t>(length), '\0');
-            ::WideCharToMultiByte(
-                CP_UTF8,
-                0,
-                source.data(),
-                static_cast<int>(source.size()),
-                result.data(),
-                length,
-                nullptr,
-                nullptr
-            );
+        std::string result(static_cast<size_t>(length), '\0');
+        ::WideCharToMultiByte(
+            CP_UTF8,
+            0,
+            source.data(),
+            static_cast<int>(source.size()),
+            result.data(),
+            length,
+            nullptr,
+            nullptr
+        );
 
-            return result;
-        }
+        return result;
+    }
 
-        NowPlayingStatus convertStatus(
-            MediaControl::GlobalSystemMediaTransportControlsSessionPlaybackStatus status
-        ) {
-            using Source = MediaControl::GlobalSystemMediaTransportControlsSessionPlaybackStatus;
+    NowPlayingStatus convertStatus(
+        MediaControl::GlobalSystemMediaTransportControlsSessionPlaybackStatus status
+    ) {
+        using Source = MediaControl::GlobalSystemMediaTransportControlsSessionPlaybackStatus;
 
-            switch (status) {
-                case Source::Closed:   return NowPlayingStatus::Closed;
-                case Source::Opened:   return NowPlayingStatus::Opened;
-                case Source::Changing: return NowPlayingStatus::Changing;
-                case Source::Stopped:  return NowPlayingStatus::Stopped;
-                case Source::Playing:  return NowPlayingStatus::Playing;
-                case Source::Paused:   return NowPlayingStatus::Paused;
-                default:               return NowPlayingStatus::Unknown;
-            }
-        }
-
-        template <typename TAsync, typename TAsyncResult = decltype(std::declval<TAsync>().GetResults())>
-        bool pumpUntilComplete(TAsync const& operation, uint64_t budgetMs, TAsyncResult& result) {
-            if (!operation)
-                return false;
-
-            ULONGLONG deadline = ::GetTickCount64() + budgetMs;
-
-            while (operation.Status() == winrt::Windows::Foundation::AsyncStatus::Started) {
-                MSG message {};
-                while (::PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
-                    ::TranslateMessage(&message);
-                    ::DispatchMessageW(&message);
-                }
-
-                if (::GetTickCount64() >= deadline)
-                    return false;
-
-                ::Sleep(1);
-            }
-
-            if (operation.Status() != winrt::Windows::Foundation::AsyncStatus::Completed)
-                return false;
-
-            result = operation.GetResults();
-
-            return true;
+        switch (status) {
+            case Source::Closed:   return NowPlayingStatus::Closed;
+            case Source::Opened:   return NowPlayingStatus::Opened;
+            case Source::Changing: return NowPlayingStatus::Changing;
+            case Source::Stopped:  return NowPlayingStatus::Stopped;
+            case Source::Playing:  return NowPlayingStatus::Playing;
+            case Source::Paused:   return NowPlayingStatus::Paused;
+            default:               return NowPlayingStatus::Unknown;
         }
     }
+
+    template <typename TAsync, typename TAsyncResult = decltype(std::declval<TAsync>().GetResults())>
+    bool pumpUntilComplete(TAsync const& operation, uint64_t budgetMs, TAsyncResult& result) {
+        if (!operation)
+            return false;
+
+        ULONGLONG deadline = ::GetTickCount64() + budgetMs;
+
+        while (operation.Status() == winrt::Windows::Foundation::AsyncStatus::Started) {
+            MSG message {};
+            while (::PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+                ::TranslateMessage(&message);
+                ::DispatchMessageW(&message);
+            }
+
+            if (::GetTickCount64() >= deadline)
+                return false;
+
+            ::Sleep(1);
+        }
+
+        if (operation.Status() != winrt::Windows::Foundation::AsyncStatus::Completed)
+            return false;
+
+        result = operation.GetResults();
+
+        return true;
+    }
+}
+
+namespace LOICollection::client::Plugins::music {
+    using namespace detail;
 
     class WindowsMediaSessionSource final : public MediaSessionSource {
     public:

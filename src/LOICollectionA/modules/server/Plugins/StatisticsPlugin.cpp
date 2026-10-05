@@ -61,22 +61,24 @@
 
 using I18nUtilsTools::tr;
 
-namespace LOICollection::server::Plugins {
-    namespace {
-        StatisticsCol toStatisticsColumn(StatisticType type) {
-            switch (type) {
-                case StatisticType::onlinetime: return StatisticsCol::onlinetime;
-                case StatisticType::kills: return StatisticsCol::kill;
-                case StatisticType::deaths: return StatisticsCol::death;
-                case StatisticType::place: return StatisticsCol::place;
-                case StatisticType::destroy: return StatisticsCol::destroy;
-                case StatisticType::respawn: return StatisticsCol::respawn;
-                case StatisticType::join: return StatisticsCol::joins;
-            }
-
-            return StatisticsCol::onlinetime;
+namespace LOICollection::server::Plugins::detail {
+    StatisticsCol toStatisticsColumn(StatisticType type) {
+        switch (type) {
+            case StatisticType::onlinetime: return StatisticsCol::onlinetime;
+            case StatisticType::kills: return StatisticsCol::kill;
+            case StatisticType::deaths: return StatisticsCol::death;
+            case StatisticType::place: return StatisticsCol::place;
+            case StatisticType::destroy: return StatisticsCol::destroy;
+            case StatisticType::respawn: return StatisticsCol::respawn;
+            case StatisticType::join: return StatisticsCol::joins;
         }
+
+        return StatisticsCol::onlinetime;
     }
+}
+
+namespace LOICollection::server::Plugins {
+    using namespace detail;
 
     struct StatisticsPlugin::operation {
         StatisticType Type;

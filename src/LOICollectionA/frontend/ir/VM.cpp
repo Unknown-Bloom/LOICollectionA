@@ -16,26 +16,28 @@
 
 #include "LOICollectionA/frontend/ir/VM.h"
 
+namespace LOICollection::frontend::ir::detail {
+    thread_local std::shared_ptr<sandbox::SandboxBudget> tlsBudget;
+
+    struct BudgetScope {
+        std::shared_ptr<sandbox::SandboxBudget> previous;
+
+        explicit BudgetScope(std::shared_ptr<sandbox::SandboxBudget>& budget) : previous(tlsBudget) {
+            if (!previous)
+                budget->reset();
+            else
+                budget = previous;
+
+            tlsBudget = budget;
+        }
+
+        ~BudgetScope() { tlsBudget = std::move(previous); }
+    };
+}
+
 namespace LOICollection::frontend::ir {
 
-    namespace {
-        thread_local std::shared_ptr<sandbox::SandboxBudget> tlsBudget;
-
-        struct BudgetScope {
-            std::shared_ptr<sandbox::SandboxBudget> previous;
-
-            explicit BudgetScope(std::shared_ptr<sandbox::SandboxBudget>& budget) : previous(tlsBudget) {
-                if (!previous)
-                    budget->reset();
-                else
-                    budget = previous;
-
-                tlsBudget = budget;
-            }
-
-            ~BudgetScope() { tlsBudget = std::move(previous); }
-        };
-    }
+    using namespace detail;
 
     bool VM::isDerived(const MirChunk& chunk, int derivedClassIndex, int baseClassIndex) const {
         if (derivedClassIndex == baseClassIndex) return true;

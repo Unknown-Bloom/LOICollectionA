@@ -16,18 +16,20 @@
 
 #include "LOICollectionA/frontend/ir/VM.h"
 
+namespace LOICollection::frontend::ir::detail {
+    std::string valueClassNameOf(const ValueNode::ValueType& val) {
+        if (std::holds_alternative<ArrayRef>(val))
+            return "Array";
+        if (std::holds_alternative<std::string>(val))
+            return "String";
+
+        return {};
+    }
+}
+
 namespace LOICollection::frontend::ir {
 
-    namespace {
-        std::string valueClassNameOf(const ValueNode::ValueType& val) {
-            if (std::holds_alternative<ArrayRef>(val))
-                return "Array";
-            if (std::holds_alternative<std::string>(val))
-                return "String";
-
-            return {};
-        }
-    }
+    using namespace detail;
 
     void VM::execMethodDispatch(ExecArgs& s) {
         const auto& instr = s.instr;

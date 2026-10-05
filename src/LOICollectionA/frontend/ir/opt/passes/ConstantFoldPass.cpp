@@ -15,75 +15,77 @@
 
 #include "LOICollectionA/frontend/ir/opt/passes/ConstantFoldPass.h"
 
-namespace LOICollection::frontend::ir::opt {
-    namespace {
-        bool alwaysJumps(MirOp op, const ValueNode::ValueType& value) {
-            const bool truthy = VM::valueToBool(value);
-            return (op == MirOp::JMP_IF_FALSE) ? !truthy : truthy;
-        }
+namespace LOICollection::frontend::ir::opt::detail {
+    bool alwaysJumps(MirOp op, const ValueNode::ValueType& value) {
+        const bool truthy = VM::valueToBool(value);
+        return (op == MirOp::JMP_IF_FALSE) ? !truthy : truthy;
+    }
 
-        bool valuesEqual(const ValueNode::ValueType& left, const ValueNode::ValueType& right) {
-            if (auto li = std::get_if<int>(&left)) {
-                if (auto ri = std::get_if<int>(&right)) return *li == *ri;
-                if (auto rf = std::get_if<float>(&right)) return *li == *rf;
-                return false;
-            }
-            if (auto lf = std::get_if<float>(&left)) {
-                if (auto ri = std::get_if<int>(&right)) return *lf == *ri;
-                if (auto rf = std::get_if<float>(&right)) return *lf == *rf;
-                return false;
-            }
-            if (auto ls = std::get_if<std::string>(&left)) {
-                if (auto rs = std::get_if<std::string>(&right)) return *ls == *rs;
-                return false;
-            }
-            if (auto lb = std::get_if<bool>(&left)) {
-                if (auto rb = std::get_if<bool>(&right)) return *lb == *rb;
-                return false;
-            }
-            if (auto lo = std::get_if<ObjectRef>(&left)) {
-                if (auto ro = std::get_if<ObjectRef>(&right)) return *lo == *ro;
-                return false;
-            }
-            if (auto la = std::get_if<ArrayRef>(&left)) {
-                if (auto ra = std::get_if<ArrayRef>(&right)) return *la == *ra;
-                return false;
-            }
+    bool valuesEqual(const ValueNode::ValueType& left, const ValueNode::ValueType& right) {
+        if (auto li = std::get_if<int>(&left)) {
+            if (auto ri = std::get_if<int>(&right)) return *li == *ri;
+            if (auto rf = std::get_if<float>(&right)) return *li == *rf;
             return false;
         }
-
-        bool isImmutable(const ValueNode::ValueType& v) {
-            return !std::holds_alternative<ArrayRef>(v)
-                && !std::holds_alternative<ObjectRef>(v)
-                && !std::holds_alternative<FunctionRefPtr>(v);
-        }
-
-        bool isZero(const ValueNode::ValueType& v) {
-            if (auto i = std::get_if<int>(&v)) return *i == 0;
-            if (auto f = std::get_if<float>(&v)) return *f == 0.0f;
+        if (auto lf = std::get_if<float>(&left)) {
+            if (auto ri = std::get_if<int>(&right)) return *lf == *ri;
+            if (auto rf = std::get_if<float>(&right)) return *lf == *rf;
             return false;
         }
-
-        bool isOne(const ValueNode::ValueType& v) {
-            if (auto i = std::get_if<int>(&v)) return *i == 1;
-            if (auto f = std::get_if<float>(&v)) return *f == 1.0f;
+        if (auto ls = std::get_if<std::string>(&left)) {
+            if (auto rs = std::get_if<std::string>(&right)) return *ls == *rs;
             return false;
         }
+        if (auto lb = std::get_if<bool>(&left)) {
+            if (auto rb = std::get_if<bool>(&right)) return *lb == *rb;
+            return false;
+        }
+        if (auto lo = std::get_if<ObjectRef>(&left)) {
+            if (auto ro = std::get_if<ObjectRef>(&right)) return *lo == *ro;
+            return false;
+        }
+        if (auto la = std::get_if<ArrayRef>(&left)) {
+            if (auto ra = std::get_if<ArrayRef>(&right)) return *la == *ra;
+            return false;
+        }
+        return false;
+    }
 
-        bool identityEligible(MirOp op, const ValueNode::ValueType& identity) {
-            switch (op) {
-                case MirOp::ADD:
-                case MirOp::SUB:
-                    return isZero(identity);
-                case MirOp::MUL:
-                case MirOp::DIV:
-                case MirOp::POW:
-                    return isOne(identity);
-                default:
-                    return false;
-            }
+    bool isImmutable(const ValueNode::ValueType& v) {
+        return !std::holds_alternative<ArrayRef>(v)
+            && !std::holds_alternative<ObjectRef>(v)
+            && !std::holds_alternative<FunctionRefPtr>(v);
+    }
+
+    bool isZero(const ValueNode::ValueType& v) {
+        if (auto i = std::get_if<int>(&v)) return *i == 0;
+        if (auto f = std::get_if<float>(&v)) return *f == 0.0f;
+        return false;
+    }
+
+    bool isOne(const ValueNode::ValueType& v) {
+        if (auto i = std::get_if<int>(&v)) return *i == 1;
+        if (auto f = std::get_if<float>(&v)) return *f == 1.0f;
+        return false;
+    }
+
+    bool identityEligible(MirOp op, const ValueNode::ValueType& identity) {
+        switch (op) {
+            case MirOp::ADD:
+            case MirOp::SUB:
+                return isZero(identity);
+            case MirOp::MUL:
+            case MirOp::DIV:
+            case MirOp::POW:
+                return isOne(identity);
+            default:
+                return false;
         }
     }
+}
+
+namespace LOICollection::frontend::ir::opt {
+    using namespace detail;
 
     void ConstantFoldPass::run(bool enabled) {
         for (size_t i = 0; i < mChunk.code.size(); ++i) {

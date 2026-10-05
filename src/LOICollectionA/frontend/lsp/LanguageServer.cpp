@@ -3,187 +3,189 @@
 
 #include "LOICollectionA/frontend/lsp/LanguageServer.h"
 
-namespace LOICollection::frontend::lsp {
-    namespace {
-        constexpr std::string_view kKeywords[] = {
-            "if", "class", "func", "new", "this", "super", "return",
-            "public", "private", "extends", "instanceof", "static", "using",
-            "None", "while", "for", "in", "break", "continue",
-            "import", "component", "let", "const", "trait", "impl",
-            "true", "false"
-        };
+namespace LOICollection::frontend::lsp::detail {
+    constexpr std::string_view kKeywords[] = {
+        "if", "class", "func", "new", "this", "super", "return",
+        "public", "private", "extends", "instanceof", "static", "using",
+        "None", "while", "for", "in", "break", "continue",
+        "import", "component", "let", "const", "trait", "impl",
+        "true", "false"
+    };
 
-        constexpr std::string_view kTypes[] = {
-            "int", "float", "string", "bool", "void", "optional", "variant"
-        };
+    constexpr std::string_view kTypes[] = {
+        "int", "float", "string", "bool", "void", "optional", "variant"
+    };
 
-        constexpr std::string_view kBuiltins[] = {
-            "tr", "score", "entity", "print", "println", "error"
-        };
+    constexpr std::string_view kBuiltins[] = {
+        "tr", "score", "entity", "print", "println", "error"
+    };
 
-        constexpr std::string_view kFormClasses[] = {
-            "CustomForm", "MessageBox", "PaginatedForm", "ScriptForm"
-        };
+    constexpr std::string_view kFormClasses[] = {
+        "CustomForm", "MessageBox", "PaginatedForm", "ScriptForm"
+    };
 
-        bool isIdentifierStart(char c) {
-            return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-        }
+    bool isIdentifierStart(char c) {
+        return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+    }
 
-        bool isIdentifierChar(char c) {
-            return isIdentifierStart(c) || (c >= '0' && c <= '9');
-        }
+    bool isIdentifierChar(char c) {
+        return isIdentifierStart(c) || (c >= '0' && c <= '9');
+    }
 
-        std::size_t offsetOf(const std::string& text, const Position& position) {
-            std::size_t offset = 0;
+    std::size_t offsetOf(const std::string& text, const Position& position) {
+        std::size_t offset = 0;
 
-            for (std::size_t line = 0; line < position.line && offset < text.size(); ++offset)
-                if (text[offset] == '\n')
-                    ++line;
+        for (std::size_t line = 0; line < position.line && offset < text.size(); ++offset)
+            if (text[offset] == '\n')
+                ++line;
 
-            return std::min(offset + position.character, text.size());
-        }
+        return std::min(offset + position.character, text.size());
+    }
 
-        std::string wordAt(const std::string& text, std::size_t offset) {
-            if (offset > text.size())
-                offset = text.size();
+    std::string wordAt(const std::string& text, std::size_t offset) {
+        if (offset > text.size())
+            offset = text.size();
 
-            std::size_t start = offset;
-            std::size_t end = offset;
+        std::size_t start = offset;
+        std::size_t end = offset;
 
-            if (start > 0 && isIdentifierChar(text[start - 1]))
-                while (start > 0 && isIdentifierChar(text[start - 1]))
-                    --start;
-            else if (end >= text.size() || !isIdentifierChar(text[end]))
-                return {};
-
-            while (end < text.size() && isIdentifierChar(text[end]))
-                ++end;
-
-            return text.substr(start, end - start);
-        }
-
-        std::string receiverBefore(const std::string& text, std::size_t offset) {
-            if (offset > text.size())
-                offset = text.size();
-
-            std::size_t end = offset;
-            while (end > 0 && isIdentifierChar(text[end - 1]))
-                --end;
-
-            if (end == 0 || text[end - 1] != '.')
-                return {};
-
-            std::size_t start = end - 1;
+        if (start > 0 && isIdentifierChar(text[start - 1]))
             while (start > 0 && isIdentifierChar(text[start - 1]))
                 --start;
+        else if (end >= text.size() || !isIdentifierChar(text[end]))
+            return {};
 
-            return text.substr(start, end - 1 - start);
-        }
+        while (end < text.size() && isIdentifierChar(text[end]))
+            ++end;
 
-        std::string enclosingClass(const std::string& text, std::size_t offset) {
-            constexpr std::string_view kClass = "class";
+        return text.substr(start, end - start);
+    }
 
-            std::string result;
-            std::size_t search = 0;
+    std::string receiverBefore(const std::string& text, std::size_t offset) {
+        if (offset > text.size())
+            offset = text.size();
 
-            while (search < offset) {
-                const auto found = text.find(kClass, search);
-                if (found == std::string::npos || found >= offset)
-                    break;
+        std::size_t end = offset;
+        while (end > 0 && isIdentifierChar(text[end - 1]))
+            --end;
 
-                if (found > 0 && isIdentifierChar(text[found - 1])) {
-                    search = found + kClass.size();
-                    continue;
-                }
+        if (end == 0 || text[end - 1] != '.')
+            return {};
 
-                const auto nameStart = text.find_first_not_of(" \t\r\n", found + kClass.size());
-                if (nameStart == std::string::npos || nameStart >= offset)
-                    break;
+        std::size_t start = end - 1;
+        while (start > 0 && isIdentifierChar(text[start - 1]))
+            --start;
 
-                if (!isIdentifierStart(text[nameStart])) {
-                    search = nameStart + 1;
-                    continue;
-                }
+        return text.substr(start, end - 1 - start);
+    }
 
-                auto nameEnd = nameStart;
-                while (nameEnd < text.size() && isIdentifierChar(text[nameEnd]))
-                    ++nameEnd;
+    std::string enclosingClass(const std::string& text, std::size_t offset) {
+        constexpr std::string_view kClass = "class";
 
-                result = text.substr(nameStart, nameEnd - nameStart);
-                search = nameEnd;
+        std::string result;
+        std::size_t search = 0;
+
+        while (search < offset) {
+            const auto found = text.find(kClass, search);
+            if (found == std::string::npos || found >= offset)
+                break;
+
+            if (found > 0 && isIdentifierChar(text[found - 1])) {
+                search = found + kClass.size();
+                continue;
             }
 
-            return result;
-        }
+            const auto nameStart = text.find_first_not_of(" \t\r\n", found + kClass.size());
+            if (nameStart == std::string::npos || nameStart >= offset)
+                break;
 
-        const Symbol* findSymbol(const std::vector<Symbol>& symbols, const std::string& name) {
-            const Symbol* fallback = nullptr;
-
-            for (const auto& symbol : symbols) {
-                if (symbol.name != name)
-                    continue;
-
-                if (symbol.container.empty())
-                    return &symbol;
-
-                if (!fallback)
-                    fallback = &symbol;
+            if (!isIdentifierStart(text[nameStart])) {
+                search = nameStart + 1;
+                continue;
             }
 
-            return fallback;
+            auto nameEnd = nameStart;
+            while (nameEnd < text.size() && isIdentifierChar(text[nameEnd]))
+                ++nameEnd;
+
+            result = text.substr(nameStart, nameEnd - nameStart);
+            search = nameEnd;
         }
 
-        std::string classNameOf(const Symbol& symbol) {
-            switch (symbol.kind) {
-                case SymbolKind::Variable:
-                case SymbolKind::Field:
-                case SymbolKind::StaticField:
-                case SymbolKind::Constant:
-                    break;
-                default:
-                    return symbol.name;
-            }
+        return result;
+    }
 
-            std::string type = symbol.detail;
-            if (type.starts_with("class "))
-                type.erase(0, 6);
+    const Symbol* findSymbol(const std::vector<Symbol>& symbols, const std::string& name) {
+        const Symbol* fallback = nullptr;
 
-            if (const auto bracket = type.find('<'); bracket != std::string::npos)
-                type.erase(bracket);
+        for (const auto& symbol : symbols) {
+            if (symbol.name != name)
+                continue;
 
-            return type;
+            if (symbol.container.empty())
+                return &symbol;
+
+            if (!fallback)
+                fallback = &symbol;
         }
 
-        CompletionKind completionKindOf(SymbolKind kind) {
-            switch (kind) {
-                case SymbolKind::Function: return CompletionKind::Function;
-                case SymbolKind::Method:
-                case SymbolKind::StaticMethod: return CompletionKind::Method;
-                case SymbolKind::Field:
-                case SymbolKind::StaticField: return CompletionKind::Field;
-                case SymbolKind::Class: return CompletionKind::Class;
-                case SymbolKind::Interface: return CompletionKind::Interface;
-                case SymbolKind::Constant: return CompletionKind::Constant;
-                default: return CompletionKind::Variable;
-            }
+        return fallback;
+    }
+
+    std::string classNameOf(const Symbol& symbol) {
+        switch (symbol.kind) {
+            case SymbolKind::Variable:
+            case SymbolKind::Field:
+            case SymbolKind::StaticField:
+            case SymbolKind::Constant:
+                break;
+            default:
+                return symbol.name;
         }
 
-        nlohmann::ordered_json initializeResult() {
-            return nlohmann::ordered_json{
-                {
-                    "capabilities", nlohmann::ordered_json{
-                        { "textDocumentSync", 1 },
-                        { "completionProvider", nlohmann::ordered_json{
-                            { "triggerCharacters", nlohmann::ordered_json::array({ "." }) },
-                        } },
-                        { "hoverProvider", true },
-                        { "definitionProvider", true },
-                    },
-                },
-                { "serverInfo", nlohmann::ordered_json{ { "name", "LOICollectionA LCUI" } } },
-            };
+        std::string type = symbol.detail;
+        if (type.starts_with("class "))
+            type.erase(0, 6);
+
+        if (const auto bracket = type.find('<'); bracket != std::string::npos)
+            type.erase(bracket);
+
+        return type;
+    }
+
+    CompletionKind completionKindOf(SymbolKind kind) {
+        switch (kind) {
+            case SymbolKind::Function: return CompletionKind::Function;
+            case SymbolKind::Method:
+            case SymbolKind::StaticMethod: return CompletionKind::Method;
+            case SymbolKind::Field:
+            case SymbolKind::StaticField: return CompletionKind::Field;
+            case SymbolKind::Class: return CompletionKind::Class;
+            case SymbolKind::Interface: return CompletionKind::Interface;
+            case SymbolKind::Constant: return CompletionKind::Constant;
+            default: return CompletionKind::Variable;
         }
     }
+
+    nlohmann::ordered_json initializeResult() {
+        return nlohmann::ordered_json{
+            {
+                "capabilities", nlohmann::ordered_json{
+                    { "textDocumentSync", 1 },
+                    { "completionProvider", nlohmann::ordered_json{
+                        { "triggerCharacters", nlohmann::ordered_json::array({ "." }) },
+                    } },
+                    { "hoverProvider", true },
+                    { "definitionProvider", true },
+                },
+            },
+            { "serverInfo", nlohmann::ordered_json{ { "name", "LOICollectionA LCUI" } } },
+        };
+    }
+}
+
+namespace LOICollection::frontend::lsp {
+    using namespace detail;
 
     std::string LanguageServer::handle(std::string_view bytes) {
         this->inbound.append(bytes);

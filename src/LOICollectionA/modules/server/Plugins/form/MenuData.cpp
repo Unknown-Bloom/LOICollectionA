@@ -11,59 +11,61 @@
 
 using namespace LOICollection::frontend;
 
-namespace LOICollection::server::Plugins {
-    namespace {
-        std::string menuReadString(const ObjectRef& obj, const std::string& field, const std::string& def = "") {
-            auto it = obj->find(field);
-            if (it == nullptr)
-                return def;
-
-            return std::holds_alternative<std::string>(*it) ? std::get<std::string>(*it) : def;
-        }
-
-        int menuReadInt(const ObjectRef& obj, const std::string& field, int def = 0) {
-            auto it = obj->find(field);
-            if (it == nullptr)
-                return def;
-            if (std::holds_alternative<int>(*it))
-                return std::get<int>(*it);
-            if (std::holds_alternative<float>(*it))
-                return static_cast<int>(std::get<float>(*it));
+namespace LOICollection::server::Plugins::detail {
+    std::string menuReadString(const ObjectRef& obj, const std::string& field, const std::string& def = "") {
+        auto it = obj->find(field);
+        if (it == nullptr)
             return def;
-        }
 
-        TypedValue menuReadValue(const ObjectRef& obj, const std::string& field, const TypedValue& def = {}) {
-            auto it = obj->find(field);
-            return it == nullptr ? def : *it;
-        }
-
-        std::vector<std::string> menuReadStringArray(const ObjectRef& obj, const std::string& field) {
-            std::vector<std::string> result;
-            auto it = obj->find(field);
-            if (it == nullptr || !std::holds_alternative<ArrayRef>(*it))
-                return result;
-            for (const auto& element : std::get<ArrayRef>(*it)->elements) {
-                if (std::holds_alternative<std::string>(element))
-                    result.push_back(std::get<std::string>(element));
-            }
-            return result;
-        }
-
-        MenuControlData readMenuControl(const ObjectRef& obj) {
-            MenuControlData control;
-            control.type = menuReadString(obj, "type");
-            control.id = menuReadString(obj, "id");
-            control.title = menuReadString(obj, "title");
-            control.placeholder = menuReadString(obj, "placeholder");
-            control.tooltip = menuReadString(obj, "tooltip");
-            control.defaultValue = menuReadValue(obj, "defaultValue");
-            control.options = menuReadStringArray(obj, "options");
-            control.min = menuReadInt(obj, "min", 0);
-            control.max = menuReadInt(obj, "max", 100);
-            control.step = menuReadInt(obj, "step", 1);
-            return control;
-        }
+        return std::holds_alternative<std::string>(*it) ? std::get<std::string>(*it) : def;
     }
+
+    int menuReadInt(const ObjectRef& obj, const std::string& field, int def = 0) {
+        auto it = obj->find(field);
+        if (it == nullptr)
+            return def;
+        if (std::holds_alternative<int>(*it))
+            return std::get<int>(*it);
+        if (std::holds_alternative<float>(*it))
+            return static_cast<int>(std::get<float>(*it));
+        return def;
+    }
+
+    TypedValue menuReadValue(const ObjectRef& obj, const std::string& field, const TypedValue& def = {}) {
+        auto it = obj->find(field);
+        return it == nullptr ? def : *it;
+    }
+
+    std::vector<std::string> menuReadStringArray(const ObjectRef& obj, const std::string& field) {
+        std::vector<std::string> result;
+        auto it = obj->find(field);
+        if (it == nullptr || !std::holds_alternative<ArrayRef>(*it))
+            return result;
+        for (const auto& element : std::get<ArrayRef>(*it)->elements) {
+            if (std::holds_alternative<std::string>(element))
+                result.push_back(std::get<std::string>(element));
+        }
+        return result;
+    }
+
+    MenuControlData readMenuControl(const ObjectRef& obj) {
+        MenuControlData control;
+        control.type = menuReadString(obj, "type");
+        control.id = menuReadString(obj, "id");
+        control.title = menuReadString(obj, "title");
+        control.placeholder = menuReadString(obj, "placeholder");
+        control.tooltip = menuReadString(obj, "tooltip");
+        control.defaultValue = menuReadValue(obj, "defaultValue");
+        control.options = menuReadStringArray(obj, "options");
+        control.min = menuReadInt(obj, "min", 0);
+        control.max = menuReadInt(obj, "max", 100);
+        control.step = menuReadInt(obj, "step", 1);
+        return control;
+    }
+}
+
+namespace LOICollection::server::Plugins {
+    using namespace detail;
 
     MenuData hydrateMenuData(const frontend::ObjectRef& obj) {
         MenuData data;

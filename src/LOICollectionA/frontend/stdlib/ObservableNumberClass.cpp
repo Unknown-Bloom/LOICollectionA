@@ -17,45 +17,48 @@
 
 using namespace LOICollection::frontend;
 
-namespace ObservableNumberClass {
-    namespace {
-        std::optional<float> numberOperand(const TypedValue& value) {
-            if (const auto* num = std::get_if<float>(&value))
-                return *num;
-            if (const auto* num = std::get_if<int>(&value))
-                return static_cast<float>(*num);
-            if (const auto* obj = std::get_if<ObjectRef>(&value)) {
-                if ((*obj)->className == "ObservableNumber" && (*obj)->native)
-                    return static_cast<ObservableNumberHandle*>((*obj)->native.get())->base->getData();
-            }
-
-            return std::nullopt;
+namespace ObservableNumberClass::detail {
+    std::optional<float> numberOperand(const TypedValue& value) {
+        if (const auto* num = std::get_if<float>(&value))
+            return *num;
+        if (const auto* num = std::get_if<int>(&value))
+            return static_cast<float>(*num);
+        if (const auto* obj = std::get_if<ObjectRef>(&value)) {
+            if ((*obj)->className == "ObservableNumber" && (*obj)->native)
+                return static_cast<ObservableNumberHandle*>((*obj)->native.get())->base->getData();
         }
 
-        ll::Expected<TypedValue> numberOperator(const TypedValue& left, const TypedValue& right, const std::string& op) {
-            auto l = numberOperand(left);
-            auto r = numberOperand(right);
-            if (!l || !r)
-                return ll::makeStringError("ObservableNumber operators require number operands");
-
-            if (op == "+") return *l + *r;
-            if (op == "-") return *l - *r;
-            if (op == "*") return *l * *r;
-            if (op == "/") return *l / *r;
-            if (op == "%") return std::fmod(*l, *r);
-            if (op == "^") return static_cast<float>(std::pow(*l, *r));
-
-            auto cmp = *l <=> *r;
-            if (op == "==") return cmp == 0;
-            if (op == "!=") return cmp != 0;
-            if (op == ">") return cmp > 0;
-            if (op == "<") return cmp < 0;
-            if (op == ">=") return cmp >= 0;
-            if (op == "<=") return cmp <= 0;
-
-            return ll::makeStringError("Unsupported operator for ObservableNumber: " + op);
-        }
+        return std::nullopt;
     }
+
+    ll::Expected<TypedValue> numberOperator(const TypedValue& left, const TypedValue& right, const std::string& op) {
+        auto l = numberOperand(left);
+        auto r = numberOperand(right);
+        if (!l || !r)
+            return ll::makeStringError("ObservableNumber operators require number operands");
+
+        if (op == "+") return *l + *r;
+        if (op == "-") return *l - *r;
+        if (op == "*") return *l * *r;
+        if (op == "/") return *l / *r;
+        if (op == "%") return std::fmod(*l, *r);
+        if (op == "^") return static_cast<float>(std::pow(*l, *r));
+
+        auto cmp = *l <=> *r;
+        if (op == "==") return cmp == 0;
+        if (op == "!=") return cmp != 0;
+        if (op == ">") return cmp > 0;
+        if (op == "<") return cmp < 0;
+        if (op == ">=") return cmp >= 0;
+        if (op == "<=") return cmp <= 0;
+
+        return ll::makeStringError("Unsupported operator for ObservableNumber: " + op);
+    }
+}
+
+namespace ObservableNumberClass {
+    using namespace detail;
+
     ll::Expected<ObjectRef> makeObservableNumber(const CallbackTypeValues& args) {
         auto handle = std::make_shared<ObservableNumberHandle>();
         handle->base = std::make_unique<ll::ui::ObservableNumber>(

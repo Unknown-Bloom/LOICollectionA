@@ -16,19 +16,22 @@
 
 using namespace LOICollection::frontend;
 
-namespace ObservableStringClass {
-    namespace {
-        std::optional<std::string> stringOperand(const TypedValue& value) {
-            if (const auto* text = std::get_if<std::string>(&value))
-                return *text;
-            if (const auto* obj = std::get_if<ObjectRef>(&value)) {
-                if ((*obj)->className == "ObservableString" && (*obj)->native)
-                    return static_cast<ObservableStringHandle*>((*obj)->native.get())->base->getData();
-            }
-
-            return std::nullopt;
+namespace ObservableStringClass::detail {
+    std::optional<std::string> stringOperand(const TypedValue& value) {
+        if (const auto* text = std::get_if<std::string>(&value))
+            return *text;
+        if (const auto* obj = std::get_if<ObjectRef>(&value)) {
+            if ((*obj)->className == "ObservableString" && (*obj)->native)
+                return static_cast<ObservableStringHandle*>((*obj)->native.get())->base->getData();
         }
+
+        return std::nullopt;
     }
+}
+
+namespace ObservableStringClass {
+    using namespace detail;
+
     ll::Expected<ObjectRef> makeObservableString(const CallbackTypeValues& args) {
         auto handle = std::make_shared<ObservableStringHandle>();
         handle->base = std::make_unique<ll::ui::ObservableString>(

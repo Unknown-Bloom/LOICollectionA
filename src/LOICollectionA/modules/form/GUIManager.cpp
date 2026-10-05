@@ -41,7 +41,7 @@
 #include "LOICollectionA/base/ServiceProvider.h"
 #include "LOICollectionA/frontend/sandbox/ScriptPermission.h"
 
-namespace {
+namespace LOICollection::form::detail {
     void warnIfMissingPermission(const std::string& id) {
         const auto permission = ServiceProvider::getInstance().getService<LOICollection::frontend::sandbox::ScriptPermissionService>();
         if (permission && !permission->gate().hasEntry(id))
@@ -76,6 +76,8 @@ namespace {
 }
 
 namespace LOICollection::form {
+    using namespace detail;
+
     struct GUIManager::Impl {
         std::unordered_map<std::string, std::shared_ptr<frontend::ir::MirChunk>> cache;
         std::unordered_map<std::string, std::shared_ptr<frontend::GlobalsTable>> globals;

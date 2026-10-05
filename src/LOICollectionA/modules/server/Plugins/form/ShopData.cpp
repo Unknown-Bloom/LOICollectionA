@@ -11,26 +11,28 @@
 
 using namespace LOICollection::frontend;
 
-namespace LOICollection::server::Plugins {
-    namespace {
-        std::string shopReadString(const ObjectRef& obj, const std::string& field, const std::string& def = "") {
-            auto it = obj->find(field);
-            if (it == nullptr)
-                return def;
-            return std::holds_alternative<std::string>(*it) ? std::get<std::string>(*it) : def;
-        }
-
-        int shopReadInt(const ObjectRef& obj, const std::string& field, int def = 0) {
-            auto it = obj->find(field);
-            if (it == nullptr)
-                return def;
-            if (std::holds_alternative<int>(*it))
-                return std::get<int>(*it);
-            if (std::holds_alternative<float>(*it))
-                return static_cast<int>(std::get<float>(*it));
+namespace LOICollection::server::Plugins::detail {
+    std::string shopReadString(const ObjectRef& obj, const std::string& field, const std::string& def = "") {
+        auto it = obj->find(field);
+        if (it == nullptr)
             return def;
-        }
+        return std::holds_alternative<std::string>(*it) ? std::get<std::string>(*it) : def;
     }
+
+    int shopReadInt(const ObjectRef& obj, const std::string& field, int def = 0) {
+        auto it = obj->find(field);
+        if (it == nullptr)
+            return def;
+        if (std::holds_alternative<int>(*it))
+            return std::get<int>(*it);
+        if (std::holds_alternative<float>(*it))
+            return static_cast<int>(std::get<float>(*it));
+        return def;
+    }
+}
+
+namespace LOICollection::server::Plugins {
+    using namespace detail;
 
     ShopData hydrateShopData(const frontend::ObjectRef& obj) {
         ShopData data;

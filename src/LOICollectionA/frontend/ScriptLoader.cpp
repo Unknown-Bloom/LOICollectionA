@@ -10,97 +10,99 @@
 
 #include "LOICollectionA/frontend/ScriptLoader.h"
 
-namespace LOICollection::frontend {
-    namespace {
-        bool isTopLevelDefinition(ASTNode& node) {
-            switch (node.getType()) {
-                case ASTNode::Type::Class:
-                case ASTNode::Type::FunctionDef:
-                case ASTNode::Type::Using:
-                case ASTNode::Type::Import:
-                case ASTNode::Type::Component:
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
-        const std::string* definitionName(ASTNode& node) {
-            switch (node.getType()) {
-                case ASTNode::Type::Class:
-                    return &static_cast<ClassNode&>(node).name;
-                case ASTNode::Type::FunctionDef:
-                    return &static_cast<FunctionDefNode&>(node).name;
-                case ASTNode::Type::Using:
-                    return &static_cast<UsingNode&>(node).name;
-                case ASTNode::Type::Component:
-                    return &static_cast<ComponentNode&>(node).name;
-                default:
-                    return nullptr;
-            }
-        }
-
-        SourceLocation definitionLoc(ASTNode& node) {
-            switch (node.getType()) {
-                case ASTNode::Type::Class:
-                    return static_cast<ClassNode&>(node).loc;
-                case ASTNode::Type::FunctionDef:
-                    return static_cast<FunctionDefNode&>(node).loc;
-                case ASTNode::Type::Using:
-                    return static_cast<UsingNode&>(node).loc;
-                case ASTNode::Type::Component:
-                    return static_cast<ComponentNode&>(node).loc;
-                default:
-                    return {};
-            }
-        }
-
-        std::string typeExprName(const TypeExpr& expr) {
-            std::string out = expr.name;
-            if (expr.args.empty())
-                return out;
-
-            out += '<';
-            for (size_t i = 0; i < expr.args.size(); ++i) {
-                if (i != 0)
-                    out += ',';
-
-                out += typeExprName(expr.args[i]);
-            }
-
-            return out + '>';
-        }
-
-        std::string definitionKey(ASTNode& node) {
-            const std::string* name = definitionName(node);
-            if (!name)
-                return {};
-
-            if (node.getType() != ASTNode::Type::FunctionDef)
-                return *name;
-
-            auto& decl = static_cast<FunctionDefNode&>(node).decl;
-
-            std::string key = *name + '(';
-            for (size_t i = 0; i < decl.params.size(); ++i) {
-                if (i != 0)
-                    key += ',';
-
-                key += decl.params[i].hasType ? typeExprName(decl.params[i].typeExpr) : "?";
-            }
-
-            return key + ')';
-        }
-
-        std::string displayName(const std::string& path, const std::string& rootDir) {
-            std::error_code ec;
-            auto relative = std::filesystem::relative(path, rootDir, ec);
-            if (!ec && !relative.empty() && relative.native()[0] != '.')
-                return relative.generic_string();
-
-            return std::filesystem::path(path).generic_string();
+namespace LOICollection::frontend::detail {
+    bool isTopLevelDefinition(ASTNode& node) {
+        switch (node.getType()) {
+            case ASTNode::Type::Class:
+            case ASTNode::Type::FunctionDef:
+            case ASTNode::Type::Using:
+            case ASTNode::Type::Import:
+            case ASTNode::Type::Component:
+                return true;
+            default:
+                return false;
         }
     }
+
+    const std::string* definitionName(ASTNode& node) {
+        switch (node.getType()) {
+            case ASTNode::Type::Class:
+                return &static_cast<ClassNode&>(node).name;
+            case ASTNode::Type::FunctionDef:
+                return &static_cast<FunctionDefNode&>(node).name;
+            case ASTNode::Type::Using:
+                return &static_cast<UsingNode&>(node).name;
+            case ASTNode::Type::Component:
+                return &static_cast<ComponentNode&>(node).name;
+            default:
+                return nullptr;
+        }
+    }
+
+    SourceLocation definitionLoc(ASTNode& node) {
+        switch (node.getType()) {
+            case ASTNode::Type::Class:
+                return static_cast<ClassNode&>(node).loc;
+            case ASTNode::Type::FunctionDef:
+                return static_cast<FunctionDefNode&>(node).loc;
+            case ASTNode::Type::Using:
+                return static_cast<UsingNode&>(node).loc;
+            case ASTNode::Type::Component:
+                return static_cast<ComponentNode&>(node).loc;
+            default:
+                return {};
+        }
+    }
+
+    std::string typeExprName(const TypeExpr& expr) {
+        std::string out = expr.name;
+        if (expr.args.empty())
+            return out;
+
+        out += '<';
+        for (size_t i = 0; i < expr.args.size(); ++i) {
+            if (i != 0)
+                out += ',';
+
+            out += typeExprName(expr.args[i]);
+        }
+
+        return out + '>';
+    }
+
+    std::string definitionKey(ASTNode& node) {
+        const std::string* name = definitionName(node);
+        if (!name)
+            return {};
+
+        if (node.getType() != ASTNode::Type::FunctionDef)
+            return *name;
+
+        auto& decl = static_cast<FunctionDefNode&>(node).decl;
+
+        std::string key = *name + '(';
+        for (size_t i = 0; i < decl.params.size(); ++i) {
+            if (i != 0)
+                key += ',';
+
+            key += decl.params[i].hasType ? typeExprName(decl.params[i].typeExpr) : "?";
+        }
+
+        return key + ')';
+    }
+
+    std::string displayName(const std::string& path, const std::string& rootDir) {
+        std::error_code ec;
+        auto relative = std::filesystem::relative(path, rootDir, ec);
+        if (!ec && !relative.empty() && relative.native()[0] != '.')
+            return relative.generic_string();
+
+        return std::filesystem::path(path).generic_string();
+    }
+}
+
+namespace LOICollection::frontend {
+    using namespace detail;
 
     std::optional<ScriptLoader::Result> ScriptLoader::load(
         const std::string& entryPath,

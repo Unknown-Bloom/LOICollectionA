@@ -32,191 +32,193 @@
 
 #include "LOICollectionA/include/client/Plugins/loading/LoadingScreenDetector.h"
 
-namespace LOICollection::client::Plugins::loading {
-    namespace {
-        inline constexpr std::int64_t SceneActiveStaleMs = 150;
-        inline constexpr std::int64_t RouteProbeIntervalMs = 200;
-        inline constexpr std::int64_t JoinReleaseGraceMs = 600;
-        inline constexpr std::int64_t ExitReleaseGraceMs = 900;
+namespace LOICollection::client::Plugins::loading::detail {
+    inline constexpr std::int64_t SceneActiveStaleMs = 150;
+    inline constexpr std::int64_t RouteProbeIntervalMs = 200;
+    inline constexpr std::int64_t JoinReleaseGraceMs = 600;
+    inline constexpr std::int64_t ExitReleaseGraceMs = 900;
 
-        LL_TYPE_INSTANCE_HOOK(
-            LoadingSceneRenderHook,
-            ll::memory::HookPriority::Normal,
-            ::OreUI::Scene,
-            &::OreUI::Scene::$render,
-            void,
-            ::ScreenContext&           screenContext,
-            ::FrameRenderObject const& frameRenderObject
-        ) {
-            origin(screenContext, frameRenderObject);
+    LL_TYPE_INSTANCE_HOOK(
+        LoadingSceneRenderHook,
+        ll::memory::HookPriority::Normal,
+        ::OreUI::Scene,
+        &::OreUI::Scene::$render,
+        void,
+        ::ScreenContext&           screenContext,
+        ::FrameRenderObject const& frameRenderObject
+    ) {
+        origin(screenContext, frameRenderObject);
 
-            LoadingScreenDetector::getInstance().onSceneRendered(*this);
-        }
-
-        LL_TYPE_INSTANCE_HOOK(
-            LoadingProgressTickHook,
-            ll::memory::HookPriority::Normal,
-            ::ProgressScreenController,
-            &::ProgressScreenController::$tick,
-            ::ui::DirtyFlag
-        ) {
-            ::ui::DirtyFlag result = origin();
-
-            LoadingScreenDetector::getInstance().onProgressScreenTicked(*this);
-
-            return result;
-        }
-
-        LL_TYPE_INSTANCE_HOOK(
-            LoadingProgressVarsHook,
-            ll::memory::HookPriority::Normal,
-            ::ProgressScreenController,
-            &::ProgressScreenController::$addStaticScreenVars,
-            void,
-            ::Json::Value& globalVars
-        ) {
-            origin(globalVars);
-
-            LoadingScreenDetector::getInstance().onProgressScreenVars(*this, globalVars);
-        }
-
-        float normalizeProgress(float value) {
-            if (!(value >= 0.0f))
-                return -1.0f;
-
-            if (value > 1.0001f)
-                value /= 100.0f;
-
-            return value <= 1.0001f ? (value > 1.0f ? 1.0f : value) : -1.0f;
-        }
-
-        struct ProgressSample {
-            float Model;
-            float Handler;
-            float Accumulated;
-            int   Handlers;
-        };
-
-        ProgressSample sampleProgressScreen(::ProgressScreenController& controller) noexcept {
-            ProgressSample sample { -1.0f, -1.0f, -1.0f, 0 };
-
-            sample.Accumulated = controller.mAccumulatedProgressPercentageForHandlers;
-            sample.Handlers    = controller.mTotalNumberOfProgressHandlers;
-
-            ::MinecraftScreenModel* model   = controller.mMinecraftScreenModel.get();
-            ::ProgressHandler*      handler = controller.mProgressHandler.get();
-
-            if (model != nullptr)
-                sample.Model = model->getLoadingProgress();
-
-            if (model != nullptr && handler != nullptr)
-                sample.Handler = handler->getLoadingProgress(*model);
-
-            return sample;
-        }
-
-        bool isBlockingModal(::ProgressScreenController& controller) {
-            if (controller.mCurrentlyShowAddonWarning || controller.mDisconnectScreenDisplayed)
-                return true;
-
-            if (controller.mResourcePackPacketReceived && !controller.mDownloadAlreadyConfirmedByUser)
-                return !controller.mRequiredPackList.get().empty() || !controller.mOptionalPackList.get().empty();
-
-            return false;
-        }
-
-        std::int64_t nowMs() {
-            return std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now().time_since_epoch()
-            ).count();
-        }
-
-        std::string toLower(std::string value) {
-            for (auto& c : value)
-                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-
-            return value;
-        }
-
-        std::string pickMessageFromVars(::Json::Value const& vars) {
-            if (!vars.isObject())
-                return {};
-
-            std::string best;
-            int bestScore = 0;
-
-            for (auto const& key : vars.getMemberNames()) {
-                std::string lower = toLower(key);
-
-                int score = lower.find("tip") != std::string::npos ? 3
-                          : lower.find("message") != std::string::npos ? 2 : 0;
-
-                if (score == 0 || score <= bestScore)
-                    continue;
-
-                ::Json::Value const& value = vars[key];
-
-                std::string text;
-
-                if (value.isString()) {
-                    text = value.asString(std::string{});
-                } else if (value.isArray() && !value.empty() && value[0].isString()) {
-                    text = value[0].asString(std::string{});
-                }
-
-                if (text.empty())
-                    continue;
-
-                bestScore = score;
-                best = std::move(text);
-            }
-
-            return best;
-        }
-
-        bool containsKeyword(const std::string& haystack, const std::vector<std::string>& keywords) {
-            if (haystack.empty())
-                return false;
-
-            return std::ranges::any_of(keywords, [&haystack](const std::string& keyword) {
-                return !keyword.empty() && haystack.contains(keyword);
-            });
-        }
-
-        template <class TRegistrar>
-        bool emplaceVerifiedHook(
-            std::optional<TRegistrar>&             slot,
-            ll::memory::FuncPtr                    target,
-            std::shared_ptr<ll::io::Logger> const& logger,
-            std::string_view                       name
-        ) {
-            constexpr size_t ProbeSize = 8;
-
-            std::array<unsigned char, ProbeSize> before {};
-            std::memcpy(before.data(), target, ProbeSize);
-
-            slot.emplace();
-
-            std::array<unsigned char, ProbeSize> after {};
-            std::memcpy(after.data(), target, ProbeSize);
-
-            bool patched = before != after;
-
-            if (logger) {
-                logger->debug(
-                    "LoadingScreenDetector - hook ({}) target=0x{:X} patched={}",
-                    name,
-                    reinterpret_cast<std::uintptr_t>(target),
-                    patched
-                );
-            }
-
-            if (!patched)
-                slot.reset();
-
-            return patched;
-        }
+        LoadingScreenDetector::getInstance().onSceneRendered(*this);
     }
+
+    LL_TYPE_INSTANCE_HOOK(
+        LoadingProgressTickHook,
+        ll::memory::HookPriority::Normal,
+        ::ProgressScreenController,
+        &::ProgressScreenController::$tick,
+        ::ui::DirtyFlag
+    ) {
+        ::ui::DirtyFlag result = origin();
+
+        LoadingScreenDetector::getInstance().onProgressScreenTicked(*this);
+
+        return result;
+    }
+
+    LL_TYPE_INSTANCE_HOOK(
+        LoadingProgressVarsHook,
+        ll::memory::HookPriority::Normal,
+        ::ProgressScreenController,
+        &::ProgressScreenController::$addStaticScreenVars,
+        void,
+        ::Json::Value& globalVars
+    ) {
+        origin(globalVars);
+
+        LoadingScreenDetector::getInstance().onProgressScreenVars(*this, globalVars);
+    }
+
+    float normalizeProgress(float value) {
+        if (!(value >= 0.0f))
+            return -1.0f;
+
+        if (value > 1.0001f)
+            value /= 100.0f;
+
+        return value <= 1.0001f ? (value > 1.0f ? 1.0f : value) : -1.0f;
+    }
+
+    struct ProgressSample {
+        float Model;
+        float Handler;
+        float Accumulated;
+        int   Handlers;
+    };
+
+    ProgressSample sampleProgressScreen(::ProgressScreenController& controller) noexcept {
+        ProgressSample sample { -1.0f, -1.0f, -1.0f, 0 };
+
+        sample.Accumulated = controller.mAccumulatedProgressPercentageForHandlers;
+        sample.Handlers    = controller.mTotalNumberOfProgressHandlers;
+
+        ::MinecraftScreenModel* model   = controller.mMinecraftScreenModel.get();
+        ::ProgressHandler*      handler = controller.mProgressHandler.get();
+
+        if (model != nullptr)
+            sample.Model = model->getLoadingProgress();
+
+        if (model != nullptr && handler != nullptr)
+            sample.Handler = handler->getLoadingProgress(*model);
+
+        return sample;
+    }
+
+    bool isBlockingModal(::ProgressScreenController& controller) {
+        if (controller.mCurrentlyShowAddonWarning || controller.mDisconnectScreenDisplayed)
+            return true;
+
+        if (controller.mResourcePackPacketReceived && !controller.mDownloadAlreadyConfirmedByUser)
+            return !controller.mRequiredPackList.get().empty() || !controller.mOptionalPackList.get().empty();
+
+        return false;
+    }
+
+    std::int64_t nowMs() {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()
+        ).count();
+    }
+
+    std::string toLower(std::string value) {
+        for (auto& c : value)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+        return value;
+    }
+
+    std::string pickMessageFromVars(::Json::Value const& vars) {
+        if (!vars.isObject())
+            return {};
+
+        std::string best;
+        int bestScore = 0;
+
+        for (auto const& key : vars.getMemberNames()) {
+            std::string lower = toLower(key);
+
+            int score = lower.find("tip") != std::string::npos ? 3
+                      : lower.find("message") != std::string::npos ? 2 : 0;
+
+            if (score == 0 || score <= bestScore)
+                continue;
+
+            ::Json::Value const& value = vars[key];
+
+            std::string text;
+
+            if (value.isString()) {
+                text = value.asString(std::string{});
+            } else if (value.isArray() && !value.empty() && value[0].isString()) {
+                text = value[0].asString(std::string{});
+            }
+
+            if (text.empty())
+                continue;
+
+            bestScore = score;
+            best = std::move(text);
+        }
+
+        return best;
+    }
+
+    bool containsKeyword(const std::string& haystack, const std::vector<std::string>& keywords) {
+        if (haystack.empty())
+            return false;
+
+        return std::ranges::any_of(keywords, [&haystack](const std::string& keyword) {
+            return !keyword.empty() && haystack.contains(keyword);
+        });
+    }
+
+    template <class TRegistrar>
+    bool emplaceVerifiedHook(
+        std::optional<TRegistrar>&             slot,
+        ll::memory::FuncPtr                    target,
+        std::shared_ptr<ll::io::Logger> const& logger,
+        std::string_view                       name
+    ) {
+        constexpr size_t ProbeSize = 8;
+
+        std::array<unsigned char, ProbeSize> before {};
+        std::memcpy(before.data(), target, ProbeSize);
+
+        slot.emplace();
+
+        std::array<unsigned char, ProbeSize> after {};
+        std::memcpy(after.data(), target, ProbeSize);
+
+        bool patched = before != after;
+
+        if (logger) {
+            logger->debug(
+                "LoadingScreenDetector - hook ({}) target=0x{:X} patched={}",
+                name,
+                reinterpret_cast<std::uintptr_t>(target),
+                patched
+            );
+        }
+
+        if (!patched)
+            slot.reset();
+
+        return patched;
+    }
+}
+
+namespace LOICollection::client::Plugins::loading {
+    using namespace detail;
 
     struct LoadingScreenDetector::Impl {
         std::shared_ptr<ll::io::Logger> Logger;

@@ -2,41 +2,43 @@
 
 #include "LOICollectionA/frontend/ir/opt/passes/InlinePass.h"
 
-namespace LOICollection::frontend::ir::opt {
-    namespace {
-        bool transfersControl(MirOp op) {
-            switch (op) {
-                case MirOp::CALL:
-                case MirOp::CALL_METHOD:
-                case MirOp::CALL_METHOD_VIRTUAL:
-                case MirOp::CALL_METHOD_BY_NAME:
-                case MirOp::CALL_FUNC:
-                case MirOp::CALL_NATIVE_METHOD:
-                case MirOp::CALL_LAMBDA:
-                case MirOp::CALL_SUPER_CTOR:
-                case MirOp::CALL_MACRO:
-                case MirOp::MAKE_LAMBDA:
-                case MirOp::BIND_THIS:
-                case MirOp::NEW_NATIVE:
-                case MirOp::JMP:
-                case MirOp::JMP_IF_FALSE:
-                case MirOp::JMP_IF_TRUE:
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
-        bool isBranch(MirOp op) {
-            return op == MirOp::JMP || op == MirOp::JMP_IF_FALSE || op == MirOp::JMP_IF_TRUE;
-        }
-
-        bool usesConstantPool(MirOp op) {
-            return op == MirOp::LOAD_CONST || op == MirOp::LOAD_FIELD ||
-                   op == MirOp::STORE_FIELD || op == MirOp::INSTANCEOF ||
-                   op == MirOp::LOAD_VAR || op == MirOp::STORE_VAR;
+namespace LOICollection::frontend::ir::opt::detail {
+    bool transfersControl(MirOp op) {
+        switch (op) {
+            case MirOp::CALL:
+            case MirOp::CALL_METHOD:
+            case MirOp::CALL_METHOD_VIRTUAL:
+            case MirOp::CALL_METHOD_BY_NAME:
+            case MirOp::CALL_FUNC:
+            case MirOp::CALL_NATIVE_METHOD:
+            case MirOp::CALL_LAMBDA:
+            case MirOp::CALL_SUPER_CTOR:
+            case MirOp::CALL_MACRO:
+            case MirOp::MAKE_LAMBDA:
+            case MirOp::BIND_THIS:
+            case MirOp::NEW_NATIVE:
+            case MirOp::JMP:
+            case MirOp::JMP_IF_FALSE:
+            case MirOp::JMP_IF_TRUE:
+                return true;
+            default:
+                return false;
         }
     }
+
+    bool isBranch(MirOp op) {
+        return op == MirOp::JMP || op == MirOp::JMP_IF_FALSE || op == MirOp::JMP_IF_TRUE;
+    }
+
+    bool usesConstantPool(MirOp op) {
+        return op == MirOp::LOAD_CONST || op == MirOp::LOAD_FIELD ||
+               op == MirOp::STORE_FIELD || op == MirOp::INSTANCEOF ||
+               op == MirOp::LOAD_VAR || op == MirOp::STORE_VAR;
+    }
+}
+
+namespace LOICollection::frontend::ir::opt {
+    using namespace detail;
 
     InlinePass::InlinePass(MirChunk& chunk) : mChunk(chunk) {}
 

@@ -16,19 +16,22 @@
 
 using namespace LOICollection::frontend;
 
-namespace ObservableBooleanClass {
-    namespace {
-        std::optional<bool> boolOperand(const TypedValue& value) {
-            if (const auto* flag = std::get_if<bool>(&value))
-                return *flag;
-            if (const auto* obj = std::get_if<ObjectRef>(&value)) {
-                if ((*obj)->className == "ObservableBoolean" && (*obj)->native)
-                    return static_cast<ObservableBooleanHandle*>((*obj)->native.get())->base->getData();
-            }
-
-            return std::nullopt;
+namespace ObservableBooleanClass::detail {
+    std::optional<bool> boolOperand(const TypedValue& value) {
+        if (const auto* flag = std::get_if<bool>(&value))
+            return *flag;
+        if (const auto* obj = std::get_if<ObjectRef>(&value)) {
+            if ((*obj)->className == "ObservableBoolean" && (*obj)->native)
+                return static_cast<ObservableBooleanHandle*>((*obj)->native.get())->base->getData();
         }
+
+        return std::nullopt;
     }
+}
+
+namespace ObservableBooleanClass {
+    using namespace detail;
+
     ll::Expected<ObjectRef> makeObservableBoolean(const CallbackTypeValues& args) {
         auto handle = std::make_shared<ObservableBooleanHandle>();
         handle->base = std::make_unique<ll::ui::ObservableBoolean>(

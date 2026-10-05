@@ -5,21 +5,23 @@
 
 #include "LOICollectionA/frontend/ir/opt/passes/LICMPass.h"
 
-namespace LOICollection::frontend::ir::opt {
-    namespace {
-        bool isInvariant(const MirInstr& instr, const std::unordered_set<int>& invariantRegs) {
-            if (instr.op == MirOp::LOAD_CONST)
-                return true;
+namespace LOICollection::frontend::ir::opt::detail {
+    bool isInvariant(const MirInstr& instr, const std::unordered_set<int>& invariantRegs) {
+        if (instr.op == MirOp::LOAD_CONST)
+            return true;
 
-            if (isPureBinary(instr.op))
-                return invariantRegs.count(instr.src1) > 0 && invariantRegs.count(instr.src2) > 0;
+        if (isPureBinary(instr.op))
+            return invariantRegs.count(instr.src1) > 0 && invariantRegs.count(instr.src2) > 0;
 
-            if (isPureUnary(instr.op))
-                return invariantRegs.count(instr.src1) > 0;
+        if (isPureUnary(instr.op))
+            return invariantRegs.count(instr.src1) > 0;
 
-            return false;
-        }
+        return false;
     }
+}
+
+namespace LOICollection::frontend::ir::opt {
+    using namespace detail;
 
     size_t LICMPass::run() {
         size_t hoisted = 0;

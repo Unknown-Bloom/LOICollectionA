@@ -5,26 +5,28 @@
 #include "LOICollectionA/include/client/Plugins/music/MusicText.h"
 #include "LOICollectionA/include/client/Plugins/music/NowPlayingToast.h"
 
-namespace LOICollection::client::Plugins::music {
-    namespace {
-        float estimatedUnits(std::string_view text) {
-            float units = 0.0f;
+namespace LOICollection::client::Plugins::music::detail {
+    float estimatedUnits(std::string_view text) {
+        float units = 0.0f;
 
-            for (size_t index = 0; index < text.size();) {
-                size_t next = nextCodepointOffset(text, index);
+        for (size_t index = 0; index < text.size();) {
+            size_t next = nextCodepointOffset(text, index);
 
-                units += isAsciiOnly(text.substr(index, next - index)) ? 1.0f : 2.0f;
+            units += isAsciiOnly(text.substr(index, next - index)) ? 1.0f : 2.0f;
 
-                index = next;
-            }
-
-            return units;
+            index = next;
         }
 
-        float measureEstimated(std::string_view text, float fontSize) {
-            return estimatedUnits(text) * fontSize;
-        }
+        return units;
     }
+
+    float measureEstimated(std::string_view text, float fontSize) {
+        return estimatedUnits(text) * fontSize;
+    }
+}
+
+namespace LOICollection::client::Plugins::music {
+    using namespace detail;
 
     float NowPlayingToast::easeOutBack(float t) const {
         float clamped = std::clamp(t, 0.0f, 1.0f);

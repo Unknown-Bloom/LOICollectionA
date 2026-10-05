@@ -15,7 +15,22 @@
 
 using namespace LOICollection::frontend;
 
+namespace CustomFormOptionsClass::detail {
+    ll::Expected<double> toDouble(const TypedValue& value) {
+        return std::visit([](auto&& arg) -> ll::Expected<double> {
+            using T = std::decay_t<decltype(arg)>;
+
+            if constexpr (std::is_same_v<T, int> || std::is_same_v<T, float>)
+                return static_cast<double>(arg);
+
+            return ll::makeStringError("expected a number");
+        }, value);
+    }
+}
+
 namespace CustomFormOptionsClass {
+    using namespace detail;
+
     ll::Expected<ll::ui::TextValue> toTextValue(const TypedValue& value) {
         return std::visit([](auto&& arg) -> ll::Expected<ll::ui::TextValue> {
             using T = std::decay_t<decltype(arg)>;
@@ -69,19 +84,6 @@ namespace CustomFormOptionsClass {
 
             return ll::makeStringError("expected a number or ObservableNumber");
         }, value);
-    }
-
-    namespace {
-        ll::Expected<double> toDouble(const TypedValue& value) {
-            return std::visit([](auto&& arg) -> ll::Expected<double> {
-                using T = std::decay_t<decltype(arg)>;
-
-                if constexpr (std::is_same_v<T, int> || std::is_same_v<T, float>)
-                    return static_cast<double>(arg);
-
-                return ll::makeStringError("expected a number");
-            }, value);
-        }
     }
 
     ll::Expected<ll::ui::ButtonOptions> toButtonOptions(const ObjectRef& options) {

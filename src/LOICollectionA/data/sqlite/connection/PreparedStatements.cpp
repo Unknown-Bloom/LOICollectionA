@@ -8,7 +8,7 @@
 
 #include "LOICollectionA/data/sqlite/connection/PreparedStatements.h"
 
-namespace {
+namespace LOICollection::data::detail {
     using StatementSpec = std::pair<std::string_view, std::string_view>;
 
     constexpr auto kCatalog = std::to_array<StatementSpec>({
@@ -78,6 +78,8 @@ namespace {
         { "delMeta", "DELETE FROM meta WHERE key=?" },
     });
 }
+
+using namespace LOICollection::data::detail;
 
 PreparedStatements::PreparedStatements(SQLite::Database& db) : mDb(db) {}
 

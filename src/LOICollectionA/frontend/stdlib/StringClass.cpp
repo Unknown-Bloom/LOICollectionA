@@ -15,15 +15,18 @@
 
 using namespace LOICollection::frontend;
 
-namespace StringClass {
-    namespace {
-        std::optional<std::string> stringOperand(const TypedValue& value) {
-            if (const auto* text = std::get_if<std::string>(&value))
-                return *text;
+namespace StringClass::detail {
+    std::optional<std::string> stringOperand(const TypedValue& value) {
+        if (const auto* text = std::get_if<std::string>(&value))
+            return *text;
 
-            return std::nullopt;
-        }
+        return std::nullopt;
     }
+}
+
+namespace StringClass {
+    using namespace detail;
+
     ll::Expected<TypedValue> length(const TypedValue& self, const CallbackTypeValues&) {
         return static_cast<int>(codepointCount(std::get<std::string>(self)));
     }

@@ -21,16 +21,18 @@
 using namespace LOICollection::form;
 using namespace LOICollection::frontend;
 
-namespace GUIManagerBuiltin {
-    namespace {
-        std::string scriptIdOf(const CallbackTypePlaces& placeholders) {
-            return Context::scriptIdOf(placeholders);
-        }
-
-        std::shared_ptr<sandbox::ScriptPermissionService> permissionService() {
-            return ServiceProvider::getInstance().getService<sandbox::ScriptPermissionService>();
-        }
+namespace GUIManagerBuiltin::detail {
+    std::string scriptIdOf(const CallbackTypePlaces& placeholders) {
+        return Context::scriptIdOf(placeholders);
     }
+
+    std::shared_ptr<sandbox::ScriptPermissionService> permissionService() {
+        return ServiceProvider::getInstance().getService<sandbox::ScriptPermissionService>();
+    }
+}
+
+namespace GUIManagerBuiltin {
+    using namespace detail;
 
     ll::Expected<TypedValue> value(const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
         const std::string id = std::get<std::string>(args[0]);

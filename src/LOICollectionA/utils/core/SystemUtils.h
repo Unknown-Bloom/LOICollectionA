@@ -5,6 +5,7 @@
 
 namespace SystemUtils {
     std::int64_t getEpochSeconds();
+    std::int64_t getEpochMilliseconds();
 
     std::string getCurrentTimestamp();
     std::string getNowTime(const std::string& format = "%Y-%m-%d %H:%M:%S");

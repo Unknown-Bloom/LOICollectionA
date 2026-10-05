@@ -14,6 +14,12 @@ namespace SystemUtils {
         ).count();
     }
 
+    std::int64_t getEpochMilliseconds() {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()
+        ).count();
+    }
+
     std::string getCurrentTimestamp() {
         auto mTimeNow = std::chrono::system_clock::now();
         return std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>(mTimeNow.time_since_epoch()).count());

@@ -15,15 +15,17 @@
 
 #include "LOICollectionA/include/client/Plugins/music/audio/LoopbackCapture.h"
 
-namespace LOICollection::client::Plugins::music::audio {
-    namespace {
-        std::string formatErrorMessage(HRESULT result) {
-            char buffer[64];
-            std::snprintf(buffer, sizeof(buffer), "HRESULT 0x%08lX", static_cast<unsigned long>(result));
+namespace LOICollection::client::Plugins::music::audio::detail {
+    std::string formatErrorMessage(HRESULT result) {
+        char buffer[64];
+        std::snprintf(buffer, sizeof(buffer), "HRESULT 0x%08lX", static_cast<unsigned long>(result));
 
-            return buffer;
-        }
+        return buffer;
     }
+}
+
+namespace LOICollection::client::Plugins::music::audio {
+    using namespace detail;
 
     struct LoopbackCapture::Impl {
         std::thread      Worker;

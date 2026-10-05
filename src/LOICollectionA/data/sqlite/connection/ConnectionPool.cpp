@@ -15,7 +15,7 @@
 
 #include "LOICollectionA/base/Ownership.h"
 
-namespace {
+namespace LOICollection::data::detail {
     constexpr auto kPragmas = std::to_array<std::string_view>({
         "PRAGMA journal_mode = WAL;",
         "PRAGMA synchronous = NORMAL;",
@@ -24,6 +24,8 @@ namespace {
         "PRAGMA busy_timeout = 5000;",
     });
 }
+
+using namespace LOICollection::data::detail;
 
 SQLiteConnection::SQLiteConnection(std::string path, bool readOnly)
     : mDatabase(std::make_unique<SQLite::Database>(path.c_str(),
