@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <utility>
+#include <concepts>
 #include <algorithm>
 #include <charconv>
 #include <optional>
@@ -30,6 +31,13 @@ namespace LOICollection::data {
     enum class FindMode { And, Or };
 
     enum class CellAffinity { Text, Integer, Real };
+
+    namespace detail {
+        template <class S>
+        concept StringLike = requires (S s) {
+            { std::string_view(s) } -> std::convertible_to<std::string_view>;
+        } && !std::is_enum_v<std::remove_cvref_t<S>>;
+    }
 
     template <class T>
     constexpr CellAffinity affinityOf() {
@@ -1164,9 +1172,9 @@ namespace LOICollection::data {
                 return set(rowKey, Key{col}, v);
             }
 
-            template <class T>
-            [[nodiscard]] ll::Expected<void> set(std::string_view rowKey, std::string_view col, T const& v) {
-                auto parsed = parseColumn(col);
+            template <class T, detail::StringLike S>
+            [[nodiscard]] ll::Expected<void> set(std::string_view rowKey, S col, T const& v) {
+                auto parsed = parseColumn(std::string_view(col));
                 if (!parsed.has_value())
                     return ll::makeStringError(parsed.error().message());
 
@@ -1217,9 +1225,9 @@ namespace LOICollection::data {
                 return get(rowKey, Key{col}, def);
             }
 
-            template <class T>
-            [[nodiscard]] ll::Expected<T> get(std::string_view rowKey, std::string_view col, T const& def = T{}) {
-                auto parsed = parseColumn(col);
+            template <class T, detail::StringLike S>
+            [[nodiscard]] ll::Expected<T> get(std::string_view rowKey, S col, T const& def = T{}) {
+                auto parsed = parseColumn(std::string_view(col));
                 if (!parsed.has_value())
                     return ll::makeStringError(parsed.error().message());
 

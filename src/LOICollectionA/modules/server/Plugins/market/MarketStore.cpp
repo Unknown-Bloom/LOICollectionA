@@ -815,7 +815,7 @@ namespace LOICollection::server::Plugins {
         if (!tx.has_value())
             return ll::Unexpected(tx.error());
 
-        auto current = tx->get<std::string>("total", "total", "0");
+        auto current = tx->get<std::string>("total", MarketTaxCol::total, "0");
         if (!current.has_value()) {
             static_cast<void>(tx->rollback());
 
@@ -824,7 +824,7 @@ namespace LOICollection::server::Plugins {
 
         long long total = SystemUtils::toLongLong(current.value(), 0) + tax;
 
-        auto setResult = tx->set("total", "total", std::to_string(total));
+        auto setResult = tx->set("total", MarketTaxCol::total, std::to_string(total));
         if (!setResult.has_value()) {
             static_cast<void>(tx->rollback());
 
