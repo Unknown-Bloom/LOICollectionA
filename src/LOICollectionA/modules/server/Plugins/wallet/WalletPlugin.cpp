@@ -2,6 +2,7 @@
 #include <chrono>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -87,6 +88,8 @@ namespace LOICollection::server::Plugins {
 
         ll::ConcurrentDenseMap<std::string, bool> mSettling;
         ll::ConcurrentDenseMap<std::string, int64_t> mLastTransferTime;
+
+        std::mutex mTransferMutex;
 
         std::atomic<bool> mRegistered{ false };
 
@@ -178,6 +181,8 @@ namespace LOICollection::server::Plugins {
 
         if (this->mImpl->options.TransferConfirmThreshold > 0 && score > this->mImpl->options.TransferConfirmThreshold && !confirmed)
             return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::ConfirmRequired));
+
+        std::lock_guard<std::mutex> lock(this->mImpl->mTransferMutex);
 
         if (auto verification = this->validateTransfer(player.getUuid().asString(), score); !verification.has_value())
             return ll::Unexpected(verification.error());
