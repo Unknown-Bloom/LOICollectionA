@@ -132,8 +132,7 @@ namespace LOICollection::client::Plugins::music::audio {
                 return;
             }
 
-            const WORD  channels = mixFormat->nChannels;
-            const float rate     = static_cast<float>(mixFormat->nSamplesPerSec);
+            const WAVEFORMATEX* activeFormat = mixFormat;
 
             WAVEFORMATEXTENSIBLE converted {};
             converted.Format.wFormatTag           = WAVE_FORMAT_EXTENSIBLE;
@@ -159,7 +158,9 @@ namespace LOICollection::client::Plugins::music::audio {
                 nullptr
             );
 
-            if (FAILED(result)) {
+            if (SUCCEEDED(result)) {
+                activeFormat = reinterpret_cast<const WAVEFORMATEX*>(&converted);
+            } else {
                 result = audioClient->Initialize(
                     AUDCLNT_SHAREMODE_SHARED,
                     AUDCLNT_STREAMFLAGS_LOOPBACK,
@@ -172,6 +173,30 @@ namespace LOICollection::client::Plugins::music::audio {
 
             if (FAILED(result)) {
                 fail("IAudioClient::Initialize", result);
+                ::CoTaskMemFree(mixFormat);
+                cleanup();
+
+                return;
+            }
+
+            const WORD channels = activeFormat->nChannels;
+
+            if (channels == 0 || activeFormat->nBlockAlign == 0) {
+                fail("IAudioClient::Initialize", E_INVALIDARG);
+                ::CoTaskMemFree(mixFormat);
+                cleanup();
+
+                return;
+            }
+
+            const bool isFloat = activeFormat->wFormatTag == WAVE_FORMAT_IEEE_FLOAT
+                || (activeFormat->wFormatTag == WAVE_FORMAT_EXTENSIBLE
+                    && reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(activeFormat)->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
+
+            const WORD bitsPerSample = activeFormat->wBitsPerSample;
+
+            if ((isFloat && bitsPerSample != 32) || (!isFloat && bitsPerSample != 16)) {
+                fail("IAudioClient::Initialize", AUDCLNT_E_UNSUPPORTED_FORMAT);
                 ::CoTaskMemFree(mixFormat);
                 cleanup();
 
@@ -198,7 +223,7 @@ namespace LOICollection::client::Plugins::music::audio {
                 return;
             }
 
-            this->mImpl->Analyzer.reset(rate);
+            this->mImpl->Analyzer.reset(static_cast<float>(activeFormat->nSamplesPerSec));
 
             std::vector<float> mono;
 
@@ -235,15 +260,28 @@ namespace LOICollection::client::Plugins::music::audio {
                 mono.reserve(frameCount);
 
                 if (frameCount > 0 && data != nullptr && (bufferFlags & AUDCLNT_BUFFERFLAGS_SILENT) == 0) {
-                    const auto* samples = reinterpret_cast<const float*>(data);
+                    if (isFloat) {
+                        const auto* samples = reinterpret_cast<const float*>(data);
 
-                    for (UINT32 frame = 0; frame < frameCount; ++frame) {
-                        float sum = 0.0f;
+                        for (UINT32 frame = 0; frame < frameCount; ++frame) {
+                            float sum = 0.0f;
 
-                        for (WORD channel = 0; channel < channels; ++channel)
-                            sum += samples[static_cast<std::size_t>(frame) * channels + channel];
+                            for (WORD channel = 0; channel < channels; ++channel)
+                                sum += samples[static_cast<std::size_t>(frame) * channels + channel];
 
-                        mono.push_back(sum / static_cast<float>(channels));
+                            mono.push_back(sum / static_cast<float>(channels));
+                        }
+                    } else {
+                        const auto* samples = reinterpret_cast<const std::int16_t*>(data);
+
+                        for (UINT32 frame = 0; frame < frameCount; ++frame) {
+                            float sum = 0.0f;
+
+                            for (WORD channel = 0; channel < channels; ++channel)
+                                sum += static_cast<float>(samples[static_cast<std::size_t>(frame) * channels + channel]) / 32768.0f;
+
+                            mono.push_back(sum / static_cast<float>(channels));
+                        }
                     }
                 } else {
                     mono.assign(frameCount, 0.0f);
