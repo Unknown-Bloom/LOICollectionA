@@ -106,39 +106,40 @@ namespace LOICollection::server::Plugins {
         if (ScoreboardUtils::getScore(player, mScoreboard) < amount)
             return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::InsufficientBalance));
 
-        ScoreboardUtils::reduceScore(player, mScoreboard, amount);
-
         auto& bank = *this->mImpl->bank;
-
-        auto principal = bank.get<long long>(uuid, "principal", 0);
-        if (!principal.has_value()) {
-            ScoreboardUtils::addScore(player, mScoreboard, amount);
-
-            return ll::Unexpected(principal.error());
-        }
 
         long long nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
-        auto setBank = bank.set(uuid, "principal", principal.value() + amount)
-            .and_then([&bank, &uuid, nowNs]() -> ll::Expected<void> {
-                return bank.set(uuid, "deposit_at", nowNs);
+        auto batch = bank.tx();
+        if (!batch.has_value())
+            return ll::Unexpected(batch.error());
+
+        auto& tx = batch.value();
+
+        return tx.get<long long>(uuid, "principal", 0)
+            .and_then([&tx, &uuid, amount, nowNs, &player](long long current) -> ll::Expected<void> {
+                return tx.set(uuid, "principal", current + amount)
+                    .and_then([&tx, &uuid, nowNs]() -> ll::Expected<void> {
+                        return tx.set(uuid, "deposit_at", nowNs);
+                    })
+                    .and_then([&tx, &uuid, &player]() -> ll::Expected<void> {
+                        return tx.set(uuid, "name", player.getRealName());
+                    });
             })
-            .and_then([&bank, &uuid, &player]() -> ll::Expected<void> {
-                return bank.set(uuid, "name", player.getRealName());
-            });
-        if (!setBank.has_value()) {
-            ScoreboardUtils::addScore(player, mScoreboard, amount);
+            .and_then([&tx]() -> ll::Expected<void> {
+                return tx.commit().transform([](bool) -> void {});
+            })
+            .transform([this, uuid, &player, amount]() -> void {
+                ScoreboardUtils::reduceScore(player, this->mImpl->options.TargetScoreboard, amount);
 
-            return ll::Unexpected(setBank.error());
-        }
+                this->mImpl->ledger.record(uuid, player.getRealName(), "", "", amount, 0, "bank_deposit");
 
-        this->mImpl->ledger.record(uuid, player.getRealName(), "", "", amount, 0, "bank_deposit");
+                this->mImpl->wallet->set(uuid, "balance", static_cast<long long>(ScoreboardUtils::getScore(player, this->mImpl->options.TargetScoreboard)))
+                    .or_else([this](ll::Error e) -> ll::Expected<void> {
+                        e.log(*this->mImpl->logger);
 
-        return this->mImpl->wallet->set(uuid, "balance", static_cast<long long>(ScoreboardUtils::getScore(player, mScoreboard)))
-            .or_else([this](ll::Error e) -> ll::Expected<void> {
-                e.log(*this->mImpl->logger);
-
-                return {};
+                        return {};
+                    });
             });
     }
 
@@ -209,19 +210,19 @@ namespace LOICollection::server::Plugins {
             }
         }
 
-        auto delBank = bank.del(uuid);
-        if (!delBank.has_value())
-            return ll::Unexpected(delBank.error());
-
-        long long credit = principal.value() + paidInterest;
-        ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, static_cast<int>(credit));
-
         std::string playerName = player.getRealName();
 
         this->mImpl->ledger.record(uuid, playerName, "", "", principal.value(), 0, "bank_withdraw");
 
         if (paidInterest > 0)
             this->mImpl->ledger.record("", "", uuid, playerName, paidInterest, interestTax, "bank_interest");
+
+        auto delBank = bank.del(uuid);
+        if (!delBank.has_value())
+            return ll::Unexpected(delBank.error());
+
+        long long credit = principal.value() + paidInterest;
+        ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, static_cast<int>(credit));
 
         return this->mImpl->wallet->set(uuid, "balance", static_cast<long long>(ScoreboardUtils::getScore(player, this->mImpl->options.TargetScoreboard)))
             .or_else([this](ll::Error e) -> ll::Expected<void> {
