@@ -240,27 +240,22 @@ namespace LOICollection::server::Plugins {
 
         long long total = 0;
         for (const auto& id : ids.value()) {
-            auto type = this->mImpl->ledger->get<std::string>(id, WalletLedgerCol::type, "");
-            if (!type.has_value())
-                return ll::Unexpected(type.error());
-            if (type.value() != "transfer")
+            auto row = this->mImpl->ledger->getRow(id);
+            if (!row.has_value())
+                return ll::Unexpected(row.error());
+
+            const auto& fields = row.value();
+
+            if (fields.contains("type") && fields.at("type") != "transfer")
                 continue;
 
-            auto timeNs = this->mImpl->ledger->get<long long>(id, WalletLedgerCol::time_ns, 0);
-            if (!timeNs.has_value())
-                return ll::Unexpected(timeNs.error());
-            if (timeNs.value() < todayStartNs)
+            if (SystemUtils::toLongLong(fields.contains("time_ns") ? fields.at("time_ns") : "", 0) < todayStartNs)
                 continue;
 
-            auto amount = this->mImpl->ledger->get<long long>(id, WalletLedgerCol::amount, 0);
-            if (!amount.has_value())
-                return ll::Unexpected(amount.error());
+            long long amount = SystemUtils::toLongLong(fields.contains("amount") ? fields.at("amount") : "", 0);
+            long long fee = SystemUtils::toLongLong(fields.contains("fee") ? fields.at("fee") : "", 0);
 
-            auto fee = this->mImpl->ledger->get<long long>(id, WalletLedgerCol::fee, 0);
-            if (!fee.has_value())
-                return ll::Unexpected(fee.error());
-
-            total += amount.value() + fee.value();
+            total += amount + fee;
         }
 
         return total;
@@ -287,23 +282,22 @@ namespace LOICollection::server::Plugins {
         std::unordered_map<std::string, long long> senderTotal;
 
         for (const auto& id : sendIds.value()) {
-            auto timeNs = this->mImpl->ledger->get<long long>(id, WalletLedgerCol::time_ns, 0);
-            if (!timeNs.has_value())
-                return ll::Unexpected(timeNs.error());
-            if (timeNs.value() < todayStartNs)
+            auto row = this->mImpl->ledger->getRow(id);
+            if (!row.has_value())
+                return ll::Unexpected(row.error());
+
+            const auto& fields = row.value();
+
+            if (SystemUtils::toLongLong(fields.contains("time_ns") ? fields.at("time_ns") : "", 0) < todayStartNs)
                 continue;
 
-            auto amount = this->mImpl->ledger->get<long long>(id, WalletLedgerCol::amount, 0);
-            if (!amount.has_value())
-                return ll::Unexpected(amount.error());
+            long long amount = SystemUtils::toLongLong(fields.contains("amount") ? fields.at("amount") : "", 0);
 
             sendCount += 1;
-            sendTotal += amount.value();
+            sendTotal += amount;
 
-            auto sender = this->mImpl->ledger->get<std::string>(id, WalletLedgerCol::from_name, "?");
-            if (!sender.has_value())
-                return ll::Unexpected(sender.error());
-            senderTotal[sender.value()] += amount.value();
+            std::string sender = fields.contains("from_name") ? fields.at("from_name") : "?";
+            senderTotal[sender] += amount;
         }
 
         auto grabIds = this->mImpl->ledger->find(FindMode::And, {
@@ -314,20 +308,19 @@ namespace LOICollection::server::Plugins {
 
         std::unordered_map<std::string, long long> grabTotal;
         for (const auto& id : grabIds.value()) {
-            auto timeNs = this->mImpl->ledger->get<long long>(id, WalletLedgerCol::time_ns, 0);
-            if (!timeNs.has_value())
-                return ll::Unexpected(timeNs.error());
-            if (timeNs.value() < todayStartNs)
+            auto row = this->mImpl->ledger->getRow(id);
+            if (!row.has_value())
+                return ll::Unexpected(row.error());
+
+            const auto& fields = row.value();
+
+            if (SystemUtils::toLongLong(fields.contains("time_ns") ? fields.at("time_ns") : "", 0) < todayStartNs)
                 continue;
 
-            auto amount = this->mImpl->ledger->get<long long>(id, WalletLedgerCol::amount, 0);
-            if (!amount.has_value())
-                return ll::Unexpected(amount.error());
+            long long amount = SystemUtils::toLongLong(fields.contains("amount") ? fields.at("amount") : "", 0);
 
-            auto grabber = this->mImpl->ledger->get<std::string>(id, WalletLedgerCol::to_name, "?");
-            if (!grabber.has_value())
-                return ll::Unexpected(grabber.error());
-            grabTotal[grabber.value()] += amount.value();
+            std::string grabber = fields.contains("to_name") ? fields.at("to_name") : "?";
+            grabTotal[grabber] += amount;
         }
 
         std::vector<std::pair<std::string, long long>> topGrabbers(grabTotal.begin(), grabTotal.end());
