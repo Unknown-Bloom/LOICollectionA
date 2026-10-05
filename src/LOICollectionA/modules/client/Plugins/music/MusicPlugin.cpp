@@ -188,6 +188,9 @@ namespace LOICollection::client::Plugins::music {
 
         this->stopPoll();
 
+        if (this->mImpl->Source)
+            this->mImpl->Source->release();
+
         this->mImpl->Renderer.reset();
         this->mImpl->Source.reset();
         this->mImpl->Audio.reset();
@@ -292,6 +295,9 @@ namespace LOICollection::client::Plugins::music {
             return false;
 
         this->stopPoll();
+
+        if (this->mImpl->Source)
+            this->mImpl->Source->release();
 
         display::overlay::removeRenderCallback(this->mImpl->RenderHandle);
         this->mImpl->RenderHandle = 0;

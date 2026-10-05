@@ -100,7 +100,20 @@ namespace LOICollection::client::Plugins::music {
     class WindowsMediaSessionSource final : public MediaSessionSource {
     public:
         explicit WindowsMediaSessionSource(MediaSessionFilter filter) : mFilter(std::move(filter)) {}
-        ~WindowsMediaSessionSource() override = default;
+        ~WindowsMediaSessionSource() override {
+            this->detach();
+        }
+
+        void release() noexcept override {
+            this->mThumbnailRequest = nullptr;
+
+            if (this->mManagerRequest) {
+                static_cast<void>(this->mManagerRequest.Cancel());
+                this->mManagerRequest = nullptr;
+            }
+
+            this->mManager = nullptr;
+        }
 
         bool poll(NowPlayingTrack& track) override {
             if (!this->mInitialized) {
@@ -440,6 +453,12 @@ namespace LOICollection::client::Plugins::music {
 
         void scheduleThumbnailRetry() {
             this->mThumbnailNextTry = ::GetTickCount64() + this->mFilter.Tuning.ThumbnailRetryDelayMs;
+        }
+
+        void detach() noexcept {
+            static_cast<void>(this->mThumbnailRequest.detach());
+            static_cast<void>(this->mManagerRequest.detach());
+            static_cast<void>(this->mManager.detach());
         }
 
     private:

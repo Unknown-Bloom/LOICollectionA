@@ -44,6 +44,8 @@ namespace LOICollection::client::Plugins::music {
 
     public:
         LOICOLLECTION_A_NDAPI virtual bool poll(NowPlayingTrack& track) = 0;
+
+        virtual void release() noexcept {}
     };
 
     LOICOLLECTION_A_NDAPI std::unique_ptr<MediaSessionSource> makeMediaSessionSource(MediaSessionFilter filter);
