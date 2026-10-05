@@ -528,6 +528,7 @@
     "market.sell": "'§e玩家 §b' + {player} + ' §e向您发送了一个交易请求, 请确认是否接受购买其的物品'",
     "market.gui.error": "目标对象不存在或已被删除",
     "market.gui.price.ceiling": "§c该物品定价 {0} 已超过市场价格上限, 请参考近期均价调整定价",
+    "market.gui.price.invalid": "§c定价必须为大于 0 的整数, 请重新填写",
     "market.gui.title": "§e§lLOIMarket -> §b玩家市场§r",
     "market.gui.label": "§b功能如下:",
     "market.gui.store": "玩家店铺",

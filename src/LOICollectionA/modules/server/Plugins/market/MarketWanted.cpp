@@ -566,12 +566,34 @@ namespace LOICollection::server::Plugins {
         if (tax <= 0)
             return {};
 
-        return this->mImpl->tax->get<std::string>("total", "total", "0")
-            .and_then([this, tax](const std::string& value) -> ll::Expected<void> {
-                long long total = SystemUtils::toLongLong(value, 0) + tax;
+        auto tx = this->mImpl->tax->tx();
+        if (!tx.has_value())
+            return ll::Unexpected(tx.error());
 
-                return this->mImpl->tax->set("total", "total", std::to_string(total));
-            });
+        auto current = tx->get<std::string>("total", "total", "0");
+        if (!current.has_value()) {
+            static_cast<void>(tx->rollback());
+
+            return ll::Unexpected(current.error());
+        }
+
+        long long total = SystemUtils::toLongLong(current.value(), 0) + tax;
+
+        auto setResult = tx->set("total", "total", std::to_string(total));
+        if (!setResult.has_value()) {
+            static_cast<void>(tx->rollback());
+
+            return ll::Unexpected(setResult.error());
+        }
+
+        auto commitResult = tx->commit();
+        if (!commitResult.has_value()) {
+            static_cast<void>(tx->rollback());
+
+            return ll::Unexpected(commitResult.error());
+        }
+
+        return {};
     }
 
     void MarketWanted::startSweep() {

@@ -1393,9 +1393,143 @@ TEST_F(MarketPluginTest, PriceCeilingDisabledByDefault) {
     auto sp = ll::service::getLevel()->getPlayer("test_player");
     ASSERT_TRUE(sp);
 
-    auto allowed = MarketPlugin::getShared()->guardPriceCeiling(*sp, "ceiling_probe", 999999);
+    auto allowed = MarketPlugin::getShared()->guardPriceRange(*sp, "ceiling_probe", 999999);
     ASSERT_TRUE(allowed.has_value());
     EXPECT_TRUE(allowed.value());
+}
+
+TEST_F(MarketPluginTest, PriceRangeRejectsNonPositivePrice) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(sp);
+
+    for (int price : { 0, -1, -100 }) {
+        auto allowed = MarketPlugin::getShared()->guardPriceRange(*sp, "range_probe", price);
+        ASSERT_TRUE(allowed.has_value());
+        EXPECT_FALSE(allowed.value()) << "price " << price << " must be rejected";
+    }
+
+    auto positive = MarketPlugin::getShared()->guardPriceRange(*sp, "range_probe", 1);
+    ASSERT_TRUE(positive.has_value());
+    EXPECT_TRUE(positive.value());
+}
+
+TEST_F(MarketPluginTest, SellItemRejectsNonPositivePrice) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(sp);
+
+    GiveItem(*sp, "minecraft:grass_block", 8);
+
+    int slot = FindSlot(*sp, "minecraft:grass_block");
+    ASSERT_GE(slot, 0);
+
+    auto before = MarketPlugin::getShared()->getItems(*sp);
+    ASSERT_TRUE(before.has_value());
+
+    auto zero = MarketPlugin::getShared()->sellItem(*sp, slot, "grass_block", "minecraft:grass_block", "A grass block.", 0);
+    ASSERT_TRUE(zero.has_value());
+    EXPECT_FALSE(zero.value());
+
+    auto negative = MarketPlugin::getShared()->sellItem(*sp, slot, "grass_block", "minecraft:grass_block", "A grass block.", -50);
+    ASSERT_TRUE(negative.has_value());
+    EXPECT_FALSE(negative.value());
+
+    auto after = MarketPlugin::getShared()->getItems(*sp);
+    ASSERT_TRUE(after.has_value());
+    EXPECT_EQ(after.value().size(), before.value().size());
+
+    EXPECT_TRUE(InventoryUtils::isItemInInventory(*sp, "minecraft:grass_block", 1));
+
+    InventoryUtils::clearItem(*sp, "minecraft:grass_block", 2304);
+}
+
+TEST_F(MarketPluginTest, UploadStoreItemRejectsNonPositivePrice) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(sp);
+
+    Config::C_Market config = GetMarketConfig();
+    if (!config.StoreEnabled)
+        GTEST_SKIP();
+
+    ASSERT_TRUE(CreateStore(*sp));
+
+    GiveItem(*sp, "minecraft:grass_block", 4);
+
+    int slot = FindSlot(*sp, "minecraft:grass_block");
+    ASSERT_GE(slot, 0);
+
+    auto zero = MarketPlugin::getShared()->uploadStoreItem(*sp, slot, "grass_block", "minecraft:grass_block", "A grass block.", 0);
+    ASSERT_TRUE(zero.has_value());
+    EXPECT_FALSE(zero.value());
+
+    EXPECT_TRUE(InventoryUtils::isItemInInventory(*sp, "minecraft:grass_block", 1));
+
+    InventoryUtils::clearItem(*sp, "minecraft:grass_block", 2304);
+}
+
+TEST_F(MarketPluginTest, OffshelfItemRejectsNonOwner) {
+    ASSERT_TRUE(CreateItemEntry());
+
+    auto owner = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(owner);
+
+    TestSimulatedPlayer intruder("test_player6");
+    ASSERT_TRUE(intruder.create());
+
+    InventoryUtils::clearItem(*intruder.getPlayer(), "minecraft:grass_block", 2304);
+
+    auto result = MarketPlugin::getShared()->offshelfItem(*intruder.getPlayer(), this->mItemId, true);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result.value());
+
+    EXPECT_FALSE(InventoryUtils::isItemInInventory(*intruder.getPlayer(), "minecraft:grass_block", 1));
+
+    auto has = MarketPlugin::getShared()->hasItem(this->mItemId);
+    ASSERT_TRUE(has.has_value());
+    EXPECT_TRUE(has.value());
+
+    ASSERT_TRUE(intruder.destroy());
+}
+
+TEST_F(MarketPluginTest, BuyItemRemovesListingAndBlocksSecondPurchase) {
+    ASSERT_TRUE(CreateItemEntry());
+
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(sp);
+
+    TestSimulatedPlayer sp2("test_player6");
+    ASSERT_TRUE(sp2.create());
+
+    Config::C_Market config = GetMarketConfig();
+    bool created = false;
+    ASSERT_TRUE(PrepareScoreboard(config, created));
+
+    ScoreboardUtils::setScore(*sp, config.TargetScoreboard, 0);
+    ScoreboardUtils::setScore(*sp2.getPlayer(), config.TargetScoreboard, 1000);
+
+    auto buy = MarketPlugin::getShared()->buyItem(*sp2.getPlayer(), this->mItemId);
+    ASSERT_TRUE(buy.has_value());
+    EXPECT_TRUE(buy.value());
+
+    auto has = MarketPlugin::getShared()->hasItem(this->mItemId);
+    ASSERT_TRUE(has.has_value());
+    EXPECT_FALSE(has.value()) << "the listing must be removed after a successful purchase";
+
+    EXPECT_TRUE(InventoryUtils::isItemInInventory(*sp2.getPlayer(), "minecraft:grass_block", 1));
+
+    int scoreAfterFirst = ScoreboardUtils::getScore(*sp2.getPlayer(), config.TargetScoreboard);
+    EXPECT_EQ(scoreAfterFirst, 900);
+
+    auto second = MarketPlugin::getShared()->buyItem(*sp2.getPlayer(), this->mItemId);
+    ASSERT_TRUE(second.has_value());
+    EXPECT_FALSE(second.value()) << "buying the same listing twice must fail";
+
+    EXPECT_EQ(ScoreboardUtils::getScore(*sp2.getPlayer(), config.TargetScoreboard), scoreAfterFirst);
+    EXPECT_TRUE(InventoryUtils::isItemInInventory(*sp2.getPlayer(), "minecraft:grass_block", 1));
+
+    if (created)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+
+    ASSERT_TRUE(sp2.destroy());
 }
 
 TEST_F(MarketPluginTest, StoreQuoteAggregation) {

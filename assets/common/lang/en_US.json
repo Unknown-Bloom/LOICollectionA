@@ -528,6 +528,7 @@
     "market.sell": "'§ePlayer §b' + {player} + ' §esent you a trade request to sell you an item'",
     "market.gui.error": "Target object does not exist or has been deleted",
     "market.gui.price.ceiling": "§cThe price {0} exceeds the market price ceiling, please adjust it based on recent average prices",
+    "market.gui.price.invalid": "§cThe price must be a positive integer, please fill it in again",
     "market.gui.title": "§e§lLOIMarket -> §bPlayer Market§r",
     "market.gui.label": "§bFunctions:",
     "market.gui.store": "Player Stores",

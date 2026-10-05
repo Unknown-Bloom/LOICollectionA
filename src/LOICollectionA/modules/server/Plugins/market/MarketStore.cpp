@@ -473,6 +473,15 @@ namespace LOICollection::server::Plugins {
         if (name.empty() || icon.empty() || intr.empty())
             return false;
 
+        if (score <= 0) {
+            return LanguagePlugin::getShared()->getLanguage(player)
+                .transform([&player](const std::string& language) -> bool {
+                    player.sendMessage(tr(language, "market.gui.price.invalid"));
+
+                    return false;
+                });
+        }
+
         std::string mUuid = player.getUuid().asString();
 
         return this->mImpl->store->has(mUuid)
@@ -494,19 +503,40 @@ namespace LOICollection::server::Plugins {
                             {"data", mItemStack.save(*SaveContextFactory::createCloneSaveContext())->toSnbt(SnbtFormat::Minimize, 0)}
                         };
 
-                        return this->mImpl->item->setRow(itemKey, data)
-                            .and_then([this, itemKey, score]() -> ll::Expected<void> {
-                                return this->mImpl->item->set(itemKey, StoreItemCol::score, static_cast<long long>(score));
-                            })
-                            .transform([this, slot, &player, name]() -> bool {
-                                player.mInventory->mInventory->removeItem(slot, 64);
-                                player.refreshInventory();
+                        auto itemTx = this->mImpl->item->tx();
+                        if (!itemTx.has_value())
+                            return ll::Unexpected(itemTx.error());
 
-                                this->clearRankCache();
-                                this->mImpl->logger->info(fmt::runtime(tr({}, "market.log11")), player.getRealName(), name);
+                        for (const auto& [column, value] : data) {
+                            auto setResult = itemTx->set(itemKey, column, value);
+                            if (!setResult.has_value()) {
+                                static_cast<void>(itemTx->rollback());
 
-                                return true;
-                            });
+                                return ll::Unexpected(setResult.error());
+                            }
+                        }
+
+                        auto scoreResult = itemTx->set(itemKey, StoreItemCol::score, static_cast<long long>(score));
+                        if (!scoreResult.has_value()) {
+                            static_cast<void>(itemTx->rollback());
+
+                            return ll::Unexpected(scoreResult.error());
+                        }
+
+                        auto commitResult = itemTx->commit();
+                        if (!commitResult.has_value()) {
+                            static_cast<void>(itemTx->rollback());
+
+                            return ll::Unexpected(commitResult.error());
+                        }
+
+                        player.mInventory->mInventory->removeItem(slot, 64);
+                        player.refreshInventory();
+
+                        this->clearRankCache();
+                        this->mImpl->logger->info(fmt::runtime(tr({}, "market.log11")), player.getRealName(), name);
+
+                        return true;
                     });
             });
     }
@@ -522,8 +552,7 @@ namespace LOICollection::server::Plugins {
             .and_then([this, id, returnItem, &player](std::unordered_map<std::string, std::string> data) -> ll::Expected<bool> {
                 return this->getStore(data.at("store_id"))
                     .and_then([this, id, returnItem, &player, data](std::unordered_map<std::string, std::string> store) -> ll::Expected<bool> {
-                        bool mIsAdmin = player.getCommandPermissionLevel() >= CommandPermissionLevel::GameDirectors;
-                        if (store.at("owner_uuid") != player.getUuid().asString() && !mIsAdmin)
+                        if (!MarketPlugin::canOperate(player, store.at("owner_uuid")))
                             return false;
 
                         if (returnItem && store.at("owner_uuid") == player.getUuid().asString()) {
@@ -628,17 +657,9 @@ namespace LOICollection::server::Plugins {
                                                 return true;
                                             })
                                             .and_then([this, tax](bool) -> ll::Expected<bool> {
-                                                if (tax <= 0)
-                                                    return true;
-
-                                                return this->mImpl->tax->get<std::string>("total", "total", "0")
-                                                    .and_then([this, tax](const std::string& value) -> ll::Expected<bool> {
-                                                        long long total = SystemUtils::toLongLong(value, 0) + tax;
-
-                                                        return this->mImpl->tax->set("total", "total", std::to_string(total))
-                                                            .transform([]() -> bool {
-                                                                return true;
-                                                            });
+                                                return this->collectTax(tax)
+                                                    .transform([]() -> bool {
+                                                        return true;
                                                     });
                                             })
                                             .transform([this, &player, data, ownerUuid, saleKey, tax](bool) -> bool {
@@ -784,6 +805,40 @@ namespace LOICollection::server::Plugins {
 
                 return this->mImpl->market->set(ownerUuid, "score", std::to_string(mMarketScore + score));
             });
+    }
+
+    ll::Expected<void> MarketStore::collectTax(int tax) {
+        if (tax <= 0)
+            return {};
+
+        auto tx = this->mImpl->tax->tx();
+        if (!tx.has_value())
+            return ll::Unexpected(tx.error());
+
+        auto current = tx->get<std::string>("total", "total", "0");
+        if (!current.has_value()) {
+            static_cast<void>(tx->rollback());
+
+            return ll::Unexpected(current.error());
+        }
+
+        long long total = SystemUtils::toLongLong(current.value(), 0) + tax;
+
+        auto setResult = tx->set("total", "total", std::to_string(total));
+        if (!setResult.has_value()) {
+            static_cast<void>(tx->rollback());
+
+            return ll::Unexpected(setResult.error());
+        }
+
+        auto commitResult = tx->commit();
+        if (!commitResult.has_value()) {
+            static_cast<void>(tx->rollback());
+
+            return ll::Unexpected(commitResult.error());
+        }
+
+        return {};
     }
 
     ll::Expected<bool> MarketStore::addReview(Player& player, const std::string& storeId, int rating, const std::string& content) {

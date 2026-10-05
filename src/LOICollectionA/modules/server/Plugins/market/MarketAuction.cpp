@@ -399,6 +399,16 @@ namespace LOICollection::server::Plugins {
         auto compensate = [this, id, data, saleKey]() -> ll::Expected<void> {
             this->mImpl->logger->warn(fmt::runtime(tr({}, "market.log16")), data.at("seller_name"), id);
 
+            std::string bidderUuid = data.at("bidder_uuid");
+            if (!bidderUuid.empty()) {
+                long long bidPrice = SystemUtils::toLongLong(data.at("current_price"), 0);
+
+                return this->refundScore(bidderUuid, static_cast<int>(bidPrice), this->mImpl->options.TargetScoreboard)
+                    .and_then([this, id, data, saleKey]() -> ll::Expected<void> {
+                        return this->restoreAuction(id, data, saleKey);
+                    });
+            }
+
             return this->restoreAuction(id, data, saleKey);
         };
 
@@ -476,8 +486,11 @@ namespace LOICollection::server::Plugins {
         }
 
         Player* seller = ll::service::getLevel()->getPlayer(mce::UUID::fromString(data.at("seller_uuid")));
-        if (!seller)
-            return this->restoreAuction(id, data, "");
+        if (!seller) {
+            this->mImpl->logger->info(fmt::runtime(tr({}, "market.log19")), data.at("item_name"), data.at("seller_name"));
+
+            return {};
+        }
 
         ItemStack mItemStack = ItemStack::fromTag(CompoundTag::fromSnbt(data.at("item_data"))->mTags);
         InventoryUtils::giveItem(*seller, mItemStack, static_cast<int>(mItemStack.mCount));
@@ -618,12 +631,34 @@ namespace LOICollection::server::Plugins {
         if (tax <= 0)
             return {};
 
-        return this->mImpl->tax->get<std::string>("total", "total", "0")
-            .and_then([this, tax](const std::string& value) -> ll::Expected<void> {
-                long long total = SystemUtils::toLongLong(value, 0) + tax;
+        auto tx = this->mImpl->tax->tx();
+        if (!tx.has_value())
+            return ll::Unexpected(tx.error());
 
-                return this->mImpl->tax->set("total", "total", std::to_string(total));
-            });
+        auto current = tx->get<std::string>("total", "total", "0");
+        if (!current.has_value()) {
+            static_cast<void>(tx->rollback());
+
+            return ll::Unexpected(current.error());
+        }
+
+        long long total = SystemUtils::toLongLong(current.value(), 0) + tax;
+
+        auto setResult = tx->set("total", "total", std::to_string(total));
+        if (!setResult.has_value()) {
+            static_cast<void>(tx->rollback());
+
+            return ll::Unexpected(setResult.error());
+        }
+
+        auto commitResult = tx->commit();
+        if (!commitResult.has_value()) {
+            static_cast<void>(tx->rollback());
+
+            return ll::Unexpected(commitResult.error());
+        }
+
+        return {};
     }
 
     void MarketAuction::startSweep() {

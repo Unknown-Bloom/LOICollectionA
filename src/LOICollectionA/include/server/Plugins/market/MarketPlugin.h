@@ -197,11 +197,12 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI static int computeTax(int price, double rate);
 
         LOICOLLECTION_A_NDAPI static bool isPriceAboveCeiling(int price, int referencePrice, double ratio);
+        LOICOLLECTION_A_NDAPI static bool canOperate(Player& player, const std::string& ownerUuid);
 
         LOICOLLECTION_A_NDAPI ll::Expected<double> getTaxRate();
         LOICOLLECTION_A_NDAPI ll::Expected<void> setTaxRate(double rate);
 
-        LOICOLLECTION_A_NDAPI ll::Expected<bool> guardPriceCeiling(Player& player, const std::string& itemName, int price);
+        LOICOLLECTION_A_NDAPI ll::Expected<bool> guardPriceRange(Player& player, const std::string& itemName, int price);
 
         LOICOLLECTION_A_NDAPI bool isValid();
 
@@ -223,6 +224,8 @@ namespace LOICollection::server::Plugins {
 
     private:
         MarketPlugin();
+
+        static ll::Expected<bool> ensurePositivePrice(Player& player, int price);
 
         ll::Expected<void> registeryUI();
 

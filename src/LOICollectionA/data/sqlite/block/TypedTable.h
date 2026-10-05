@@ -1165,6 +1165,15 @@ namespace LOICollection::data {
             }
 
             template <class T>
+            [[nodiscard]] ll::Expected<void> set(std::string_view rowKey, std::string_view col, T const& v) {
+                auto parsed = parseColumn(col);
+                if (!parsed.has_value())
+                    return ll::makeStringError(parsed.error().message());
+
+                return set(rowKey, Key{*parsed}, v);
+            }
+
+            template <class T>
             [[nodiscard]] ll::Expected<T> get(std::string_view rowKey, Key col, T const& def = T{}) {
                 std::string key(rowKey);
                 if (mDeleted.contains(key))
@@ -1206,6 +1215,15 @@ namespace LOICollection::data {
             template <class T>
             [[nodiscard]] ll::Expected<T> get(std::string_view rowKey, E col, T const& def = T{}) {
                 return get(rowKey, Key{col}, def);
+            }
+
+            template <class T>
+            [[nodiscard]] ll::Expected<T> get(std::string_view rowKey, std::string_view col, T const& def = T{}) {
+                auto parsed = parseColumn(col);
+                if (!parsed.has_value())
+                    return ll::makeStringError(parsed.error().message());
+
+                return get(rowKey, Key{*parsed}, def);
             }
 
             [[nodiscard]] ll::Expected<bool> has(std::string_view rowKey) {

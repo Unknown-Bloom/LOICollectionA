@@ -397,8 +397,10 @@ namespace LOICollection::server::Plugins {
                     });
             }
 
-            if (!owner.sellItem(player, std::get<int>(args->elements[0]), mItemName, mItemIcon, mItemIntroduce,
-                SystemUtils::toInt(std::get<std::string>(args->elements[4]), 0))) {
+            auto mResult = owner.sellItem(player, std::get<int>(args->elements[0]), mItemName, mItemIcon, mItemIntroduce,
+                SystemUtils::toInt(std::get<std::string>(args->elements[4]), 0));
+
+            if (!mResult.has_value()) {
                 return LanguagePlugin::getShared()->getLanguage(player)
                     .and_then([&player, values](const std::string& language) -> ll::Expected<frontend::ArrayRef> {
                         player.sendMessage(tr(language, "market.gui.error"));
@@ -406,6 +408,11 @@ namespace LOICollection::server::Plugins {
                         values->elements.emplace_back(false);
                         return values;
                     });
+            }
+
+            if (!mResult.value()) {
+                values->elements.emplace_back(false);
+                return values;
             }
 
             values->elements.emplace_back(true);
