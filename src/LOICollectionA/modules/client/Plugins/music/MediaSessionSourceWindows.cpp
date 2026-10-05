@@ -456,9 +456,9 @@ namespace LOICollection::client::Plugins::music {
         }
 
         void detach() noexcept {
-            static_cast<void>(this->mThumbnailRequest.detach());
-            static_cast<void>(this->mManagerRequest.detach());
-            static_cast<void>(this->mManager.detach());
+            static_cast<void>(::winrt::detach_abi(this->mThumbnailRequest));
+            static_cast<void>(::winrt::detach_abi(this->mManagerRequest));
+            static_cast<void>(::winrt::detach_abi(this->mManager));
         }
 
     private:
