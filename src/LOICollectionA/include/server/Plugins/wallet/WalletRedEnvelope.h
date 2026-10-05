@@ -30,7 +30,7 @@ namespace LOICollection::server::Plugins {
 
     class WalletRedEnvelope {
     public:
-        using TransferProvider = std::function<ll::Expected<void>(const std::string& target, int score)>;
+        using TransferProvider = std::function<ll::Expected<void>(const std::string& target, long long score)>;
 
         WalletRedEnvelope(
             std::shared_ptr<BlockRepository> db,
@@ -53,7 +53,7 @@ namespace LOICollection::server::Plugins {
 
         LOICOLLECTION_A_NDAPI ll::Expected<void> tryGrab(Player& player, const std::string& message);
 
-        LOICOLLECTION_A_NDAPI ll::Expected<void> send(Player& player, const std::string& key, int score, int count, const std::vector<std::string>& targets = {});
+        LOICOLLECTION_A_NDAPI ll::Expected<void> send(Player& player, const std::string& key, long long score, int count, const std::vector<std::string>& targets = {});
 
         LOICOLLECTION_A_NDAPI ll::Expected<void> sweepExpired();
 
@@ -61,14 +61,14 @@ namespace LOICollection::server::Plugins {
 
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getEnvelopeStats(const std::string& id);
 
-        LOICOLLECTION_A_NDAPI static int computeGiftAmount(int remainingCapacity, int remainingPeople);
+        LOICOLLECTION_A_NDAPI static long long computeGiftAmount(long long remainingCapacity, int remainingPeople);
 
     private:
         bool isValid() const;
 
         ll::Expected<bool> grabEnvelope(Player& player, const std::string& uuid, RedEnvelopeEntry& entry);
-        void broadcastContent(Player& sender, const std::string& key, const std::string& id, int score, int count);
-        void broadcastReceive(const RedEnvelopeEntry& entry, Player& player, int amount, int people);
+        void broadcastContent(Player& sender, const std::string& key, const std::string& id, long long score, int count);
+        void broadcastReceive(const RedEnvelopeEntry& entry, Player& player, long long amount, int people);
         void announceKing(RedEnvelopeEntry& entry);
         void announceTimeout(const std::string& id);
         ll::Expected<void> deleteEnvelope(const std::string& id);

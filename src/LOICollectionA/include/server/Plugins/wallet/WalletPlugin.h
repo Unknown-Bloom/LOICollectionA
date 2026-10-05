@@ -101,16 +101,16 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI ll::Expected<void> updateBalanceSnapshot(const std::string& uuid, long long balance);
 
     public:
-        LOICOLLECTION_A_NDAPI ll::Expected<bool> forTransfer(Player& player, const std::string& target, const std::string& name, int score, bool confirmed = false);
+        LOICOLLECTION_A_NDAPI ll::Expected<bool> forTransfer(Player& player, const std::string& target, const std::string& name, long long score, bool confirmed = false);
 
-        LOICOLLECTION_A_NDAPI ll::Expected<void> transfer(const std::string& target, int score);
+        LOICOLLECTION_A_NDAPI ll::Expected<void> transfer(const std::string& target, long long score);
 
         LOICOLLECTION_A_NDAPI ll::Expected<void> wealth(Player& player);
 
     public:
         LOICOLLECTION_A_NDAPI ll::Expected<void> tryGrabRedEnvelope(Player& player, const std::string& message);
 
-        LOICOLLECTION_A_NDAPI ll::Expected<void> redenvelope(Player& player, const std::string& key, int score, int count, const std::vector<std::string>& targets = {});
+        LOICOLLECTION_A_NDAPI ll::Expected<void> redenvelope(Player& player, const std::string& key, long long score, int count, const std::vector<std::string>& targets = {});
 
         LOICOLLECTION_A_NDAPI ll::Expected<void> sweepExpiredEnvelopes();
 
@@ -118,10 +118,10 @@ namespace LOICollection::server::Plugins {
 
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::string>> getRedEnvelopeDailyStats();
 
-        LOICOLLECTION_A_NDAPI static int computeGiftAmount(int remainingCapacity, int remainingPeople);
+        LOICOLLECTION_A_NDAPI static long long computeGiftAmount(long long remainingCapacity, int remainingPeople);
 
     public:
-        LOICOLLECTION_A_NDAPI ll::Expected<void> bankDeposit(Player& player, int amount);
+        LOICOLLECTION_A_NDAPI ll::Expected<void> bankDeposit(Player& player, long long amount);
 
         LOICOLLECTION_A_NDAPI ll::Expected<void> bankWithdraw(Player& player);
 
@@ -180,7 +180,7 @@ namespace LOICollection::server::Plugins {
         void listenEvent();
         void unlistenEvent();
 
-        ll::Expected<void> validateTransfer(const std::string& uuid, int spend);
+        ll::Expected<void> validateTransfer(const std::string& uuid, long long spend);
         void updateTransferCooldown(const std::string& uuid);
 
         std::unique_ptr<Impl> mImpl;

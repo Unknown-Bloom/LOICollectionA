@@ -95,15 +95,15 @@ namespace Config {
         int WalletHistoryRetentionDays = 90;
 
         int TransferMinAmount = 1;
-        int TransferDailyLimit = 0;
-        int TransferConfirmThreshold = 1000;
+        long long TransferDailyLimit = 0;
+        long long TransferConfirmThreshold = 1000;
         int TransferCooldownSeconds = 0;
 
         int WealthTopSize = 50;
         int WealthRefreshMinutes = 10;
 
         bool WalletBankEnabled = true;
-        int WalletBankMinDeposit = 10;
+        long long WalletBankMinDeposit = 10;
         double WalletBankDailyRate = 0.0005;
         double WalletInterestTaxRate = 0.1;
         bool WalletInterestFromPool = true;

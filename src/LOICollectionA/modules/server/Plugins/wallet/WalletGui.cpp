@@ -24,6 +24,7 @@
 #include "LOICollectionA/ConfigPlugin.h"
 
 #include "LOICollectionA/include/server/Plugins/wallet/WalletGui.h"
+#include "LOICollectionA/include/server/Plugins/types/wallet/WalletCommonType.h"
 #include "LOICollectionA/include/server/Plugins/wallet/WalletPlugin.h"
 
 using I18nUtilsTools::tr;
@@ -138,7 +139,7 @@ namespace LOICollection::server::Plugins {
 
             auto uuid = std::get<std::string>(args->elements[0]);
             auto name = std::get<std::string>(args->elements[1]);
-            int money = SystemUtils::toInt(std::get<std::string>(args->elements[3]), 0);
+            long long money = SystemUtils::toLongLong(std::get<std::string>(args->elements[3]), 0);
 
             auto result = owner.forTransfer(player, uuid, name, money);
             auto values = std::make_shared<frontend::ArrayValue>();
@@ -151,8 +152,8 @@ namespace LOICollection::server::Plugins {
 
                     values->elements.emplace_back(false);
                     values->elements.emplace_back(true);
-                    values->elements.emplace_back(static_cast<int>(fee));
-                    values->elements.emplace_back(static_cast<int>(money - fee));
+                    values->elements.emplace_back(detail::toScore(fee));
+                    values->elements.emplace_back(detail::toScore(money - fee));
                     return values;
                 }
 
@@ -200,7 +201,7 @@ namespace LOICollection::server::Plugins {
 
             auto uuid = std::get<std::string>(args->elements[0]);
             auto name = std::get<std::string>(args->elements[1]);
-            int money = SystemUtils::toInt(std::get<std::string>(args->elements[2]), 0);
+            long long money = SystemUtils::toLongLong(std::get<std::string>(args->elements[2]), 0);
 
             auto result = owner.forTransfer(player, uuid, name, money, true);
             if (!result.has_value()) {
@@ -247,7 +248,7 @@ namespace LOICollection::server::Plugins {
                     });
             }
 
-            int score = SystemUtils::toInt(std::get<std::string>(args->elements[0]), 0);
+            long long score = SystemUtils::toLongLong(std::get<std::string>(args->elements[0]), 0);
             int count = SystemUtils::toInt(std::get<std::string>(args->elements[1]), 0);
 
             std::vector<std::string> targets;
@@ -321,7 +322,7 @@ namespace LOICollection::server::Plugins {
             return owner.getWealthRank(player.getUuid().asString())
                 .transform([values](const std::pair<int, long long>& self) -> frontend::ArrayRef {
                     values->elements.emplace_back(self.first);
-                    values->elements.emplace_back(static_cast<int>(self.second));
+                    values->elements.emplace_back(detail::toScore(self.second));
 
                     return values;
                 });
@@ -340,8 +341,8 @@ namespace LOICollection::server::Plugins {
             if (!interest.has_value())
                 return ll::Unexpected(interest.error());
 
-            values->elements.emplace_back(static_cast<int>(principal.value()));
-            values->elements.emplace_back(static_cast<int>(interest.value()));
+            values->elements.emplace_back(detail::toScore(principal.value()));
+            values->elements.emplace_back(detail::toScore(interest.value()));
 
             return values;
         });
@@ -353,7 +354,7 @@ namespace LOICollection::server::Plugins {
 
             auto values = std::make_shared<frontend::ArrayValue>();
 
-            int amount = SystemUtils::toInt(std::get<std::string>(args->elements[0]), 0);
+            long long amount = SystemUtils::toLongLong(std::get<std::string>(args->elements[0]), 0);
 
             auto result = owner.bankDeposit(player, amount);
             if (!result.has_value()) {

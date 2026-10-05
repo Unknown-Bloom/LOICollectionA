@@ -117,8 +117,8 @@ TEST(EventBusValueEventsTest, RedEnvelopeCompletedEventFieldRoundTrip) {
     std::string senderUuid;
     std::string kingUuid;
     std::string kingName;
-    int kingAmount = 0;
-    int total = 0;
+    long long kingAmount = 0;
+    long long total = 0;
     long long time = 0;
 
     auto listener = ll::event::EventBus::getInstance().emplaceListener<RedEnvelopeCompletedEvent>(

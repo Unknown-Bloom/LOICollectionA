@@ -23,11 +23,11 @@ namespace LOICollection::server::Events {
         return mKingName;
     }
 
-    int RedEnvelopeCompletedEvent::getKingAmount() const {
+    long long RedEnvelopeCompletedEvent::getKingAmount() const {
         return mKingAmount;
     }
 
-    int RedEnvelopeCompletedEvent::getTotal() const {
+    long long RedEnvelopeCompletedEvent::getTotal() const {
         return mTotal;
     }
 

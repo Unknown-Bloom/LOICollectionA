@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <limits>
 #include <string>
 
 namespace LOICollection::server::Plugins {
@@ -7,6 +9,12 @@ namespace LOICollection::server::Plugins {
         online,
         offline
     };
+
+    namespace detail {
+        inline int toScore(long long value) {
+            return static_cast<int>(std::clamp<long long>(value, 0, std::numeric_limits<int>::max()));
+        }
+    }
 
     struct RedEnvelopeEntry {
         std::string id;
@@ -19,9 +27,9 @@ namespace LOICollection::server::Plugins {
 
         std::string kingUuid;
         std::string kingName;
-        int kingAmount;
+        long long kingAmount;
 
-        int total;
+        long long total;
     };
 
     struct WealthEntry {

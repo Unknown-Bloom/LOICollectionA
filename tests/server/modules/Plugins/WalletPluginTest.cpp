@@ -235,13 +235,13 @@ TEST_F(WalletPluginTest, GiftAmountConservation) {
         int count = 1 + static_cast<int>(std::rand() % 20);
         int capacity = count + static_cast<int>(std::rand() % 200);
 
-        int remainingCapacity = capacity;
+        long long remainingCapacity = capacity;
         int remainingPeople = count;
         long long sum = 0;
 
         for (int i = 0; i < count; ++i) {
             bool last = (i == count - 1);
-            int amount = last ? remainingCapacity : WalletPlugin::computeGiftAmount(remainingCapacity, remainingPeople);
+            long long amount = last ? remainingCapacity : WalletPlugin::computeGiftAmount(remainingCapacity, remainingPeople);
 
             EXPECT_GE(amount, 1);
 

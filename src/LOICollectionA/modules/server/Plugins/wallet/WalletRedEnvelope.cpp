@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -147,17 +148,18 @@ namespace LOICollection::server::Plugins {
         return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::RedEnvelopeCompleted));
     }
 
-    int WalletRedEnvelope::computeGiftAmount(int remainingCapacity, int remainingPeople) {
+    long long WalletRedEnvelope::computeGiftAmount(long long remainingCapacity, int remainingPeople) {
         if (remainingCapacity <= 0)
             return 0;
 
         if (remainingPeople <= 1)
             return remainingCapacity;
 
-        int upper = std::min(remainingCapacity - (remainingPeople - 1), (remainingCapacity / remainingPeople) * 2);
-        upper = std::max(upper, 1);
+        long long upper = std::min(remainingCapacity - (remainingPeople - 1), (remainingCapacity / remainingPeople) * 2);
+        upper = std::max<long long>(upper, 1);
+        upper = std::min<long long>(upper, std::numeric_limits<int>::max());
 
-        return 1 + ll::random_utils::rand(upper);
+        return 1 + ll::random_utils::rand(static_cast<int>(upper));
     }
 
     ll::Expected<bool> WalletRedEnvelope::grabEnvelope(Player& player, const std::string& uuid, RedEnvelopeEntry& entry) {
@@ -232,8 +234,8 @@ namespace LOICollection::server::Plugins {
 
         long long remainingPeople = count.value() - people.value();
         bool last = remainingPeople == 1;
-        int amount = last ? static_cast<int>(capacity.value())
-            : this->computeGiftAmount(static_cast<int>(capacity.value()), static_cast<int>(remainingPeople));
+        long long amount = last ? capacity.value()
+            : this->computeGiftAmount(capacity.value(), static_cast<int>(remainingPeople));
         if (amount <= 0)
             return false;
 
@@ -249,7 +251,7 @@ namespace LOICollection::server::Plugins {
         if (!setName.has_value())
             return ll::Unexpected(setName.error());
 
-        auto setAmount = grabTx.set(grabKey, "amount", static_cast<long long>(amount));
+        auto setAmount = grabTx.set(grabKey, "amount", amount);
         if (!setAmount.has_value())
             return ll::Unexpected(setAmount.error());
 
@@ -271,7 +273,7 @@ namespace LOICollection::server::Plugins {
         if (!commitEnvelope.has_value())
             return ll::Unexpected(commitEnvelope.error());
 
-        ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, amount);
+        ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, detail::toScore(amount));
 
         this->mImpl->ledger.record(entry.senderUuid, entry.senderName, uuid, player.getRealName(), amount, 0, "redenvelope_grab");
 
@@ -307,7 +309,7 @@ namespace LOICollection::server::Plugins {
         return true;
     }
 
-    void WalletRedEnvelope::broadcastContent(Player& sender, const std::string& key, const std::string& id, int score, int count) {
+    void WalletRedEnvelope::broadcastContent(Player& sender, const std::string& key, const std::string& id, long long score, int count) {
         ll::service::getLevel()->forEachPlayer([this, &sender, &key, &id, score, count](Player& target) -> bool {
             LanguagePlugin::getShared()->getLanguage(target)
                 .transform([this, &sender, &target, &key, &id, score, count](const std::string& language) -> void {
@@ -329,7 +331,7 @@ namespace LOICollection::server::Plugins {
         });
     }
 
-    void WalletRedEnvelope::broadcastReceive(const RedEnvelopeEntry& entry, Player& player, int amount, int people) {
+    void WalletRedEnvelope::broadcastReceive(const RedEnvelopeEntry& entry, Player& player, long long amount, int people) {
         ll::service::getLevel()->forEachPlayer([this, &entry, &player, amount, people](Player& target) -> bool {
             LanguagePlugin::getShared()->getLanguage(target)
                 .transform([&entry, &player, &target, amount, people](const std::string& language) -> void {
@@ -469,7 +471,7 @@ namespace LOICollection::server::Plugins {
 
         long long remaining = std::max<long long>(0, capacity.value());
         if (remaining > 0) {
-            auto refund = this->mImpl->transferProvider(senderUuid.value(), static_cast<int>(remaining));
+            auto refund = this->mImpl->transferProvider(senderUuid.value(), remaining);
             if (!refund.has_value())
                 return ll::Unexpected(refund.error());
 
@@ -600,7 +602,7 @@ namespace LOICollection::server::Plugins {
                 "",
                 "",
                 0,
-                static_cast<int>(envelopeTotal)
+                envelopeTotal
             });
 
             this->mImpl->timerManager.schedule(id, std::chrono::nanoseconds(remain), [this, id]() -> void {
@@ -638,7 +640,7 @@ namespace LOICollection::server::Plugins {
         return {};
     }
 
-    ll::Expected<void> WalletRedEnvelope::send(Player& player, const std::string& key, int score, int count, const std::vector<std::string>& targets) {
+    ll::Expected<void> WalletRedEnvelope::send(Player& player, const std::string& key, long long score, int count, const std::vector<std::string>& targets) {
         if (!this->isValid())
             return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
@@ -724,14 +726,14 @@ namespace LOICollection::server::Plugins {
             "",
             "",
             0,
-            static_cast<int>(total)
+            total
         });
 
         this->mImpl->ledger.record(uuid, player.getRealName(), "", "", total, 0, "redenvelope_send");
 
         this->scheduleRefund(id);
 
-        ScoreboardUtils::reduceScore(player, this->mImpl->options.TargetScoreboard, static_cast<int>(total));
+        ScoreboardUtils::reduceScore(player, this->mImpl->options.TargetScoreboard, detail::toScore(total));
 
         this->broadcastContent(player, key, id, score, count);
 

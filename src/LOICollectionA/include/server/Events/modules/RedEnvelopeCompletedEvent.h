@@ -14,8 +14,8 @@ namespace LOICollection::server::Events {
         std::string mSenderUuid;
         std::string mKingUuid;
         std::string mKingName;
-        int mKingAmount;
-        int mTotal;
+        long long mKingAmount;
+        long long mTotal;
         long long mTime;
 
     public:
@@ -24,8 +24,8 @@ namespace LOICollection::server::Events {
             std::string senderUuid,
             std::string kingUuid,
             std::string kingName,
-            int kingAmount,
-            int total,
+            long long kingAmount,
+            long long total,
             long long time
         ) : mId(std::move(id)),
             mSenderUuid(std::move(senderUuid)),
@@ -39,8 +39,8 @@ namespace LOICollection::server::Events {
         LOICOLLECTION_A_NDAPI std::string getSenderUuid() const;
         LOICOLLECTION_A_NDAPI std::string getKingUuid() const;
         LOICOLLECTION_A_NDAPI std::string getKingName() const;
-        LOICOLLECTION_A_NDAPI int getKingAmount() const;
-        LOICOLLECTION_A_NDAPI int getTotal() const;
+        LOICOLLECTION_A_NDAPI long long getKingAmount() const;
+        LOICOLLECTION_A_NDAPI long long getTotal() const;
         LOICOLLECTION_A_NDAPI long long getTime() const;
     };
 }

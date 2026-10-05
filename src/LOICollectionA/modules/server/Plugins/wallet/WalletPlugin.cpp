@@ -52,6 +52,7 @@
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 #include "LOICollectionA/include/server/Plugins/types/wallet/WalletSchema.h"
+#include "LOICollectionA/include/server/Plugins/types/wallet/WalletCommonType.h"
 
 #include "LOICollectionA/include/form/GUIManager.h"
 
@@ -175,7 +176,7 @@ namespace LOICollection::server::Plugins {
         return this->mImpl->wallet->set(uuid, "balance", balance);
     }
 
-    ll::Expected<bool> WalletPlugin::forTransfer(Player& player, const std::string& target, const std::string& name, int score, bool confirmed) {
+    ll::Expected<bool> WalletPlugin::forTransfer(Player& player, const std::string& target, const std::string& name, long long score, bool confirmed) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
 
@@ -191,9 +192,9 @@ namespace LOICollection::server::Plugins {
         if (ScoreboardUtils::getScore(player, mScoreboard) < score || score <= 0)
             return false;
 
-        ScoreboardUtils::reduceScore(player, mScoreboard, score);
+        ScoreboardUtils::reduceScore(player, mScoreboard, detail::toScore(score));
 
-        int mTargetMoney = static_cast<int>(score * (1 - this->mImpl->options.ExchangeRate));
+        long long mTargetMoney = static_cast<long long>(score * (1 - this->mImpl->options.ExchangeRate));
 
         return this->transfer(target, mTargetMoney)
             .transform([this, target, name, score, mTargetMoney, uuid = player.getUuid().asString(), playerName = player.getRealName()]() -> bool {
@@ -201,7 +202,7 @@ namespace LOICollection::server::Plugins {
 
                 this->updateTransferCooldown(uuid);
 
-                long long fee = static_cast<long long>(score) - mTargetMoney;
+                long long fee = score - mTargetMoney;
                 if (fee > 0)
                     this->mImpl->mLedger->accumulateFee(fee).or_else(modules::defaultErrorHandler<WalletPlugin>);
 
@@ -211,7 +212,7 @@ namespace LOICollection::server::Plugins {
             });
     }
 
-    ll::Expected<void> WalletPlugin::validateTransfer(const std::string& uuid, int spend) {
+    ll::Expected<void> WalletPlugin::validateTransfer(const std::string& uuid, long long spend) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
 
@@ -243,12 +244,12 @@ namespace LOICollection::server::Plugins {
         this->mImpl->mLastTransferTime[uuid] = now;
     }
 
-    ll::Expected<void> WalletPlugin::transfer(const std::string& target, int score) {
+    ll::Expected<void> WalletPlugin::transfer(const std::string& target, long long score) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
 
         if (Player* mObject = ll::service::getLevel()->getPlayer(mce::UUID::fromString(target)); mObject) {
-            ScoreboardUtils::addScore(*mObject, this->mImpl->options.TargetScoreboard, score);
+            ScoreboardUtils::addScore(*mObject, this->mImpl->options.TargetScoreboard, detail::toScore(score));
 
             return {};
         }
@@ -301,7 +302,7 @@ namespace LOICollection::server::Plugins {
         return this->mImpl->mRedEnvelope->tryGrab(player, message);
     }
 
-    ll::Expected<void> WalletPlugin::redenvelope(Player& player, const std::string& key, int score, int count, const std::vector<std::string>& targets) {
+    ll::Expected<void> WalletPlugin::redenvelope(Player& player, const std::string& key, long long score, int count, const std::vector<std::string>& targets) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
 
@@ -329,11 +330,11 @@ namespace LOICollection::server::Plugins {
         return this->mImpl->mLedger->getRedEnvelopeDailyStats();
     }
 
-    int WalletPlugin::computeGiftAmount(int remainingCapacity, int remainingPeople) {
+    long long WalletPlugin::computeGiftAmount(long long remainingCapacity, int remainingPeople) {
         return WalletRedEnvelope::computeGiftAmount(remainingCapacity, remainingPeople);
     }
 
-    ll::Expected<void> WalletPlugin::bankDeposit(Player& player, int amount) {
+    ll::Expected<void> WalletPlugin::bankDeposit(Player& player, long long amount) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(WalletPluginErrorCode::Invalid));
 
@@ -446,7 +447,7 @@ namespace LOICollection::server::Plugins {
                 if (this->mImpl->options.TransferConfirmThreshold > 0 && param.Score > this->mImpl->options.TransferConfirmThreshold)
                     return output.error(tr(origin.getLocaleCode(), "wallet.limit.confirm"));
 
-                int mMoney = param.Score * static_cast<int>(results.size());
+                long long mMoney = static_cast<long long>(param.Score) * static_cast<long long>(results.size());
                 if (this->mImpl->options.TransferDailyLimit > 0 || this->mImpl->options.TransferCooldownSeconds > 0) {
                     if (auto verification = this->validateTransfer(player.getUuid().asString(), mMoney); !verification.has_value())
                         return output.error(verification.error().message(origin.getLocaleCode()));
@@ -455,17 +456,17 @@ namespace LOICollection::server::Plugins {
                 if (ScoreboardUtils::getScore(player, mScoreboard) < mMoney || param.Score < 0)
                     return output.error(tr(origin.getLocaleCode(), "commands.wallet.error.score"));
 
-                ScoreboardUtils::reduceScore(player, mScoreboard, mMoney);
+                ScoreboardUtils::reduceScore(player, mScoreboard, detail::toScore(mMoney));
 
-                int mTargetMoney = static_cast<int>(param.Score * (1 - this->mImpl->options.ExchangeRate));
+                long long mTargetMoney = static_cast<long long>(param.Score * (1 - this->mImpl->options.ExchangeRate));
                 for (Player*& target : results) {
-                    ScoreboardUtils::addScore(*target, mScoreboard, mTargetMoney);
+                    ScoreboardUtils::addScore(*target, mScoreboard, detail::toScore(mTargetMoney));
 
                     long long perTargetFee = static_cast<long long>(param.Score) - mTargetMoney;
                     this->mImpl->mLedger->record(player.getUuid().asString(), player.getRealName(), target->getUuid().asString(), target->getRealName(), mTargetMoney, perTargetFee, "transfer");
                 }
 
-                long long fee = static_cast<long long>(mMoney) - static_cast<long long>(mTargetMoney) * results.size();
+                long long fee = mMoney - mTargetMoney * static_cast<long long>(results.size());
                 if (fee > 0)
                     this->mImpl->mLedger->accumulateFee(fee).or_else(modules::defaultErrorHandler<WalletPlugin>);
 
@@ -672,7 +673,7 @@ namespace LOICollection::server::Plugins {
                             return batch.value().commit().transform([](bool) -> void {});
                         })
                         .transform([this, uuid, score, &event]() -> void {
-                            ScoreboardUtils::addScore(event.self(), this->mImpl->options.TargetScoreboard, static_cast<int>(score));
+                            ScoreboardUtils::addScore(event.self(), this->mImpl->options.TargetScoreboard, detail::toScore(score));
 
                             this->updateBalanceSnapshot(uuid, ScoreboardUtils::getScore(event.self(), this->mImpl->options.TargetScoreboard))
                                 .or_else(modules::defaultErrorHandler<WalletPlugin>);
@@ -764,7 +765,7 @@ namespace LOICollection::server::Plugins {
             this->mImpl->logger,
             *this->mImpl->mTimerManager,
             *this->mImpl->mLedger,
-            [this](const std::string& target, int score) -> ll::Expected<void> {
+            [this](const std::string& target, long long score) -> ll::Expected<void> {
                 return this->transfer(target, score);
             }
         );

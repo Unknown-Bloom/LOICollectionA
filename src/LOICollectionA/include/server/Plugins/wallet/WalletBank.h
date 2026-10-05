@@ -48,7 +48,7 @@ namespace LOICollection::server::Plugins {
     public:
         LOICOLLECTION_A_NDAPI ll::Expected<void> createTables();
 
-        LOICOLLECTION_A_NDAPI ll::Expected<void> deposit(Player& player, int amount);
+        LOICOLLECTION_A_NDAPI ll::Expected<void> deposit(Player& player, long long amount);
 
         LOICOLLECTION_A_NDAPI ll::Expected<void> withdraw(Player& player);
 

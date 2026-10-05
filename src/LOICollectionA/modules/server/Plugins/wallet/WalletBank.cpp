@@ -93,7 +93,7 @@ namespace LOICollection::server::Plugins {
             });
     }
 
-    ll::Expected<void> WalletBank::deposit(Player& player, int amount) {
+    ll::Expected<void> WalletBank::deposit(Player& player, long long amount) {
         if (!this->isValid())
             return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
@@ -130,7 +130,7 @@ namespace LOICollection::server::Plugins {
                 return tx.commit().transform([](bool) -> void {});
             })
             .transform([this, uuid, &player, amount]() -> void {
-                ScoreboardUtils::reduceScore(player, this->mImpl->options.TargetScoreboard, amount);
+                ScoreboardUtils::reduceScore(player, this->mImpl->options.TargetScoreboard, detail::toScore(amount));
 
                 this->mImpl->ledger.record(uuid, player.getRealName(), "", "", amount, 0, "bank_deposit");
 
@@ -222,7 +222,7 @@ namespace LOICollection::server::Plugins {
             return ll::Unexpected(delBank.error());
 
         long long credit = principal.value() + paidInterest;
-        ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, static_cast<int>(credit));
+        ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, detail::toScore(credit));
 
         return this->mImpl->wallet->set(uuid, "balance", static_cast<long long>(ScoreboardUtils::getScore(player, this->mImpl->options.TargetScoreboard)))
             .or_else([this](ll::Error e) -> ll::Expected<void> {
