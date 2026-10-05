@@ -41,7 +41,9 @@ namespace LOICollection::server::Plugins {
         BankEmpty = 8,
         BelowMinDeposit = 9,
         RedEnvelopeCountExceeded = 10,
-        NotInTargetList = 11
+        NotInTargetList = 11,
+        InsufficientBalance = 12,
+        InvalidArgument = 13
     };
 
     struct WalletPluginErrorCategory : std::error_category {
@@ -62,6 +64,8 @@ namespace LOICollection::server::Plugins {
                 case WalletPluginErrorCode::BelowMinDeposit: return "Deposit below the minimum amount";
                 case WalletPluginErrorCode::RedEnvelopeCountExceeded: return "Red envelope share count exceeds the limit";
                 case WalletPluginErrorCode::NotInTargetList: return "Player is not in the red envelope target list";
+                case WalletPluginErrorCode::InsufficientBalance: return "Insufficient balance";
+                case WalletPluginErrorCode::InvalidArgument: return "Invalid argument";
                 default:
                     return "Unknown";
             }

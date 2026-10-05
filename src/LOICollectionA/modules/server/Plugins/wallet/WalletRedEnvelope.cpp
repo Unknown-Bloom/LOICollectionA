@@ -632,7 +632,7 @@ namespace LOICollection::server::Plugins {
             return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
         if (count <= 0 || score <= 0)
-            return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
+            return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::InvalidArgument));
 
         if (this->mImpl->options.RedEnvelopeMaxCount > 0 && count > this->mImpl->options.RedEnvelopeMaxCount)
             return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::RedEnvelopeCountExceeded));
@@ -641,7 +641,7 @@ namespace LOICollection::server::Plugins {
 
         long long total = static_cast<long long>(score) * static_cast<long long>(count);
         if (static_cast<long long>(ScoreboardUtils::getScore(player, this->mImpl->options.TargetScoreboard)) < total)
-            return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
+            return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::InsufficientBalance));
 
         auto targetUuids = this->resolveTargetUuids(targets);
         if (!targetUuids.has_value())

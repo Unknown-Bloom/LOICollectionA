@@ -104,7 +104,7 @@ namespace LOICollection::server::Plugins {
         std::string mScoreboard = this->mImpl->options.TargetScoreboard;
 
         if (ScoreboardUtils::getScore(player, mScoreboard) < amount)
-            return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
+            return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::InsufficientBalance));
 
         ScoreboardUtils::reduceScore(player, mScoreboard, amount);
 
