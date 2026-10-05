@@ -300,10 +300,7 @@ namespace LOICollection::server::Plugins {
 
     void WalletGui::registerRank(WalletPlugin& owner) {
         form::GUIManager::getInstance().registerValue("wallet.rank", [&owner](Player&) -> ll::Expected<frontend::ArrayRef> {
-            return owner.rebuildWealthRanking()
-                .and_then([&owner]() -> ll::Expected<std::vector<std::pair<std::string, long long>>> {
-                    return owner.getWealthRanking(owner.getOptions().WealthTopSize > 0 ? owner.getOptions().WealthTopSize : 50);
-                })
+            return owner.getWealthRanking(owner.getOptions().WealthTopSize > 0 ? owner.getOptions().WealthTopSize : 50)
                 .transform([](const std::vector<std::pair<std::string, long long>>& ranking) -> frontend::ArrayRef {
                     auto values = std::make_shared<frontend::ArrayValue>();
 
@@ -321,10 +318,7 @@ namespace LOICollection::server::Plugins {
         form::GUIManager::getInstance().registerRequest("wallet.rank.self", [&owner](frontend::ArrayRef, Player& player) -> ll::Expected<frontend::ArrayRef> {
             auto values = std::make_shared<frontend::ArrayValue>();
 
-            return owner.rebuildWealthRanking()
-                .and_then([&owner, &player]() -> ll::Expected<std::pair<int, long long>> {
-                    return owner.getWealthRank(player.getUuid().asString());
-                })
+            return owner.getWealthRank(player.getUuid().asString())
                 .transform([values](const std::pair<int, long long>& self) -> frontend::ArrayRef {
                     values->elements.emplace_back(self.first);
                     values->elements.emplace_back(static_cast<int>(self.second));

@@ -70,6 +70,8 @@ namespace LOICollection::server::Plugins {
         ll::Expected<long long> computeInterest(long long principal, long long depositAt);
         ll::Expected<std::vector<WealthEntry>> computeWealthRanking();
 
+        std::vector<std::pair<std::string, long long>> buildWealthRankingSnapshot(int limit) const;
+
         struct Impl;
 
         std::unique_ptr<Impl> mImpl;

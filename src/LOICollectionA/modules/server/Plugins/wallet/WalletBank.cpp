@@ -315,8 +315,22 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
+        {
+            std::lock_guard<std::mutex> lock(this->mImpl->mRankMutex);
+            if (!this->mImpl->mWealthRank.empty())
+                return this->buildWealthRankingSnapshot(limit);
+        }
+
+        auto rebuilt = this->rebuildWealthRanking();
+        if (!rebuilt.has_value())
+            return ll::Unexpected(rebuilt.error());
+
         std::lock_guard<std::mutex> lock(this->mImpl->mRankMutex);
 
+        return this->buildWealthRankingSnapshot(limit);
+    }
+
+    std::vector<std::pair<std::string, long long>> WalletBank::buildWealthRankingSnapshot(int limit) const {
         std::vector<std::pair<std::string, long long>> result;
         result.reserve(this->mImpl->mWealthRank.size());
 
@@ -332,6 +346,18 @@ namespace LOICollection::server::Plugins {
     ll::Expected<std::pair<int, long long>> WalletBank::getWealthRank(const std::string& uuid) {
         if (!this->isValid())
             return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
+
+        bool cached = false;
+        {
+            std::lock_guard<std::mutex> lock(this->mImpl->mRankMutex);
+            cached = this->mImpl->mRankOf.contains(uuid);
+        }
+
+        if (!cached) {
+            auto rebuilt = this->rebuildWealthRanking();
+            if (!rebuilt.has_value())
+                return ll::Unexpected(rebuilt.error());
+        }
 
         std::lock_guard<std::mutex> lock(this->mImpl->mRankMutex);
 
