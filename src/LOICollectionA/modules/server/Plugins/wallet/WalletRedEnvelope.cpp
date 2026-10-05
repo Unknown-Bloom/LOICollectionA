@@ -116,8 +116,23 @@ namespace LOICollection::server::Plugins {
 
         std::string uuid = player.getUuid().asString();
 
-        for (auto& entry : it->second) {
-            auto result = this->grabEnvelope(player, uuid, entry);
+        std::vector<std::string> ids;
+        ids.reserve(it->second.size());
+        for (const auto& entry : it->second)
+            ids.emplace_back(entry.id);
+
+        for (const auto& id : ids) {
+            auto current = this->mImpl->mRedEnvelopes.find(message);
+            if (current == this->mImpl->mRedEnvelopes.end())
+                break;
+
+            auto entryIt = std::find_if(current->second.begin(), current->second.end(), [&id](const RedEnvelopeEntry& e) -> bool {
+                return e.id == id;
+            });
+            if (entryIt == current->second.end())
+                continue;
+
+            auto result = this->grabEnvelope(player, uuid, *entryIt);
             if (!result.has_value())
                 return ll::Unexpected(result.error());
 
@@ -641,8 +656,6 @@ namespace LOICollection::server::Plugins {
             }
         }
 
-        ScoreboardUtils::reduceScore(player, this->mImpl->options.TargetScoreboard, static_cast<int>(total));
-
         std::string id = SystemUtils::getCurrentTimestamp();
 
         long long expire = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -650,11 +663,8 @@ namespace LOICollection::server::Plugins {
         ).count() + static_cast<long long>(this->mImpl->options.RedEnvelopeTimeout) * 1000000000LL;
 
         auto batch = this->mImpl->envelope->tx();
-        if (!batch.has_value()) {
-            ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, static_cast<int>(total));
-
+        if (!batch.has_value())
             return ll::Unexpected(batch.error());
-        }
 
         auto& tx = batch.value();
 
@@ -686,18 +696,12 @@ namespace LOICollection::server::Plugins {
 
                 return tx.set(id, "targets", targetsValue);
             });
-        if (!written.has_value()) {
-            ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, static_cast<int>(total));
-
+        if (!written.has_value())
             return ll::Unexpected(written.error());
-        }
 
         auto commit = tx.commit();
-        if (!commit.has_value()) {
-            ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, static_cast<int>(total));
-
+        if (!commit.has_value())
             return ll::Unexpected(commit.error());
-        }
 
         this->mImpl->mRedEnvelopes[key].push_back({
             id,
@@ -715,6 +719,8 @@ namespace LOICollection::server::Plugins {
         this->mImpl->ledger.record(uuid, player.getRealName(), "", "", total, 0, "redenvelope_send");
 
         this->scheduleRefund(id);
+
+        ScoreboardUtils::reduceScore(player, this->mImpl->options.TargetScoreboard, static_cast<int>(total));
 
         this->broadcastContent(player, key, id, score, count);
 
