@@ -232,3 +232,163 @@ TEST_F(BehaviorEventLogTest, EraseRemovesEvents) {
     ASSERT_EQ(alive->size(), 1);
     EXPECT_EQ(alive->front(), (*ids)[1]);
 }
+
+TEST_F(BehaviorEventLogTest, ByPositionKeepsHitsBeyondLimit) {
+    auto log = makeLog("position_limit");
+    ASSERT_NE(log, nullptr);
+
+    std::vector<LOICollection::server::Plugins::BehaviorEventLog::PreparedEvent> events;
+    events.emplace_back(makeEvent("Noise", "Normal", 100, 10, 0, 0, 0));
+    events.emplace_back(makeEvent("Noise", "Normal", 100, 10, 0, 0, 0));
+    events.emplace_back(makeEvent("Noise", "Normal", 100, 0, 20, 0, 0));
+    events.emplace_back(makeEvent("Noise", "Normal", 100, 0, 0, 30, 0));
+    events.emplace_back(makeEvent("Hit", "Normal", 100, 10, 20, 30, 0));
+    events.emplace_back(makeEvent("Hit", "Normal", 100, 10, 20, 30, 0));
+
+    auto ids = log->appendMany(events);
+    ASSERT_TRUE(ids.has_value());
+    ASSERT_EQ(ids->size(), 6);
+
+    auto hits = log->byPosition(10, 20, 30, 2);
+    ASSERT_TRUE(hits.has_value());
+    ASSERT_EQ(hits->size(), 2);
+    EXPECT_EQ((*hits)[0], (*ids)[4]);
+    EXPECT_EQ((*hits)[1], (*ids)[5]);
+}
+
+TEST_F(BehaviorEventLogTest, ByPositionHonoursLimitOnFinalResult) {
+    auto log = makeLog("position_final_limit");
+    ASSERT_NE(log, nullptr);
+
+    std::vector<LOICollection::server::Plugins::BehaviorEventLog::PreparedEvent> events;
+    events.emplace_back(makeEvent("Hit", "Normal", 100, 7, 8, 9, 0));
+    events.emplace_back(makeEvent("Hit", "Normal", 100, 7, 8, 9, 0));
+    events.emplace_back(makeEvent("Hit", "Normal", 100, 7, 8, 9, 0));
+
+    auto ids = log->appendMany(events);
+    ASSERT_TRUE(ids.has_value());
+    ASSERT_EQ(ids->size(), 3);
+
+    auto hits = log->byPosition(7, 8, 9, 2);
+    ASSERT_TRUE(hits.has_value());
+    EXPECT_EQ(hits->size(), 2);
+}
+
+TEST_F(BehaviorEventLogTest, CountIgnoresArchivedAndDeleted) {
+    auto log = makeLog("count_live");
+    ASSERT_NE(log, nullptr);
+
+    std::vector<LOICollection::server::Plugins::BehaviorEventLog::PreparedEvent> events;
+    events.emplace_back(makeEvent("A", "Normal", 100, 0, 0, 0, 0));
+    events.emplace_back(makeEvent("B", "Normal", 200, 0, 0, 0, 0));
+    events.emplace_back(makeEvent("C", "Normal", 300, 0, 0, 0, 0));
+
+    auto ids = log->appendMany(events);
+    ASSERT_TRUE(ids.has_value());
+    ASSERT_EQ(ids->size(), 3);
+
+    auto total = log->count();
+    ASSERT_TRUE(total.has_value());
+    EXPECT_EQ(*total, 3);
+
+    ASSERT_TRUE(log->archiveBefore(150).has_value());
+
+    auto afterArchive = log->count();
+    ASSERT_TRUE(afterArchive.has_value());
+    EXPECT_EQ(*afterArchive, 2);
+
+    std::vector<BlockId> removed{ (*ids)[1] };
+    ASSERT_TRUE(log->erase(removed).has_value());
+
+    auto afterErase = log->count();
+    ASSERT_TRUE(afterErase.has_value());
+    EXPECT_EQ(*afterErase, 1);
+}
+
+TEST_F(BehaviorEventLogTest, AppendManyWithNoEventsWritesNothing) {
+    auto log = makeLog("append_empty");
+    ASSERT_NE(log, nullptr);
+
+    std::vector<LOICollection::server::Plugins::BehaviorEventLog::PreparedEvent> events;
+
+    auto ids = log->appendMany(events);
+    ASSERT_TRUE(ids.has_value());
+    EXPECT_TRUE(ids->empty());
+
+    auto total = log->count();
+    ASSERT_TRUE(total.has_value());
+    EXPECT_EQ(*total, 0);
+}
+
+TEST_F(BehaviorEventLogTest, TimestampZeroIsPersisted) {
+    auto log = makeLog("timestamp_zero");
+    ASSERT_NE(log, nullptr);
+
+    std::vector<LOICollection::server::Plugins::BehaviorEventLog::PreparedEvent> events;
+    events.emplace_back(makeEvent("Epoch", "Normal", 0, 0, 0, 0, 0));
+    events.emplace_back(makeEvent("Later", "Normal", 500, 0, 0, 0, 0));
+
+    auto ids = log->appendMany(events);
+    ASSERT_TRUE(ids.has_value());
+    ASSERT_EQ(ids->size(), 2);
+
+    auto archived = log->archiveBefore(100);
+    ASSERT_TRUE(archived.has_value());
+    EXPECT_EQ(*archived, 1);
+
+    auto alive = log->all();
+    ASSERT_TRUE(alive.has_value());
+    ASSERT_EQ(alive->size(), 1);
+    EXPECT_EQ(alive->front(), (*ids)[1]);
+}
+
+TEST_F(BehaviorEventLogTest, MissingTimestampIsNotIndexed) {
+    auto log = makeLog("timestamp_missing");
+    ASSERT_NE(log, nullptr);
+
+    LOICollection::server::Plugins::BehaviorEventLog::PreparedEvent event = makeEvent("NoTime", "Normal", 100, 0, 0, 0, 0);
+    event.timestamp.reset();
+
+    std::vector<LOICollection::server::Plugins::BehaviorEventLog::PreparedEvent> events{ event };
+
+    auto ids = log->appendMany(events);
+    ASSERT_TRUE(ids.has_value());
+    ASSERT_EQ(ids->size(), 1);
+
+    auto range = log->byTimeRange(0, 1000);
+    ASSERT_TRUE(range.has_value());
+    EXPECT_TRUE(range->empty());
+
+    auto row = log->read(ids->front());
+    ASSERT_TRUE(row.has_value());
+    EXPECT_EQ(row->at("event_name"), "NoTime");
+}
+
+TEST_F(BehaviorEventLogTest, LongFieldValuesRoundTrip) {
+    auto log = makeLog("long_fields");
+    ASSERT_NE(log, nullptr);
+
+    std::string longValue(70000, 'x');
+
+    LOICollection::server::Plugins::BehaviorEventLog::PreparedEvent event = makeEvent("Long", "Normal", 100, 0, 0, 0, 0);
+    event.fields.emplace_back("event_blob", longValue);
+
+    std::vector<LOICollection::server::Plugins::BehaviorEventLog::PreparedEvent> events{ event };
+
+    auto ids = log->appendMany(events);
+    ASSERT_TRUE(ids.has_value());
+    ASSERT_EQ(ids->size(), 1);
+
+    auto row = log->read(ids->front());
+    ASSERT_TRUE(row.has_value());
+    EXPECT_EQ(row->at("event_blob"), longValue);
+}
+
+TEST_F(BehaviorEventLogTest, ReadUnknownIdReturnsEmptyRow) {
+    auto log = makeLog("read_unknown");
+    ASSERT_NE(log, nullptr);
+
+    auto row = log->read(static_cast<BlockId>(999999));
+    ASSERT_TRUE(row.has_value());
+    EXPECT_TRUE(row->empty());
+}

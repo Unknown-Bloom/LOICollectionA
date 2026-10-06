@@ -164,7 +164,7 @@ namespace Config {
 
     struct C_BehaviorEvent {
         bool ModuleEnabled = false;
-        int OrganizeDatabaseInterval = 144;
+        int OrganizeRetentionHours = 144;
         int CleanThresholdEvent = 10000;
         int CleanDatabaseInterval = 1;
         int RefreshIntervalInMinutes = 5;

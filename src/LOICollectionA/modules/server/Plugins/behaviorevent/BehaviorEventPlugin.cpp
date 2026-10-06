@@ -1,6 +1,7 @@
 #include <atomic>
 #include <chrono>
 #include <limits>
+#include <map>
 #include <memory>
 #include <ranges>
 #include <string>
@@ -217,6 +218,14 @@ namespace LOICollection::server::Plugins {
                 this->getLogger()->info(formatter(tr({}, id), event));
         }, ll::event::EventPriority::Highest);
 
+        if (auto existing = mImpl->mListeners.find(name); existing != mImpl->mListeners.end()) {
+            eventBus.removeListener(existing->second);
+
+            existing->second = listener;
+
+            return;
+        }
+
         mImpl->mListeners.emplace(name, listener);
     }
 
@@ -279,6 +288,9 @@ namespace LOICollection::server::Plugins {
             if (!this->mImpl->WriteDatabaseTaskRunning.load(std::memory_order_acquire))
                 return;
             
+            if (!this->isValid())
+                return;
+
             Event mEvent{};
 
             std::vector<Event> mEvents;
@@ -296,9 +308,6 @@ namespace LOICollection::server::Plugins {
             if (mEvents.empty())
                 return;
 
-            if (!this->isValid())
-                return;
-
             std::vector<BehaviorEventLog::PreparedEvent> prepared;
             prepared.reserve(mEvents.size());
 
@@ -306,7 +315,7 @@ namespace LOICollection::server::Plugins {
                 BehaviorEventLog::PreparedEvent mPrepared;
                 mPrepared.name = mEvent.eventName;
                 mPrepared.type = mEvent.eventType;
-                mPrepared.timestamp = SystemUtils::getEpochSeconds();
+                mPrepared.timestamp = mEvent.eventEpoch;
                 mPrepared.posX = mEvent.posX;
                 mPrepared.posY = mEvent.posY;
                 mPrepared.posZ = mEvent.posZ;
@@ -332,7 +341,7 @@ namespace LOICollection::server::Plugins {
             this->getBehaviorEventLog()->count()
                 .and_then([this](size_t events) -> ll::Expected<void> {
                     if (static_cast<int>(events) >= this->mImpl->options.CleanThresholdEvent)
-                        return this->clean(this->mImpl->options.OrganizeDatabaseInterval);
+                        return this->clean(this->mImpl->options.OrganizeRetentionHours);
 
                     return {};
                 })
@@ -344,7 +353,7 @@ namespace LOICollection::server::Plugins {
         ll::command::CommandHandle& command = ll::command::CommandRegistrar::getInstance(false)
             .getOrCreateCommand("behaviorevent", tr({}, "commands.behaviorevent.description"), CommandPermissionLevel::GameDirectors, CommandFlagValue::NotCheat | CommandFlagValue::Async);
         command.overload().text("clean").execute([this](CommandOrigin const& origin, CommandOutput& output) -> void {
-            this->clean(this->mImpl->options.OrganizeDatabaseInterval).or_else(modules::defaultErrorHandler<BehaviorEventPlugin>);
+            this->clean(this->mImpl->options.OrganizeRetentionHours).or_else(modules::defaultErrorHandler<BehaviorEventPlugin>);
 
             output.success(tr(origin.getLocaleCode(), "commands.behaviorevent.success.clean"));
         });
@@ -872,7 +881,9 @@ namespace LOICollection::server::Plugins {
         }, [](ll::event::Event& event, Event& mEvent) -> void {
             auto& sevent = static_cast<LOICollection::server::Events::BlockExplodedEvent&>(event);
 
-            mEvent.extendedFields.emplace_back("event_operable", sevent.getBlock().mSerializationId->toSnbt(SnbtFormat::Minimize, 0));
+            if (sevent.getBlock().mSerializationId != nullptr)
+                mEvent.extendedFields.emplace_back("event_operable", sevent.getBlock().mSerializationId->toSnbt(SnbtFormat::Minimize, 0));
+
             if (auto mBlockEntity = BlockUtils::getBlockEntity(sevent.getPosition(), sevent.getDimensionId()); mBlockEntity.has_value()) {
                 CompoundTag mTag;
                 mBlockEntity.value()->save(mTag, *SaveContextFactory::createCloneSaveContext());
@@ -919,6 +930,7 @@ namespace LOICollection::server::Plugins {
         Event mEvent;
         mEvent.eventName = name;
         mEvent.eventTime = SystemUtils::getNowTime();
+        mEvent.eventEpoch = SystemUtils::getEpochSeconds();
         mEvent.eventType = type;
         mEvent.posX = static_cast<int>(position.x);
         mEvent.posY = static_cast<int>(position.y);
@@ -1024,7 +1036,7 @@ namespace LOICollection::server::Plugins {
 
         return this->getBehaviorEventLog()->read(data)
             .transform([&ids](BehaviorEventLog::Rows mData) -> std::vector<std::string> {
-                std::unordered_map<std::string, std::string> events;
+                std::map<std::string, std::string> events;
                 for (auto& key : ids) {
                     auto it = mData.find(key);
                     if (it == mData.end())
@@ -1039,10 +1051,16 @@ namespace LOICollection::server::Plugins {
                         readBehaviorEventLogFieldOf(it->second, "position_dimension")
                     );
 
-                    events[id] = key;
+                    events.insert_or_assign(id, key);
                 }
 
-                return std::views::values(events) | std::ranges::to<std::vector<std::string>>();
+                std::vector<std::string> result;
+                result.reserve(events.size());
+
+                for (auto& [id, key] : events)
+                    result.emplace_back(key);
+
+                return result;
             });
     }
 
@@ -1053,7 +1071,7 @@ namespace LOICollection::server::Plugins {
         BehaviorEventLog::PreparedEvent mPrepared;
         mPrepared.name = event.eventName;
         mPrepared.type = event.eventType;
-        mPrepared.timestamp = SystemUtils::getEpochSeconds();
+        mPrepared.timestamp = event.eventEpoch;
         mPrepared.posX = event.posX;
         mPrepared.posY = event.posY;
         mPrepared.posZ = event.posZ;
@@ -1093,14 +1111,24 @@ namespace LOICollection::server::Plugins {
                             );
                             int mDimension = SystemUtils::toInt(readBehaviorEventLogFieldOf(data, "position_dimension"), 0);
 
-                            if (data.contains("event_operable")) {
-                                CompoundTag mNbt = CompoundTag::fromSnbt(data.at("event_operable"))->mTags;
+                            if (auto it = data.find("event_operable"); it != data.end()) {
+                                auto mNbt = CompoundTag::fromSnbt(it->second);
+                                if (!mNbt) {
+                                    this->getLogger()->error("BehavorEventPlugin restore block failed: {}", mNbt.error().message());
 
-                                BlockUtils::setBlock(mPosition, mDimension, mNbt);
-                            } else if (data.contains("event_operable_entity")) {
-                                CompoundTag mNbt = CompoundTag::fromSnbt(data.at("event_operable_entity"))->mTags;
+                                    continue;
+                                }
 
-                                BlockUtils::setBlockEntity(mPosition, mDimension, mNbt);
+                                BlockUtils::setBlock(mPosition, mDimension, *mNbt);
+                            } else if (auto it = data.find("event_operable_entity"); it != data.end()) {
+                                auto mNbt = CompoundTag::fromSnbt(it->second);
+                                if (!mNbt) {
+                                    this->getLogger()->error("BehavorEventPlugin restore block entity failed: {}", mNbt.error().message());
+
+                                    continue;
+                                }
+
+                                BlockUtils::setBlockEntity(mPosition, mDimension, *mNbt);
                             }
                         }
 
@@ -1167,14 +1195,14 @@ namespace LOICollection::server::Plugins {
         if (!this->mImpl->options.ModuleEnabled)
             return false;
 
+        if (this->mImpl->mRegistered.load(std::memory_order_acquire))
+            this->unlistenEvent();
+
         this->mImpl->log.reset();
         this->mImpl->store.reset();
         this->mImpl->pool.reset();
         this->mImpl->logger.reset();
         this->mImpl->options = {};
-
-        if (this->mImpl->mRegistered.load(std::memory_order_acquire))
-            this->unlistenEvent();
 
         return true;
     }
@@ -1185,6 +1213,9 @@ namespace LOICollection::server::Plugins {
 
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(BehaviorEventPluginErrorCode::Invalid));
+
+        if (this->mImpl->mRegistered.load(std::memory_order_acquire))
+            return true;
 
         this->registeryCommand();
         this->listenEvent();

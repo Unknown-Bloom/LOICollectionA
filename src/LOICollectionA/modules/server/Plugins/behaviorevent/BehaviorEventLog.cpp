@@ -5,12 +5,23 @@
 
 #include "LOICollectionA/data/sqlite/block/Payload.h"
 #include "LOICollectionA/data/sqlite/block/WriteBatch.h"
+#include "LOICollectionA/data/sqlite/block/BlockError.h"
 
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
 #include "LOICollectionA/include/server/Plugins/behaviorevent/BehaviorEventLog.h"
 
+namespace LOICollection::server::Plugins::detail {
+    bool isNotFound(ll::Error& error) {
+        return error.isA<ll::ErrorCodeError>()
+            && error.as<ll::ErrorCodeError>().ec
+                == BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound);
+    }
+}
+
 namespace LOICollection::server::Plugins {
+    using namespace detail;
+
     ll::Expected<std::unique_ptr<BehaviorEventLog>> BehaviorEventLog::create(BlockStore& store, std::string_view rootName) {
         auto log = std::unique_ptr<BehaviorEventLog>(new BehaviorEventLog(&store));
 
@@ -78,11 +89,21 @@ namespace LOICollection::server::Plugins {
             std::lock_guard<std::mutex> guard(mDictMutex);
             if (auto it = mDictNames.find(id); it != mDictNames.end())
                 return it->second;
+
+            if (mMissingIds.contains(id))
+                return ll::makeStringError("dict id not found");
         }
 
         auto name = mStore->unintern(id);
-        if (!name.has_value())
+        if (!name.has_value()) {
+            if (isNotFound(name.error())) {
+                std::lock_guard<std::mutex> guard(mDictMutex);
+
+                mMissingIds.emplace(id);
+            }
+
             return ll::makeStringError(name.error().message());
+        }
 
         {
             std::lock_guard<std::mutex> guard(mDictMutex);
@@ -129,12 +150,12 @@ namespace LOICollection::server::Plugins {
         if (!id.has_value())
             return ll::makeStringError(id.error().message());
 
-        if (event.timestamp) {
-            if (auto r = batch.setProp(*id, mKeyTimestamp, event.timestamp); !r.has_value())
+        if (event.timestamp.has_value()) {
+            if (auto r = batch.setProp(*id, mKeyTimestamp, *event.timestamp); !r.has_value())
                 return ll::makeStringError(r.error().message());
         }
-        if (encoded.type) {
-            if (auto r = batch.setProp(*id, mKeyType, encoded.type); !r.has_value())
+        if (encoded.type.has_value()) {
+            if (auto r = batch.setProp(*id, mKeyType, static_cast<std::int64_t>(*encoded.type)); !r.has_value())
                 return ll::makeStringError(r.error().message());
         }
         if (event.actor) {
@@ -179,8 +200,10 @@ namespace LOICollection::server::Plugins {
                 dimension = prop.intValue;
         }
 
-        if (auto value = this->unintern(static_cast<std::int32_t>(type)); value.has_value())
-            row.emplace("event_type", *value);
+        if (type >= std::numeric_limits<std::int32_t>::min() && type <= std::numeric_limits<std::int32_t>::max()) {
+            if (auto value = this->unintern(static_cast<std::int32_t>(type)); value.has_value())
+                row.emplace("event_type", *value);
+        }
 
         row.emplace("position_x", std::to_string(posX));
         row.emplace("position_y", std::to_string(posY));
@@ -260,8 +283,12 @@ namespace LOICollection::server::Plugins {
 
     ll::Expected<BehaviorEventLog::Row> BehaviorEventLog::read(BlockId id) {
         auto record = mStore->load(id);
-        if (!record.has_value())
-            return Row{};
+        if (!record.has_value()) {
+            if (isNotFound(record.error()))
+                return Row{};
+
+            return ll::makeStringError(record.error().message());
+        }
 
         if (record->state == BlockLifecycle::Deleted || record->state == BlockLifecycle::Archived)
             return Row{};
@@ -290,11 +317,7 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<size_t> BehaviorEventLog::count() {
-        auto ids = mStore->children(mRoot, -1, 0);
-        if (!ids.has_value())
-            return ll::makeStringError(ids.error().message());
-
-        return ids->size();
+        return mStore->countChildren(mRoot);
     }
 
     ll::Expected<std::vector<BlockId>> BehaviorEventLog::byTimeRange(std::int64_t from, std::int64_t to, size_t limit) {
@@ -327,14 +350,14 @@ namespace LOICollection::server::Plugins {
 
     ll::Expected<std::vector<BlockId>> BehaviorEventLog::byPosition(
         std::int64_t x, std::int64_t y, std::int64_t z, size_t limit) {
-        auto xs = mStore->queryInt(mRoot, mKeyPosX, x, x, limit);
+        auto xs = mStore->queryInt(mRoot, mKeyPosX, x, x, 0);
         if (!xs.has_value())
             return ll::makeStringError(xs.error().message());
 
         if (xs->empty())
             return xs;
 
-        auto ys = mStore->queryInt(mRoot, mKeyPosY, y, y, limit);
+        auto ys = mStore->queryInt(mRoot, mKeyPosY, y, y, 0);
         if (!ys.has_value())
             return ll::makeStringError(ys.error().message());
 
@@ -342,7 +365,7 @@ namespace LOICollection::server::Plugins {
         if (xs->empty())
             return xs;
 
-        auto zs = mStore->queryInt(mRoot, mKeyPosZ, z, z, limit);
+        auto zs = mStore->queryInt(mRoot, mKeyPosZ, z, z, 0);
         if (!zs.has_value())
             return ll::makeStringError(zs.error().message());
 

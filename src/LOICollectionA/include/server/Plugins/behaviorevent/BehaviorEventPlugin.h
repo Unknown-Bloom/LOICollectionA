@@ -139,6 +139,8 @@ namespace LOICollection::server::Plugins {
         std::string eventTime;
         std::string eventType;
 
+        std::int64_t eventEpoch = 0;
+
         int posX;
         int posY;
         int posZ;

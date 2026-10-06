@@ -118,6 +118,7 @@ public:
     LOICOLLECTION_A_NDAPI ll::Expected<BlockLifecycle> stateOf(BlockId id);
 
     LOICOLLECTION_A_NDAPI ll::Expected<std::vector<BlockId>> children(BlockId parent, std::int32_t kind = -1, size_t limit = 0);
+    LOICOLLECTION_A_NDAPI ll::Expected<size_t> countChildren(BlockId parent, std::int32_t kind = -1);
     LOICOLLECTION_A_NDAPI ll::Expected<std::vector<BlockRecord>> records(BlockId parent, std::int32_t kind = -1, size_t limit = 0);
     LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<BlockId, std::string>>> childNames(BlockId parent);
     LOICOLLECTION_A_NDAPI ll::Expected<std::vector<BlockRecord>> rowsByIds(std::span<const BlockId> ids, bool withProps = false);

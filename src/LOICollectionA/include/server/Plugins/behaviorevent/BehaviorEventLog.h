@@ -6,8 +6,10 @@
 #include <string>
 #include <vector>
 #include <utility>
+#include <optional>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 
 #include <ll/api/Expected.h>
 
@@ -26,7 +28,7 @@ namespace LOICollection::server::Plugins {
         struct PreparedEvent {
             std::string name;
             std::string type;
-            std::int64_t timestamp = 0;
+            std::optional<std::int64_t> timestamp;
             std::int64_t actor = 0;
             std::int64_t posX = 0;
             std::int64_t posY = 0;
@@ -71,7 +73,7 @@ namespace LOICollection::server::Plugins {
     private:
         struct Encoded {
             std::int32_t kind = 0;
-            std::int64_t type = 0;
+            std::optional<std::int32_t> type;
             std::string payload;
         };
 
@@ -94,6 +96,7 @@ namespace LOICollection::server::Plugins {
         std::mutex mDictMutex;
         std::unordered_map<std::string, std::int32_t> mDictIds;
         std::unordered_map<std::int32_t, std::string> mDictNames;
+        std::unordered_set<std::int32_t> mMissingIds;
 
         PropKey mKeyTimestamp = 0;
         PropKey mKeyType = 0;

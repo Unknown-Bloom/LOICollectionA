@@ -2,6 +2,8 @@
 
 #include <string>
 #include <vector>
+#include <cstdint>
+#include <unordered_set>
 
 namespace SystemUtils {
     std::int64_t getEpochSeconds();
