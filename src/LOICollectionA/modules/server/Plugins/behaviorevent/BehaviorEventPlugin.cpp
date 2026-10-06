@@ -881,8 +881,7 @@ namespace LOICollection::server::Plugins {
         }, [](ll::event::Event& event, Event& mEvent) -> void {
             auto& sevent = static_cast<LOICollection::server::Events::BlockExplodedEvent&>(event);
 
-            if (sevent.getBlock().mSerializationId != nullptr)
-                mEvent.extendedFields.emplace_back("event_operable", sevent.getBlock().mSerializationId->toSnbt(SnbtFormat::Minimize, 0));
+            mEvent.extendedFields.emplace_back("event_operable", sevent.getBlock().mSerializationId->toSnbt(SnbtFormat::Minimize, 0));
 
             if (auto mBlockEntity = BlockUtils::getBlockEntity(sevent.getPosition(), sevent.getDimensionId()); mBlockEntity.has_value()) {
                 CompoundTag mTag;
