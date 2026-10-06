@@ -218,9 +218,7 @@ namespace LOICollection::server::Plugins {
 
                         output.success(tr(origin.getLocaleCode(), "commands.mute.success.info"));
                         for (auto& pair : data) {
-                            std::string key = pair.first.substr(pair.first.find_first_of('.') + 1);
-
-                            output.success("{0}: {1}", key, pair.second);
+                            output.success("{0}: {1}", pair.first, pair.second);
                         }
                     })
                     .or_else(modules::defaultErrorHandler<MutePlugin>);
