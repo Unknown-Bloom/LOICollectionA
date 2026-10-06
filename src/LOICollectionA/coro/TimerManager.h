@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <functional>
 #include <shared_mutex>
@@ -30,6 +31,12 @@ public:
     LOICOLLECTION_A_NDAPI ll::coro::NonNullExecutorRef getExecutor() const;
 
 private:
+    std::function<void()> makeRepeater(
+        const std::string&                            id,
+        ll::coro::Duration                            delay,
+        std::shared_ptr<std::function<void()>>        callback
+    );
+
     bool cancelUnlocked(const std::string& id);
     void cancelAllUnlocked();
 

@@ -1,4 +1,5 @@
 #include <memory>
+#include <mutex>
 #include <string>
 #include <functional>
 #include <shared_mutex>
@@ -19,16 +20,14 @@ void TimerManager::schedule(std::string id, ll::coro::Duration delay, std::funct
 
     this->cancelUnlocked(id);
 
-    auto wrapped = [self = shared_from_this(), id](std::function<void()> userCallback) -> void {
-        userCallback();
-        
-        self->remove(id);
-    };
+    auto handle = this->mExecutor.get().executeAfter(
+        [weak = weak_from_this(), id, cb = std::move(callback)]() -> void {
+            cb();
 
-    auto handle = this->mExecutor.get().executeAfter([wrapped, capture0 = std::move(callback)]() -> void {
-        wrapped(capture0);
-    }, delay);
-    
+            if (auto self = weak.lock(); self)
+                self->remove(id);
+        }, delay);
+
     mTimers.emplace(std::move(id), handle);
 }
 
@@ -37,23 +36,32 @@ void TimerManager::loopSchedule(std::string id, ll::coro::Duration delay, std::f
 
     this->cancelUnlocked(id);
 
-    auto repeater = std::make_shared<std::function<void()>>();
-    *repeater = [self = shared_from_this(), id, delay, cb = std::move(callback), repeater]() {
-        cb();
+    auto handle = this->mExecutor.get().executeAfter(
+        this->makeRepeater(id, delay, std::make_shared<std::function<void()>>(std::move(callback))), delay);
+
+    mTimers.emplace(std::move(id), handle);
+}
+
+std::function<void()> TimerManager::makeRepeater(
+    const std::string&                     id,
+    ll::coro::Duration                     delay,
+    std::shared_ptr<std::function<void()>> callback
+) {
+    return [weak = weak_from_this(), id, delay, callback]() -> void {
+        (*callback)();
+
+        auto self = weak.lock();
+        if (!self)
+            return;
 
         std::unique_lock lock(self->mMutex);
 
-        if (self->mTimers.find(id) == self->mTimers.end())
+        auto it = self->mTimers.find(id);
+        if (it == self->mTimers.end())
             return;
 
-        auto handle = self->mExecutor.get().executeAfter(*repeater, delay);
-
-        self->mTimers[id] = handle;
+        it->second = self->mExecutor.get().executeAfter(self->makeRepeater(id, delay, callback), delay);
     };
-
-    auto handle = this->mExecutor.get().executeAfter(*repeater, delay);
-
-    mTimers.emplace(std::move(id), handle);
 }
 
 bool TimerManager::cancel(const std::string& id) {
