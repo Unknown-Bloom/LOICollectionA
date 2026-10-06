@@ -71,6 +71,8 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<std::string, int>>> getRankingList(StatisticType type, int limit = -1);
         LOICOLLECTION_A_NDAPI ll::Expected<std::vector<std::pair<std::string, int>>> getStatistics(StatisticType type, int limit = -1);
 
+        LOICOLLECTION_A_NDAPI static std::vector<std::pair<std::string, int>> rank(std::vector<std::pair<std::string, int>> data, int limit);
+
         LOICOLLECTION_A_NDAPI ll::Expected<int> getStatistic(const std::string& uuid, StatisticType type);
         LOICOLLECTION_A_NDAPI ll::Expected<int> getStatistic(Player& player, StatisticType type);
 

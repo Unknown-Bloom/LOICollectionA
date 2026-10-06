@@ -632,7 +632,7 @@ namespace LOICollection::server::Plugins {
                                 int tax = static_cast<int>(std::floor(mScore * this->mImpl->effectiveTaxRate()));
                                 int sellerAmount = mScore - tax;
 
-                                return this->commitStoreSale(player, id, data, storeId, ownerUuid, tax, remainingData)
+                                return this->commitStoreSale(player, id, data, storeId, ownerUuid, mScore, tax, remainingData)
                                     .and_then([this, id, count, &player, data, ownerUuid, mScore, sellerAmount, tax, mScoreboard](const std::string& saleKey) -> ll::Expected<bool> {
                                         auto compensate = [this, id, &player, data, saleKey]() -> ll::Expected<void> {
                                             this->mImpl->logger->warn(fmt::runtime(tr({}, "market.log16")), player.getRealName(), id);
@@ -688,6 +688,7 @@ namespace LOICollection::server::Plugins {
         const std::unordered_map<std::string, std::string>& data,
         const std::string& storeId,
         const std::string& ownerUuid,
+        int price,
         int tax,
         const std::string& remainingData
     ) {
@@ -704,7 +705,7 @@ namespace LOICollection::server::Plugins {
         setResult = saleBatch.set(saleKey, StoreSaleCol::item_name, data.at("name"));
         if (!setResult.has_value())
             return ll::Unexpected(setResult.error());
-        setResult = saleBatch.set(saleKey, StoreSaleCol::price, static_cast<long long>(SystemUtils::toInt(data.at("score"), 0)));
+        setResult = saleBatch.set(saleKey, StoreSaleCol::price, static_cast<long long>(price));
         if (!setResult.has_value())
             return ll::Unexpected(setResult.error());
         setResult = saleBatch.set(saleKey, StoreSaleCol::tax, static_cast<long long>(tax));

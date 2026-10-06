@@ -1888,3 +1888,60 @@ TEST_F(MarketPluginTest, StoreAuctionOutbidRefund) {
     if (created)
         ScoreboardUtils::remove(config.TargetScoreboard);
 }
+
+TEST_F(MarketPluginTest, StoreBuyPartialPriceRecorded) {
+    Config::C_Market config = GetMarketConfig();
+    if (!config.StoreEnabled)
+        GTEST_SKIP();
+
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(sp);
+
+    TestSimulatedPlayer buyer("test_player6");
+    ASSERT_TRUE(buyer.create());
+
+    ASSERT_TRUE(CreateStore(*sp));
+
+    InventoryUtils::clearItem(*sp, "minecraft:grass_block", 2304);
+    ASSERT_TRUE(GiveItem(*sp, "minecraft:grass_block", 64));
+    ASSERT_TRUE(UploadStoreItem(*sp, "grass_block", 640));
+
+    auto items = MarketPlugin::getShared()->getStoreItems(sp->getUuid().asString());
+    ASSERT_TRUE(items.has_value());
+    ASSERT_FALSE(items.value().empty());
+
+    std::string itemId = items.value().front();
+
+    bool created = false;
+    PrepareScoreboard(config, created);
+
+    ScoreboardUtils::setScore(*sp, config.TargetScoreboard, 0);
+    ScoreboardUtils::setScore(*buyer.getPlayer(), config.TargetScoreboard, 10000);
+
+    int unitPrice = 640;
+    int totalCount = 64;
+    int buyCount = 16;
+    int expectedCost = unitPrice * buyCount / totalCount;
+
+    auto buy = MarketPlugin::getShared()->buyStoreItem(*buyer.getPlayer(), itemId, buyCount);
+    ASSERT_TRUE(buy.has_value());
+    EXPECT_TRUE(buy.value());
+
+    EXPECT_EQ(ScoreboardUtils::getScore(*buyer.getPlayer(), config.TargetScoreboard), 10000 - expectedCost);
+
+    auto sales = MarketPlugin::getShared()->sales().find(FindMode::And, {
+        { StoreSaleCol::store_id, sp->getUuid().asString() },
+        { StoreSaleCol::buyer_uuid, buyer.getPlayer()->getUuid().asString() }
+    });
+    ASSERT_TRUE(sales.has_value());
+    ASSERT_FALSE(sales.value().empty());
+
+    auto row = MarketPlugin::getShared()->sales().getRow(sales.value().front());
+    ASSERT_TRUE(row.has_value());
+    EXPECT_EQ(SystemUtils::toInt(row.value().at("price"), -1), expectedCost);
+
+    if (created)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+
+    ASSERT_TRUE(buyer.destroy());
+}

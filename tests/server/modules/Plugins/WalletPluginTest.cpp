@@ -3,7 +3,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <memory>
 #include <string>
+#include <vector>
 #include <algorithm>
 
 #include <ll/api/service/Bedrock.h>
@@ -934,4 +936,109 @@ TEST_F(WalletPluginTest, TransferEventPublished) {
 
     if (!hasScoreboard)
         ScoreboardUtils::remove(config.TargetScoreboard);
+}
+
+TEST_F(WalletPluginTest, BankDepositConservesAssets) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(sp);
+
+    Config::C_Wallet config = GetWalletConfig();
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(config.TargetScoreboard)) {
+        hasScoreboard = false;
+        ScoreboardUtils::create(config.TargetScoreboard);
+    }
+
+    int initial = 500;
+    ScoreboardUtils::setScore(*sp, config.TargetScoreboard, initial);
+
+    ASSERT_TRUE(WalletPlugin::getShared()->bankDeposit(*sp, 200).has_value());
+
+    long long score = ScoreboardUtils::getScore(*sp, config.TargetScoreboard);
+    long long principal = WalletPlugin::getShared()->getBankPrincipal(sp->getUuid().asString()).value();
+
+    EXPECT_EQ(score + principal, initial);
+
+    ASSERT_TRUE(WalletPlugin::getShared()->bankWithdraw(*sp).has_value());
+
+    score = ScoreboardUtils::getScore(*sp, config.TargetScoreboard);
+    principal = WalletPlugin::getShared()->getBankPrincipal(sp->getUuid().asString()).value();
+
+    EXPECT_GE(score, initial);
+    EXPECT_EQ(principal, 0);
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+}
+
+TEST_F(WalletPluginTest, BankDepositRejectsWithoutDeducting) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(sp);
+
+    Config::C_Wallet config = GetWalletConfig();
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(config.TargetScoreboard)) {
+        hasScoreboard = false;
+        ScoreboardUtils::create(config.TargetScoreboard);
+    }
+
+    ScoreboardUtils::setScore(*sp, config.TargetScoreboard, 10);
+
+    ASSERT_FALSE(WalletPlugin::getShared()->bankDeposit(*sp, 100).has_value());
+
+    EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), 10);
+    EXPECT_EQ(WalletPlugin::getShared()->getBankPrincipal(sp->getUuid().asString()).value(), 0);
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+}
+
+TEST_F(WalletPluginTest, RedenvelopeGrabNeverExceedsTotal) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    ASSERT_TRUE(sp);
+
+    std::vector<std::unique_ptr<TestSimulatedPlayer>> grabbers;
+    for (int i = 0; i < 6; ++i) {
+        auto player = std::make_unique<TestSimulatedPlayer>("test_grabber_" + std::to_string(i));
+        ASSERT_TRUE(player->create());
+
+        grabbers.emplace_back(std::move(player));
+    }
+
+    Config::C_Wallet config = GetWalletConfig();
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(config.TargetScoreboard)) {
+        hasScoreboard = false;
+        ScoreboardUtils::create(config.TargetScoreboard);
+    }
+
+    int total = 100;
+    int count = 3;
+
+    ScoreboardUtils::setScore(*sp, config.TargetScoreboard, 500);
+
+    MockExecutor executor;
+    ASSERT_TRUE(WalletPlugin::getShared()->setExecutor(executor).has_value());
+    ASSERT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "grab_key", total, count).has_value());
+
+    for (auto& grabber : grabbers) {
+        ScoreboardUtils::setScore(*grabber->getPlayer(), config.TargetScoreboard, 0);
+        WalletPlugin::getShared()->tryGrabRedEnvelope(*grabber->getPlayer(), "grab_key");
+    }
+
+    long long granted = 0;
+    for (auto& grabber : grabbers)
+        granted += ScoreboardUtils::getScore(*grabber->getPlayer(), config.TargetScoreboard);
+
+    EXPECT_EQ(granted, total);
+    EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), 400);
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+
+    for (auto& grabber : grabbers)
+        EXPECT_TRUE(grabber->destroy());
 }

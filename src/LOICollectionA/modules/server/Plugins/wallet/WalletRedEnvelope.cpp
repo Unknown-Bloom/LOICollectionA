@@ -262,16 +262,16 @@ namespace LOICollection::server::Plugins {
                 return ll::Unexpected(delEnv.error());
         }
 
-        auto commitGrab = grabTx.commit();
-        if (!commitGrab.has_value()) {
-            [[maybe_unused]] auto rolledBack = envelopeTx.rollback();
+        auto commitEnvelope = envelopeTx.commit();
+        if (!commitEnvelope.has_value()) {
+            [[maybe_unused]] auto rolledBack = grabTx.rollback();
 
-            return ll::Unexpected(commitGrab.error());
+            return ll::Unexpected(commitEnvelope.error());
         }
 
-        auto commitEnvelope = envelopeTx.commit();
-        if (!commitEnvelope.has_value())
-            return ll::Unexpected(commitEnvelope.error());
+        auto commitGrab = grabTx.commit();
+        if (!commitGrab.has_value())
+            return ll::Unexpected(commitGrab.error());
 
         ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, detail::toScore(amount));
 

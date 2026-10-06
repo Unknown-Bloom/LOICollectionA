@@ -188,7 +188,7 @@ namespace LOICollection::server::Plugins {
                     return;
                 }
 
-                int mMoney = this->mImpl->options.RequestRequired * mResultSize;
+                int mMoney = this->computeInviteCost(this->mImpl->options.RequestRequired, mResultSize);
                 if (ScoreboardUtils::getScore(player, this->mImpl->options.TargetScoreboard) < mMoney) {
                     output.error(fmt::runtime(tr(origin.getLocaleCode(), "commands.tpa.error.invite")), mMoney);
                     return;
@@ -198,7 +198,7 @@ namespace LOICollection::server::Plugins {
 
                 for (Player*& pl : mResults) {
                     this->requestInvite(player, *pl, param.Type == SelectorType::tpa
-                        ? TpaType::tpa : TpaType::tphere
+                        ? TpaType::tpa : TpaType::tphere, true
                     ).or_else(modules::defaultErrorHandler<TpaPlugin, bool>);
 
                     output.success(fmt::runtime(tr(origin.getLocaleCode(), "commands.tpa.success.invite")), pl->getRealName());
@@ -297,7 +297,7 @@ namespace LOICollection::server::Plugins {
         });
     }
 
-    ll::Expected<bool> TpaPlugin::requestInvite(Player& player, Player& target, TpaType type) {
+    ll::Expected<bool> TpaPlugin::requestInvite(Player& player, Player& target, TpaType type, bool prepaid) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(TpaPluginErrorCode::Invalid));
 
@@ -311,7 +311,7 @@ namespace LOICollection::server::Plugins {
             return false;
         }
 
-        auto forTpa = this->forTpaContent(player);
+        auto forTpa = this->forTpaContent(player, prepaid);
         if (!forTpa.has_value())
             return ll::Unexpected(forTpa.error());
 
@@ -323,7 +323,7 @@ namespace LOICollection::server::Plugins {
 
         std::string id = SystemUtils::getCurrentTimestamp();
 
-        auto result = this->sendRequest(player, target, id, type)
+        auto result = this->sendRequest(player, target, id, type, prepaid)
             .or_else([](ll::Error e) -> ll::Expected<void> {
                 if (e.isA<ll::ErrorCodeError>() && e.as<ll::ErrorCodeError>().ec == makeErrorCode(TpaPluginErrorCode::RequestExists))
                     return {};
@@ -883,7 +883,7 @@ namespace LOICollection::server::Plugins {
         return {};
     }
 
-    ll::Expected<void> TpaPlugin::sendRequest(Player& player, Player& target, const std::string& id, TpaType type) {
+    ll::Expected<void> TpaPlugin::sendRequest(Player& player, Player& target, const std::string& id, TpaType type, bool prepaid) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(TpaPluginErrorCode::Invalid));
 
@@ -906,7 +906,7 @@ namespace LOICollection::server::Plugins {
 
         this->mImpl->mRequestPending[{ originId, targetId }] = id;
 
-        this->mImpl->mTimerManager->schedule(id, std::chrono::seconds(this->mImpl->options.RequestTimeout), [this, id, originId, targetId]() -> void {
+        this->mImpl->mTimerManager->schedule(id, std::chrono::seconds(this->mImpl->options.RequestTimeout), [this, id, originId, targetId, prepaid]() -> void {
             auto result = this->hasRequest(originId, targetId);
             if (!result.has_value()) {
                 modules::defaultErrorHandler<TpaPlugin>(result.error());
@@ -916,6 +916,11 @@ namespace LOICollection::server::Plugins {
             
             if (!result.value())
                 return;
+
+            if (prepaid) {
+                if (Player* mPlayer = ll::service::getLevel()->getPlayer(mce::UUID::fromString(originId)); mPlayer)
+                    ScoreboardUtils::addScore(*mPlayer, this->mImpl->options.TargetScoreboard, this->mImpl->options.RequestRequired);
+            }
 
             if (Player* mPlayer = ll::service::getLevel()->getPlayer(mce::UUID::fromString(originId)); mPlayer) {
                 LanguagePlugin::getShared()->getLanguage(*mPlayer)
@@ -1017,13 +1022,23 @@ namespace LOICollection::server::Plugins {
         return this->mImpl->blacklist->has(id);
     }
 
-    ll::Expected<bool> TpaPlugin::forTpaContent(Player& player) {
+    int TpaPlugin::computeInviteCost(int required, int count) {
+        if (required <= 0 || count <= 0)
+            return 0;
+
+        return required * count;
+    }
+
+    ll::Expected<bool> TpaPlugin::forTpaContent(Player& player, bool prepaid) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(TpaPluginErrorCode::Invalid));
 
         std::string mScoreboard = this->mImpl->options.TargetScoreboard;
 
         int mRequestRequired = this->mImpl->options.RequestRequired;
+        if (prepaid)
+            return true;
+
         if (mRequestRequired && ScoreboardUtils::getScore(player, mScoreboard) < mRequestRequired)
             return false;
 

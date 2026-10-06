@@ -168,6 +168,49 @@ TEST_F(TpaPluginTest, ForTpaContent) {
         ScoreboardUtils::remove(config.TargetScoreboard);
 }
 
+TEST_F(TpaPluginTest, InviteCostPureFunction) {
+    EXPECT_EQ(TpaPlugin::computeInviteCost(10, 3), 30);
+    EXPECT_EQ(TpaPlugin::computeInviteCost(10, 0), 0);
+    EXPECT_EQ(TpaPlugin::computeInviteCost(0, 5), 0);
+    EXPECT_EQ(TpaPlugin::computeInviteCost(-1, 5), 0);
+    EXPECT_EQ(TpaPlugin::computeInviteCost(10, -1), 0);
+}
+
+TEST_F(TpaPluginTest, ForTpaContentSkipsChargeWhenPrepaid) {
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    Config::C_Tpa config = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Tpa;
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(config.TargetScoreboard)) {
+        hasScoreboard = false;
+
+        ScoreboardUtils::create(config.TargetScoreboard);
+    }
+
+    ScoreboardUtils::setScore(*sp, config.TargetScoreboard, config.RequestRequired * 3);
+
+    auto prepaid1 = TpaPlugin::getShared()->forTpaContent(*sp, true);
+    EXPECT_TRUE(prepaid1.has_value());
+    EXPECT_TRUE(prepaid1.value());
+
+    auto prepaid2 = TpaPlugin::getShared()->forTpaContent(*sp, true);
+    EXPECT_TRUE(prepaid2.has_value());
+    EXPECT_TRUE(prepaid2.value());
+
+    EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), config.RequestRequired * 3);
+
+    auto charged = TpaPlugin::getShared()->forTpaContent(*sp, false);
+    EXPECT_TRUE(charged.has_value());
+    EXPECT_TRUE(charged.value());
+
+    EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), config.RequestRequired * 2);
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+}
+
 TEST_F(TpaPluginTest, SendRequest) {
     MockExecutor executor;
     EXPECT_TRUE(TpaPlugin::getShared()->setExecutor(executor).has_value());
@@ -191,6 +234,69 @@ TEST_F(TpaPluginTest, SendRequest) {
     auto has2 = TpaPlugin::getShared()->hasRequest(sp->getUuid().asString(), sp2.getPlayer()->getUuid().asString());
     EXPECT_TRUE(has2.has_value());
     EXPECT_FALSE(has2.value());
+}
+
+TEST_F(TpaPluginTest, SendRequestTimeoutRefundsPrepaid) {
+    MockExecutor executor;
+    EXPECT_TRUE(TpaPlugin::getShared()->setExecutor(executor).has_value());
+
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    TestSimulatedPlayer sp2("test_player2");
+    EXPECT_TRUE(sp2.create());
+
+    Config::C_Tpa config = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Tpa;
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(config.TargetScoreboard)) {
+        hasScoreboard = false;
+
+        ScoreboardUtils::create(config.TargetScoreboard);
+    }
+
+    ScoreboardUtils::setScore(*sp, config.TargetScoreboard, 0);
+
+    EXPECT_TRUE(TpaPlugin::getShared()->sendRequest(*sp, *sp2.getPlayer(), "test_request", TpaType::tpa, true).has_value());
+    EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), 0);
+
+    executor.advanceTime(std::chrono::seconds(config.RequestTimeout + 1));
+
+    EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), config.RequestRequired);
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(config.TargetScoreboard);
+}
+
+TEST_F(TpaPluginTest, SendRequestTimeoutDoesNotRefundUnpaid) {
+    MockExecutor executor;
+    EXPECT_TRUE(TpaPlugin::getShared()->setExecutor(executor).has_value());
+
+    auto sp = ll::service::getLevel()->getPlayer("test_player");
+    EXPECT_TRUE(sp);
+
+    TestSimulatedPlayer sp2("test_player2");
+    EXPECT_TRUE(sp2.create());
+
+    Config::C_Tpa config = ServiceProvider::getInstance().getService<ReadOnlyWrapper<Config::C_Config>>("Config")->get().ServerConfig.Plugins.Tpa;
+
+    bool hasScoreboard = true;
+    if (!ScoreboardUtils::hasScoreboard(config.TargetScoreboard)) {
+        hasScoreboard = false;
+
+        ScoreboardUtils::create(config.TargetScoreboard);
+    }
+
+    ScoreboardUtils::setScore(*sp, config.TargetScoreboard, 0);
+
+    EXPECT_TRUE(TpaPlugin::getShared()->sendRequest(*sp, *sp2.getPlayer(), "test_request", TpaType::tpa, false).has_value());
+
+    executor.advanceTime(std::chrono::seconds(config.RequestTimeout + 1));
+
+    EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), 0);
+
+    if (!hasScoreboard)
+        ScoreboardUtils::remove(config.TargetScoreboard);
 }
 
 TEST_F(TpaPluginTest, AcceptRequest) {

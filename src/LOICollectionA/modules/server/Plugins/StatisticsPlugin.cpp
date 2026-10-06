@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <memory>
 #include <optional>
@@ -413,17 +414,27 @@ namespace LOICollection::server::Plugins {
         return this->mImpl->language->get<std::string>(uuid, LanguageCol::name, std::string("Unknown"));
     }
 
+    std::vector<std::pair<std::string, int>> StatisticsPlugin::rank(
+        std::vector<std::pair<std::string, int>> data,
+        int limit
+    ) {
+        std::ranges::sort(data, [](const auto& a, const auto& b) {
+            return a.second > b.second;
+        });
+
+        if (limit > 0 && static_cast<int>(data.size()) > limit)
+            data.resize(static_cast<std::size_t>(limit));
+
+        return data;
+    }
+
     ll::Expected<std::vector<std::pair<std::string, int>>> StatisticsPlugin::getRankingList(StatisticType type, int limit) {
         if (!this->isValid())
             return ll::makeErrorCodeError(makeErrorCode(StatisticsPluginErrorCode::Invalid));
 
-        return this->getStatistics(type, limit)
-            .transform([](std::vector<std::pair<std::string, int>> data) -> std::vector<std::pair<std::string, int>> {
-                std::ranges::sort(data, [](const auto& a, const auto& b) {
-                    return a.second > b.second;
-                });
-
-                return data;
+        return this->getStatistics(type, -1)
+            .transform([limit](std::vector<std::pair<std::string, int>> data) -> std::vector<std::pair<std::string, int>> {
+                return StatisticsPlugin::rank(std::move(data), limit);
             });
     }
 

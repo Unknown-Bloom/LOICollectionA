@@ -83,7 +83,7 @@ namespace LOICollection::server::Plugins {
         LOICOLLECTION_A_NDAPI ll::Expected<bool> hasRequest(const std::string& origin, const std::string& target);
         
         LOICOLLECTION_A_NDAPI ll::Expected<void> clearRequest(const std::string& id);
-        LOICOLLECTION_A_NDAPI ll::Expected<void> sendRequest(Player& player, Player& target, const std::string& id, TpaType type);
+        LOICOLLECTION_A_NDAPI ll::Expected<void> sendRequest(Player& player, Player& target, const std::string& id, TpaType type, bool prepaid = false);
 
         LOICOLLECTION_A_NDAPI ll::Expected<std::string> getBlacklist(Player& player, Player& target);
 
@@ -94,11 +94,13 @@ namespace LOICollection::server::Plugins {
 
         LOICOLLECTION_A_NDAPI ll::Expected<bool> hasBlacklist(Player& player, const std::string& id);
 
-        LOICOLLECTION_A_NDAPI ll::Expected<bool> forTpaContent(Player& player);
+        LOICOLLECTION_A_NDAPI ll::Expected<bool> forTpaContent(Player& player, bool prepaid = false);
         
         LOICOLLECTION_A_NDAPI ll::Expected<bool> isInvite(Player& player);
 
-        LOICOLLECTION_A_NDAPI ll::Expected<bool> requestInvite(Player& player, Player& target, TpaType type);
+        LOICOLLECTION_A_NDAPI ll::Expected<bool> requestInvite(Player& player, Player& target, TpaType type, bool prepaid = false);
+
+        LOICOLLECTION_A_NDAPI static int computeInviteCost(int required, int count);
 
         LOICOLLECTION_A_NDAPI bool isValid();
 

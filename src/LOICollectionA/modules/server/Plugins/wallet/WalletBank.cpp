@@ -116,6 +116,8 @@ namespace LOICollection::server::Plugins {
 
         auto& tx = batch.value();
 
+        ScoreboardUtils::reduceScore(player, mScoreboard, detail::toScore(amount));
+
         return tx.get<long long>(uuid, "principal", 0)
             .and_then([&tx, &uuid, amount, nowNs, &player](long long current) -> ll::Expected<void> {
                 return tx.set(uuid, "principal", current + amount)
@@ -130,8 +132,6 @@ namespace LOICollection::server::Plugins {
                 return tx.commit().transform([](bool) -> void {});
             })
             .transform([this, uuid, &player, amount]() -> void {
-                ScoreboardUtils::reduceScore(player, this->mImpl->options.TargetScoreboard, detail::toScore(amount));
-
                 this->mImpl->ledger.record(uuid, player.getRealName(), "", "", amount, 0, "bank_deposit");
 
                 this->mImpl->wallet->set(uuid, "balance", static_cast<long long>(ScoreboardUtils::getScore(player, this->mImpl->options.TargetScoreboard)))
@@ -140,6 +140,11 @@ namespace LOICollection::server::Plugins {
 
                         return {};
                     });
+            })
+            .or_else([this, &player, amount, mScoreboard](ll::Error e) -> ll::Expected<void> {
+                ScoreboardUtils::addScore(player, mScoreboard, detail::toScore(amount));
+
+                return ll::Unexpected(std::move(e));
             });
     }
 
