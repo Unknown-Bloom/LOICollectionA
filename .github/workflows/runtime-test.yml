@@ -102,14 +102,30 @@ jobs:
               shell: pwsh
               run: |
                   $cfg = "server/server.properties"
-                  if (Test-Path $cfg) {
-                      $text = Get-Content $cfg -Raw
-                      $text = $text -replace '(?m)^online-mode=.*$', 'online-mode=false'
-                      $text = $text -replace '(?m)^server-port=.*$', 'server-port=19132'
+                  if (-not (Test-Path $cfg)) { New-Item -ItemType File -Force -Path $cfg | Out-Null }
+
+                  foreach ($pair in @{ "online-mode" = "false"; "server-port" = "19132"; "allow-list" = "false" }.GetEnumerator()) {
+                      $key = $pair.Key
+                      $value = $pair.Value
+                      $text = Get-Content $cfg -Raw -ErrorAction SilentlyContinue
+                      if ($null -eq $text) { $text = "" }
+                      if ($text -match "(?m)^$([regex]::Escape($key))=") {
+                          $text = $text -replace "(?m)^$([regex]::Escape($key))=.*$", "$key=$value"
+                      } else {
+                          $text = $text.TrimEnd("`r", "`n") + "`n$key=$value`n"
+                      }
                       Set-Content -Path $cfg -Value $text -NoNewline -Encoding ascii
-                  } else {
-                      "online-mode=false`nserver-port=19132`n" | Set-Content -Path $cfg -Encoding ascii
                   }
+
+                  Remove-Item "server/allowlist.json" -Force -ErrorAction SilentlyContinue
+                  Remove-Item "server/permissions.json" -Force -ErrorAction SilentlyContinue
+
+                  foreach ($key in "online-mode=false", "server-port=19132", "allow-list=false") {
+                      if (-not (Select-String -Path $cfg -Pattern "^$([regex]::Escape($key))$" -Quiet)) {
+                          throw "server.properties was not prepared correctly: missing $key"
+                      }
+                  }
+                  Get-Content $cfg | Write-Host
 
             - name: Run server and /test all
               id: runtest
@@ -144,9 +160,20 @@ jobs:
                       }
 
                       if (-not $ready) {
-                          Write-Host "::error::server did not reach 'Server started' within 120s"
+                          if ($proc.HasExited) {
+                              Write-Host "::error::server exited with code $($proc.ExitCode) before reaching 'Server started'"
+                          } else {
+                              Write-Host "::error::server did not reach 'Server started' within 120s"
+                              $proc.Kill()
+                          }
+                          Write-Host "::group::server stdout"
+                          Get-Content $stdout -ErrorAction SilentlyContinue | Write-Host
+                          Write-Host "::endgroup::"
+                          Write-Host "::group::server stderr"
+                          Get-Content $stderr -ErrorAction SilentlyContinue | Write-Host
+                          Write-Host "::endgroup::"
                           "state=not-ready" >> $env:GITHUB_OUTPUT
-                          if (-not $proc.HasExited) { $proc.Kill() }
+                          $proc.WaitForExit()
                           return
                       }
 
