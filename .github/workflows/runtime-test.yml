@@ -135,6 +135,18 @@ jobs:
                   "failed=false" >> $env:GITHUB_OUTPUT
                   "state=unknown" >> $env:GITHUB_OUTPUT
 
+                  function Read-Shared {
+                      param([string]$Path)
+                      if (-not (Test-Path $Path)) { return "" }
+                      try {
+                          $fs = [System.IO.File]::Open($Path, 'Open', 'Read', 'ReadWrite')
+                          try {
+                              $sr = New-Object System.IO.StreamReader($fs)
+                              return $sr.ReadToEnd()
+                          } finally { $fs.Dispose() }
+                      } catch { return "" }
+                  }
+
                   try {
                       $exe = "server/bedrock_server_mod.exe"
                       if (-not (Test-Path $exe)) { throw "bedrock_server_mod.exe not found after lip install" }
@@ -150,57 +162,79 @@ jobs:
                           -RedirectStandardError  $stderr `
                           -PassThru -NoNewWindow
 
+                      Write-Host "server pid $($proc.Id)"
+
                       $ready = $false
-                      foreach ($i in 1..120) {
+                      foreach ($i in 1..180) {
                           Start-Sleep -Seconds 1
                           if ($proc.HasExited) { break }
-                          if (Select-String -Path $stdout -Pattern "Server started" -Quiet -ErrorAction SilentlyContinue) {
-                              $ready = $true; break
-                          }
+                          if ((Read-Shared $stdout) -match "Server started") { $ready = $true; break }
                       }
 
                       if (-not $ready) {
                           if ($proc.HasExited) {
                               Write-Host "::error::server exited with code $($proc.ExitCode) before reaching 'Server started'"
                           } else {
-                              Write-Host "::error::server did not reach 'Server started' within 120s"
+                              Write-Host "::error::server did not reach 'Server started' within 180s"
                               $proc.Kill()
                           }
                           Write-Host "::group::server stdout"
-                          Get-Content $stdout -ErrorAction SilentlyContinue | Write-Host
+                          Read-Shared $stdout | Write-Host
                           Write-Host "::endgroup::"
                           Write-Host "::group::server stderr"
-                          Get-Content $stderr -ErrorAction SilentlyContinue | Write-Host
+                          Read-Shared $stderr | Write-Host
                           Write-Host "::endgroup::"
                           "state=not-ready" >> $env:GITHUB_OUTPUT
                           $proc.WaitForExit()
                           return
                       }
 
-                      Start-Sleep -Seconds 3
+                      Write-Host "server is ready, waiting for mods to finish enabling"
+                      $enabled = $false
+                      foreach ($i in 1..60) {
+                          Start-Sleep -Seconds 1
+                          if ($proc.HasExited) { break }
+                          if ((Read-Shared $stdout) -match "mod\(s\) enabled") { $enabled = $true; break }
+                      }
+                      if (-not $enabled) { Write-Host "::warning::'mod(s) enabled' not seen, continuing anyway" }
+
+                      Start-Sleep -Seconds 5
+                      Write-Host "sending: test all"
                       Add-Content -Path $stdin -Value "test all" -Encoding ascii
 
                       $ran = $false
                       foreach ($i in 1..600) {
                           Start-Sleep -Seconds 1
-                          if (Select-String -Path $stdout -Pattern "\[\s*(PASSED|FAILED)\s*\]" -Quiet -ErrorAction SilentlyContinue) {
-                              $ran = $true; break
+                          if ($proc.HasExited) { break }
+                          if ((Read-Shared $stdout) -match "\[\s*(==========|PASSED|FAILED|RUN)\s*\]") { $ran = $true; break }
+                          if ($i % 30 -eq 0) {
+                              Write-Host "waited ${i}s for gtest output..."
                           }
                       }
-                      if (-not $ran) { Write-Host "::warning::gtest summary not seen within 600s" }
+                      if (-not $ran) {
+                          Write-Host "::error::no gtest output within 600s - '/test all' most likely failed to create the simulated player"
+                      } else {
+                          Write-Host "gtest output detected after ${i}s"
+                      }
 
+                      Start-Sleep -Seconds 5
+                      Write-Host "sending: stop"
                       Add-Content -Path $stdin -Value "stop" -Encoding ascii
-                      foreach ($i in 1..30) {
+                      foreach ($i in 1..60) {
                           Start-Sleep -Seconds 1
                           if ($proc.HasExited) { break }
                       }
                       if (-not $proc.HasExited) { $proc.Kill() }
                       $proc.WaitForExit()
 
-                      Get-Content $stdout -Tail 300 | Write-Host
+                      $final = Read-Shared $stdout
+                      Write-Host "::group::server stdout"
+                      ($final -split "`r?`n" | Select-Object -Last 400) | Write-Host
+                      Write-Host "::endgroup::"
 
-                      $failed = Select-String -Path $stdout -Pattern "\[\s*FAILED\s*\]" -Quiet
+                      $failed = $final -match "\[\s*FAILED\s*\]"
                       "failed=$($failed.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+                      "ran=$($ran.ToString().ToLower())" >> $env:GITHUB_OUTPUT
                       "state=done" >> $env:GITHUB_OUTPUT
                   } catch {
                       Write-Host "::error::runtime test crashed: $_"
@@ -281,6 +315,13 @@ jobs:
               shell: pwsh
               run: |
                   Write-Host "::error::server never reached 'Server started'."
+                  exit 1
+
+            - name: Fail when tests never ran
+              if: always() && steps.runtest.outputs.ran == 'false'
+              shell: pwsh
+              run: |
+                  Write-Host "::error::'/test all' produced no gtest output; the simulated player could not be created."
                   exit 1
 
             - name: Fail on unexpected error
