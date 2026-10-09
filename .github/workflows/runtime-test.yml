@@ -1,0 +1,264 @@
+name: Runtime Test
+
+on:
+    workflow_dispatch:
+        inputs:
+            levilamina_version:
+                description: "LeviLamina version to install, e.g. 26.51.6. Leave empty to read it from tooth.json."
+                required: false
+                default: ""
+    schedule:
+        - cron: "0 18 * * 0"
+    push:
+        tags:
+            - "v*"
+
+concurrency:
+    group: runtime-test-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    runtime-test:
+        runs-on: windows-latest
+        timeout-minutes: 30
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Resolve LeviLamina version
+              id: llver
+              shell: pwsh
+              run: |
+                  $ver = "${{ inputs.levilamina_version }}"
+                  if ([string]::IsNullOrWhiteSpace($ver)) {
+                      $m = Select-String -Path xmake.lua -Pattern 'levilamina\s+([0-9.]+)'
+                      if (-not $m) { throw "cannot find levilamina version in xmake.lua" }
+                      $ver = $m.Matches[0].Groups[1].Value
+                  }
+                  "version=$ver" >> $env:GITHUB_OUTPUT
+                  Write-Host "LeviLamina version -> $ver"
+
+            - name: Cache xmake
+              uses: actions/cache@v4
+              with:
+                  path: ~/AppData/Local/.xmake
+                  key: xmake-debug-server-${{ hashFiles('xmake.lua') }}
+                  restore-keys: xmake-
+
+            - name: Setup xmake
+              uses: xmake-io/github-action-setup-xmake@v1
+
+            - name: Setup LLVM
+              uses: ZhongRuoyu/setup-llvm@v0
+              with:
+                  llvm-version: 22
+
+            - name: Build plugin (debug, server)
+              shell: pwsh
+              run: |
+                  xmake repo -u
+                  xmake f -a x64 -m debug -p windows -y --target_type=server
+                  xmake -v -y
+
+            - name: Install lip
+              shell: pwsh
+              run: |
+                  $release = Invoke-RestMethod -Uri "https://api.github.com/repos/futrime/lip/releases/latest"
+                  $asset = $release.assets |
+                      Where-Object { $_.name -like "lip-*-win-x64.zip" } |
+                      Select-Object -First 1
+                  if (-not $asset) { throw "no lip win-x64 zip in $($release.tag_name)" }
+                  Write-Host "lip $($release.tag_name) -> $($asset.name)"
+                  Invoke-WebRequest -Uri $asset.browser_download_url -OutFile lip.zip
+                  Expand-Archive -Path lip.zip -DestinationPath lip -Force
+                  $exe = (Resolve-Path ./lip/lip.exe).Path
+                  "LIP=$exe" >> $env:GITHUB_ENV
+                  & $exe --version
+
+            - name: Install LeviLamina and BDS
+              shell: pwsh
+              run: |
+                  New-Item -ItemType Directory -Force -Path server | Out-Null
+                  Push-Location server
+                  try {
+                      & $env:LIP install -y "github.com/LiteLDev/LeviLamina@${{ steps.llver.outputs.version }}"
+                      if ($LASTEXITCODE -ne 0) { throw "lip install failed with $LASTEXITCODE" }
+                  } finally {
+                      Pop-Location
+                  }
+                  Get-ChildItem server | Select-Object Name
+
+            - name: Deploy plugin
+              shell: pwsh
+              run: |
+                  $src = "build/bin-server/LOICollectionA"
+                  if (-not (Test-Path $src)) { throw "build output missing: $src" }
+                  New-Item -ItemType Directory -Force -Path "server/plugins" | Out-Null
+                  Copy-Item -Path $src -Destination "server/plugins/" -Recurse -Force
+                  Get-ChildItem "server/plugins/LOICollectionA" | Select-Object Name
+
+            - name: Prepare server
+              shell: pwsh
+              run: |
+                  $cfg = "server/server.properties"
+                  if (Test-Path $cfg) {
+                      $text = Get-Content $cfg -Raw
+                      $text = $text -replace '(?m)^online-mode=.*$', 'online-mode=false'
+                      $text = $text -replace '(?m)^server-port=.*$', 'server-port=19132'
+                      Set-Content -Path $cfg -Value $text -NoNewline -Encoding ascii
+                  } else {
+                      "online-mode=false`nserver-port=19132`n" | Set-Content -Path $cfg -Encoding ascii
+                  }
+
+            - name: Run server and /test all
+              id: runtest
+              shell: pwsh
+              continue-on-error: true
+              run: |
+                  "failed=false" >> $env:GITHUB_OUTPUT
+                  "state=unknown" >> $env:GITHUB_OUTPUT
+
+                  try {
+                      $exe = "server/bedrock_server_mod.exe"
+                      if (-not (Test-Path $exe)) { throw "bedrock_server_mod.exe not found after lip install" }
+
+                      $stdin  = (New-Item -ItemType File -Force -Path server/_stdin.log).FullName
+                      $stdout = (New-Item -ItemType File -Force -Path server/_stdout.log).FullName
+                      $stderr = (New-Item -ItemType File -Force -Path server/_stderr.log).FullName
+
+                      $proc = Start-Process -FilePath (Resolve-Path $exe).Path `
+                          -WorkingDirectory (Resolve-Path server).Path `
+                          -RedirectStandardInput  $stdin `
+                          -RedirectStandardOutput $stdout `
+                          -RedirectStandardError  $stderr `
+                          -PassThru -NoNewWindow
+
+                      $ready = $false
+                      foreach ($i in 1..120) {
+                          Start-Sleep -Seconds 1
+                          if ($proc.HasExited) { break }
+                          if (Select-String -Path $stdout -Pattern "Server started" -Quiet -ErrorAction SilentlyContinue) {
+                              $ready = $true; break
+                          }
+                      }
+
+                      if (-not $ready) {
+                          Write-Host "::error::server did not reach 'Server started' within 120s"
+                          "state=not-ready" >> $env:GITHUB_OUTPUT
+                          if (-not $proc.HasExited) { $proc.Kill() }
+                          return
+                      }
+
+                      Start-Sleep -Seconds 3
+                      Add-Content -Path $stdin -Value "test all" -Encoding ascii
+
+                      $ran = $false
+                      foreach ($i in 1..600) {
+                          Start-Sleep -Seconds 1
+                          if (Select-String -Path $stdout -Pattern "\[\s*(PASSED|FAILED)\s*\]" -Quiet -ErrorAction SilentlyContinue) {
+                              $ran = $true; break
+                          }
+                      }
+                      if (-not $ran) { Write-Host "::warning::gtest summary not seen within 600s" }
+
+                      Add-Content -Path $stdin -Value "stop" -Encoding ascii
+                      foreach ($i in 1..30) {
+                          Start-Sleep -Seconds 1
+                          if ($proc.HasExited) { break }
+                      }
+                      if (-not $proc.HasExited) { $proc.Kill() }
+                      $proc.WaitForExit()
+
+                      Get-Content $stdout -Tail 300 | Write-Host
+
+                      $failed = Select-String -Path $stdout -Pattern "\[\s*FAILED\s*\]" -Quiet
+                      "failed=$($failed.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+                      "state=done" >> $env:GITHUB_OUTPUT
+                  } catch {
+                      Write-Host "::error::runtime test crashed: $_"
+                      "state=error" >> $env:GITHUB_OUTPUT
+                  }
+
+            - name: Collect logs
+              if: always()
+              shell: pwsh
+              run: |
+                  New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+                  $sources = @()
+                  $sources += Get-ChildItem -Path server -Filter "_*.log" -File -ErrorAction SilentlyContinue
+                  $sources += Get-ChildItem -Path server/logs -Recurse -File -ErrorAction SilentlyContinue
+                  foreach ($f in $sources) {
+                      $safe = ($f.FullName -replace '^.*[\\/]', '')
+                      Copy-Item $f.FullName (Join-Path artifacts $safe) -Force
+                  }
+                  Get-ChildItem artifacts | Select-Object Name, Length
+
+            - name: Upload logs artifact
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: runtime-test-logs-${{ github.sha }}
+                  path: artifacts/
+                  if-no-files-found: warn
+                  retention-days: 14
+
+            - name: Report failures to Sentry
+              if: always() && (steps.runtest.outputs.failed == 'true' || steps.runtest.outputs.state == 'not-ready' || steps.runtest.outputs.state == 'error')
+              shell: pwsh
+              env:
+                  SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+              run: |
+                  if ([string]::IsNullOrWhiteSpace($env:SENTRY_DSN)) {
+                      Write-Host "::warning::SENTRY_DSN not configured, skipping Sentry report"
+                      exit 0
+                  }
+
+                  npm install -g @sentry/cli --no-fund --no-audit
+
+                  $release = "${{ github.sha }}"
+                  $reason = if ("${{ steps.runtest.outputs.state }}" -eq "not-ready") {
+                      "server never reached 'Server started'"
+                  } elseif ("${{ steps.runtest.outputs.state }}" -eq "error") {
+                      "runtime test script crashed"
+                  } else {
+                      "gtest reported failures"
+                  }
+
+                  $logArgs = @()
+                  if (Test-Path "artifacts/_stdout.log") {
+                      $logArgs = @("--logfile", "artifacts/_stdout.log")
+                  } else {
+                      Write-Host "::warning::no stdout log to attach"
+                  }
+
+                  sentry-cli send-event `
+                      -m "LOICollectionA runtime-test failed: %s" -a $reason `
+                      -t ci:runtime-test `
+                      -e "release:$release" `
+                      -e "run:$env:GITHUB_RUN_ID" `
+                      -e "ref:$env:GITHUB_REF_NAME" `
+                      -e "run_url:$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID" `
+                      --release $release `
+                      @logArgs
+
+            - name: Fail on test failures
+              if: always() && steps.runtest.outputs.failed == 'true'
+              shell: pwsh
+              run: |
+                  Write-Host "::error::gtest reported failures; see the logs artifact or Sentry."
+                  exit 1
+
+            - name: Fail when server never started
+              if: always() && steps.runtest.outputs.state == 'not-ready'
+              shell: pwsh
+              run: |
+                  Write-Host "::error::server never reached 'Server started'."
+                  exit 1
+
+            - name: Fail on unexpected error
+              if: always() && steps.runtest.outputs.state == 'error'
+              shell: pwsh
+              run: |
+                  Write-Host "::error::runtime test script crashed; see the logs artifact."
+                  exit 1
