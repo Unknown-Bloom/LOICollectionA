@@ -80,7 +80,7 @@ namespace LOICollection::form {
 
     struct GUIManager::Impl {
         std::unordered_map<std::string, std::shared_ptr<frontend::ir::MirChunk>> cache;
-        std::unordered_map<std::string, std::shared_ptr<frontend::GlobalsTable>> globals;
+        std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<frontend::GlobalsTable>>> globals;
 
         std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<CustomFormClass::CustomFormHandle>>> forms;
         std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<MessageBoxClass::MessageBoxHandle>>> boxs;
@@ -95,11 +95,21 @@ namespace LOICollection::form {
     GUIManager::GUIManager() : mImpl(std::make_unique<Impl>()) {}
     GUIManager::~GUIManager() = default;
 
-    std::shared_ptr<frontend::GlobalsTable> GUIManager::scriptGlobals(const std::string& id) {
-        if (auto it = this->mImpl->globals.find(id); it != this->mImpl->globals.end())
+    std::shared_ptr<frontend::GlobalsTable> GUIManager::scriptGlobals(const std::string& id, Player& player) {
+        auto& byPlayer = this->mImpl->globals[id];
+
+        const std::string uuid = player.getUuid().asString();
+        if (auto it = byPlayer.find(uuid); it != byPlayer.end())
             return it->second;
 
-        return this->mImpl->globals[id] = std::make_shared<frontend::GlobalsTable>();
+        return byPlayer[uuid] = std::make_shared<frontend::GlobalsTable>();
+    }
+
+    void GUIManager::releasePlayerGlobals(Player& player) {
+        const std::string uuid = player.getUuid().asString();
+
+        for (auto& [_, byPlayer] : this->mImpl->globals)
+            byPlayer.erase(uuid);
     }
 
     GUIManager& GUIManager::getInstance() {
@@ -194,7 +204,7 @@ namespace LOICollection::form {
                             ->warn("script '{}' has a stale debug package — loaded without debug info", id);
 
                 this->mImpl->cache.insert_or_assign(id, std::make_shared<frontend::ir::MirChunk>(std::move(*chunk)));
-                this->mImpl->globals.insert_or_assign(id, std::make_shared<frontend::GlobalsTable>());
+                this->mImpl->globals.insert_or_assign(id, std::unordered_map<std::string, std::shared_ptr<frontend::GlobalsTable>>{});
                 warnIfMissingPermission(id);
                 return {};
             }
@@ -219,7 +229,7 @@ namespace LOICollection::form {
         }
 
         this->mImpl->cache.insert_or_assign(id, compiled);
-        this->mImpl->globals.insert_or_assign(id, std::make_shared<frontend::GlobalsTable>());
+        this->mImpl->globals.insert_or_assign(id, std::unordered_map<std::string, std::shared_ptr<frontend::GlobalsTable>>{});
         warnIfMissingPermission(id);
 
         return {};
@@ -231,7 +241,7 @@ namespace LOICollection::form {
             return ll::makeStringError("execute: No corresponding bytecode cache was found");
 
         frontend::DiagnosticEngine diagnostics;
-        frontend::ir::VM mVM(diagnostics, this->scriptGlobals(id));
+        frontend::ir::VM mVM(diagnostics, std::make_shared<frontend::GlobalsTable>());
         mVM.setBudget(frontend::sandbox::budgetForScript(id));
 
         frontend::Context context;
@@ -247,7 +257,7 @@ namespace LOICollection::form {
     ll::Expected<void> GUIManager::open(const std::string& id, const std::string& formId, Player& player, const frontend::ArrayRef& ctx) {
         frontend::DiagnosticEngine diagnostics;
 
-        frontend::ir::VM mVM(diagnostics, this->scriptGlobals(id));
+        frontend::ir::VM mVM(diagnostics, this->scriptGlobals(id, player));
         mVM.setBudget(frontend::sandbox::budgetForScript(id));
 
         if (this->mImpl->cache.contains(id)) {
@@ -285,7 +295,7 @@ namespace LOICollection::form {
     ) {
         frontend::DiagnosticEngine diagnostics;
 
-        frontend::ir::VM mVM(diagnostics, this->scriptGlobals(id));
+        frontend::ir::VM mVM(diagnostics, this->scriptGlobals(id, player));
         mVM.setBudget(frontend::sandbox::budgetForScript(id));
 
         if (this->mImpl->cache.contains(id)) {
@@ -593,6 +603,8 @@ namespace LOICollection::form {
         drop(this->mImpl->boxs);
         drop(this->mImpl->paginatedForms);
         drop(this->mImpl->scriptForms);
+
+        this->releasePlayerGlobals(player);
     }
 
     void GUIManager::releaseAllUI() {
