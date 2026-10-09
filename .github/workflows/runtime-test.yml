@@ -82,7 +82,7 @@ jobs:
                   New-Item -ItemType Directory -Force -Path server | Out-Null
                   Push-Location server
                   try {
-                      & $env:LIP install -y "github.com/LiteLDev/LeviLamina@${{ steps.llver.outputs.version }}"
+                      & $env:LIP install "github.com/LiteLDev/LeviLamina@${{ steps.llver.outputs.version }}"
                       if ($LASTEXITCODE -ne 0) { throw "lip install failed with $LASTEXITCODE" }
                   } finally {
                       Pop-Location
