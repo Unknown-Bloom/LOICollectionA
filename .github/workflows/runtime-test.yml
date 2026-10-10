@@ -7,14 +7,6 @@ on:
                 description: "LeviLamina version to install, e.g. 26.51.6. Leave empty to read it from tooth.json."
                 required: false
                 default: ""
-            plugin_config:
-                description: "Plugin configuration preset: none keeps the shipped defaults, all enables every module."
-                required: true
-                default: "none"
-                type: choice
-                options:
-                    - "none"
-                    - "all"
     schedule:
         - cron: "0 18 * * 0"
     push:
@@ -28,7 +20,7 @@ concurrency:
 jobs:
     runtime-test:
         runs-on: windows-latest
-        timeout-minutes: 30
+        timeout-minutes: 40
 
         steps:
             - name: Checkout
@@ -106,170 +98,6 @@ jobs:
                   Copy-Item -Path $src -Destination "server/plugins/" -Recurse -Force
                   Get-ChildItem "server/plugins/LOICollectionA" | Select-Object Name
 
-            - name: Enable every plugin in the config
-              if: inputs.plugin_config == 'all'
-              shell: pwsh
-              run: |
-                  $dir = "server/plugins/LOICollectionA/config"
-                  $cfg = "$dir/config.json"
-                  New-Item -ItemType Directory -Force -Path $dir | Out-Null
-
-                  $config = [ordered]@{
-                      version         = 0
-                      ConsoleLanguage = "system"
-                      ServerConfig    = [ordered]@{
-                          Plugins      = [ordered]@{
-                              Blacklist     = [ordered]@{ ModuleEnabled = $true; BroadcastMessage = $true }
-                              Mute          = $true
-                              Cdk           = $true
-                              Menu          = [ordered]@{ ModuleEnabled = $true; MenuItemId = "minecraft:clock"; EntranceKey = "main"; GuiPath = "menu.lcui" }
-                              Tpa           = [ordered]@{ ModuleEnabled = $true; TargetScoreboard = "money"; BlacklistUpload = 10; RequestRequired = 100; RequestTimeout = 60; RequestUpload = 5 }
-                              Shop          = [ordered]@{ ModuleEnabled = $true; GuiPath = "shop.lcui" }
-                              Monitor       = [ordered]@{
-                                  ModuleEnabled = $true
-                                  BelowName     = [ordered]@{ ModuleEnabled = $true; RefreshInterval = 20; RefreshDisplayInterval = 100; Pages = @(, @("{player}")) }
-                                  ServerToast   = [ordered]@{ ModuleEnabled = $true; Messager = [ordered]@{ join = $true; leave = $true } }
-                                  ChangeScore   = [ordered]@{ ModuleEnabled = $true; ScoreboardLists = @() }
-                                  DisableCommand = [ordered]@{ ModuleEnabled = $true; CommandLists = @() }
-                                  DynamicMotd   = [ordered]@{ ModuleEnabled = $true; RefreshInterval = 200; Pages = @("'Players: ' + {server_player_online} + '/' + {server_player_max}") }
-                                  Sidebar       = [ordered]@{ ModuleEnabled = $true; RefreshInterval = 20; Titles = @("'Title'"); Pages = @(, @("'Content'")) }
-                              }
-                              Pvp           = [ordered]@{ ModuleEnabled = $true; ExtraListener = [ordered]@{ onActorHurt = $true; onSplashPotion = $true; onProjectileHit = $true } }
-                              Wallet        = [ordered]@{
-                                  ModuleEnabled = $true
-                                  TargetScoreboard = "money"
-                                  ExchangeRate = 0.1
-                                  RedEnvelopeTimeout = 60
-                                  WalletHistoryEnabled = $true
-                                  WalletHistoryRetentionDays = 90
-                                  TransferMinAmount = 1
-                                  TransferDailyLimit = 0
-                                  TransferConfirmThreshold = 1000
-                                  TransferCooldownSeconds = 0
-                                  WealthTopSize = 50
-                                  WealthRefreshMinutes = 10
-                                  WalletBankEnabled = $true
-                                  WalletBankMinDeposit = 10
-                                  WalletBankDailyRate = 0.0005
-                                  WalletInterestTaxRate = 0.1
-                                  WalletInterestFromPool = $true
-                                  RedEnvelopeTargetedEnabled = $true
-                                  RedEnvelopeMaxCount = 100
-                              }
-                              Chat          = [ordered]@{ ModuleEnabled = $true; FormatText = "'<' + {player} + '> ' + `${0}"; BlacklistUpload = 10 }
-                              Notice        = $true
-                              Market        = [ordered]@{
-                                  ModuleEnabled = $true
-                                  TargetScoreboard = "money"
-                                  MaximumUpload = 20
-                                  BlacklistUpload = 10
-                                  TradeRequestTimeout = 60
-                                  TradeTimeout = 90
-                                  ProhibitedItems = @()
-                                  StoreEnabled = $true
-                                  StoreReviewEnabled = $true
-                                  StoreMaximumItems = 20
-                                  StoreCreationCost = 0
-                                  StoreSalesWeight = 0.5
-                                  StoreVolumeWeight = 0.3
-                                  StoreRatingWeight = 0.35
-                                  StoreBadReviewPenalty = 3.0
-                                  StoreColdStartWeight = 0.5
-                                  StoreRatingSmoothing = 15.0
-                                  StoreColdStartDays = 7
-                                  StoreTransactionWindowDays = 30
-                                  StoreRatingWindowDays = 180
-                                  StoreRiskWindowDays = 30
-                                  StoreRankRefreshMinutes = 60
-                                  StoreQuoteEnabled = $true
-                                  StoreQuoteRefreshMinutes = 30
-                                  StoreTransactionTaxRate = 0.0
-                                  StorePriceCeilingRatio = 0.0
-                                  StoreWantedEnabled = $true
-                                  StoreWantedMaxPerPlayer = 5
-                                  StoreWantedExpireDays = 7
-                                  StorePartialBuyEnabled = $true
-                                  StoreAuctionEnabled = $true
-                                  StoreAuctionMinDurationMinutes = 30
-                                  StoreAuctionMaxDurationHours = 72
-                                  StoreAuctionMinBidIncrement = 1.05
-                                  StoreAuctionAntiSnipeSeconds = 0
-                                  StoreRepeatTradeLimit = 3
-                                  StorePriceOutlierRatio = 0.0
-                              }
-                              BehaviorEvent = [ordered]@{
-                                  ModuleEnabled = $true
-                                  OrganizeRetentionHours = 144
-                                  CleanThresholdEvent = 10000
-                                  CleanDatabaseInterval = 1
-                                  RefreshIntervalInMinutes = 5
-                                  SingleBacktrackingQuantity = 2000
-                                  Events        = [ordered]@{
-                                      onPlayerConnect         = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
-                                      onPlayerDisconnect      = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
-                                      onPlayerChat            = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
-                                      onPlayerAddExperience   = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
-                                      onPlayerAttack          = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
-                                      onPlayerChangePerm      = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
-                                      onPlayerDestroyBlock    = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
-                                      onPlayerPlaceBlock      = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
-                                      onPlayerDie             = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
-                                      onPlayerPickUpItem      = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
-                                      onPlayerRespawn         = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
-                                      onPlayerUseItem         = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
-                                      onPlayerContainerInteract = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
-                                      onBlockExplode          = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
-                                  }
-                              }
-                              Statistics    = [ordered]@{
-                                  ModuleEnabled = $true
-                                  RefreshIntervalInMinutes = 5
-                                  RankingPlayerCount = 100
-                                  DatabaseInfo = [ordered]@{ OnlineTime = $true; Kill = $true; Death = $true; Place = $true; Destroy = $true; Respawn = $true; Join = $true }
-                              }
-                          }
-                          ProtableTool = [ordered]@{
-                              BasicHook = [ordered]@{ ModuleEnabled = $true; FakeSeed = "`$random" }
-                              RedStone  = 0
-                              OrderedUI = $false
-                          }
-                      }
-                      ClientConfig    = [ordered]@{
-                          Music         = [ordered]@{
-                              ModuleEnabled = $true
-                              SourceAppFilters = @("cloudmusic", "netease")
-                              IgnorePaused = $true
-                              HoldDuration = 8.0
-                              CardMaxWidth = 420.0
-                              CardMinWidth = 300.0
-                              CardPadding = 12.0
-                              TitleFontSize = 24.0
-                              ArtistFontSize = 16.0
-                              AlbumFontSize = 14.0
-                              LineSpacing = 8.0
-                              CoverSize = 64.0
-                              SlideDistance = 48.0
-                              VisualizerHeight = 22.0
-                              VisualizerBarGap = 2.0
-                              EnterDuration = 0.5
-                              ExitDuration = 0.4
-                          }
-                          LoadingScreen = [ordered]@{
-                              ModuleEnabled = $true
-                              RouteKeywords = @("loading", "preloading")
-                              Title = "LOADING"
-                              Tips = @("Loading terrain...")
-                              CubeSize = 19.0
-                              BarWidth = 440.0
-                          }
-                      }
-                      ScriptPermission = [ordered]@{ PermissionFilePath = "gui/permission.json" }
-                      LanguageServer   = [ordered]@{ enabled = $false; port = 9257 }
-                  }
-
-                  $config | ConvertTo-Json -Depth 16 | Set-Content -Path $cfg -Encoding utf8
-                  Write-Host "enabled plugin config -> $cfg"
-
             - name: Prepare server
               shell: pwsh
               run: |
@@ -299,12 +127,19 @@ jobs:
                   }
                   Get-Content $cfg | Write-Host
 
-            - name: Run server and the test suite
+            - name: Run the suite twice, default config first then all modules
               id: runtest
               continue-on-error: true
               run: |
                   "failed=false" >> $env:GITHUB_OUTPUT
+                  "ran=true" >> $env:GITHUB_OUTPUT
                   "state=unknown" >> $env:GITHUB_OUTPUT
+                  "run1_passed=0" >> $env:GITHUB_OUTPUT
+                  "run1_failed=0" >> $env:GITHUB_OUTPUT
+                  "run1_skipped=0" >> $env:GITHUB_OUTPUT
+                  "run2_passed=0" >> $env:GITHUB_OUTPUT
+                  "run2_failed=0" >> $env:GITHUB_OUTPUT
+                  "run2_skipped=0" >> $env:GITHUB_OUTPUT
 
                   function Read-Shared {
                       param([string]$Path)
@@ -328,13 +163,191 @@ jobs:
                       return Read-Shared $Stdout
                   }
 
-                  try {
+                  function Write-AllEnabledConfig {
+                      $dir = "server/plugins/LOICollectionA/config"
+                      $cfg = "$dir/config.json"
+                      New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+                      $config = [ordered]@{
+                          version         = 0
+                          ConsoleLanguage = "system"
+                          ServerConfig    = [ordered]@{
+                              Plugins      = [ordered]@{
+                                  Blacklist     = [ordered]@{ ModuleEnabled = $true; BroadcastMessage = $true }
+                                  Mute          = $true
+                                  Cdk           = $true
+                                  Menu          = [ordered]@{ ModuleEnabled = $true; MenuItemId = "minecraft:clock"; EntranceKey = "main"; GuiPath = "menu.lcui" }
+                                  Tpa           = [ordered]@{ ModuleEnabled = $true; TargetScoreboard = "money"; BlacklistUpload = 10; RequestRequired = 100; RequestTimeout = 60; RequestUpload = 5 }
+                                  Shop          = [ordered]@{ ModuleEnabled = $true; GuiPath = "shop.lcui" }
+                                  Monitor       = [ordered]@{
+                                      ModuleEnabled  = $true
+                                      BelowName      = [ordered]@{ ModuleEnabled = $true; RefreshInterval = 20; RefreshDisplayInterval = 100; Pages = @(, @("{player}")) }
+                                      ServerToast    = [ordered]@{ ModuleEnabled = $true; Messager = [ordered]@{ join = $true; leave = $true } }
+                                      ChangeScore    = [ordered]@{ ModuleEnabled = $true; ScoreboardLists = @() }
+                                      DisableCommand = [ordered]@{ ModuleEnabled = $true; CommandLists = @() }
+                                      DynamicMotd    = [ordered]@{ ModuleEnabled = $true; RefreshInterval = 200; Pages = @("'Players: ' + {server_player_online} + '/' + {server_player_max}") }
+                                      Sidebar        = [ordered]@{ ModuleEnabled = $true; RefreshInterval = 20; Titles = @("'Title'"); Pages = @(, @("'Content'")) }
+                                  }
+                                  Pvp           = [ordered]@{ ModuleEnabled = $true; ExtraListener = [ordered]@{ onActorHurt = $true; onSplashPotion = $true; onProjectileHit = $true } }
+                                  Wallet        = [ordered]@{
+                                      ModuleEnabled               = $true
+                                      TargetScoreboard            = "money"
+                                      ExchangeRate                = 0.1
+                                      RedEnvelopeTimeout          = 60
+                                      WalletHistoryEnabled        = $true
+                                      WalletHistoryRetentionDays  = 90
+                                      TransferMinAmount           = 1
+                                      TransferDailyLimit          = 0
+                                      TransferConfirmThreshold    = 1000
+                                      TransferCooldownSeconds     = 0
+                                      WealthTopSize               = 50
+                                      WealthRefreshMinutes        = 10
+                                      WalletBankEnabled           = $true
+                                      WalletBankMinDeposit        = 10
+                                      WalletBankDailyRate         = 0.0005
+                                      WalletInterestTaxRate       = 0.1
+                                      WalletInterestFromPool      = $true
+                                      RedEnvelopeTargetedEnabled  = $true
+                                      RedEnvelopeMaxCount         = 100
+                                  }
+                                  Chat          = [ordered]@{ ModuleEnabled = $true; FormatText = "'<' + {player} + '> ' + `${0}"; BlacklistUpload = 10 }
+                                  Notice        = $true
+                                  Market        = [ordered]@{
+                                      ModuleEnabled                = $true
+                                      TargetScoreboard             = "money"
+                                      MaximumUpload                = 20
+                                      BlacklistUpload              = 10
+                                      TradeRequestTimeout          = 60
+                                      TradeTimeout                 = 90
+                                      ProhibitedItems              = @()
+                                      StoreEnabled                 = $true
+                                      StoreReviewEnabled           = $true
+                                      StoreMaximumItems            = 20
+                                      StoreCreationCost            = 0
+                                      StoreSalesWeight             = 0.5
+                                      StoreVolumeWeight            = 0.3
+                                      StoreRatingWeight            = 0.35
+                                      StoreBadReviewPenalty        = 3.0
+                                      StoreColdStartWeight         = 0.5
+                                      StoreRatingSmoothing         = 15.0
+                                      StoreColdStartDays           = 7
+                                      StoreTransactionWindowDays   = 30
+                                      StoreRatingWindowDays        = 180
+                                      StoreRiskWindowDays          = 30
+                                      StoreRankRefreshMinutes      = 60
+                                      StoreQuoteEnabled            = $true
+                                      StoreQuoteRefreshMinutes     = 30
+                                      StoreTransactionTaxRate      = 0.0
+                                      StorePriceCeilingRatio       = 0.0
+                                      StoreWantedEnabled           = $true
+                                      StoreWantedMaxPerPlayer      = 5
+                                      StoreWantedExpireDays        = 7
+                                      StorePartialBuyEnabled       = $true
+                                      StoreAuctionEnabled          = $true
+                                      StoreAuctionMinDurationMinutes = 30
+                                      StoreAuctionMaxDurationHours = 72
+                                      StoreAuctionMinBidIncrement  = 1.05
+                                      StoreAuctionAntiSnipeSeconds = 0
+                                      StoreRepeatTradeLimit        = 3
+                                      StorePriceOutlierRatio       = 0.0
+                                  }
+                                  BehaviorEvent = [ordered]@{
+                                      ModuleEnabled             = $true
+                                      OrganizeRetentionHours    = 144
+                                      CleanThresholdEvent       = 10000
+                                      CleanDatabaseInterval     = 1
+                                      RefreshIntervalInMinutes  = 5
+                                      SingleBacktrackingQuantity = 2000
+                                      Events                    = [ordered]@{
+                                          onPlayerConnect           = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                          onPlayerDisconnect        = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                          onPlayerChat              = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                          onPlayerAddExperience     = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                          onPlayerAttack            = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                          onPlayerChangePerm        = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                          onPlayerDestroyBlock      = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                          onPlayerPlaceBlock        = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                          onPlayerDie               = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                          onPlayerPickUpItem        = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                          onPlayerRespawn           = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                          onPlayerUseItem           = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                          onPlayerContainerInteract = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                          onBlockExplode            = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                      }
+                                  }
+                                  Statistics    = [ordered]@{
+                                      ModuleEnabled            = $true
+                                      RefreshIntervalInMinutes = 5
+                                      RankingPlayerCount       = 100
+                                      DatabaseInfo             = [ordered]@{ OnlineTime = $true; Kill = $true; Death = $true; Place = $true; Destroy = $true; Respawn = $true; Join = $true }
+                                  }
+                              }
+                              ProtableTool = [ordered]@{
+                                  BasicHook = [ordered]@{ ModuleEnabled = $true; FakeSeed = "`$random" }
+                                  RedStone  = 0
+                                  OrderedUI = $false
+                              }
+                          }
+                          ClientConfig    = [ordered]@{
+                              Music         = [ordered]@{
+                                  ModuleEnabled    = $true
+                                  SourceAppFilters = @("cloudmusic", "netease")
+                                  IgnorePaused     = $true
+                                  HoldDuration     = 8.0
+                                  CardMaxWidth     = 420.0
+                                  CardMinWidth     = 300.0
+                                  CardPadding      = 12.0
+                                  TitleFontSize    = 24.0
+                                  ArtistFontSize   = 16.0
+                                  AlbumFontSize    = 14.0
+                                  LineSpacing      = 8.0
+                                  CoverSize        = 64.0
+                                  SlideDistance    = 48.0
+                                  VisualizerHeight = 22.0
+                                  VisualizerBarGap = 2.0
+                                  EnterDuration    = 0.5
+                                  ExitDuration     = 0.4
+                              }
+                              LoadingScreen = [ordered]@{
+                                  ModuleEnabled = $true
+                                  RouteKeywords = @("loading", "preloading")
+                                  Title         = "LOADING"
+                                  Tips          = @("Loading terrain...")
+                                  CubeSize      = 19.0
+                                  BarWidth      = 440.0
+                              }
+                          }
+                          ScriptPermission = [ordered]@{ PermissionFilePath = "gui/permission.json" }
+                          LanguageServer   = [ordered]@{ enabled = $false; port = 9257 }
+                      }
+
+                      $config | ConvertTo-Json -Depth 16 | Set-Content -Path $cfg -Encoding utf8
+                  }
+
+                  function Invoke-Suite {
+                      param([string]$Tag, [switch]$EnableAll)
+
+                      $cfg = "server/plugins/LOICollectionA/config/config.json"
+
+                      if ($EnableAll) {
+                          Write-AllEnabledConfig
+                          Write-Host "[$Tag] plugin config -> every module enabled"
+                      } else {
+                          Remove-Item $cfg -Force -ErrorAction SilentlyContinue
+                          Write-Host "[$Tag] plugin config -> shipped defaults"
+                      }
+
+                      if (Test-Path "server/logs/latest.log") {
+                          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+                          Move-Item "server/logs/latest.log" "artifacts/${Tag}__previous.log" -Force -ErrorAction SilentlyContinue
+                      }
+
                       $exe = "server/bedrock_server_mod.exe"
                       if (-not (Test-Path $exe)) { throw "bedrock_server_mod.exe not found after lip install" }
 
-                      $stdin  = (New-Item -ItemType File -Force -Path server/_stdin.log).FullName
-                      $stdout = (New-Item -ItemType File -Force -Path server/_stdout.log).FullName
-                      $stderr = (New-Item -ItemType File -Force -Path server/_stderr.log).FullName
+                      $stdin  = (New-Item -ItemType File -Force -Path "server/_stdin_$Tag.log").FullName
+                      $stdout = (New-Item -ItemType File -Force -Path "server/_stdout_$Tag.log").FullName
+                      $stderr = (New-Item -ItemType File -Force -Path "server/_stderr_$Tag.log").FullName
 
                       $proc = Start-Process -FilePath (Resolve-Path $exe).Path `
                           -WorkingDirectory (Resolve-Path server).Path `
@@ -343,51 +356,50 @@ jobs:
                           -RedirectStandardError  $stderr `
                           -PassThru -NoNewWindow
 
-                      Write-Host "server pid $($proc.Id)"
+                      Write-Host "[$Tag] server pid $($proc.Id)"
 
                       $ready = $false
                       foreach ($i in 1..180) {
                           Start-Sleep -Seconds 1
-                          if ($proc.HasExited) { break }
                           if ((Read-ServerLog $stdout) -match "Server started") { $ready = $true; break }
+                          if ($proc.HasExited) { break }
                       }
 
                       if (-not $ready) {
                           if ($proc.HasExited) {
-                              Write-Host "::error::server exited with code $($proc.ExitCode) before reaching 'Server started'"
+                              Write-Host "::error::[$Tag] server exited with code $($proc.ExitCode) before reaching 'Server started'"
                           } else {
-                              Write-Host "::error::server did not reach 'Server started' within 180s"
+                              Write-Host "::error::[$Tag] server did not reach 'Server started' within 180s"
                               $proc.Kill()
                           }
-                          Write-Host "::group::server log"
+                          Write-Host "::group::[$Tag] server log"
                           Read-ServerLog $stdout | Write-Host
                           Write-Host "::endgroup::"
-                          Write-Host "::group::server stderr"
+                          Write-Host "::group::[$Tag] server stderr"
                           Read-Shared $stderr | Write-Host
                           Write-Host "::endgroup::"
-                          "state=not-ready" >> $env:GITHUB_OUTPUT
                           $proc.WaitForExit()
-                          return
+                          return @{ Ready = $false; Finished = $false; Passed = 0; Failed = 0; Skipped = 0; Disabled = 0 }
                       }
 
-                      Write-Host "server is ready, the test suite starts automatically on ServerStartedEvent"
-                      Write-Host "plugin config preset -> ${{ inputs.plugin_config || 'none' }}"
+                      Write-Host "[$Tag] server is ready, the test suite starts automatically on ServerStartedEvent"
 
                       $finished = $false
+                      $waited = 0
                       foreach ($i in 1..900) {
                           Start-Sleep -Seconds 1
-                          $log = Read-ServerLog $stdout
-                          if ($log -match "(?m)^\[.*?\]\[TestMain\] done: ") { $finished = $true; break }
+                          $waited = $i
+                          if ((Read-ServerLog $stdout) -match "(?m)^\[.*?\]\[TestMain\] done: ") { $finished = $true; break }
                           if ($proc.HasExited) { break }
-                          if ($i % 30 -eq 0) { Write-Host "waiting for the test suite, ${i}s..." }
+                          if ($i % 30 -eq 0) { Write-Host "[$Tag] waiting for the test suite, ${i}s..." }
                       }
 
                       if ($finished) {
-                          Write-Host "test suite completed after ${i}s, waiting for the server to stop itself"
+                          Write-Host "[$Tag] test suite completed after ${waited}s, waiting for the server to stop itself"
                       } elseif ($proc.HasExited) {
-                          Write-Host "server exited before the suite reported results"
+                          Write-Host "[$Tag] server exited before the suite reported results"
                       } else {
-                          Write-Host "::error::no test result within 900s"
+                          Write-Host "::error::[$Tag] no test result within 900s"
                       }
 
                       foreach ($i in 1..120) {
@@ -395,7 +407,7 @@ jobs:
                           Start-Sleep -Seconds 1
                       }
                       if (-not $proc.HasExited) {
-                          Write-Host "::warning::server did not stop on its own, stopping it through stdin"
+                          Write-Host "::warning::[$Tag] server did not stop on its own, stopping it through stdin"
                           Add-Content -Path $stdin -Value "stop" -Encoding ascii
                           foreach ($i in 1..60) {
                               Start-Sleep -Seconds 1
@@ -406,14 +418,73 @@ jobs:
                       $proc.WaitForExit()
 
                       $final = Read-ServerLog $stdout
-                      Write-Host "::group::server log"
+
+                      Write-Host "::group::[$Tag] server log"
                       ($final -split "`r?`n" | Select-Object -Last 400) | Write-Host
                       Write-Host "::endgroup::"
 
-                      $failed = $finished -and ($final -match "(?m)^\[.*?\]\[TestMain\] done: [^\r\n]*failed")
+                      New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+                      if (Test-Path "server/logs/latest.log") {
+                          Move-Item "server/logs/latest.log" "artifacts/${Tag}__latest.log" -Force -ErrorAction SilentlyContinue
+                      }
+                      Move-Item $stdout "artifacts/${Tag}__stdout.log" -Force -ErrorAction SilentlyContinue
+                      Move-Item $stderr "artifacts/${Tag}__stderr.log" -Force -ErrorAction SilentlyContinue
+
+                      $passed = 0
+                      $failed = 0
+                      $skipped = 0
+                      $disabled = 0
+
+                      $m = [regex]::Match(
+                          $final,
+                          "(?m)^\[.*?\]\[TestMain\] done: (\d+) passed(?:, (\d+) failed)?(?:, (\d+) skipped)?(?:, (\d+) disabled)?"
+                      )
+                      if ($finished -and $m.Success) {
+                          $passed = [int]$m.Groups[1].Value
+                          if ($m.Groups[2].Success) { $failed   = [int]$m.Groups[2].Value }
+                          if ($m.Groups[3].Success) { $skipped  = [int]$m.Groups[3].Value }
+                          if ($m.Groups[4].Success) { $disabled = [int]$m.Groups[4].Value }
+                      }
+
+                      Write-Host "[$Tag] result: $passed passed, $failed failed, $skipped skipped, $disabled disabled"
+
+                      return @{ Ready = $true; Finished = $finished; Passed = $passed; Failed = $failed; Skipped = $skipped; Disabled = $disabled }
+                  }
+
+                  try {
+                      $r1 = Invoke-Suite -Tag "default"
+
+                      if (-not $r1.Ready) {
+                          "state=not-ready" >> $env:GITHUB_OUTPUT
+                          return
+                      }
+
+                      $r2 = Invoke-Suite -Tag "all" -EnableAll
+
+                      "run1_passed=$($r1.Passed)" >> $env:GITHUB_OUTPUT
+                      "run1_failed=$($r1.Failed)" >> $env:GITHUB_OUTPUT
+                      "run1_skipped=$($r1.Skipped)" >> $env:GITHUB_OUTPUT
+                      "run2_passed=$($r2.Passed)" >> $env:GITHUB_OUTPUT
+                      "run2_failed=$($r2.Failed)" >> $env:GITHUB_OUTPUT
+                      "run2_skipped=$($r2.Skipped)" >> $env:GITHUB_OUTPUT
+
+                      if (-not $r2.Ready) {
+                          "state=not-ready" >> $env:GITHUB_OUTPUT
+                          return
+                      }
+
+                      $failed = $r1.Failed -gt 0 -or $r2.Failed -gt 0
+                      $ran = $r1.Finished -and $r2.Finished
+
                       "failed=$($failed.ToString().ToLower())" >> $env:GITHUB_OUTPUT
-                      "ran=$($finished.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+                      "ran=$($ran.ToString().ToLower())" >> $env:GITHUB_OUTPUT
                       "state=done" >> $env:GITHUB_OUTPUT
+
+                      Write-Host "::group::summary"
+                      Write-Host ("{0,-9} {1,8} {2,8} {3,8} {4,9}" -f "run", "passed", "failed", "skipped", "disabled")
+                      Write-Host ("{0,-9} {1,8} {2,8} {3,8} {4,9}" -f "default", $r1.Passed, $r1.Failed, $r1.Skipped, $r1.Disabled)
+                      Write-Host ("{0,-9} {1,8} {2,8} {3,8} {4,9}" -f "all", $r2.Passed, $r2.Failed, $r2.Skipped, $r2.Disabled)
+                      Write-Host "::endgroup::"
                   } catch {
                       Write-Host "::error::runtime test crashed: $_"
                       "state=error" >> $env:GITHUB_OUTPUT
@@ -438,7 +509,7 @@ jobs:
               if: always()
               uses: actions/upload-artifact@v4
               with:
-                  name: runtime-test-logs-${{ inputs.plugin_config || 'none' }}-${{ github.sha }}
+                  name: runtime-test-logs-${{ github.sha }}
                   path: artifacts/
                   if-no-files-found: warn
                   retention-days: 14
@@ -465,28 +536,57 @@ jobs:
                       "the test suite reported failures"
                   }
 
-                  $logArgs = @()
-                  if (Test-Path "artifacts/_stdout.log") {
-                      $logArgs = @("--logfile", "artifacts/_stdout.log")
-                  } else {
-                      Write-Host "::warning::no stdout log to attach"
+                  $combined = "artifacts/sentry__combined.log"
+                  Remove-Item $combined -Force -ErrorAction SilentlyContinue
+                  foreach ($tag in "default", "all") {
+                      $p = "artifacts/${tag}__latest.log"
+                      if (Test-Path $p) {
+                          Add-Content -Path $combined -Encoding utf8 -Value "===== run: $tag ====="
+                          Add-Content -Path $combined -Encoding utf8 -Value (Get-Content $p -Raw)
+                      }
                   }
 
+                  $logArgs = @()
+                  if (Test-Path $combined) {
+                      $logArgs = @("--logfile", $combined)
+                  } else {
+                      Write-Host "::warning::no server log to attach"
+                  }
+
+                  $detail = "default ${{ steps.runtest.outputs.run1_passed }}p/${{ steps.runtest.outputs.run1_failed }}f, all ${{ steps.runtest.outputs.run2_passed }}p/${{ steps.runtest.outputs.run2_failed }}f"
+
                   sentry-cli send-event `
-                      -m "LOICollectionA runtime-test failed: %s" -a $reason `
+                      -m "LOICollectionA runtime-test failed ($detail): %s" -a $reason `
                       -t ci:runtime-test `
                       -e "release:$release" `
                       -e "run:$env:GITHUB_RUN_ID" `
                       -e "ref:$env:GITHUB_REF_NAME" `
                       -e "run_url:$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID" `
+                      -e "run1:${{ steps.runtest.outputs.run1_passed }}p/${{ steps.runtest.outputs.run1_failed }}f/${{ steps.runtest.outputs.run1_skipped }}s" `
+                      -e "run2:${{ steps.runtest.outputs.run2_passed }}p/${{ steps.runtest.outputs.run2_failed }}f/${{ steps.runtest.outputs.run2_skipped }}s" `
                       --release $release `
                       @logArgs
+
+            - name: Summarize both runs
+              if: always()
+              shell: pwsh
+              run: |
+                  $d = "${{ steps.runtest.outputs.run1_passed }}/${{ steps.runtest.outputs.run1_failed }}/${{ steps.runtest.outputs.run1_skipped }}"
+                  $a = "${{ steps.runtest.outputs.run2_passed }}/${{ steps.runtest.outputs.run2_failed }}/${{ steps.runtest.outputs.run2_skipped }}"
+                  Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Value "| run | passed | failed | skipped |"
+                  Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Value "| --- | --- | --- | --- |"
+                  Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Value "| default config | ${{ steps.runtest.outputs.run1_passed }} | ${{ steps.runtest.outputs.run1_failed }} | ${{ steps.runtest.outputs.run1_skipped }} |"
+                  Add-Content -Path $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Value "| all modules | ${{ steps.runtest.outputs.run2_passed }} | ${{ steps.runtest.outputs.run2_failed }} | ${{ steps.runtest.outputs.run2_skipped }} |"
+                  Write-Host "default config (passed/failed/skipped): $d"
+                  Write-Host "all modules    (passed/failed/skipped): $a"
 
             - name: Fail on test failures
               if: always() && steps.runtest.outputs.failed == 'true'
               shell: pwsh
               run: |
                   Write-Host "::error::the test suite reported failing cases; see the logs artifact or Sentry."
+                  Write-Host "::error::default config -> ${{ steps.runtest.outputs.run1_passed }} passed, ${{ steps.runtest.outputs.run1_failed }} failed, ${{ steps.runtest.outputs.run1_skipped }} skipped"
+                  Write-Host "::error::all modules    -> ${{ steps.runtest.outputs.run2_passed }} passed, ${{ steps.runtest.outputs.run2_failed }} failed, ${{ steps.runtest.outputs.run2_skipped }} skipped"
                   exit 1
 
             - name: Fail when server never started
@@ -500,7 +600,7 @@ jobs:
               if: always() && steps.runtest.outputs.ran == 'false'
               shell: pwsh
               run: |
-                  Write-Host "::error::the test suite never reported a result; the simulated player likely could not be created."
+                  Write-Host "::error::the test suite never reported a result in one of the two runs; the simulated player likely could not be created."
                   exit 1
 
             - name: Fail on unexpected error
