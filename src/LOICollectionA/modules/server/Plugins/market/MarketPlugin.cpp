@@ -340,6 +340,9 @@ namespace LOICollection::server::Plugins {
 
         return this->getItemData(id)
             .and_then([this, id, &player](std::unordered_map<std::string, std::string> data) -> ll::Expected<bool> {
+                if (data.empty())
+                    return false;
+
                 for (const char* mColumn : { "score", "data", "name", "player_uuid" }) {
                     if (data.contains(mColumn))
                         continue;
