@@ -12,6 +12,8 @@
 #include <ll/api/thread/ServerThreadExecutor.h>
 #include <ll/api/utils/StringUtils.h>
 
+#include <mc/server/DedicatedServer.h>
+
 #include "server/TestSimulatedPlayer.h"
 
 namespace {
