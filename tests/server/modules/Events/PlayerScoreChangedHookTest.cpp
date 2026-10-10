@@ -47,10 +47,6 @@ TEST_F(PlayerScoreChangedHookTest, PositiveAddPublishesAddDeltaAndReducePublishe
 
     ScoreEventCapture capture;
 
-    ScoreboardUtils::setScore(*sp, this->mObjective, 0);
-    ScoreboardUtils::addScore(*sp, this->mObjective, 10);
-    ScoreboardUtils::addScore(*sp, this->mObjective, 10);
-
     auto listener = ll::event::EventBus::getInstance().emplaceListener<PlayerScoreChangedEvent>(
         [&capture](PlayerScoreChangedEvent& event) -> void {
             capture.calls += 1;
@@ -60,6 +56,10 @@ TEST_F(PlayerScoreChangedHookTest, PositiveAddPublishesAddDeltaAndReducePublishe
             capture.lastType = event.getScoreChangedType();
         }
     );
+
+    ScoreboardUtils::setScore(*sp, this->mObjective, 0);
+    ScoreboardUtils::addScore(*sp, this->mObjective, 10);
+    ScoreboardUtils::addScore(*sp, this->mObjective, 10);
 
     ScoreboardUtils::addScore(*sp, this->mObjective, 5);
 
