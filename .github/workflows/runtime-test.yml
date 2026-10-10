@@ -127,9 +127,93 @@ jobs:
                   }
                   Get-Content $cfg | Write-Host
 
+            - name: Warm up world
+              shell: pwsh
+              run: |
+                  function Read-Shared {
+                      param([string]$Path)
+                      if (-not (Test-Path $Path)) { return "" }
+                      try {
+                          $fs = [System.IO.File]::Open($Path, 'Open', 'Read', 'ReadWrite')
+                          try {
+                              $sr = New-Object System.IO.StreamReader($fs)
+                              return $sr.ReadToEnd()
+                          } finally { $fs.Dispose() }
+                      } catch { return "" }
+                  }
+
+                  function Start-BedrockServer {
+                      param([string]$Stdout, [string]$Stderr, [string]$Stdin)
+                      $proc = Start-Process -FilePath (Resolve-Path "server/bedrock_server_mod.exe").Path `
+                          -WorkingDirectory (Resolve-Path server).Path `
+                          -RedirectStandardInput  $Stdin `
+                          -RedirectStandardOutput $Stdout `
+                          -RedirectStandardError  $Stderr `
+                          -PassThru -NoNewWindow
+                      Write-Host "server pid $($proc.Id)"
+                      return $proc
+                  }
+
+                  function Wait-ForServerReady {
+                      param($Proc, [string]$Stdout, [string]$Stderr)
+                      foreach ($i in 1..180) {
+                          Start-Sleep -Seconds 1
+                          if ($Proc.HasExited) { return $false }
+                          if ((Read-Shared $Stdout) -match "Server started") { return $true }
+                      }
+                      return $false
+                  }
+
+                  function Stop-BedrockServer {
+                      param($Proc, [string]$Stdin, [string]$Stdout, [string]$Stderr)
+                      Write-Host "sending: stop"
+                      Add-Content -Path $Stdin -Value "stop" -Encoding ascii
+                      foreach ($i in 1..60) {
+                          Start-Sleep -Seconds 1
+                          if ($Proc.HasExited) { break }
+                      }
+                      if (-not $Proc.HasExited) { $Proc.Kill() }
+                      $Proc.WaitForExit()
+                      $tail = Read-Shared $Stdout
+                      if ($tail) { Write-Host $tail }
+                      $err = Read-Shared $Stderr
+                      if ($err) { Write-Host $err }
+                  }
+
+                  $stdin  = (New-Item -ItemType File -Force -Path server/_warmup_stdin.log).FullName
+                  $stdout = (New-Item -ItemType File -Force -Path server/_warmup_stdout.log).FullName
+                  $stderr = (New-Item -ItemType File -Force -Path server/_warmup_stderr.log).FullName
+
+                  Write-Host "first boot: generating the world so the second boot has a ready level"
+                  $proc = Start-BedrockServer -Stdout $stdout -Stderr $stderr -Stdin $stdin
+                  $ready = Wait-ForServerReady -Proc $proc -Stdout $stdout -Stderr $stderr
+
+                  if (-not $ready) {
+                      if ($proc.HasExited) {
+                          Write-Host "::error::server exited with code $($proc.ExitCode) on the warm-up boot"
+                      } else {
+                          Write-Host "::error::server did not reach 'Server started' within 180s on the warm-up boot"
+                          $proc.Kill()
+                      }
+                      Read-Shared $stdout | Write-Host
+                      Read-Shared $stderr | Write-Host
+                      $proc.WaitForExit()
+                      exit 1
+                  }
+
+                  Write-Host "world is ready, shutting down cleanly"
+                  Stop-BedrockServer -Proc $proc -Stdin $stdin -Stdout $stdout -Stderr $stderr
+
+                  if (-not (Test-Path "server/worlds")) {
+                      Write-Host "::error::no worlds directory after the warm-up boot"
+                      exit 1
+                  }
+
+                  Write-Host "=== worlds after warm-up ==="
+                  Get-ChildItem "server/worlds" | Select-Object Name
+
             - name: Run server and /test all
               id: runtest
-              shell: pwsh
               continue-on-error: true
               run: |
                   "failed=false" >> $env:GITHUB_OUTPUT
@@ -150,6 +234,12 @@ jobs:
                   try {
                       $exe = "server/bedrock_server_mod.exe"
                       if (-not (Test-Path $exe)) { throw "bedrock_server_mod.exe not found after lip install" }
+
+                      if (-not (Test-Path "server/worlds")) {
+                          Write-Host "::error::worlds directory is missing; the warm-up boot did not complete"
+                          "state=not-ready" >> $env:GITHUB_OUTPUT
+                          return
+                      }
 
                       $stdin  = (New-Item -ItemType File -Force -Path server/_stdin.log).FullName
                       $stdout = (New-Item -ItemType File -Force -Path server/_stdout.log).FullName
@@ -256,8 +346,9 @@ jobs:
                   $sources += Get-ChildItem -Path server -Filter "_*.log" -File -ErrorAction SilentlyContinue
                   $sources += Get-ChildItem -Path server/logs -Recurse -File -ErrorAction SilentlyContinue
                   foreach ($f in $sources) {
-                      $safe = ($f.FullName -replace '^.*[\\/]', '')
-                      Copy-Item $f.FullName (Join-Path artifacts $safe) -Force
+                      $rel = $f.FullName.Substring((Resolve-Path server).Path.Length).TrimStart('\', '/')
+                      $dest = Join-Path artifacts ($rel -replace '[\\/]', '__')
+                      Copy-Item $f.FullName $dest -Force
                   }
                   Get-ChildItem artifacts | Select-Object Name, Length
 
