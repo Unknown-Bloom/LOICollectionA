@@ -202,19 +202,25 @@ jobs:
                       Write-Host "sending: test all"
                       Add-Content -Path $stdin -Value "test all" -Encoding ascii
 
-                      $ran = $false
+                      $started = $false
+                      $finished = $false
                       foreach ($i in 1..600) {
                           Start-Sleep -Seconds 1
                           if ($proc.HasExited) { break }
-                          if ((Read-Shared $stdout) -match "\[\s*(==========|PASSED|FAILED|RUN)\s*\]") { $ran = $true; break }
+                          $log = Read-Shared $stdout
+                          if ($log -match "\[ RUN      \]|\[==========\] Running") { $started = $true }
+                          if ($log -match "\[  PASSED  \]") { $finished = $true; break }
                           if ($i % 30 -eq 0) {
-                              Write-Host "waited ${i}s for gtest output..."
+                              if ($started) { Write-Host "gtest is running, waited ${i}s..." }
+                              else { Write-Host "waited ${i}s for gtest to start..." }
                           }
                       }
-                      if (-not $ran) {
-                          Write-Host "::error::no gtest output within 600s - '/test all' most likely failed to create the simulated player"
+                      if ($finished) {
+                          Write-Host "gtest finished after ${i}s"
+                      } elseif ($started) {
+                          Write-Host "::error::gtest started but never printed a summary within 600s"
                       } else {
-                          Write-Host "gtest output detected after ${i}s"
+                          Write-Host "::error::no gtest output within 600s - '/test all' most likely failed to create the simulated player"
                       }
 
                       Start-Sleep -Seconds 5
@@ -232,9 +238,9 @@ jobs:
                       ($final -split "`r?`n" | Select-Object -Last 400) | Write-Host
                       Write-Host "::endgroup::"
 
-                      $failed = $final -match "\[\s*FAILED\s*\]"
+                      $failed = $finished -and ($final -match "\[  FAILED  \]")
                       "failed=$($failed.ToString().ToLower())" >> $env:GITHUB_OUTPUT
-                      "ran=$($ran.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+                      "ran=$($finished.ToString().ToLower())" >> $env:GITHUB_OUTPUT
                       "state=done" >> $env:GITHUB_OUTPUT
                   } catch {
                       Write-Host "::error::runtime test crashed: $_"
@@ -317,11 +323,11 @@ jobs:
                   Write-Host "::error::server never reached 'Server started'."
                   exit 1
 
-            - name: Fail when tests never ran
+            - name: Fail when tests never finished
               if: always() && steps.runtest.outputs.ran == 'false'
               shell: pwsh
               run: |
-                  Write-Host "::error::'/test all' produced no gtest output; the simulated player could not be created."
+                  Write-Host "::error::'/test all' never printed a gtest summary; the simulated player likely could not be created."
                   exit 1
 
             - name: Fail on unexpected error
