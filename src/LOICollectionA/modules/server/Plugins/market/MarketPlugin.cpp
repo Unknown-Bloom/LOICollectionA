@@ -341,8 +341,18 @@ namespace LOICollection::server::Plugins {
         return this->getItemData(id)
             .and_then([this, id, &player](std::unordered_map<std::string, std::string> data) -> ll::Expected<bool> {
                 for (const char* mColumn : { "score", "data", "name", "player_uuid" }) {
-                    if (!data.contains(mColumn))
-                        return ll::makeStringError(fmt::format("listing {} has no {} column", id, mColumn));
+                    if (data.contains(mColumn))
+                        continue;
+
+                    std::string mKeys;
+                    for (const auto& it : data) {
+                        if (!mKeys.empty())
+                            mKeys += ", ";
+
+                        mKeys += it.first;
+                    }
+
+                    return ll::makeStringError(fmt::format("listing {} has no {} column (present: {})", id, mColumn, mKeys));
                 }
 
                 long long mScore = SystemUtils::toLongLong(data.at("score"), 0);
