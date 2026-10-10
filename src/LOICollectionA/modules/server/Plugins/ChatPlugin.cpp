@@ -537,6 +537,12 @@ namespace LOICollection::server::Plugins {
                 return;
 
             MutePlugin::getShared()->isMute(event.self())
+                .or_else([](ll::Error e) -> ll::Expected<bool> {
+                    if (e.isA<ll::ErrorCodeError>() && e.as<ll::ErrorCodeError>().ec == MutePlugin::makeErrorCode(MutePluginErrorCode::Invalid))
+                        return false;
+
+                    return ll::Unexpected(e);
+                })
                 .transform([this, &event](bool exists) -> void {
                     if (exists)
                         return;
