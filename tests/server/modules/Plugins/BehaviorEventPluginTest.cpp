@@ -22,6 +22,9 @@ protected:
     }
 
     void TearDown() override {
+        if (!BehaviorEventPlugin::getShared()->isValid())
+            return;
+
         auto result = BehaviorEventPlugin::getShared()->clean(0);
         if (!result.has_value())
             GTEST_FAIL() << "Unable to clear data";

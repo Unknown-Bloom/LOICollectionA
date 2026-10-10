@@ -1026,7 +1026,7 @@ TEST_F(WalletPluginTest, RedenvelopeGrabNeverExceedsTotal) {
 
     for (auto& grabber : grabbers) {
         ScoreboardUtils::setScore(*grabber->getPlayer(), config.TargetScoreboard, 0);
-        WalletPlugin::getShared()->tryGrabRedEnvelope(*grabber->getPlayer(), "grab_key");
+        WalletPlugin::getShared()->tryGrabRedEnvelope(*grabber->getPlayer(), "grab_key").value();
     }
 
     long long granted = 0;

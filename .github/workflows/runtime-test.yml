@@ -98,6 +98,169 @@ jobs:
                   Copy-Item -Path $src -Destination "server/plugins/" -Recurse -Force
                   Get-ChildItem "server/plugins/LOICollectionA" | Select-Object Name
 
+            - name: Enable every plugin in the config
+              shell: pwsh
+              run: |
+                  $dir = "server/plugins/LOICollectionA/config"
+                  $cfg = "$dir/config.json"
+                  New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+                  $config = [ordered]@{
+                      version         = 0
+                      ConsoleLanguage = "system"
+                      ServerConfig    = [ordered]@{
+                          Plugins      = [ordered]@{
+                              Blacklist     = [ordered]@{ ModuleEnabled = $true; BroadcastMessage = $true }
+                              Mute          = $true
+                              Cdk           = $true
+                              Menu          = [ordered]@{ ModuleEnabled = $true; MenuItemId = "minecraft:clock"; EntranceKey = "main"; GuiPath = "menu.lcui" }
+                              Tpa           = [ordered]@{ ModuleEnabled = $true; TargetScoreboard = "money"; BlacklistUpload = 10; RequestRequired = 100; RequestTimeout = 60; RequestUpload = 5 }
+                              Shop          = [ordered]@{ ModuleEnabled = $true; GuiPath = "shop.lcui" }
+                              Monitor       = [ordered]@{
+                                  ModuleEnabled = $true
+                                  BelowName     = [ordered]@{ ModuleEnabled = $true; RefreshInterval = 20; RefreshDisplayInterval = 100; Pages = @(, @("{player}")) }
+                                  ServerToast   = [ordered]@{ ModuleEnabled = $true; Messager = [ordered]@{ join = $true; leave = $true } }
+                                  ChangeScore   = [ordered]@{ ModuleEnabled = $true; ScoreboardLists = @() }
+                                  DisableCommand = [ordered]@{ ModuleEnabled = $true; CommandLists = @() }
+                                  DynamicMotd   = [ordered]@{ ModuleEnabled = $true; RefreshInterval = 200; Pages = @("'Players: ' + {server_player_online} + '/' + {server_player_max}") }
+                                  Sidebar       = [ordered]@{ ModuleEnabled = $true; RefreshInterval = 20; Titles = @("'Title'"); Pages = @(, @("'Content'")) }
+                              }
+                              Pvp           = [ordered]@{ ModuleEnabled = $true; ExtraListener = [ordered]@{ onActorHurt = $true; onSplashPotion = $true; onProjectileHit = $true } }
+                              Wallet        = [ordered]@{
+                                  ModuleEnabled = $true
+                                  TargetScoreboard = "money"
+                                  ExchangeRate = 0.1
+                                  RedEnvelopeTimeout = 60
+                                  WalletHistoryEnabled = $true
+                                  WalletHistoryRetentionDays = 90
+                                  TransferMinAmount = 1
+                                  TransferDailyLimit = 0
+                                  TransferConfirmThreshold = 1000
+                                  TransferCooldownSeconds = 0
+                                  WealthTopSize = 50
+                                  WealthRefreshMinutes = 10
+                                  WalletBankEnabled = $true
+                                  WalletBankMinDeposit = 10
+                                  WalletBankDailyRate = 0.0005
+                                  WalletInterestTaxRate = 0.1
+                                  WalletInterestFromPool = $true
+                                  RedEnvelopeTargetedEnabled = $true
+                                  RedEnvelopeMaxCount = 100
+                              }
+                              Chat          = [ordered]@{ ModuleEnabled = $true; FormatText = "'<' + {player} + '> ' + `${0}"; BlacklistUpload = 10 }
+                              Notice        = $true
+                              Market        = [ordered]@{
+                                  ModuleEnabled = $true
+                                  TargetScoreboard = "money"
+                                  MaximumUpload = 20
+                                  BlacklistUpload = 10
+                                  TradeRequestTimeout = 60
+                                  TradeTimeout = 90
+                                  ProhibitedItems = @()
+                                  StoreEnabled = $true
+                                  StoreReviewEnabled = $true
+                                  StoreMaximumItems = 20
+                                  StoreCreationCost = 0
+                                  StoreSalesWeight = 0.5
+                                  StoreVolumeWeight = 0.3
+                                  StoreRatingWeight = 0.35
+                                  StoreBadReviewPenalty = 3.0
+                                  StoreColdStartWeight = 0.5
+                                  StoreRatingSmoothing = 15.0
+                                  StoreColdStartDays = 7
+                                  StoreTransactionWindowDays = 30
+                                  StoreRatingWindowDays = 180
+                                  StoreRiskWindowDays = 30
+                                  StoreRankRefreshMinutes = 60
+                                  StoreQuoteEnabled = $true
+                                  StoreQuoteRefreshMinutes = 30
+                                  StoreTransactionTaxRate = 0.0
+                                  StorePriceCeilingRatio = 0.0
+                                  StoreWantedEnabled = $true
+                                  StoreWantedMaxPerPlayer = 5
+                                  StoreWantedExpireDays = 7
+                                  StorePartialBuyEnabled = $true
+                                  StoreAuctionEnabled = $true
+                                  StoreAuctionMinDurationMinutes = 30
+                                  StoreAuctionMaxDurationHours = 72
+                                  StoreAuctionMinBidIncrement = 1.05
+                                  StoreAuctionAntiSnipeSeconds = 0
+                                  StoreRepeatTradeLimit = 3
+                                  StorePriceOutlierRatio = 0.0
+                              }
+                              BehaviorEvent = [ordered]@{
+                                  ModuleEnabled = $true
+                                  OrganizeRetentionHours = 144
+                                  CleanThresholdEvent = 10000
+                                  CleanDatabaseInterval = 1
+                                  RefreshIntervalInMinutes = 5
+                                  SingleBacktrackingQuantity = 2000
+                                  Events        = [ordered]@{
+                                      onPlayerConnect         = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                      onPlayerDisconnect      = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                      onPlayerChat            = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                      onPlayerAddExperience   = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                      onPlayerAttack          = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                      onPlayerChangePerm      = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                      onPlayerDestroyBlock    = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                      onPlayerPlaceBlock      = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                      onPlayerDie             = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                      onPlayerPickUpItem      = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                      onPlayerRespawn         = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                      onPlayerUseItem         = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                      onPlayerContainerInteract = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                      onBlockExplode          = [ordered]@{ ModuleEnabled = $true; RecordDatabase = $true; OutputConsole = $true }
+                                  }
+                              }
+                              Statistics    = [ordered]@{
+                                  ModuleEnabled = $true
+                                  RefreshIntervalInMinutes = 5
+                                  RankingPlayerCount = 100
+                                  DatabaseInfo = [ordered]@{ OnlineTime = $true; Kill = $true; Death = $true; Place = $true; Destroy = $true; Respawn = $true; Join = $true }
+                              }
+                          }
+                          ProtableTool = [ordered]@{
+                              BasicHook = [ordered]@{ ModuleEnabled = $true; FakeSeed = "`$random" }
+                              RedStone  = 0
+                              OrderedUI = $false
+                          }
+                      }
+                      ClientConfig    = [ordered]@{
+                          Music         = [ordered]@{
+                              ModuleEnabled = $true
+                              SourceAppFilters = @("cloudmusic", "netease")
+                              IgnorePaused = $true
+                              HoldDuration = 8.0
+                              CardMaxWidth = 420.0
+                              CardMinWidth = 300.0
+                              CardPadding = 12.0
+                              TitleFontSize = 24.0
+                              ArtistFontSize = 16.0
+                              AlbumFontSize = 14.0
+                              LineSpacing = 8.0
+                              CoverSize = 64.0
+                              SlideDistance = 48.0
+                              VisualizerHeight = 22.0
+                              VisualizerBarGap = 2.0
+                              EnterDuration = 0.5
+                              ExitDuration = 0.4
+                          }
+                          LoadingScreen = [ordered]@{
+                              ModuleEnabled = $true
+                              RouteKeywords = @("loading", "preloading")
+                              Title = "LOADING"
+                              Tips = @("Loading terrain...")
+                              CubeSize = 19.0
+                              BarWidth = 440.0
+                          }
+                      }
+                      ScriptPermission = [ordered]@{ PermissionFilePath = "gui/permission.json" }
+                      LanguageServer   = [ordered]@{ enabled = $false; port = 9257 }
+                  }
+
+                  $config | ConvertTo-Json -Depth 16 | Set-Content -Path $cfg -Encoding utf8
+                  Write-Host "enabled plugin config -> $cfg"
+
             - name: Prepare server
               shell: pwsh
               run: |

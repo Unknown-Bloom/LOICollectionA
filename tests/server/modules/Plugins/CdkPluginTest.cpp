@@ -30,6 +30,9 @@ protected:
     }
 
     void TearDown() override {
+        if (!CdkPlugin::getShared()->isValid())
+            return;
+
         CdkPlugin::getShared()->getDatabase()->write({});
 
         auto saveResult = CdkPlugin::getShared()->getDatabase()->save();

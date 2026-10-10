@@ -108,7 +108,7 @@ namespace LOICollection::form {
 
         LOICOLLECTION_A_NDAPI std::shared_ptr<frontend::GlobalsTable> scriptGlobals(const std::string& id, Player& player);
 
-        LOICOLLECTION_A_NDAPI void releasePlayerGlobals(Player& player);
+        LOICOLLECTION_A_API void releasePlayerGlobals(Player& player);
 
         struct Impl;
         std::unique_ptr<Impl> mImpl;
