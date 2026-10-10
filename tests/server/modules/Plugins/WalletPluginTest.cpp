@@ -1020,14 +1020,15 @@ TEST_F(WalletPluginTest, RedenvelopeGrabNeverExceedsTotal) {
         ScoreboardUtils::create(config.TargetScoreboard);
     }
 
-    int total = 100;
+    int perPerson = 100;
     int count = 3;
+    int total = perPerson * count;
 
     ScoreboardUtils::setScore(*sp, config.TargetScoreboard, 500);
 
     MockExecutor executor;
     ASSERT_TRUE(WalletPlugin::getShared()->setExecutor(executor).has_value());
-    ASSERT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "grab_key", total, count).has_value());
+    ASSERT_TRUE(WalletPlugin::getShared()->redenvelope(*sp, "grab_key", perPerson, count).has_value());
 
     for (auto& grabber : grabbers) {
         ScoreboardUtils::setScore(*grabber->getPlayer(), config.TargetScoreboard, 0);
@@ -1039,7 +1040,7 @@ TEST_F(WalletPluginTest, RedenvelopeGrabNeverExceedsTotal) {
         granted += ScoreboardUtils::getScore(*grabber->getPlayer(), config.TargetScoreboard);
 
     EXPECT_EQ(granted, total);
-    EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), 400);
+    EXPECT_EQ(ScoreboardUtils::getScore(*sp, config.TargetScoreboard), 500 - total);
 
     if (!hasScoreboard)
         ScoreboardUtils::remove(config.TargetScoreboard);
