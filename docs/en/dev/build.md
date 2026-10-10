@@ -76,7 +76,7 @@ xmake -y
 ```
 
 > [!TIP]
-> The `/test all` command is registered by `tests/server/TestCommand.cpp` via a hook after the server thread starts, and tests execute after a simulated player (`TestSimulatedPlayer`) is created.
+> The test entry point is triggered automatically by `tests/server/TestMain.cpp` when it receives `ServerStartedEvent`, and tests execute after a simulated player (`TestSimulatedPlayer`) is created.
 
 For the full testing guide — directory layout and the responsibility of each layer, how to add a test, the unity-build naming convention you must follow, fuzzing, and the current CI situation — see [Testing Guide](./testing.md).
 

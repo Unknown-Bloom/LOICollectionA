@@ -76,7 +76,7 @@ xmake -y
 ```
 
 > [!TIP]
-> `/test all` 命令由 `tests/server/TestCommand.cpp` 在服务器线程启动后通过 hook 注册，测试会在模拟玩家（`TestSimulatedPlayer`）创建后执行。
+> 测试入口由 `tests/server/TestMain.cpp` 监听 `ServerStartedEvent` 自动触发，测试会在模拟玩家（`TestSimulatedPlayer`）创建后执行。
 
 完整的测试指南——目录结构与各层职责、如何新增测试、必须遵守的 unity build 命名约定、模糊测试与 CI 现状——请参见 [测试指南](./testing.md)。
 

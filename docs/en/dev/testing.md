@@ -7,7 +7,7 @@ This article explains how the LOICollectionA test suite is wired up, how to run 
 The tests are based on [GoogleTest](https://github.com/google/googletest), but they are **not run through a separate test executable**. Instead the whole suite is compiled into the plugin and executed inside a real game server process:
 
 - Only `debug` mode compiles and links gtest plus `tests/**` (see the `is_mode("debug")` branch in `xmake.lua`)
-- The entry point is registered by `tests/server/TestCommand.cpp` on the server thread as a command, so test code can touch runtime objects such as `Level`, `Player` and `BlockSource` directly
+- The entry point is triggered automatically by `tests/server/TestMain.cpp` on the server thread, so test code can touch runtime objects such as `Level`, `Player` and `BlockSource` directly
 - This is also why sanitizer/process-based fuzzers such as libFuzzer are not an option here; see [Fuzzing](#fuzzing)
 
 ## Running the tests
@@ -25,19 +25,28 @@ xmake -y
 
 Put the build artifacts (the gtest-linked `LOICollectionA.dll` plus its resource directories) into the server's `plugins/LOICollectionA/` as described in [Build and Test](./build.md), then start the server.
 
-### 3. Run the command in the console
+### 3. Start the server and the tests run automatically
+
+Once the server has loaded the level and fired `ServerStartedEvent`, the suite starts **automatically** on the server thread with no manual step:
 
 ```log
-/test all
+[TestMain] server started, running LOICollectionA test suite
+[==========] Running N tests from M test suites.
+...
+[  PASSED  ] N tests.
+[TestMain] test suite finished
+[TestMain] requesting server shutdown
 ```
 
-`TestCommand.cpp` uses `LL_AUTO_TYPE_INSTANCE_HOOK` to hook `ServerScriptManager::$onServerThreadStarted`: after the server thread starts it calls `testing::InitGoogleTest()`, registers the `/test all` command, and then — inside that command's callback — a coroutine creates a simulated player, waits one second, runs `RUN_ALL_TESTS()`, and finally destroys the simulated player.
+`TestMain.cpp` listens for `ServerStartedEvent` through `ll::event::EventBus`: on receipt it calls `testing::InitGoogleTest()` on the `ServerThreadExecutor`, creates a simulated player, runs `RUN_ALL_TESTS()`, destroys the simulated player, and finally calls `ll::service::getDedicatedServer()->stop()` so the server shuts down through its normal path (the same one `main_win.cpp` uses for Ctrl+C, which makes sure the level is saved and the logs are flushed).
+
+The reason a console command such as `/test all` is *not* registered is that under CI the server's stdin is redirected to a file, so console input is never consumed by the command parser — anything written there is silently swallowed (not even an `Unknown command` reply). Driving the suite from an event removes stdin from the loop entirely.
 
 > [!WARNING]
-> If the simulated player fails to be created, the coroutine simply `co_return`s, so **the tests never run** and no gtest output appears in the console. If `/test all` appears to do nothing, first confirm that the server can spawn simulated players (it needs a world that accepts them and enough memory).
+> If the simulated player fails to be created, `simulated player creation failed, tests will not run` is logged and the server **shuts down immediately**, with no gtest output at all. If you see that line, first confirm that the server can spawn simulated players (it needs a world that accepts them and enough memory).
 
 > [!NOTE]
-> The tests run on the server thread and some of them touch real world data (for example the wallet and market tables). Always run `/test all` on a **dedicated test server**, never on a server you actually use.
+> The tests run on the server thread and some of them touch real world data (for example the wallet and market tables). Always run them on a **dedicated test server**, never on a server you actually use.
 
 ## Test directory structure
 
@@ -58,7 +67,7 @@ tests/
 │   │   ├─ CallbackUtilsTest.cpp # LOICollectionAPI variable registration
 │   │   └─ Plugins/              # per-plugin integration tests (Blacklist, Cdk, Chat, Language, Market, Menu,
 │   │                            #   Mute, Notice, Pvp, Shop, Statistics, Tpa, Wallet, BehaviorEvent, ...)
-│   ├─ TestCommand.cpp           # test entry point: hook + the /test all command
+│   ├─ TestMain.cpp              # test entry point: listens for ServerStartedEvent and runs automatically
 │   ├─ TestSimulatedPlayer.h     # simulated-player wrapper
 │   └─ TestSimulatedPlayer.cpp
 └─ client/                       # client tests: currently empty, reserved only

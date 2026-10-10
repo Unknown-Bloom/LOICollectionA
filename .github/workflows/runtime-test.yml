@@ -127,92 +127,7 @@ jobs:
                   }
                   Get-Content $cfg | Write-Host
 
-            - name: Warm up world
-              shell: pwsh
-              run: |
-                  function Read-Shared {
-                      param([string]$Path)
-                      if (-not (Test-Path $Path)) { return "" }
-                      try {
-                          $fs = [System.IO.File]::Open($Path, 'Open', 'Read', 'ReadWrite')
-                          try {
-                              $sr = New-Object System.IO.StreamReader($fs)
-                              return $sr.ReadToEnd()
-                          } finally { $fs.Dispose() }
-                      } catch { return "" }
-                  }
-
-                  function Start-BedrockServer {
-                      param([string]$Stdout, [string]$Stderr, [string]$Stdin)
-                      $proc = Start-Process -FilePath (Resolve-Path "server/bedrock_server_mod.exe").Path `
-                          -WorkingDirectory (Resolve-Path server).Path `
-                          -RedirectStandardInput  $Stdin `
-                          -RedirectStandardOutput $Stdout `
-                          -RedirectStandardError  $Stderr `
-                          -PassThru -NoNewWindow
-                      Write-Host "server pid $($proc.Id)"
-                      return $proc
-                  }
-
-                  function Wait-ForServerReady {
-                      param($Proc, [string]$Stdout, [string]$Stderr)
-                      foreach ($i in 1..180) {
-                          Start-Sleep -Seconds 1
-                          if ($Proc.HasExited) { return $false }
-                          if ((Read-Shared $Stdout) -match "Server started") { return $true }
-                      }
-                      return $false
-                  }
-
-                  function Stop-BedrockServer {
-                      param($Proc, [string]$Stdin, [string]$Stdout, [string]$Stderr)
-                      Write-Host "sending: stop"
-                      Add-Content -Path $Stdin -Value "stop" -Encoding ascii
-                      foreach ($i in 1..60) {
-                          Start-Sleep -Seconds 1
-                          if ($Proc.HasExited) { break }
-                      }
-                      if (-not $Proc.HasExited) { $Proc.Kill() }
-                      $Proc.WaitForExit()
-                      $tail = Read-Shared $Stdout
-                      if ($tail) { Write-Host $tail }
-                      $err = Read-Shared $Stderr
-                      if ($err) { Write-Host $err }
-                  }
-
-                  $stdin  = (New-Item -ItemType File -Force -Path server/_warmup_stdin.log).FullName
-                  $stdout = (New-Item -ItemType File -Force -Path server/_warmup_stdout.log).FullName
-                  $stderr = (New-Item -ItemType File -Force -Path server/_warmup_stderr.log).FullName
-
-                  Write-Host "first boot: generating the world so the second boot has a ready level"
-                  $proc = Start-BedrockServer -Stdout $stdout -Stderr $stderr -Stdin $stdin
-                  $ready = Wait-ForServerReady -Proc $proc -Stdout $stdout -Stderr $stderr
-
-                  if (-not $ready) {
-                      if ($proc.HasExited) {
-                          Write-Host "::error::server exited with code $($proc.ExitCode) on the warm-up boot"
-                      } else {
-                          Write-Host "::error::server did not reach 'Server started' within 180s on the warm-up boot"
-                          $proc.Kill()
-                      }
-                      Read-Shared $stdout | Write-Host
-                      Read-Shared $stderr | Write-Host
-                      $proc.WaitForExit()
-                      exit 1
-                  }
-
-                  Write-Host "world is ready, shutting down cleanly"
-                  Stop-BedrockServer -Proc $proc -Stdin $stdin -Stdout $stdout -Stderr $stderr
-
-                  if (-not (Test-Path "server/worlds")) {
-                      Write-Host "::error::no worlds directory after the warm-up boot"
-                      exit 1
-                  }
-
-                  Write-Host "=== worlds after warm-up ==="
-                  Get-ChildItem "server/worlds" | Select-Object Name
-
-            - name: Run server and /test all
+            - name: Run server and the test suite
               id: runtest
               continue-on-error: true
               run: |
@@ -231,15 +146,19 @@ jobs:
                       } catch { return "" }
                   }
 
+                  function Read-ServerLog {
+                      param([string]$Stdout)
+                      $file = "server/logs/latest.log"
+                      if (Test-Path $file) {
+                          $text = Read-Shared $file
+                          if ($text) { return $text }
+                      }
+                      return Read-Shared $Stdout
+                  }
+
                   try {
                       $exe = "server/bedrock_server_mod.exe"
                       if (-not (Test-Path $exe)) { throw "bedrock_server_mod.exe not found after lip install" }
-
-                      if (-not (Test-Path "server/worlds")) {
-                          Write-Host "::error::worlds directory is missing; the warm-up boot did not complete"
-                          "state=not-ready" >> $env:GITHUB_OUTPUT
-                          return
-                      }
 
                       $stdin  = (New-Item -ItemType File -Force -Path server/_stdin.log).FullName
                       $stdout = (New-Item -ItemType File -Force -Path server/_stdout.log).FullName
@@ -258,7 +177,7 @@ jobs:
                       foreach ($i in 1..180) {
                           Start-Sleep -Seconds 1
                           if ($proc.HasExited) { break }
-                          if ((Read-Shared $stdout) -match "Server started") { $ready = $true; break }
+                          if ((Read-ServerLog $stdout) -match "Server started") { $ready = $true; break }
                       }
 
                       if (-not $ready) {
@@ -268,8 +187,8 @@ jobs:
                               Write-Host "::error::server did not reach 'Server started' within 180s"
                               $proc.Kill()
                           }
-                          Write-Host "::group::server stdout"
-                          Read-Shared $stdout | Write-Host
+                          Write-Host "::group::server log"
+                          Read-ServerLog $stdout | Write-Host
                           Write-Host "::endgroup::"
                           Write-Host "::group::server stderr"
                           Read-Shared $stderr | Write-Host
@@ -279,56 +198,46 @@ jobs:
                           return
                       }
 
-                      Write-Host "server is ready, waiting for mods to finish enabling"
-                      $enabled = $false
-                      foreach ($i in 1..60) {
-                          Start-Sleep -Seconds 1
-                          if ($proc.HasExited) { break }
-                          if ((Read-Shared $stdout) -match "mod\(s\) enabled") { $enabled = $true; break }
-                      }
-                      if (-not $enabled) { Write-Host "::warning::'mod(s) enabled' not seen, continuing anyway" }
+                      Write-Host "server is ready, the test suite starts automatically on ServerStartedEvent"
 
-                      Start-Sleep -Seconds 5
-                      Write-Host "sending: test all"
-                      Add-Content -Path $stdin -Value "test all" -Encoding ascii
-
-                      $started = $false
                       $finished = $false
-                      foreach ($i in 1..600) {
+                      foreach ($i in 1..900) {
                           Start-Sleep -Seconds 1
+                          $log = Read-ServerLog $stdout
+                          if ($log -match "(?m)^\[.*?\]\[TestMain\] done: ") { $finished = $true; break }
                           if ($proc.HasExited) { break }
-                          $log = Read-Shared $stdout
-                          if ($log -match "\[ RUN      \]|\[==========\] Running") { $started = $true }
-                          if ($log -match "\[  PASSED  \]") { $finished = $true; break }
-                          if ($i % 30 -eq 0) {
-                              if ($started) { Write-Host "gtest is running, waited ${i}s..." }
-                              else { Write-Host "waited ${i}s for gtest to start..." }
-                          }
-                      }
-                      if ($finished) {
-                          Write-Host "gtest finished after ${i}s"
-                      } elseif ($started) {
-                          Write-Host "::error::gtest started but never printed a summary within 600s"
-                      } else {
-                          Write-Host "::error::no gtest output within 600s - '/test all' most likely failed to create the simulated player"
+                          if ($i % 30 -eq 0) { Write-Host "waiting for the test suite, ${i}s..." }
                       }
 
-                      Start-Sleep -Seconds 5
-                      Write-Host "sending: stop"
-                      Add-Content -Path $stdin -Value "stop" -Encoding ascii
-                      foreach ($i in 1..60) {
-                          Start-Sleep -Seconds 1
+                      if ($finished) {
+                          Write-Host "test suite completed after ${i}s, waiting for the server to stop itself"
+                      } elseif ($proc.HasExited) {
+                          Write-Host "server exited before the suite reported results"
+                      } else {
+                          Write-Host "::error::no test result within 900s"
+                      }
+
+                      foreach ($i in 1..120) {
                           if ($proc.HasExited) { break }
+                          Start-Sleep -Seconds 1
+                      }
+                      if (-not $proc.HasExited) {
+                          Write-Host "::warning::server did not stop on its own, stopping it through stdin"
+                          Add-Content -Path $stdin -Value "stop" -Encoding ascii
+                          foreach ($i in 1..60) {
+                              Start-Sleep -Seconds 1
+                              if ($proc.HasExited) { break }
+                          }
                       }
                       if (-not $proc.HasExited) { $proc.Kill() }
                       $proc.WaitForExit()
 
-                      $final = Read-Shared $stdout
-                      Write-Host "::group::server stdout"
+                      $final = Read-ServerLog $stdout
+                      Write-Host "::group::server log"
                       ($final -split "`r?`n" | Select-Object -Last 400) | Write-Host
                       Write-Host "::endgroup::"
 
-                      $failed = $finished -and ($final -match "\[  FAILED  \]")
+                      $failed = $finished -and ($final -match "(?m)^\[.*?\]\[TestMain\] done: [^\r\n]*failed")
                       "failed=$($failed.ToString().ToLower())" >> $env:GITHUB_OUTPUT
                       "ran=$($finished.ToString().ToLower())" >> $env:GITHUB_OUTPUT
                       "state=done" >> $env:GITHUB_OUTPUT
@@ -380,7 +289,7 @@ jobs:
                   } elseif ("${{ steps.runtest.outputs.state }}" -eq "error") {
                       "runtime test script crashed"
                   } else {
-                      "gtest reported failures"
+                      "the test suite reported failures"
                   }
 
                   $logArgs = @()
@@ -404,7 +313,7 @@ jobs:
               if: always() && steps.runtest.outputs.failed == 'true'
               shell: pwsh
               run: |
-                  Write-Host "::error::gtest reported failures; see the logs artifact or Sentry."
+                  Write-Host "::error::the test suite reported failing cases; see the logs artifact or Sentry."
                   exit 1
 
             - name: Fail when server never started
@@ -418,7 +327,7 @@ jobs:
               if: always() && steps.runtest.outputs.ran == 'false'
               shell: pwsh
               run: |
-                  Write-Host "::error::'/test all' never printed a gtest summary; the simulated player likely could not be created."
+                  Write-Host "::error::the test suite never reported a result; the simulated player likely could not be created."
                   exit 1
 
             - name: Fail on unexpected error

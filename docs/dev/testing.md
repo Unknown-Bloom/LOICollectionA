@@ -7,7 +7,7 @@
 测试基于 [GoogleTest](https://github.com/google/googletest)，但**不通过独立的测试可执行文件运行**，而是把整套测试编译进插件，在真实的游戏服务器进程里执行：
 
 - 只有 `debug` 模式才会编入并链接 gtest 与 `tests/**`（见 `xmake.lua` 的 `is_mode("debug")` 分支）
-- 测试入口由 `tests/server/TestCommand.cpp` 在服务器线程上注册为一个命令，测试代码因此可以直接访问 `Level`、`Player`、`BlockSource` 等运行时对象
+- 测试入口由 `tests/server/TestMain.cpp` 在服务器线程上自动触发，测试代码因此可以直接访问 `Level`、`Player`、`BlockSource` 等运行时对象
 - 这套做法也解释了为什么不能使用 libFuzzer 这类依赖独立进程与 sanitizer 的方案，见 [模糊测试](#模糊测试)
 
 ## 运行测试
@@ -25,19 +25,29 @@ xmake -y
 
 把构建产物（含 gtest 的 `LOICollectionA.dll` 与资源目录）按 [构建与测试](./build.md) 的说明放入服务端的 `plugins/LOICollectionA/`，然后启动服务器。
 
-### 3. 在控制台执行命令
+### 3. 启动服务器，测试会自动运行
+
+服务器加载世界并触发 `ServerStartedEvent` 后，测试套件会**自动**在服务器线程上开跑，无需任何手动操作：
 
 ```log
-/test all
+[TestMain] ---------------------------------------- iteration 1
+[TestMain] ---------------------------------------- suite WalletPluginTest (3 tests)
+[TestMain] RUN      WalletPluginTest.TransferMovesBalance
+[TestMain] OK       WalletPluginTest.TransferMovesBalance (0 ms)
+[TestMain] done: 3 passed, 0 skipped, 0 disabled
 ```
 
-`TestCommand.cpp` 通过 `LL_AUTO_TYPE_INSTANCE_HOOK` hook 了 `ServerScriptManager::$onServerThreadStarted`：它在服务器线程启动后调用 `testing::InitGoogleTest()`，注册 `/test all` 命令，然后在该命令的回调里用一个协程创建模拟玩家、等待 1 秒、执行 `RUN_ALL_TESTS()`，最后销毁模拟玩家。
+`TestMain.cpp` 通过 `ll::event::EventBus` 监听 `ServerStartedEvent`：拿到事件后在 `ServerThreadExecutor` 上调用 `testing::InitGoogleTest()`，换上仿照官方 `GTestMain.cpp` 的 `LLTestEventListener`（因此输出走 LL Logger，而不是 gtest 默认打印器），创建模拟玩家、执行 `RUN_ALL_TESTS()` 并销毁模拟玩家，最后调用 `ll::service::getDedicatedServer()->stop()` 让服务器走正常流程关闭。
+
+完成标记是 `done: N passed, ...`（`OnTestProgramEnd` 输出，全过时不含 `failed` 字段）。
+
+之所以不注册 `/test all` 这样的控制台命令，是因为在 CI 里服务器的 stdin 被重定向到文件，控制台输入不会被命令解析器消费——写进去的命令会被静默吞掉（连 `Unknown command` 都不会回）。改由事件驱动后就彻底绕开了 stdin。
 
 > [!WARNING]
-> 模拟玩家创建失败时协程会直接 `co_return`，此时**测试根本不会执行**，控制台也不会出现 gtest 的输出。如果 `/test all` 没有任何反应，请先确认服务端能正常生成模拟玩家（需要允许模拟玩家加入的世界与足够的内存）。
+> 模拟玩家创建失败时会打印 `simulated player creation failed, tests will not run`，随后**直接停服**，gtest 不会有任何输出。如果日志里出现这一行，请先确认服务端能正常生成模拟玩家（需要允许模拟玩家加入的世界与足够的内存）。
 
 > [!NOTE]
-> 测试运行在服务器线程上，且部分测试会操作真实世界数据（例如钱包、市场的数据表）。请务必在**测试专用服务端**上运行，不要在日常使用的服务器上执行 `/test all`。
+> 测试运行在服务器线程上，且部分测试会操作真实世界数据（例如钱包、市场的数据表）。请务必在**测试专用服务端**上运行。
 
 ## 测试目录结构
 
@@ -58,7 +68,7 @@ tests/
 │   │   ├─ CallbackUtilsTest.cpp # LOICollectionAPI 变量注册
 │   │   └─ Plugins/              # 逐个插件的集成测试（Blacklist、Cdk、Chat、Language、Market、Menu、
 │   │                            #   Mute、Notice、Pvp、Shop、Statistics、Tpa、Wallet、BehaviorEvent……）
-│   ├─ TestCommand.cpp           # 测试入口：hook + /test all 命令
+│   ├─ TestMain.cpp              # 测试入口：监听 ServerStartedEvent 自动运行
 │   ├─ TestSimulatedPlayer.h     # 模拟玩家封装
 │   └─ TestSimulatedPlayer.cpp
 └─ client/                       # 客户端测试：目前为空，仅作预留
