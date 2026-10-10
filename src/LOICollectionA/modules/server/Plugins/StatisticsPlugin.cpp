@@ -444,8 +444,15 @@ namespace LOICollection::server::Plugins {
 
         return this->mImpl->statistics->list()
             .transform([this, type, limit](const std::vector<std::string>& ids) -> std::vector<std::pair<std::string, int>> {
-                return ids
-                    | std::views::take(limit > 0 ? limit : static_cast<int>(ids.size()))
+                std::vector<std::string> mKeys = ids;
+
+                for (const auto& it : this->mImpl->mCache) {
+                    if (std::find(mKeys.begin(), mKeys.end(), it.first) == mKeys.end())
+                        mKeys.emplace_back(it.first);
+                }
+
+                return mKeys
+                    | std::views::take(limit > 0 ? limit : static_cast<int>(mKeys.size()))
                     | std::views::transform([this, type](const std::string& key) -> std::pair<std::string, int> { 
                         auto result = this->getStatistic(key, type);
                         if (!result.has_value()) {

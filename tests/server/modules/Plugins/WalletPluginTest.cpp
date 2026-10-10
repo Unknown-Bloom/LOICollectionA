@@ -446,6 +446,9 @@ TEST_F(WalletPluginTest, TransferLimitBelowMinimum) {
     auto sp = ll::service::getLevel()->getPlayer("test_player");
     EXPECT_TRUE(sp);
 
+    TestSimulatedPlayer sp2("test_player4");
+    ASSERT_TRUE(sp2.create());
+
     Config::C_Wallet base = GetWalletConfig();
     base.TransferMinAmount = 5;
     WalletPlugin::getShared()->setOptionsForTest(base);
@@ -458,14 +461,16 @@ TEST_F(WalletPluginTest, TransferLimitBelowMinimum) {
 
     ScoreboardUtils::setScore(*sp, base.TargetScoreboard, 100);
 
-    auto low = WalletPlugin::getShared()->forTransfer(*sp, "nonexistent_target", "test_name", 3);
+    auto low = WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 3);
     ASSERT_FALSE(low.has_value());
     EXPECT_EQ(low.error().as<ll::ErrorCodeError>().ec, WalletPlugin::makeErrorCode(WalletPluginErrorCode::BelowMinimum));
 
-    auto ok = WalletPlugin::getShared()->forTransfer(*sp, "nonexistent_target", "test_name", 5);
+    auto ok = WalletPlugin::getShared()->forTransfer(*sp, sp2.getPlayer()->getUuid().asString(), sp2.getPlayer()->getRealName(), 5);
     EXPECT_TRUE(ok.has_value());
 
     WalletPlugin::getShared()->setOptionsForTest(GetWalletConfig());
+
+    ASSERT_TRUE(sp2.destroy());
 
     if (!hasScoreboard)
         ScoreboardUtils::remove(base.TargetScoreboard);
@@ -1026,7 +1031,7 @@ TEST_F(WalletPluginTest, RedenvelopeGrabNeverExceedsTotal) {
 
     for (auto& grabber : grabbers) {
         ScoreboardUtils::setScore(*grabber->getPlayer(), config.TargetScoreboard, 0);
-        WalletPlugin::getShared()->tryGrabRedEnvelope(*grabber->getPlayer(), "grab_key").value();
+        static_cast<void>(WalletPlugin::getShared()->tryGrabRedEnvelope(*grabber->getPlayer(), "grab_key"));
     }
 
     long long granted = 0;

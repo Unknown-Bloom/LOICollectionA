@@ -340,6 +340,11 @@ namespace LOICollection::server::Plugins {
 
         return this->getItemData(id)
             .and_then([this, id, &player](std::unordered_map<std::string, std::string> data) -> ll::Expected<bool> {
+                for (const char* mColumn : { "score", "data", "name", "player_uuid" }) {
+                    if (!data.contains(mColumn))
+                        return ll::makeStringError(fmt::format("listing {} has no {} column", id, mColumn));
+                }
+
                 long long mScore = SystemUtils::toLongLong(data.at("score"), 0);
                 std::string mScoreboard = this->mImpl->options.TargetScoreboard;
 
