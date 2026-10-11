@@ -270,6 +270,36 @@ TEST(BlockStoreConcurrencyTest, PoolAcquireReleaseChurnAcrossThreads) {
     dropDb(path);
 }
 
+TEST(BlockStoreConcurrencyTest, PoolAcquireOnColdFileAcrossThreadsSucceeds) {
+    auto path = tempDb("concurrent", "pool-cold");
+
+    {
+        auto pool = ConnectionPool::create(path.string(), 4);
+        ASSERT_TRUE(pool.has_value()) << pool.error().message();
+
+        std::atomic<int> failures{0};
+
+        auto opener = [&pool, &failures]() {
+            auto conn = (*pool)->acquire(2000);
+            if (!conn.has_value() || conn->get() == nullptr) {
+                ++failures;
+                return;
+            }
+
+            (*pool)->release(std::move(*conn));
+        };
+
+        std::vector<std::thread> threads;
+        for (int i = 0; i < 8; ++i)
+            threads.emplace_back(opener);
+        for (auto& thread : threads)
+            thread.join();
+
+        EXPECT_EQ(failures.load(), 0);
+    }
+    dropDb(path);
+}
+
 TEST(BlockStoreConcurrencyTest, ConcurrentLoadByNameAgreesWithCreatedRecords) {
     auto path = tempDb("concurrent", "load-by-name");
 

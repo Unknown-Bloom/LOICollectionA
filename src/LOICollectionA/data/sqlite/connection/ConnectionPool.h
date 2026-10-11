@@ -67,6 +67,7 @@ private:
 
     std::mutex mMutex;
     std::condition_variable mCond;
+    std::mutex mCreateMutex;
     std::string mPath;
 
     bool mReadOnly = false;

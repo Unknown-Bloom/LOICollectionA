@@ -17,11 +17,11 @@
 
 namespace LOICollection::data::detail {
     constexpr auto kPragmas = std::to_array<std::string_view>({
+        "PRAGMA busy_timeout = 5000;",
         "PRAGMA journal_mode = WAL;",
         "PRAGMA synchronous = NORMAL;",
         "PRAGMA temp_store = MEMORY;",
         "PRAGMA cache_size = 8096;",
-        "PRAGMA busy_timeout = 5000;",
     });
 }
 
@@ -102,6 +102,8 @@ ll::Expected<std::shared_ptr<SQLiteConnection>> ConnectionPool::acquire(int time
             this->mOpen++;
 
             lock.unlock();
+
+            std::lock_guard createLock(this->mCreateMutex);
 
             auto conn = SQLiteConnection::create(this->mPath, this->mReadOnly);
             if (!conn) {
