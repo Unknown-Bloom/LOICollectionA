@@ -1,10 +1,12 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -838,6 +840,66 @@ TEST(TypedTableTest, ClearTypedTableMarksEveryRowDeleted) {
         auto gone = table.has("r1");
         ASSERT_TRUE(gone.has_value()) << gone.error().message();
         EXPECT_FALSE(*gone);
+    }
+    dropDb(path);
+}
+
+TEST(TypedTableTest, ConcurrentSetAndFindKeepEveryRowVisible) {
+    auto path = tempDb("typed", "concurrent");
+
+    {
+        auto repo = BlockRepository::open(path.string(), 2);
+        ASSERT_TRUE(repo.has_value()) << repo.error().message();
+
+        auto opened = Table::open(**repo, "players");
+        ASSERT_TRUE(opened.has_value()) << opened.error().message();
+        Table& table = *opened;
+
+        std::atomic<int> failures{0};
+
+        auto writer = [&table, &failures](int thread) {
+            for (int i = 0; i < 30; ++i) {
+                auto row = "row" + std::to_string(thread) + "-" + std::to_string(i);
+                if (!table.set(row, ModelCol::muted, 1).has_value())
+                    ++failures;
+                if (!table.set(row, ModelCol::level, thread * 100 + i).has_value())
+                    ++failures;
+                if (!table.set(row, ModelCol::name, row).has_value())
+                    ++failures;
+            }
+        };
+
+        std::vector<std::thread> threads;
+        for (int i = 0; i < 4; ++i)
+            threads.emplace_back(writer, i);
+        for (auto& thread : threads)
+            thread.join();
+
+        EXPECT_EQ(failures.load(), 0);
+
+        auto muted = table.find(FindMode::And, {{Key{ModelCol::muted}, "1"}});
+        ASSERT_TRUE(muted.has_value()) << muted.error().message();
+        EXPECT_EQ(muted.value().size(), 120u);
+
+        std::vector<std::string> expected;
+        for (int thread = 0; thread < 4; ++thread)
+            for (int i = 0; i < 30; ++i)
+                expected.push_back("row" + std::to_string(thread) + "-" + std::to_string(i));
+        EXPECT_EQ(typed_table_test_support::sorted(muted.value()),
+                  typed_table_test_support::sorted(std::move(expected)));
+
+        for (int thread = 0; thread < 4; ++thread) {
+            for (int i = 0; i < 30; ++i) {
+                auto row = "row" + std::to_string(thread) + "-" + std::to_string(i);
+                auto level = table.get<int>(row, ModelCol::level, -1);
+                ASSERT_TRUE(level.has_value()) << level.error().message();
+                EXPECT_EQ(level.value(), thread * 100 + i);
+            }
+        }
+
+        auto listed = table.list();
+        ASSERT_TRUE(listed.has_value()) << listed.error().message();
+        EXPECT_EQ(listed.value().size(), 120u);
     }
     dropDb(path);
 }
