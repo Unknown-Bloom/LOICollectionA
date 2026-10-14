@@ -10,7 +10,6 @@
 
 #include "LOICollectionA/frontend/parser/ParserTokens.h"
 
-
 namespace LOICollection::frontend {
 
     Parser::Parser(Lexer& l, DiagnosticEngine& diag) : lexer(l), diagnostics(diag) {

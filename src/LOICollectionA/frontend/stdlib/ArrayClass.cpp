@@ -50,10 +50,6 @@ namespace ArrayClass::detail {
         DiagnosticEngine diagnostics;
         bool failed = false;
 
-        
-
-
-
         auto less = [&](const TypedValue& left, const TypedValue& right) -> bool {
             if (failed)
                 return false;

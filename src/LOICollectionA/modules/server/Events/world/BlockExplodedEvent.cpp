@@ -17,7 +17,6 @@
 
 #include "LOICollectionA/include/server/Events/world/BlockExplodedEvent.h"
 
-
 namespace LOICollection::server::Events {
     const BlockPos& BlockExplodedEvent::getPosition() const {
         return mPosition;

@@ -102,7 +102,6 @@ namespace ObservableBooleanClass {
         classes.registerMethod("ObservableBoolean", "subscribe", subscribe, { ParamType::FUNCTION });
         classes.registerMethod("ObservableBoolean", "unsubscribe", unsubscribe, { ParamType::INT });
 
-        
         for (const std::string op : { "==", "!=" })
             classes.registerOperator("ObservableBoolean", op, [op](const TypedValue& left, const TypedValue& right) -> ll::Expected<TypedValue> {
                 auto l = boolOperand(left);

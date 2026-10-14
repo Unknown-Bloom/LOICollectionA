@@ -208,9 +208,6 @@ namespace LOICollection::frontend::ir::detail {
             if (frame.index >= frame.items->size())
                 continue;
 
-            
-            
-            
             if (frame.index + 1 < frame.items->size())
                 stack.push_back(Frame{ frame.items, frame.index + 1 });
 

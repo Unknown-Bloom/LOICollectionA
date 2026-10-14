@@ -243,7 +243,6 @@ namespace LOICollection::server::Plugins {
             });
     }
 
-
     ll::Expected<void> MarketPlugin::registeryUI() {
         return form::GUIManager::getInstance().load("market", this->mImpl->mGuiPath)
             .and_then([this]() -> ll::Expected<void> {
@@ -934,7 +933,6 @@ namespace LOICollection::server::Plugins {
 
         return this->mImpl->blacklist->has(id);
     }
-
 
     const Config::C_Market& MarketPlugin::getOptions() const {
         return this->mImpl->options;

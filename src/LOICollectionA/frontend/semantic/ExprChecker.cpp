@@ -39,7 +39,6 @@ namespace LOICollection::frontend {
                 TypeInfo left = checkExpr(*coalesce.left, scope);
                 TypeInfo right = checkExpr(*coalesce.right, scope);
 
-                
                 coalesce.left->preserveOptional = true;
 
                 while (left.kind == TypeKind::Optional)

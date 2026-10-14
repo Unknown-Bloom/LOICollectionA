@@ -22,7 +22,6 @@
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 #include "LOICollectionA/frontend/ir/VM.h"
 
-
 #include "LOICollectionA/include/CallbackUtils.h"
 
 namespace LOICollection::LOICollectionAPI {

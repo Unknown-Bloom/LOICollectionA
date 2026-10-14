@@ -1143,15 +1143,6 @@ namespace LOICollection::frontend {
         ArrayValue(ArrayValue&&) noexcept = default;
         ArrayValue& operator=(ArrayValue&&) noexcept = default;
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
         ~ArrayValue() {
             std::vector<ArrayRef> pending;
 
@@ -1169,8 +1160,6 @@ namespace LOICollection::frontend {
                 ArrayRef node = std::move(pending.back());
                 pending.pop_back();
 
-                
-                
                 drainInto(node->elements);
             }
         }

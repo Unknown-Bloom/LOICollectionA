@@ -161,13 +161,6 @@ namespace LOICollection::frontend::ir {
         MirChunk(const MirChunk&) = delete;
         MirChunk& operator=(const MirChunk&) = delete;
 
-        
-        
-        
-        
-        
-        
-        
         ~MirChunk() {
             std::vector<std::unique_ptr<MirChunk>> pending;
 
@@ -183,9 +176,6 @@ namespace LOICollection::frontend::ir {
                 auto owned = std::move(pending.back());
                 pending.pop_back();
 
-                
-                
-                
                 drain(owned.get());
             }
         }

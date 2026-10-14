@@ -148,7 +148,6 @@ public:
         BlockId parent, std::vector<PropMatch> const& conds, size_t limit = 0
     );
 
-
     LOICOLLECTION_A_NDAPI ll::Expected<void> exec(std::string_view sql);
 
     LOICOLLECTION_A_NDAPI ll::Expected<void> withQuery(

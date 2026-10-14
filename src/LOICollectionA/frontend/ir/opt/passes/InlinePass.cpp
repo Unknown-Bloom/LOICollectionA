@@ -147,12 +147,6 @@ namespace LOICollection::frontend::ir::opt {
 
     bool InlinePass::inlinable(const MirChunk& body) const {
         
-        
-        
-        
-        
-        
-        
         for (const MirInstr& instr : body.code) {
             const MirOp op = instr.op;
             if (op == MirOp::RETURN)
@@ -199,10 +193,6 @@ namespace LOICollection::frontend::ir::opt {
 
                 const std::size_t bodySize = body.code.size();
 
-                
-                
-                
-                
                 std::size_t retIdx = bodySize;
                 for (std::size_t r = 0; r < bodySize; ++r) {
                     if (body.code[r].op == MirOp::RETURN) {

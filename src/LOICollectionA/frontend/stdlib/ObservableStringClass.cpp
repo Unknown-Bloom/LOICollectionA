@@ -102,13 +102,10 @@ namespace ObservableStringClass {
         classes.registerMethod("ObservableString", "subscribe", subscribe, { ParamType::FUNCTION });
         classes.registerMethod("ObservableString", "unsubscribe", unsubscribe, { ParamType::INT });
 
-        
         classes.registerOperator("ObservableString", "+", [](const TypedValue& left, const TypedValue& right) -> ll::Expected<TypedValue> {
             auto l = stringOperand(left);
             if (!l)
                 return ll::makeStringError("ObservableString operators require string operands");
-
-            
 
             if (auto r = stringOperand(right))
                 return *l + *r;
