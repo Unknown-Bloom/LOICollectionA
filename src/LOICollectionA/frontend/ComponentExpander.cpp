@@ -97,6 +97,18 @@ namespace LOICollection::frontend::detail {
                     collectBoundNames(*forNode.body, names);
                 return;
             }
+            case ASTNode::Type::Match: {
+                auto& match = static_cast<MatchNode&>(node);
+                if (match.target)
+                    collectBoundNames(*match.target, names);
+                for (auto& arm : match.arms) {
+                    if (!arm->binder.empty())
+                        names.insert(arm->binder);
+                    if (arm->body)
+                        collectBoundNames(*arm->body, names);
+                }
+                return;
+            }
             case ASTNode::Type::Lambda:
             case ASTNode::Type::FunctionDef:
             case ASTNode::Type::Class:
@@ -241,6 +253,24 @@ namespace LOICollection::frontend::detail {
                 copy->hasIndexVar = forIn.hasIndexVar;
                 copy->iterable = cloneExpr(*forIn.iterable, bound, prefix);
                 copy->body = cloneStmt(*forIn.body, bound, prefix);
+                return copy;
+            }
+            case ASTNode::Type::Match: {
+                auto& match = static_cast<const MatchNode&>(node);
+                auto copy = std::make_unique<MatchNode>(match.loc, cloneExpr(*match.target, bound, prefix));
+                for (const auto& arm : match.arms) {
+                    auto armCopy = std::make_unique<MatchArm>();
+                    armCopy->loc = arm->loc;
+                    armCopy->pattern = arm->pattern;
+                    armCopy->literal = arm->literal;
+                    armCopy->className = arm->className;
+                    armCopy->binder = renamed(arm->binder, bound, prefix);
+                    if (arm->guard)
+                        armCopy->guard = cloneExpr(*arm->guard, bound, prefix);
+                    if (arm->body)
+                        armCopy->body = cloneStmt(*arm->body, bound, prefix);
+                    copy->arms.push_back(std::move(armCopy));
+                }
                 return copy;
             }
             case ASTNode::Type::Function: {
@@ -562,6 +592,18 @@ namespace LOICollection::frontend::detail {
                 expandExpr(*forIn.iterable, ctx);
                 if (forIn.body)
                     expandStatement(forIn.body, ctx);
+                return;
+            }
+            case ASTNode::Type::Match: {
+                auto& match = static_cast<MatchNode&>(node);
+                if (match.target)
+                    expandExpr(*match.target, ctx);
+                for (auto& arm : match.arms) {
+                    if (arm->guard)
+                        expandExpr(*arm->guard, ctx);
+                    if (arm->body)
+                        expandStatement(arm->body, ctx);
+                }
                 return;
             }
             case ASTNode::Type::Function: {

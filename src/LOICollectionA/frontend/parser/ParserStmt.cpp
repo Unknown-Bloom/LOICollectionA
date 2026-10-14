@@ -102,6 +102,188 @@ namespace LOICollection::frontend {
         return body;
     }
 
+    std::unique_ptr<MatchArm> Parser::parseMatchArm() {
+        SourceLocation loc = currentToken.loc;
+        auto arm = std::make_unique<MatchArm>();
+
+        switch (currentToken.type) {
+            case TokenType::TOKEN_INT: {
+                int value;
+                auto [ptr, ec] = std::from_chars(currentToken.value.data(), currentToken.value.data() + currentToken.value.size(), value);
+
+                if (ec != std::errc() || ptr != currentToken.value.data() + currentToken.value.size()) {
+                    diagnostics.addError(currentToken.loc, "Invalid integer literal: " + currentToken.value);
+                    eat(TokenType::TOKEN_INT);
+                    return nullptr;
+                }
+
+                eat(TokenType::TOKEN_INT);
+                arm->pattern = MatchArm::Pattern::Literal;
+                arm->literal = value;
+                break;
+            }
+            case TokenType::TOKEN_FLOAT: {
+                float value;
+                auto [ptr, ec] = std::from_chars(currentToken.value.data(), currentToken.value.data() + currentToken.value.size(), value);
+
+                if (ec != std::errc() || ptr != currentToken.value.data() + currentToken.value.size()) {
+                    diagnostics.addError(currentToken.loc, "Invalid float literal: " + currentToken.value);
+                    eat(TokenType::TOKEN_FLOAT);
+                    return nullptr;
+                }
+
+                eat(TokenType::TOKEN_FLOAT);
+                arm->pattern = MatchArm::Pattern::Literal;
+                arm->literal = value;
+                break;
+            }
+            case TokenType::TOKEN_MINUS: {
+                eat(TokenType::TOKEN_MINUS);
+
+                if (currentToken.type == TokenType::TOKEN_INT) {
+                    int value;
+                    auto [ptr, ec] = std::from_chars(currentToken.value.data(), currentToken.value.data() + currentToken.value.size(), value);
+
+                    if (ec != std::errc() || ptr != currentToken.value.data() + currentToken.value.size()) {
+                        diagnostics.addError(currentToken.loc, "Invalid integer literal: " + currentToken.value);
+                        eat(TokenType::TOKEN_INT);
+                        return nullptr;
+                    }
+
+                    eat(TokenType::TOKEN_INT);
+                    arm->pattern = MatchArm::Pattern::Literal;
+                    arm->literal = -value;
+                } else if (currentToken.type == TokenType::TOKEN_FLOAT) {
+                    float value;
+                    auto [ptr, ec] = std::from_chars(currentToken.value.data(), currentToken.value.data() + currentToken.value.size(), value);
+
+                    if (ec != std::errc() || ptr != currentToken.value.data() + currentToken.value.size()) {
+                        diagnostics.addError(currentToken.loc, "Invalid float literal: " + currentToken.value);
+                        eat(TokenType::TOKEN_FLOAT);
+                        return nullptr;
+                    }
+
+                    eat(TokenType::TOKEN_FLOAT);
+                    arm->pattern = MatchArm::Pattern::Literal;
+                    arm->literal = -value;
+                } else {
+                    diagnostics.addError(currentToken.loc, "Expected a numeric literal after '-' in a match pattern");
+                    return nullptr;
+                }
+                break;
+            }
+            case TokenType::TOKEN_STRING: {
+                arm->pattern = MatchArm::Pattern::Literal;
+                arm->literal = std::move(currentToken.value);
+
+                eat(TokenType::TOKEN_STRING);
+                break;
+            }
+            case TokenType::TOKEN_BOOL_LIT: {
+                arm->pattern = MatchArm::Pattern::Literal;
+                arm->literal = (currentToken.value == "true");
+
+                eat(TokenType::TOKEN_BOOL_LIT);
+                break;
+            }
+            case TokenType::TOKEN_NONE: {
+                arm->pattern = MatchArm::Pattern::Literal;
+                arm->literal = std::monostate{};
+
+                eat(TokenType::TOKEN_NONE);
+                break;
+            }
+            case TokenType::TOKEN_IDENT: {
+                std::string first = currentToken.value;
+
+                eat(TokenType::TOKEN_IDENT);
+
+                if (first == "_") {
+                    arm->pattern = MatchArm::Pattern::Wildcard;
+                } else if (currentToken.type == TokenType::TOKEN_IDENT) {
+                    arm->pattern = MatchArm::Pattern::Type;
+                    arm->className = std::move(first);
+                    arm->binder = currentToken.value;
+
+                    eat(TokenType::TOKEN_IDENT);
+                } else {
+                    arm->pattern = MatchArm::Pattern::Bind;
+                    arm->binder = std::move(first);
+                }
+                break;
+            }
+            default:
+                diagnostics.addError(currentToken.loc,
+                    "Expected a match pattern, got " + getTokenName(currentToken.type));
+                return nullptr;
+        }
+
+        if (currentToken.type == TokenType::TOKEN_IF) {
+            if (!eat(TokenType::TOKEN_IF)) return nullptr;
+            if (!eat(TokenType::TOKEN_LPAREN)) {
+                synchronize({ TokenType::TOKEN_RBRCKET });
+                return nullptr;
+            }
+
+            arm->guard = parseBoolExpression();
+            if (!arm->guard || !eat(TokenType::TOKEN_RPAREN)) {
+                synchronize({ TokenType::TOKEN_RBRCKET });
+                return nullptr;
+            }
+        }
+
+        arm->body = parseControlBody();
+        if (!arm->body) return nullptr;
+
+        arm->loc = loc;
+        return arm;
+    }
+
+    std::unique_ptr<MatchNode> Parser::parseMatchStatement() {
+        SourceLocation loc = currentToken.loc;
+
+        if (!eat(TokenType::TOKEN_MATCH)) return nullptr;
+        if (!eat(TokenType::TOKEN_LPAREN)) {
+            synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        auto target = parseBoolExpression();
+        if (!target || !eat(TokenType::TOKEN_RPAREN)) {
+            synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        if (!eat(TokenType::TOKEN_LBRCKET)) {
+            diagnostics.addError(currentToken.loc, "Expected '[' to open a match body");
+            synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        auto node = std::make_unique<MatchNode>(loc, std::move(target));
+
+        while (currentToken.type != TokenType::TOKEN_RBRCKET &&
+               currentToken.type != TokenType::TOKEN_EOF) {
+            auto arm = parseMatchArm();
+            if (!arm) {
+                synchronize({ TokenType::TOKEN_RBRCKET });
+                continue;
+            }
+
+            node->arms.push_back(std::move(arm));
+
+            if (currentToken.type == TokenType::TOKEN_SEMICOLON)
+                eat(TokenType::TOKEN_SEMICOLON);
+        }
+
+        if (!eat(TokenType::TOKEN_RBRCKET)) {
+            diagnostics.addError(currentToken.loc, "Expected ']' to close a match body");
+            return nullptr;
+        }
+
+        return node;
+    }
+
     std::unique_ptr<WhileNode> Parser::parseWhileStatement() {
         SourceLocation loc = currentToken.loc;
 

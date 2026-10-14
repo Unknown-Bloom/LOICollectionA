@@ -127,7 +127,7 @@ namespace LOICollection::frontend {
             While, For, Break, Continue,
             CompoundAssign, ForIn, Range, Coalesce,
             Import, Component,
-            Trait, Impl
+            Trait, Impl, Match
         };
         [[nodiscard]] virtual Type getType() const = 0;
         
@@ -335,6 +335,37 @@ namespace LOICollection::frontend {
             : loc(location), elementVar(std::move(element)) {}
 
         [[nodiscard]] Type getType() const override { return Type::ForIn; }
+
+        void accept(ASTVisitor& visitor) override {
+            visitor.visit(*this);
+        }
+    };
+
+    struct MatchArm {
+        enum class Pattern { Literal, Type, Bind, Wildcard };
+
+        SourceLocation loc;
+        Pattern pattern = Pattern::Wildcard;
+        ValueNode::ValueType literal{};
+        std::string className;
+        std::string binder;
+        std::unique_ptr<ExprNode> guard;
+        std::unique_ptr<ASTNode> body;
+
+        [[nodiscard]] bool isCatchAll() const {
+            return pattern != Pattern::Literal && pattern != Pattern::Type && !guard;
+        }
+    };
+
+    struct MatchNode : ExprNode {
+        SourceLocation loc;
+        std::unique_ptr<ExprNode> target;
+        std::vector<std::unique_ptr<MatchArm>> arms;
+
+        MatchNode(SourceLocation location, std::unique_ptr<ExprNode> t)
+            : loc(location), target(std::move(t)) {}
+
+        [[nodiscard]] Type getType() const override { return Type::Match; }
 
         void accept(ASTVisitor& visitor) override {
             visitor.visit(*this);

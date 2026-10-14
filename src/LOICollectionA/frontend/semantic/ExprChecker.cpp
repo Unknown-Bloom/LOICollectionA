@@ -171,6 +171,9 @@ namespace LOICollection::frontend {
             case ASTNode::Type::InstanceOf:
                 return checkInstanceOf(static_cast<InstanceOfNode&>(node), scope);
 
+            case ASTNode::Type::Match:
+                return checkMatch(static_cast<MatchNode&>(node), scope);
+
             case ASTNode::Type::New:
                 return checkNew(static_cast<NewNode&>(node), scope);
 

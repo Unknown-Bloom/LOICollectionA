@@ -53,7 +53,7 @@
     "keywords": {
       "patterns": [
         {
-          "match": "\\b(?:new|func|class|trait|impl|extends|super|this|return|if|for|while|break|continue|in|using|import|component|static|public|private|instanceof|let|const|None|true|false)\\b",
+          "match": "\\b(?:new|func|class|trait|impl|extends|super|this|return|if|for|while|break|continue|in|using|import|component|static|public|private|instanceof|let|const|match|None|true|false)\\b",
           "name": "keyword.control.lcui"
         }
       ]

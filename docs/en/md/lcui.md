@@ -404,6 +404,40 @@ for (let i = 0; i < 10; i++) [
 
 `break` exits the current loop, and `continue` skips the remainder of the current iteration; both can only appear inside a loop, and with nested loops they only affect the innermost one.
 
+### match (Pattern Matching)
+
+`match (expression)` dispatches on the scrutinee by arm pattern, following the semantics of Rust's `match`. An arm is written as `pattern [ body ]`; the first matching arm wins and the value of the last expression in its body becomes the result:
+
+```lcui
+let name = match (code) [
+    0 [ "zero" ]
+    1 [ "one" ]
+    n [ "many: " + n ]
+];
+```
+
+| Pattern | Example | Notes |
+| --- | --- | --- |
+| Literal | `1`, `-2`, `3.5`, `"text"`, `true`, `None` | Matches by equality; `None` matches an empty `optional`; `int` / `float` literals match interchangeably |
+| Type | `Circle c` | Dispatches via `instanceof`; `c` binds the matched object inside the arm |
+| Bind | `n` | Matches any value and makes `n` available inside the arm |
+| Wildcard | `_` | Matches any value without binding |
+| Guard | `n if (n > 10)` | Extra test applied after the pattern matches; may reference the arm's binder |
+
+```lcui
+match (shape) [
+    Circle c [ println("circle r=" + c.r); ]
+    Square s if (s.s > 5) [ println("big square"); ]
+    Square s [ println("square"); ]
+    _ [ println("unknown"); ]
+]
+```
+
+- `match` is an expression: it can initialize a `let`, take part in arithmetic, or feed a `return`; an arm body may also `return` early from the enclosing function.
+- Guards are evaluated only after the pattern matches, so `Square s if (...)` never tests a non-`Square` value.
+- Exhaustiveness is mandatory: an unguarded binding or `_` arm must exist (a `bool` scrutinee may instead be covered by both a `true` and a `false` arm), otherwise compilation fails.
+- Binders are visible only inside their own arm and may shadow outer variables; type-pattern class names are checked at compile time.
+
 ## Functions
 
 ### Named Functions

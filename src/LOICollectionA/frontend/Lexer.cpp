@@ -215,6 +215,7 @@ namespace LOICollection::frontend {
             {"import", TokenType::TOKEN_IMPORT},
             {"component", TokenType::TOKEN_COMPONENT},
             {"let", TokenType::TOKEN_LET},
+            {"match", TokenType::TOKEN_MATCH},
             {"trait", TokenType::TOKEN_TRAIT},
             {"impl", TokenType::TOKEN_IMPL},
             {"const", TokenType::TOKEN_CONST},

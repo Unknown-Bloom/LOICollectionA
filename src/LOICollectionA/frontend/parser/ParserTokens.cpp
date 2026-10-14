@@ -92,6 +92,7 @@ namespace LOICollection::frontend {
             { TokenType::TOKEN_IMPORT, "IMPORT" },
             { TokenType::TOKEN_COMPONENT, "COMPONENT" },
             { TokenType::TOKEN_LET, "LET" },
+            { TokenType::TOKEN_MATCH, "MATCH" },
         };
         auto it = names.find(type);
         return it == names.end() ? "UNKNOWN" : it->second;

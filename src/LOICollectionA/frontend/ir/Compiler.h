@@ -75,6 +75,7 @@ namespace LOICollection::frontend::ir {
         void visit(WhileNode& node) override;
         void visit(ForNode& node) override;
         void visit(ForInNode& node) override;
+        void visit(MatchNode& node) override;
         void visit(RangeNode& node) override;
         void visit(CoalesceNode& node) override;
         void visit(BreakNode& node) override;

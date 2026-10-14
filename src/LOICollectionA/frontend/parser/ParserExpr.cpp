@@ -458,6 +458,8 @@ namespace LOICollection::frontend {
         switch (currentToken.type) {
             case TokenType::TOKEN_IF:
                 return parseIfStatement();
+            case TokenType::TOKEN_MATCH:
+                return parseMatchStatement();
             case TokenType::TOKEN_NEW: {
                 SourceLocation loc = currentToken.loc;
 

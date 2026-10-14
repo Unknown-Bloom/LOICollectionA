@@ -605,6 +605,88 @@ namespace LOICollection::frontend::ir {
         this->lastResultReg = dst;
     }
 
+    void Compiler::visit(MatchNode& node) {
+        const int target = this->compileValue(*node.target, node.loc);
+        const int dst = this->allocReg();
+
+        const bool covered = std::ranges::any_of(node.arms,
+            [](const auto& arm) { return arm->isCatchAll(); });
+        if (!covered)
+            this->current.get().emit(
+                MirOp::LOAD_CONST, this->addConstant(std::monostate{}), dst, -1, -1, node.loc);
+
+        std::vector<size_t> endJumps;
+
+        for (size_t i = 0; i < node.arms.size(); ++i) {
+            MatchArm& arm = *node.arms[i];
+
+            int cond = -1;
+            switch (arm.pattern) {
+                case MatchArm::Pattern::Literal: {
+                    if (std::holds_alternative<std::monostate>(arm.literal)) {
+                        cond = this->allocReg();
+                        this->current.get().emit(MirOp::IS_NONE, 0, cond, target, -1, arm.loc);
+                    } else {
+                        const int lit = this->allocReg();
+                        this->current.get().emit(
+                            MirOp::LOAD_CONST, this->addConstant(arm.literal), lit, -1, -1, arm.loc);
+                        cond = this->emitBinary(MirOp::CMP_EQ, target, lit, arm.loc);
+                    }
+                    break;
+                }
+                case MatchArm::Pattern::Type: {
+                    cond = this->allocReg();
+                    this->current.get().emit(
+                        MirOp::INSTANCEOF, this->addConstant(arm.className), cond, target, -1, arm.loc);
+                    break;
+                }
+                case MatchArm::Pattern::Bind:
+                case MatchArm::Pattern::Wildcard:
+                    break;
+            }
+
+            size_t patternFailIdx = static_cast<size_t>(-1);
+            if (cond >= 0)
+                patternFailIdx = this->current.get().emit(
+                    MirOp::JMP_IF_FALSE, 0, -1, cond, -1, arm.loc);
+
+            this->pushScope(false, this->scopes.back().next, true);
+            if (!arm.binder.empty()) {
+                this->declareSlot(arm.binder);
+                this->emitStore(arm.binder, target, arm.loc);
+            }
+
+            int guardCond = -1;
+            if (arm.guard)
+                guardCond = this->compileValue(*arm.guard, arm.loc);
+
+            size_t jmpFalseIdx = static_cast<size_t>(-1);
+            if (guardCond >= 0)
+                jmpFalseIdx = this->current.get().emit(
+                    MirOp::JMP_IF_FALSE, 0, -1, guardCond, -1, arm.loc);
+
+            this->compileInto(dst, *arm.body, arm.loc);
+
+            const int armSlotCount = this->closeScope();
+            if (armSlotCount > this->scopes.back().next)
+                this->scopes.back().next = armSlotCount;
+
+            endJumps.push_back(this->current.get().emit(MirOp::JMP, 0, arm.loc));
+
+            const int nextArmPos = static_cast<int>(this->current.get().currentIP());
+            if (patternFailIdx != static_cast<size_t>(-1))
+                this->current.get().patchJump(patternFailIdx, nextArmPos - static_cast<int>(patternFailIdx) - 1);
+            if (jmpFalseIdx != static_cast<size_t>(-1))
+                this->current.get().patchJump(jmpFalseIdx, nextArmPos - static_cast<int>(jmpFalseIdx) - 1);
+        }
+
+        const int endPos = static_cast<int>(this->current.get().currentIP());
+        for (size_t idx : endJumps)
+            this->current.get().patchJump(idx, endPos - static_cast<int>(idx) - 1);
+
+        this->lastResultReg = dst;
+    }
+
     void Compiler::visit(RangeNode& node) {
         this->diagnostics.addError(node.loc, "Range expression is only allowed as a for-in iterable");
     }

@@ -711,6 +711,95 @@ namespace LOICollection::frontend {
         return { TypeKind::Bool };
     }
 
+    TypeInfo SemanticAnalyzer::checkMatch(MatchNode& node, MethodScope& scope) {
+        TypeInfo target = this->checkExpr(*node.target, scope);
+
+        if (node.target->type.kind == TypeKind::Optional)
+            node.target->preserveOptional = true;
+
+        if (node.arms.empty()) {
+            diagnostics.addError(node.loc, "match requires at least one arm");
+            return {};
+        }
+
+        bool covered = false;
+        bool coversTrue = false;
+        bool coversFalse = false;
+        for (auto& arm : node.arms) {
+            if (arm->isCatchAll())
+                covered = true;
+
+            if (arm->pattern == MatchArm::Pattern::Literal && !arm->guard) {
+                if (auto* flag = std::get_if<bool>(&arm->literal))
+                    (*flag ? coversTrue : coversFalse) = true;
+            }
+        }
+
+        if (target.kind == TypeKind::Bool && coversTrue && coversFalse)
+            covered = true;
+
+        if (!covered)
+            diagnostics.addError(node.loc,
+                "match must be exhaustive; add a binding or '_' arm");
+
+        for (auto& arm : node.arms) {
+            switch (arm->pattern) {
+                case MatchArm::Pattern::Literal: {
+                    if (std::holds_alternative<std::monostate>(arm->literal)) {
+                        if (target.kind != TypeKind::Unknown && target.kind != TypeKind::None &&
+                            target.kind != TypeKind::Optional)
+                            diagnostics.addError(arm->loc,
+                                "'None' pattern can only match an optional value");
+                        break;
+                    }
+
+                    if (target.kind == TypeKind::Unknown)
+                        break;
+
+                    TypeKind literalKind = std::holds_alternative<std::string>(arm->literal)
+                        ? TypeKind::String
+                        : std::holds_alternative<bool>(arm->literal)
+                            ? TypeKind::Bool
+                            : std::holds_alternative<float>(arm->literal)
+                                ? TypeKind::Float
+                                : TypeKind::Int;
+
+                    bool numericCompatible = (literalKind == TypeKind::Int || literalKind == TypeKind::Float) &&
+                        (target.kind == TypeKind::Int || target.kind == TypeKind::Float);
+
+                    if (literalKind != target.kind && !numericCompatible)
+                        diagnostics.addError(arm->loc,
+                            "Pattern type mismatch: cannot match " + typeInfoToString(target) +
+                            " against a literal of a different type");
+                    break;
+                }
+                case MatchArm::Pattern::Type:
+                    if (!this->findClass(arm->className) && !isNativeClass(arm->className))
+                        diagnostics.addError(arm->loc, "Unknown class: " + arm->className);
+                    break;
+                case MatchArm::Pattern::Bind:
+                case MatchArm::Pattern::Wildcard:
+                    break;
+            }
+
+            this->blockScopes.emplace_back();
+            auto popArmScope = make_scope_guard([this] { this->blockScopes.pop_back(); });
+
+            if (!arm->binder.empty())
+                this->blockScopes.back()[arm->binder] = arm->pattern == MatchArm::Pattern::Type
+                    ? TypeInfo{ TypeKind::Object, arm->className }
+                    : target;
+
+            if (arm->guard)
+                this->checkExpr(*arm->guard, scope);
+
+            if (arm->body)
+                this->checkStatement(*arm->body, scope);
+        }
+
+        return {};
+    }
+
     std::optional<OperatorOverload> SemanticAnalyzer::resolveOperatorOverload(
         const std::string& op, const TypeInfo& receiver) {
         if (!operatorTraitFor(op))
