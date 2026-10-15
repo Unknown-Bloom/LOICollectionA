@@ -215,7 +215,7 @@ namespace LOICollection::frontend::ir {
                 if (meta.isStatic) {
                     auto result = ClassCall::getInstance().callStaticMethodCached(
                         meta.className, meta.name, args, s.placeholders,
-                        this->mNativeStaticMethodSlots[instr.operand], this->diagnostics, this->currentLoc
+                        this->mCache->nativeStaticMethodSlots[instr.operand], this->diagnostics, this->currentLoc
                     );
 
                     if (!result.has_value()) {
@@ -239,7 +239,7 @@ namespace LOICollection::frontend::ir {
 
                     auto result = ClassCall::getInstance().callValueMethodCached(
                         valueClassName, meta.name, receiver, args,
-                        this->mNativeValueMethodSlots[instr.operand], this->diagnostics, this->currentLoc
+                        this->mCache->nativeValueMethodSlots[instr.operand], this->diagnostics, this->currentLoc
                     );
 
                     if (!result.has_value()) {
@@ -257,7 +257,7 @@ namespace LOICollection::frontend::ir {
 
                 auto result = ClassCall::getInstance().callMethodCached(
                     obj->className, meta.name, args, obj, s.placeholders,
-                    this->mNativeMethodSlots[instr.operand], this->diagnostics, this->currentLoc
+                    this->mCache->nativeMethodSlots[instr.operand], this->diagnostics, this->currentLoc
                 );
 
                 if (!result.has_value()) {
@@ -374,7 +374,7 @@ namespace LOICollection::frontend::ir {
                 auto func = meta.name.substr(meta.name.find("::") + 2);
                 auto result = FunctionCall::getInstance().callFunctionCached(
                     ns, func, args, s.placeholders,
-                    this->mFunctionCallSlots[instr.operand], this->diagnostics, this->currentLoc
+                    this->mCache->functionCallSlots[instr.operand], this->diagnostics, this->currentLoc
                 );
 
                 if (!result.has_value()) {

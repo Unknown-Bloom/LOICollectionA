@@ -56,12 +56,12 @@ namespace LOICollection::frontend::ir {
     }
 
     const FieldLayoutPtr& VM::classLayout(const MirChunk& chunk, int classIndex) {
-        auto it = this->mClassLayouts.find(classIndex);
-        if (it != this->mClassLayouts.end())
+        auto it = this->mCache->classLayouts.find(classIndex);
+        if (it != this->mCache->classLayouts.end())
             return it->second;
 
         const auto& cls = chunk.classes[static_cast<size_t>(classIndex)];
-        return this->mClassLayouts
+        return this->mCache->classLayouts
             .emplace(classIndex, std::make_shared<const FieldLayout>(cls.fieldNames))
             .first->second;
     }
@@ -165,6 +165,11 @@ namespace LOICollection::frontend::ir {
         }
 
         const MirChunk& chunk = *owner;
+
+        if (this->mCacheChunk != owner.get()) {
+            this->mCacheChunk = owner.get();
+            this->mCache = ChunkCacheRegistry::getInstance().forChunk(owner.get());
+        }
 
         BudgetScope budgetScope(this->mBudget);
 

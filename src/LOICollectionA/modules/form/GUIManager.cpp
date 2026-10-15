@@ -41,6 +41,7 @@
 #include "LOICollectionA/base/ServiceProvider.h"
 #include "LOICollectionA/frontend/sandbox/ScriptPermission.h"
 
+#include "LOICollectionA/frontend/ir/ChunkCache.h"
 #include "LOICollectionA/frontend/runtime/ScriptVMRegistry.h"
 
 namespace LOICollection::form::detail {
@@ -207,6 +208,8 @@ namespace LOICollection::form {
                         ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA")
                             ->warn("script '{}' has a stale debug package — loaded without debug info", id);
 
+                if (auto old = this->mImpl->cache.find(id); old != this->mImpl->cache.end())
+                    frontend::ir::ChunkCacheRegistry::getInstance().release(old->second.get());
                 this->mImpl->cache.insert_or_assign(id, std::make_shared<frontend::ir::MirChunk>(std::move(*chunk)));
                 this->mImpl->globals.insert_or_assign(id, std::unordered_map<std::string, std::shared_ptr<frontend::GlobalsTable>>{});
                 frontend::runtime::ScriptVMRegistry::getInstance().releaseScript(id);
@@ -233,6 +236,8 @@ namespace LOICollection::form {
                 this->writeFile(packagePath + ".dbg", *debug);
         }
 
+        if (auto old = this->mImpl->cache.find(id); old != this->mImpl->cache.end())
+            frontend::ir::ChunkCacheRegistry::getInstance().release(old->second.get());
         this->mImpl->cache.insert_or_assign(id, compiled);
         this->mImpl->globals.insert_or_assign(id, std::unordered_map<std::string, std::shared_ptr<frontend::GlobalsTable>>{});
         frontend::runtime::ScriptVMRegistry::getInstance().releaseScript(id);
@@ -641,10 +646,14 @@ namespace LOICollection::form {
         releaseHandles(this->mImpl->paginatedForms);
         releaseHandles(this->mImpl->scriptForms);
 
+        for (const auto& [_, chunk] : this->mImpl->cache)
+            frontend::ir::ChunkCacheRegistry::getInstance().release(chunk.get());
+
         this->mImpl->cache.clear();
         this->mImpl->globals.clear();
 
         frontend::runtime::ScriptVMRegistry::getInstance().releaseAll();
+        frontend::ir::ChunkCacheRegistry::getInstance().releaseAll();
     }
 
     ll::Expected<std::shared_ptr<CustomFormClass::CustomFormHandle>> GUIManager::getCustomFormUI(const std::string& id, Player& player) {

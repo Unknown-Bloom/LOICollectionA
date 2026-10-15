@@ -11,6 +11,7 @@
 #include "LOICollectionA/frontend/Callback.h"
 #include "LOICollectionA/frontend/Context.h"
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
+#include "LOICollectionA/frontend/ir/ChunkCache.h"
 #include "LOICollectionA/frontend/ir/Mir.h"
 #include "LOICollectionA/frontend/sandbox/SandboxBudget.h"
 #include "LOICollectionA/frontend/sandbox/SandboxReport.h"
@@ -60,24 +61,6 @@ namespace LOICollection::frontend::ir {
         LOICOLLECTION_A_NDAPI static bool applyComparison(const ValueNode::ValueType& left, const ValueNode::ValueType& right, const std::string& op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
 
     private:
-        struct FieldCacheSlot {
-            static constexpr int Capacity = 4;
-            const FieldLayout* layouts[Capacity] = {};
-            int slots[Capacity] = {};
-            int head = -1;
-
-            [[nodiscard]] int probe(const FieldLayout* layout) const {
-                for (int i = 0; i < Capacity; ++i)
-                    if (layouts[i] == layout) return slots[i];
-                return -1;
-            }
-            void store(const FieldLayout* layout, int slot) {
-                head = (head + 1) % Capacity;
-                layouts[head] = layout;
-                slots[head] = slot;
-            }
-        };
-
         struct Frame {
             std::reference_wrapper<const MirChunk> chunk;
 
@@ -110,13 +93,8 @@ namespace LOICollection::frontend::ir {
 
         std::shared_ptr<GlobalsTable> globals;
 
-        std::unordered_map<int, FunctionCallCacheSlot> mFunctionCallSlots;
-        std::unordered_map<int, NativeMethodCacheSlot> mNativeMethodSlots;
-        std::unordered_map<int, NativeStaticMethodCacheSlot> mNativeStaticMethodSlots;
-        std::unordered_map<int, NativeValueMethodCacheSlot> mNativeValueMethodSlots;
-        std::unordered_map<int, NativeConstructorCacheSlot> mNativeConstructorSlots;
-        std::unordered_map<int, FieldLayoutPtr> mClassLayouts;
-        std::unordered_map<const MirInstr*, FieldCacheSlot> mFieldSlots;
+        std::shared_ptr<ChunkCache> mCache = std::make_shared<ChunkCache>();
+        const MirChunk* mCacheChunk = nullptr;
 
         [[nodiscard]] const FieldLayoutPtr& classLayout(const MirChunk& chunk, int classIndex);
 

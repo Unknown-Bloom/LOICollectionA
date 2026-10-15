@@ -22,7 +22,7 @@ namespace LOICollection::frontend::ir {
         if (!obj.layout)
             obj.adoptLayout();
 
-        FieldCacheSlot& cached = this->mFieldSlots[&instr];
+        FieldCacheSlot& cached = this->mCache->fieldSlots[&instr];
         const FieldLayout* layout = obj.layout.get();
 
         int slot = cached.probe(layout);
@@ -81,7 +81,7 @@ namespace LOICollection::frontend::ir {
                 if (slot < 0) {
                     obj->addField(name, this->regOf(frame, instr.src2));
                     slot = obj->slotOf(name);
-                    this->mFieldSlots[&instr].store(obj->layout.get(), slot);
+                    this->mCache->fieldSlots[&instr].store(obj->layout.get(), slot);
                 } else {
                     obj->slots[static_cast<size_t>(slot)] = this->regOf(frame, instr.src2);
                 }
@@ -406,7 +406,7 @@ namespace LOICollection::frontend::ir {
 
                 auto result = ClassCall::getInstance().createCached(
                     meta.className, this->collectArgs(frame, instr.src1, meta.argCount), s.placeholders,
-                    this->mNativeConstructorSlots[instr.operand], this->diagnostics, this->currentLoc
+                    this->mCache->nativeConstructorSlots[instr.operand], this->diagnostics, this->currentLoc
                 );
 
                 if (!result.has_value()) {
