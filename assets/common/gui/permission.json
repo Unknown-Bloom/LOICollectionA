@@ -1,5 +1,11 @@
 {
     "defaultPolicy": "deny",
+    "defaultTrust": "user",
+    "trustLevels": {
+        "builtin": ["GuiRead", "GuiWrite", "ServerCommand", "PlayerDataRead", "PlayerDataWrite", "StorageRead", "StorageWrite"],
+        "admin": ["GuiRead", "GuiWrite", "ServerCommand", "PlayerDataRead", "PlayerDataWrite", "StorageRead", "StorageWrite"],
+        "user": ["GuiRead", "GuiWrite"]
+    },
     "scripts": {
         "blacklist": {
             "enabled": true,
@@ -296,6 +302,7 @@
         },
         "menu": {
             "enabled": true,
+            "trust": "builtin",
             "commands": {
                 "allow": true,
                 "templates": [
@@ -384,6 +391,7 @@
         },
         "shop": {
             "enabled": true,
+            "trust": "builtin",
             "commands": {
                 "allow": true,
                 "templates": [

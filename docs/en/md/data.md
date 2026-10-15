@@ -336,6 +336,8 @@ Since 1.17.0 module data is stored through exactly two carriers:
 
 `permission.json` is the script capability authorization file, located in the `plugins/LOICollectionA/gui/` directory. It controls the sensitive capabilities each script may invoke: command execution (`mc::runCmd`), business reads/writes (`GUIManager::value/request/callback`), and cross-script navigation (`GUIManager::open`).
 
+Authorization runs in two gates: first the script's **trust level** is checked for the required **capability** (coarse gate), then the per-script id allowlist is matched exactly (fine gate). Both must pass.
+
 > [!IMPORTANT]
 > Authorization uses a deny-by-default policy (`defaultPolicy: "deny"`). Scripts and authorization are separate: after editing a script (especially `menu.lcui` / `shop.lcui`) to add new capability calls, you must sync `permission.json` accordingly, otherwise those calls are denied and an error is logged.
 
@@ -350,13 +352,34 @@ Since 1.17.0 module data is stored through exactly two carriers:
 | `scripts.<id>.gui.requests` | string[] | Allowlist of `GUIManager::request` ids |
 | `scripts.<id>.gui.callbacks` | string[] | Allowlist of `GUIManager::callback` ids |
 | `scripts.<id>.gui.navigations` | string[] | Allowlist of target script ids or form ids this script may navigate to via `GUIManager::open`. When empty, only its own forms may be opened |
+| `defaultTrust` | string | Trust level used by scripts that do not declare `trust`; defaults to `"user"`. Must be a key defined in `trustLevels` |
+| `trustLevels` | object | Map of trust level → capability-name array, e.g. `{"user": ["GuiRead","GuiWrite"], "builtin": ["GuiRead","GuiWrite","ServerCommand"]}` |
+| `scripts.<id>.trust` | string | Trust level of this script; falls back to `defaultTrust` when omitted. Determines the capability set it holds |
+
+Each sensitive call requires a capability up front; missing it is denied even if the id allowlist matches:
+
+| Call | Required capability |
+| ---- | ---- |
+| `GUIManager::value` / `GUIManager::request` | `GuiRead` |
+| `GUIManager::callback` | `GuiWrite` |
+| `GUIManager::open` / `GUIManager::switchTo` (incl. cross-script) | `GuiWrite` |
+| `mc::runCmd` | `ServerCommand` |
+| Read player data / storage (future built-in natives) | `PlayerDataRead` / `StorageRead` |
+| Write player data / storage (future built-in natives) | `PlayerDataWrite` / `StorageWrite` |
 
 ```json
 {
     "defaultPolicy": "deny",
+    "defaultTrust": "user",
+    "trustLevels": {
+        "builtin": ["GuiRead", "GuiWrite", "ServerCommand", "PlayerDataRead", "PlayerDataWrite", "StorageRead", "StorageWrite"],
+        "admin":   ["GuiRead", "GuiWrite", "ServerCommand", "PlayerDataRead", "PlayerDataWrite", "StorageRead", "StorageWrite"],
+        "user":    ["GuiRead", "GuiWrite"]
+    },
     "scripts": {
         "menu": {
             "enabled": true,
+            "trust": "builtin",
             "commands": {
                 "allow": true,
                 "templates": ["say No permission", "say No score"]

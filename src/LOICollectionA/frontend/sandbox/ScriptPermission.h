@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -13,6 +14,16 @@
 #include "LOICollectionA/frontend/sandbox/ScriptBudget.h"
 
 namespace LOICollection::frontend::sandbox {
+    enum class Capability {
+        GuiRead,
+        GuiWrite,
+        ServerCommand,
+        PlayerDataRead,
+        PlayerDataWrite,
+        StorageRead,
+        StorageWrite,
+    };
+
     namespace Config {
         struct C_ScriptCommandPermission {
             bool allow = false;
@@ -28,6 +39,7 @@ namespace LOICollection::frontend::sandbox {
 
         struct C_ScriptPermissionEntry {
             bool enabled = true;
+            std::string trust;
             C_ScriptCommandPermission commands;
             C_ScriptGuiPermission gui;
             BudgetOverride budget;
@@ -35,6 +47,8 @@ namespace LOICollection::frontend::sandbox {
 
         struct C_ScriptPermission {
             std::string defaultPolicy = "deny";
+            std::string defaultTrust = "user";
+            std::unordered_map<std::string, std::vector<std::string>> trustLevels;
             BudgetOverride defaultBudget;
             std::unordered_map<std::string, C_ScriptPermissionEntry> scripts;
         };
@@ -45,8 +59,11 @@ namespace LOICollection::frontend::sandbox {
         PermissionGate() = default;
         explicit PermissionGate(Config::C_ScriptPermission config) : mConfig(std::move(config)) {
             mBudget.setDefault(mConfig.defaultBudget);
-            for (const auto& [scriptId, entry] : mConfig.scripts)
+            mDefaultCaps = resolveCaps(mConfig.defaultTrust);
+            for (const auto& [scriptId, entry] : mConfig.scripts) {
                 mBudget.setOverride(scriptId, entry.budget);
+                mCaps.emplace(scriptId, resolveCaps(entry.trust.empty() ? mConfig.defaultTrust : entry.trust));
+            }
         }
 
         static std::optional<PermissionGate> fromJson(const std::string& json, std::string& error) {
@@ -68,8 +85,10 @@ namespace LOICollection::frontend::sandbox {
         [[nodiscard]] bool isCommandAllowed(const std::string& scriptId, const std::string& command) const {
             const auto* entry = find(scriptId);
             if (!entry)
-                return fallbackAllowed();
-            if (!entry->enabled || !entry->commands.allow || entry->commands.templates.empty())
+                return fallbackAllowed() && hasCapability(scriptId, Capability::ServerCommand);
+            if (!entry->enabled || !hasCapability(scriptId, Capability::ServerCommand))
+                return false;
+            if (!entry->commands.allow || entry->commands.templates.empty())
                 return false;
 
             return std::find(entry->commands.templates.begin(), entry->commands.templates.end(), command)
@@ -77,19 +96,19 @@ namespace LOICollection::frontend::sandbox {
         }
 
         [[nodiscard]] bool isGuiValueAllowed(const std::string& scriptId, const std::string& id) const {
-            return isGuiIdAllowed(scriptId, id, &Config::C_ScriptGuiPermission::values);
+            return isGuiIdAllowed(scriptId, id, &Config::C_ScriptGuiPermission::values, Capability::GuiRead);
         }
 
         [[nodiscard]] bool isGuiRequestAllowed(const std::string& scriptId, const std::string& id) const {
-            return isGuiIdAllowed(scriptId, id, &Config::C_ScriptGuiPermission::requests);
+            return isGuiIdAllowed(scriptId, id, &Config::C_ScriptGuiPermission::requests, Capability::GuiRead);
         }
 
         [[nodiscard]] bool isGuiCallbackAllowed(const std::string& scriptId, const std::string& id) const {
-            return isGuiIdAllowed(scriptId, id, &Config::C_ScriptGuiPermission::callbacks);
+            return isGuiIdAllowed(scriptId, id, &Config::C_ScriptGuiPermission::callbacks, Capability::GuiWrite);
         }
 
         [[nodiscard]] bool isGuiNavigationAllowed(const std::string& scriptId) const {
-            return isScriptEnabled(scriptId);
+            return isScriptEnabled(scriptId) && hasCapability(scriptId, Capability::GuiWrite);
         }
 
         [[nodiscard]] bool isGuiNavigationTargetAllowed(
@@ -100,8 +119,8 @@ namespace LOICollection::frontend::sandbox {
 
             const auto* entry = find(scriptId);
             if (!entry)
-                return fallbackAllowed();
-            if (!entry->enabled)
+                return fallbackAllowed() && hasCapability(scriptId, Capability::GuiWrite);
+            if (!entry->enabled || !hasCapability(scriptId, Capability::GuiWrite))
                 return false;
 
             const auto& targets = entry->gui.navigations;
@@ -118,11 +137,20 @@ namespace LOICollection::frontend::sandbox {
             return mBudget.resolve(scriptId);
         }
 
+        [[nodiscard]] bool hasCapability(const std::string& scriptId, Capability capability) const {
+            if (const auto it = mCaps.find(scriptId); it != mCaps.end())
+                return it->second.contains(capability);
+
+            return mDefaultCaps.contains(capability);
+        }
+
     private:
         using GuiList = std::vector<std::string> Config::C_ScriptGuiPermission::*;
 
         Config::C_ScriptPermission mConfig;
         BudgetPolicy mBudget;
+        std::unordered_map<std::string, std::set<Capability>> mCaps;
+        std::set<Capability> mDefaultCaps;
 
         [[nodiscard]] const Config::C_ScriptPermissionEntry* find(const std::string& scriptId) const {
             const auto it = mConfig.scripts.find(scriptId);
@@ -131,21 +159,55 @@ namespace LOICollection::frontend::sandbox {
 
         [[nodiscard]] bool fallbackAllowed() const { return mConfig.defaultPolicy == "allow"; }
 
-        [[nodiscard]] bool isGuiIdAllowed(const std::string& scriptId, const std::string& id, GuiList list) const {
+        [[nodiscard]] std::set<Capability> resolveCaps(const std::string& trustName) const {
+            std::set<Capability> caps;
+            const auto it = mConfig.trustLevels.find(trustName);
+            if (it == mConfig.trustLevels.end())
+                return caps;
+
+            for (const auto& name : it->second)
+                if (const auto cap = capabilityFromName(name))
+                    caps.insert(*cap);
+
+            return caps;
+        }
+
+        [[nodiscard]] bool isGuiIdAllowed(
+            const std::string& scriptId, const std::string& id, GuiList list, Capability cap
+        ) const {
             const auto* entry = find(scriptId);
             if (!entry)
-                return fallbackAllowed();
-            if (!entry->enabled)
+                return fallbackAllowed() && hasCapability(scriptId, cap);
+            if (!entry->enabled || !hasCapability(scriptId, cap))
                 return false;
 
             const auto& ids = entry->gui.*list;
             return std::find(ids.begin(), ids.end(), id) != ids.end();
         }
 
+        static std::optional<Capability> capabilityFromName(const std::string& name) {
+            if (name == "GuiRead") return Capability::GuiRead;
+            if (name == "GuiWrite") return Capability::GuiWrite;
+            if (name == "ServerCommand") return Capability::ServerCommand;
+            if (name == "PlayerDataRead") return Capability::PlayerDataRead;
+            if (name == "PlayerDataWrite") return Capability::PlayerDataWrite;
+            if (name == "StorageRead") return Capability::StorageRead;
+            if (name == "StorageWrite") return Capability::StorageWrite;
+            return std::nullopt;
+        }
+
         static Config::C_ScriptPermission parse(const nlohmann::json& root) {
             Config::C_ScriptPermission result;
             if (root.contains("defaultPolicy") && root["defaultPolicy"].is_string())
                 result.defaultPolicy = root["defaultPolicy"].get<std::string>();
+            if (root.contains("defaultTrust") && root["defaultTrust"].is_string())
+                result.defaultTrust = root["defaultTrust"].get<std::string>();
+            if (root.contains("trustLevels") && root["trustLevels"].is_object())
+                for (const auto& [name, value] : root["trustLevels"].items())
+                    if (value.is_array())
+                        for (const auto& item : value)
+                            if (item.is_string())
+                                result.trustLevels[name].push_back(item.get<std::string>());
 
             result.defaultBudget = readBudget(root.value("budget", nlohmann::json::object()));
 
@@ -156,6 +218,8 @@ namespace LOICollection::frontend::sandbox {
                 Config::C_ScriptPermissionEntry entry;
                 if (value.contains("enabled") && value["enabled"].is_boolean())
                     entry.enabled = value["enabled"].get<bool>();
+                if (value.contains("trust") && value["trust"].is_string())
+                    entry.trust = value["trust"].get<std::string>();
 
                 if (const auto& commands = value.value("commands", nlohmann::json::object());
                     commands.is_object()) {

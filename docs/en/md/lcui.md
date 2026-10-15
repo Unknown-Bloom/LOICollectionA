@@ -790,6 +790,17 @@ let form = new CustomForm("example.shop", {tr("example.shop.title")}) {
 };
 ```
 
+## Script permission: trust level and capabilities
+
+The script sandbox authorizes sensitive calls through a **single gate**; the full field reference is in the `permission.json` section of [Data Files](./data.md). Each script first receives a set of **capabilities** from its **trust level** (coarse gate), then is matched against the per-script id allowlist under `scripts.<id>` (fine gate); both must pass.
+
+- Trust levels are defined in `trustLevels` as capability-name arrays; `defaultTrust` is the fallback and a single script may override it with `trust`.
+- Built-in levels today: `user` (only `GuiRead` / `GuiWrite`), and `admin` / `builtin` (also `ServerCommand` plus player-data / storage read-write).
+- The old `Network` / `Filesystem` capabilities were never granted to any script and have been removed from the enum.
+
+> [!NOTE]
+> The coarse gate keeps scripts without a declared trust level to GUI only: even under `defaultPolicy: "allow"` they cannot run commands or read/write player data — least privilege by default.
+
 ## Execution Budget and Call Depth
 
 To keep runaway scripts from hanging the server, the VM meters **fuel** on every script execution (including script re-entry such as form callbacks): each instruction costs 1 point, and wall clock, native calls, objects and memory each have their own quota. Exhausting any one of them aborts execution immediately with an error.

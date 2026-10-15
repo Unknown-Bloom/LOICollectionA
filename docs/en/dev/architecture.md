@@ -114,7 +114,7 @@ src/LOICollectionA/
 │   │                        #   AST, Callback (native binding registry), ir/ (compiler, VM)
 │   ├─ sandbox/              # script sandbox: ScriptPermission (permission and execution
 │   │                        #   budget configuration), SandboxBudget (fuel metering),
-│   │                        #   CapabilityGate, SandboxReport
+│   │                        #   SandboxReport; permissions use a trust-level + capability model
 │   ├─ lsp/                  # LCUI language service core: Protocol (JSON-RPC framing),
 │   │                        #   Analysis (diagnostics and symbols), LanguageServer (dispatch)
 │   └─ builtin/              # built-in script implementations: Math/Format/String functions,

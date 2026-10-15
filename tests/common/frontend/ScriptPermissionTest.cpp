@@ -18,6 +18,11 @@ using namespace LOICollection::frontend::sandbox;
 namespace {
     const char* kWalletPermission = R"json({
         "defaultPolicy": "deny",
+        "defaultTrust": "user",
+        "trustLevels": {
+            "user":    ["GuiRead", "GuiWrite"],
+            "builtin": ["GuiRead", "GuiWrite", "ServerCommand", "PlayerDataRead", "PlayerDataWrite", "StorageRead", "StorageWrite"]
+        },
         "scripts": {
             "wallet.lcui": {
                 "enabled": true,
@@ -30,6 +35,7 @@ namespace {
             },
             "menu.lcui": {
                 "enabled": true,
+                "trust": "builtin",
                 "commands": { "allow": true, "templates": ["give ${player} minecraft:diamond 1"] },
                 "gui": { "values": [], "requests": [], "callbacks": [] }
             },

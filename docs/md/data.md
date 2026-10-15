@@ -337,6 +337,8 @@
 
 `permission.json` 是脚本能力授权文件，位于 `plugins/LOICollectionA/gui/` 目录。它控制每个脚本允许调用的敏感能力：命令执行（`mc::runCmd`）、业务读写（`GUIManager::value/request/callback`）与跨脚本跳转（`GUIManager::open`）。
 
+鉴权分两关：先按脚本的**信任级**检查它是否拥有对应**能力**（粗关），再按每脚本的 id 白名单做精确匹配（细关）；两关都过才放行。
+
 > [!IMPORTANT]
 > 授权采用默认拒绝（`defaultPolicy: "deny"`）策略。脚本与授权分离：修改脚本（尤其是 `menu.lcui` / `shop.lcui`）新增能力调用后，必须同步修改 `permission.json`，否则对应调用会被拒绝并记录错误日志。
 
@@ -351,13 +353,34 @@
 | `scripts.<id>.gui.requests` | string[] | 允许的 `GUIManager::request` id 白名单 |
 | `scripts.<id>.gui.callbacks` | string[] | 允许的 `GUIManager::callback` id 白名单 |
 | `scripts.<id>.gui.navigations` | string[] | 允许通过 `GUIManager::open` 跳转到的目标脚本 id 或表单 id 白名单；为空时仅允许打开自身 |
+| `defaultTrust` | string | 未显式声明 `trust` 的脚本使用的信任级，默认 `"user"`；取值须为 `trustLevels` 中已定义的键 |
+| `trustLevels` | object | 信任级 → 能力名数组的映射，例如 `{"user": ["GuiRead","GuiWrite"], "builtin": ["GuiRead","GuiWrite","ServerCommand"]}` |
+| `scripts.<id>.trust` | string | 该脚本的信任级，省略时沿用 `defaultTrust`；决定其拥有的能力集合 |
+
+每种敏感调用的前置能力如下，缺失则直接拒绝（即使 id 白名单命中）：
+
+| 调用 | 所需能力 |
+| ---- | ---- |
+| `GUIManager::value` / `GUIManager::request` | `GuiRead` |
+| `GUIManager::callback` | `GuiWrite` |
+| `GUIManager::open` / `GUIManager::switchTo`（含跨脚本跳转） | `GuiWrite` |
+| `mc::runCmd` | `ServerCommand` |
+| 读取玩家数据 / 存档（未来内置原生） | `PlayerDataRead` / `StorageRead` |
+| 写入玩家数据 / 存档（未来内置原生） | `PlayerDataWrite` / `StorageWrite` |
 
 ```json
 {
     "defaultPolicy": "deny",
+    "defaultTrust": "user",
+    "trustLevels": {
+        "builtin": ["GuiRead", "GuiWrite", "ServerCommand", "PlayerDataRead", "PlayerDataWrite", "StorageRead", "StorageWrite"],
+        "admin":   ["GuiRead", "GuiWrite", "ServerCommand", "PlayerDataRead", "PlayerDataWrite", "StorageRead", "StorageWrite"],
+        "user":    ["GuiRead", "GuiWrite"]
+    },
     "scripts": {
         "menu": {
             "enabled": true,
+            "trust": "builtin",
             "commands": {
                 "allow": true,
                 "templates": ["say No permission", "say No score"]

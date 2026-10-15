@@ -1152,6 +1152,17 @@ let form = new CustomForm("example.shop", {tr("example.shop.title")}) {
 };
 ```
 
+## 脚本权限：信任级与能力
+
+脚本沙箱用**单一门禁**做敏感调用授权，完整字段见 [数据文件](./data.md) 的 `permission.json` 一节。每个脚本先按**信任级**拿到一组**能力**（粗关），再按 `scripts.<id>` 下的 id 白名单做精确匹配（细关），两关都过才放行。
+
+- 信任级在 `trustLevels` 中定义为能力名数组，`defaultTrust` 是缺省值，单个脚本可用 `trust` 覆盖；
+- 当前内置信任级：`user`（仅 `GuiRead` / `GuiWrite`）、`admin` 与 `builtin`（额外拥有 `ServerCommand` 与玩家数据 / 存档读写能力）；
+- 旧有的 `Network` / `Filesystem` 能力从未授予任何脚本，已从枚举中移除。
+
+> [!NOTE]
+> 粗关让未声明信任级的脚本只能碰 GUI：它即便在 `defaultPolicy: "allow"` 下也无法执行命令或读写玩家数据，默认最小权限。
+
 ## 执行预算与调用深度
 
 为防止失控脚本卡死服务器，VM 对每次脚本执行（含表单回调这类脚本重入）计量**燃料（fuel）**：每执行一条指令扣 1 点，同时墙钟、原生调用、对象与内存占用各有独立配额。任何一项耗尽都会立即终止执行并报错。

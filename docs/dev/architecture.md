@@ -113,7 +113,7 @@ src/LOICollectionA/
 ├─ frontend/                 # LCUI 脚本引擎：Lexer、Parser、SemanticAnalyzer、
 │   │                        #   AST、Callback（原生绑定注册表）、ir/（编译器、VM）
 │   ├─ sandbox/              # 脚本沙箱：ScriptPermission（权限与执行预算配置）、
-│   │                        #   SandboxBudget（燃料计量）、CapabilityGate、SandboxReport
+│   │                        #   SandboxBudget（燃料计量）、SandboxReport；权限采用信任级 + 能力两层模型
 │   ├─ lsp/                  # LCUI 语言服务核心：Protocol（JSON-RPC 分帧）、
 │   │                        #   Analysis（诊断与符号）、LanguageServer（分发）
 │   └─ builtin/              # 脚本内置实现：Math/Format/String 函数、
