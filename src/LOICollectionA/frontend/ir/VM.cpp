@@ -2,19 +2,24 @@
 #include <cctype>
 #include <chrono>
 #include <limits>
+#include <memory>
+#include <mutex>
 #include <ranges>
 #include <string>
+#include <utility>
 #include <vector>
 #include <algorithm>
 
 #include <ll/api/Expected.h>
 
 #include "LOICollectionA/frontend/Callback.h"
+#include "LOICollectionA/frontend/Context.h"
 #include "LOICollectionA/frontend/Unicode.h"
 
 #include "LOICollectionA/utils/core/MathUtils.h"
 
 #include "LOICollectionA/frontend/ir/VM.h"
+#include "LOICollectionA/frontend/runtime/ScriptVMRegistry.h"
 
 namespace LOICollection::frontend::ir::detail {
     thread_local std::shared_ptr<sandbox::SandboxBudget> tlsBudget;
@@ -248,6 +253,13 @@ namespace LOICollection::frontend::ir {
         }
     }
 
+    void VM::reset() {
+        this->frames.clear();
+        this->localPool.clear();
+        this->mReport = sandbox::SandboxReport{};
+        this->currentLoc = SourceLocation{};
+    }
+
     void VM::failBudget(sandbox::SandboxBudget::Violation violation, const std::string& message) {
         this->mReport.violation = violation;
         this->diagnostics.addError(this->currentLoc, message);
@@ -352,10 +364,35 @@ namespace LOICollection::frontend::ir {
             return ValueNode::ValueType{};
         }
 
-        VM vm(diagnostics, std::move(globals));
+        const std::string scriptId = Context::scriptIdOf(placeholders);
+        const std::string ownerId = Context::ownerIdOf(placeholders);
 
-        if (budget)
-            vm.setBudget(*budget);
+        std::shared_ptr<runtime::ScriptVM> pooled;
+        std::unique_lock<std::mutex> pooledGuard;
+        std::unique_ptr<VM> standalone;
+
+        VM* target = nullptr;
+        if (!scriptId.empty()) {
+            pooled = runtime::ScriptVMRegistry::getInstance().tryGetOrCreate(scriptId, ownerId);
+            pooledGuard = pooled->lock();
+            pooled->diagnostics().clear();
+            pooled->vm().reset();
+            pooled->vm().setGlobals(std::move(globals));
+
+            if (budget)
+                pooled->vm().setBudget(*budget);
+
+            target = &pooled->vm();
+        } else {
+            standalone = std::make_unique<VM>(diagnostics, std::move(globals));
+
+            if (budget)
+                standalone->setBudget(*budget);
+
+            target = standalone.get();
+        }
+
+        VM& vm = *target;
 
         struct FrameLimitGuard {
             std::shared_ptr<sandbox::SandboxBudget> budget;
@@ -400,7 +437,12 @@ namespace LOICollection::frontend::ir {
             vm.localPool[paramBase + i] = args[i];
 
         vm.frames.push_back(std::move(callee));
-        return vm.execute(func->owner, placeholders);
+
+        auto result = vm.execute(func->owner, placeholders);
+        if (pooled && pooled->diagnostics().hasErrors())
+            diagnostics.addError({}, pooled->diagnostics().getErrorMessage());
+
+        return result;
     }
 
 }

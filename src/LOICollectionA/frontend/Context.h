@@ -8,9 +8,11 @@
 namespace LOICollection::frontend {
     struct Context {
         static constexpr int kScriptIdKey = -1;
+        static constexpr int kOwnerIdKey = -2;
 
         std::unordered_map<int, std::any> params;
         std::string scriptId;
+        std::string ownerId;
 
         template <typename... Args>
         Context(Args&&... args) {
@@ -32,6 +34,17 @@ namespace LOICollection::frontend {
         static std::unordered_map<int, std::any> withScriptId(std::unordered_map<int, std::any> placeholders, const std::string& scriptId) {
             if (!scriptId.empty())
                 placeholders[kScriptIdKey] = scriptId;
+            return placeholders;
+        }
+
+        static std::string ownerIdOf(const std::unordered_map<int, std::any>& placeholders) {
+            const auto it = placeholders.find(kOwnerIdKey);
+            return it == placeholders.end() ? std::string{} : std::any_cast<std::string>(it->second);
+        }
+
+        static std::unordered_map<int, std::any> withOwnerId(std::unordered_map<int, std::any> placeholders, const std::string& ownerId) {
+            if (!ownerId.empty())
+                placeholders[kOwnerIdKey] = ownerId;
             return placeholders;
         }
     };

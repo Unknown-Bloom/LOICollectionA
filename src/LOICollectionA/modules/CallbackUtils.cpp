@@ -19,6 +19,9 @@
 #include "LOICollectionA/frontend/Callback.h"
 #include "LOICollectionA/frontend/SemanticAnalyzer.h"
 #include "LOICollectionA/frontend/ir/Compiler.h"
+#include "LOICollectionA/frontend/ir/VM.h"
+
+#include "LOICollectionA/frontend/runtime/ScriptVMRegistry.h"
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 #include "LOICollectionA/frontend/ir/VM.h"
 
@@ -101,15 +104,20 @@ namespace LOICollection::LOICollectionAPI {
     }
 
     std::string CallbackUtils::translate(const std::string& str, Player& player) {
-        frontend::DiagnosticEngine diagnostics;
+        auto pooled = frontend::runtime::ScriptVMRegistry::getInstance().tryGetOrCreate(
+            "callbackutils", player.getUuid().asString()
+        );
+        frontend::runtime::ScriptVMSession session(
+            *pooled, std::make_shared<frontend::GlobalsTable>(), frontend::sandbox::SandboxBudget{}
+        );
 
-        frontend::ir::VM mVM(diagnostics);
+        auto& diagnostics = session.diagnostics();
 
         if (this->mImpl->mCache.contains(str)) {
             auto mCached = this->mImpl->mCache.get(str);
 
             if (mCached.has_value()) {
-                auto result = mVM.run(mCached.value(), { std::ref(player) });
+                auto result = session.vm().run(mCached.value(), { std::ref(player) });
                 if (diagnostics.hasErrors()) {
                     this->mImpl->logger->error("CallbackUtils: {}", diagnostics.getErrorMessage());
                     diagnostics.clear();
@@ -153,7 +161,7 @@ namespace LOICollection::LOICollectionAPI {
         frontend::ir::Optimizer optimizer;
         optimizer.optimize(*mir);
 
-        auto result = mVM.run(mir, { std::ref(player) });
+        auto result = session.vm().run(mir, { std::ref(player) });
         if (diagnostics.hasErrors()) {
             this->mImpl->logger->error("CallbackUtils: {}", diagnostics.getErrorMessage());
             return str;
@@ -164,15 +172,18 @@ namespace LOICollection::LOICollectionAPI {
     }
 
     std::string CallbackUtils::translate(const std::string& str) {
-        frontend::DiagnosticEngine diagnostics;
+        auto pooled = frontend::runtime::ScriptVMRegistry::getInstance().tryGetOrCreate("callbackutils", "");
+        frontend::runtime::ScriptVMSession session(
+            *pooled, std::make_shared<frontend::GlobalsTable>(), frontend::sandbox::SandboxBudget{}
+        );
 
-        frontend::ir::VM mVM(diagnostics);
+        auto& diagnostics = session.diagnostics();
 
         if (this->mImpl->mCache.contains(str)) {
             auto mCached = this->mImpl->mCache.get(str);
 
             if (mCached.has_value()) {
-                auto result = mVM.run(mCached.value(), {});
+                auto result = session.vm().run(mCached.value(), {});
                 if (diagnostics.hasErrors()) {
                     this->mImpl->logger->error("CallbackUtils: {}", diagnostics.getErrorMessage());
                     diagnostics.clear();
@@ -216,7 +227,7 @@ namespace LOICollection::LOICollectionAPI {
         frontend::ir::Optimizer optimizer;
         optimizer.optimize(*mir);
 
-        auto result = mVM.run(mir, {});
+        auto result = session.vm().run(mir, {});
         if (diagnostics.hasErrors()) {
             this->mImpl->logger->error("CallbackUtils: {}", diagnostics.getErrorMessage());
             return str;

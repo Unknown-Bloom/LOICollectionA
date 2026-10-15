@@ -41,6 +41,8 @@
 #include "LOICollectionA/base/ServiceProvider.h"
 #include "LOICollectionA/frontend/sandbox/ScriptPermission.h"
 
+#include "LOICollectionA/frontend/runtime/ScriptVMRegistry.h"
+
 namespace LOICollection::form::detail {
     void warnIfMissingPermission(const std::string& id) {
         const auto permission = ServiceProvider::getInstance().getService<LOICollection::frontend::sandbox::ScriptPermissionService>();
@@ -110,6 +112,8 @@ namespace LOICollection::form {
 
         for (auto& [_, byPlayer] : this->mImpl->globals)
             byPlayer.erase(uuid);
+
+        frontend::runtime::ScriptVMRegistry::getInstance().releaseOwner(uuid);
     }
 
     GUIManager& GUIManager::getInstance() {
@@ -205,6 +209,7 @@ namespace LOICollection::form {
 
                 this->mImpl->cache.insert_or_assign(id, std::make_shared<frontend::ir::MirChunk>(std::move(*chunk)));
                 this->mImpl->globals.insert_or_assign(id, std::unordered_map<std::string, std::shared_ptr<frontend::GlobalsTable>>{});
+                frontend::runtime::ScriptVMRegistry::getInstance().releaseScript(id);
                 warnIfMissingPermission(id);
                 return {};
             }
@@ -230,6 +235,7 @@ namespace LOICollection::form {
 
         this->mImpl->cache.insert_or_assign(id, compiled);
         this->mImpl->globals.insert_or_assign(id, std::unordered_map<std::string, std::shared_ptr<frontend::GlobalsTable>>{});
+        frontend::runtime::ScriptVMRegistry::getInstance().releaseScript(id);
         warnIfMissingPermission(id);
 
         return {};
@@ -240,36 +246,45 @@ namespace LOICollection::form {
         if (it == this->mImpl->cache.end())
             return ll::makeStringError("execute: No corresponding bytecode cache was found");
 
-        frontend::DiagnosticEngine diagnostics;
-        frontend::ir::VM mVM(diagnostics, std::make_shared<frontend::GlobalsTable>());
-        mVM.setBudget(frontend::sandbox::budgetForScript(id));
+        auto pooled = frontend::runtime::ScriptVMRegistry::getInstance().tryGetOrCreate(id, "");
+        frontend::runtime::ScriptVMSession session(
+            *pooled, std::make_shared<frontend::GlobalsTable>(), frontend::sandbox::budgetForScript(id)
+        );
 
         frontend::Context context;
         context.scriptId = id;
+        context.params = frontend::Context::withScriptId(std::move(context.params), id);
 
-        auto result = mVM.run(it->second, context);
-        if (diagnostics.hasErrors())
-            return ll::makeStringError(diagnostics.getErrorMessage());
+        auto result = session.vm().run(it->second, context);
+        if (session.diagnostics().hasErrors())
+            return ll::makeStringError(session.diagnostics().getErrorMessage());
 
         return {};
     }
 
     ll::Expected<void> GUIManager::open(const std::string& id, const std::string& formId, Player& player, const frontend::ArrayRef& ctx) {
-        frontend::DiagnosticEngine diagnostics;
-
-        frontend::ir::VM mVM(diagnostics, this->scriptGlobals(id, player));
-        mVM.setBudget(frontend::sandbox::budgetForScript(id));
+        const std::string ownerId = player.getUuid().asString();
 
         if (this->mImpl->cache.contains(id)) {
             auto cached = this->mImpl->cache.at(id);
 
-            auto mCtx = ctx ? ctx : std::make_shared<frontend::ArrayValue>();
+            {
+                auto pooled = frontend::runtime::ScriptVMRegistry::getInstance().tryGetOrCreate(id, ownerId);
+                frontend::runtime::ScriptVMSession session(
+                    *pooled, this->scriptGlobals(id, player), frontend::sandbox::budgetForScript(id)
+                );
 
-            frontend::Context context{ std::ref(player), mCtx };
-            context.scriptId = id;
-            auto result = mVM.run(cached, context);
-            if (diagnostics.hasErrors())
-                return ll::makeStringError(diagnostics.getErrorMessage());
+                auto mCtx = ctx ? ctx : std::make_shared<frontend::ArrayValue>();
+
+                frontend::Context context{ std::ref(player), mCtx };
+                context.scriptId = id;
+                context.ownerId = ownerId;
+                context.params = frontend::Context::withOwnerId(std::move(context.params), ownerId);
+
+                auto result = session.vm().run(cached, context);
+                if (session.diagnostics().hasErrors())
+                    return ll::makeStringError(session.diagnostics().getErrorMessage());
+            }
 
             std::string uuid = player.getUuid().asString();
             if (this->mImpl->forms.contains(uuid) && this->mImpl->forms.at(uuid).contains(formId))
@@ -293,21 +308,28 @@ namespace LOICollection::form {
     ll::Expected<void> GUIManager::open(
         const std::string& id, const std::string& formId, GUIManagerType type, Player& player, const frontend::ArrayRef& ctx
     ) {
-        frontend::DiagnosticEngine diagnostics;
-
-        frontend::ir::VM mVM(diagnostics, this->scriptGlobals(id, player));
-        mVM.setBudget(frontend::sandbox::budgetForScript(id));
+        const std::string ownerId = player.getUuid().asString();
 
         if (this->mImpl->cache.contains(id)) {
             auto cached = this->mImpl->cache.at(id);
 
-            auto mCtx = ctx ? ctx : std::make_shared<frontend::ArrayValue>();
+            {
+                auto pooled = frontend::runtime::ScriptVMRegistry::getInstance().tryGetOrCreate(id, ownerId);
+                frontend::runtime::ScriptVMSession session(
+                    *pooled, this->scriptGlobals(id, player), frontend::sandbox::budgetForScript(id)
+                );
 
-            frontend::Context context{ std::ref(player), mCtx };
-            context.scriptId = id;
-            auto result = mVM.run(cached, context);
-            if (diagnostics.hasErrors())
-                return ll::makeStringError(diagnostics.getErrorMessage());
+                auto mCtx = ctx ? ctx : std::make_shared<frontend::ArrayValue>();
+
+                frontend::Context context{ std::ref(player), mCtx };
+                context.scriptId = id;
+                context.ownerId = ownerId;
+                context.params = frontend::Context::withOwnerId(std::move(context.params), ownerId);
+
+                auto result = session.vm().run(cached, context);
+                if (session.diagnostics().hasErrors())
+                    return ll::makeStringError(session.diagnostics().getErrorMessage());
+            }
 
             switch (type) {
                 case GUIManagerType::CustomForm: return this->switchToCustomForm(formId, player);
@@ -350,7 +372,10 @@ namespace LOICollection::form {
 
             [[maybe_unused]] auto cbResult = frontend::ir::VM::callFunctionRef(
                 handle->show, values,
-                frontend::Context::withScriptId(frontend::Context{ player }.params, handle->scriptId),
+                frontend::Context::withOwnerId(
+                    frontend::Context::withScriptId(frontend::Context{ player }.params, handle->scriptId),
+                    player.get().getUuid().asString()
+                ),
                 diagnostics, &budget
             );
 
@@ -409,7 +434,10 @@ namespace LOICollection::form {
 
             [[maybe_unused]] auto cbResult = frontend::ir::VM::callFunctionRef(
                 handle->show, values,
-                frontend::Context::withScriptId(frontend::Context{ player }.params, handle->scriptId),
+                frontend::Context::withOwnerId(
+                    frontend::Context::withScriptId(frontend::Context{ player }.params, handle->scriptId),
+                    player.get().getUuid().asString()
+                ),
                 diagnostics, &budget
             );
 
@@ -615,6 +643,8 @@ namespace LOICollection::form {
 
         this->mImpl->cache.clear();
         this->mImpl->globals.clear();
+
+        frontend::runtime::ScriptVMRegistry::getInstance().releaseAll();
     }
 
     ll::Expected<std::shared_ptr<CustomFormClass::CustomFormHandle>> GUIManager::getCustomFormUI(const std::string& id, Player& player) {
