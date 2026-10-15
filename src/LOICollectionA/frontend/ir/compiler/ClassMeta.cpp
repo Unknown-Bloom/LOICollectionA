@@ -194,8 +194,10 @@ namespace LOICollection::frontend::ir {
             }
 
             int lastReg = -1;
-            if (method.body)
+            if (method.body) {
+                this->predeclareLocals(*method.body);
                 lastReg = this->compilePart(*method.body);
+            }
 
             this->current.get().emit(MirOp::RETURN, 0, -1, lastReg, -1);
 
