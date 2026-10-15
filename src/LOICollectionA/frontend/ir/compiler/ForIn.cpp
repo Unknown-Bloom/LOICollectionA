@@ -136,6 +136,71 @@ namespace LOICollection::frontend::ir {
         this->lastResultReg = this->finishHint(-1, -1, node.loc);
     }
 
+    void Compiler::compileForInLazy(ForInNode& node, size_t uid, const IterableProtocol& protocol) {
+        const int seqSlot = this->declareSlot("__forin_seq_" + std::to_string(uid));
+        const int idxSlot = this->declareSlot("__forin_idx_" + std::to_string(uid));
+        const int elemSlot = this->declareSlot(node.elementVar);
+        const int indexSlot = node.hasIndexVar ? this->declareSlot(node.indexVar) : -1;
+
+        const int seqReg = this->compileValue(*node.iterable, node.loc);
+        this->current.get().emit(MirOp::STORE_SLOT, seqSlot, -1, seqReg, -1, node.loc);
+
+        this->current.get().emit(
+            MirOp::LOAD_CONST, this->addConstant(0), idxSlot, -1, -1, node.loc);
+
+        size_t loopStart = this->current.get().currentIP();
+
+        this->loopStack.push_back(LoopContext{});
+        this->loopStack.back().continueTarget = loopStart;
+
+        const int base = this->reserveRegs(1);
+        this->current.get().emit(MirOp::LOAD_SLOT, seqSlot, base, -1, -1, node.loc);
+
+        const int nextReg = this->allocReg();
+        const int metaIdx = this->addByNameCall(std::string(nextMethod), 0);
+        this->current.get().emitCall(
+            MirOp::CALL_METHOD_BY_NAME, metaIdx, nextReg, base, -1, 0, node.loc);
+
+        const int isNoneReg = this->allocReg();
+        this->current.get().emit(MirOp::IS_NONE, 0, isNoneReg, nextReg, -1, node.loc);
+
+        size_t jmpDoneIdx = this->current.get().emit(
+            MirOp::JMP_IF_TRUE, 0, -1, isNoneReg, -1, node.loc);
+
+        const int elemReg = this->allocReg();
+        this->current.get().emit(MirOp::UNWRAP, 0, elemReg, nextReg, -1, node.loc);
+        this->current.get().emit(MirOp::STORE_SLOT, elemSlot, -1, elemReg, -1, node.loc);
+
+        if (indexSlot >= 0)
+            this->current.get().emit(MirOp::LOAD_SLOT, idxSlot, indexSlot, -1, -1, node.loc);
+
+        const int oneReg = this->allocReg();
+        this->current.get().emit(
+            MirOp::LOAD_CONST, this->addConstant(1), oneReg, -1, -1, node.loc);
+
+        const int bumpedReg = this->allocReg();
+        this->current.get().emit(
+            MirOp::ADD, 0, bumpedReg, idxSlot, oneReg, node.loc, TypeInfo{ TypeKind::Int });
+        this->current.get().emit(MirOp::STORE_SLOT, idxSlot, -1, bumpedReg, -1, node.loc);
+
+        node.body->accept(*this);
+
+        size_t jmpBackIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
+        this->current.get().patchJump(jmpBackIdx, static_cast<int>(loopStart) - static_cast<int>(jmpBackIdx) - 1);
+
+        size_t exitPos = this->current.get().currentIP();
+        this->current.get().patchJump(jmpDoneIdx, static_cast<int>(exitPos) - static_cast<int>(jmpDoneIdx) - 1);
+
+        for (size_t idx : this->loopStack.back().breakJumps)
+            this->current.get().patchJump(idx, static_cast<int>(exitPos) - static_cast<int>(idx) - 1);
+        for (size_t idx : this->loopStack.back().continueJumps)
+            this->current.get().patchJump(idx, static_cast<int>(loopStart) - static_cast<int>(idx) - 1);
+
+        this->loopStack.pop_back();
+
+        this->lastResultReg = this->finishHint(-1, -1, node.loc);
+    }
+
     void Compiler::compileForInCounter(ForInNode& node, size_t uid) {
         auto& range = static_cast<RangeNode&>(*node.iterable);
 

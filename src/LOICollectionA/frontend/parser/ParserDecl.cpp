@@ -880,7 +880,42 @@ namespace LOICollection::frontend {
         std::string path = std::move(currentToken.value);
         eat(TokenType::TOKEN_STRING);
 
-        return std::make_unique<ImportNode>(loc, std::move(path));
+        auto node = std::make_unique<ImportNode>(loc, std::move(path));
+
+        if (currentToken.type == TokenType::TOKEN_LBRACE) {
+            if (!eat(TokenType::TOKEN_LBRACE)) return nullptr;
+
+            node->hasSymbols = true;
+
+            if (currentToken.type != TokenType::TOKEN_RBRACE) {
+                while (true) {
+                    if (currentToken.type != TokenType::TOKEN_IDENT) {
+                        diagnostics.addError(currentToken.loc,
+                            "Expected a definition name in the import list");
+                        synchronize({ TokenType::TOKEN_RBRACE, TokenType::TOKEN_SEMICOLON });
+                        return nullptr;
+                    }
+
+                    node->symbols.push_back(std::move(currentToken.value));
+                    eat(TokenType::TOKEN_IDENT);
+
+                    if (currentToken.type == TokenType::TOKEN_COMMA) {
+                        eat(TokenType::TOKEN_COMMA);
+                        continue;
+                    }
+                    break;
+                }
+            }
+
+            if (!eat(TokenType::TOKEN_RBRACE)) {
+                diagnostics.addError(currentToken.loc,
+                    "Expected '}' to close the import list");
+                synchronize({ TokenType::TOKEN_SEMICOLON, TokenType::TOKEN_RBRACE });
+                return nullptr;
+            }
+        }
+
+        return node;
     }
 
     std::unique_ptr<ComponentNode> Parser::parseComponent() {

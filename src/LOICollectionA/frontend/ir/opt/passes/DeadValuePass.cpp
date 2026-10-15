@@ -31,6 +31,9 @@ namespace LOICollection::frontend::ir::opt {
 
             if (instr.op == MirOp::HALT)
                 pinned.insert(0);
+
+            if (instr.op == MirOp::PANIC && instr.src1 >= 0)
+                read.insert(instr.src1);
         }
 
         std::vector<MirInstr> out;

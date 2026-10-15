@@ -32,7 +32,7 @@ TEST(OpTraitsTest, IsTerminatorStopsFlowWithoutBeingAJump) {
         const auto op = static_cast<MirOp>(value);
 
         EXPECT_EQ(isTerminator(op), op_traits_test_support::isOneOf(op, {
-            MirOp::JMP, MirOp::RETURN, MirOp::HALT
+            MirOp::JMP, MirOp::RETURN, MirOp::HALT, MirOp::PANIC
         })) << "op " << value;
     }
 

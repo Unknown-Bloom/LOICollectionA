@@ -146,3 +146,62 @@ TEST(ImplTest, ImplUnknownTrait) {
         1
     )"), std::runtime_error);
 }
+
+TEST(ImplTest, GenericImplOnNonGenericClass) {
+    EXPECT_EQ(eval(R"(
+        trait Show { func show() -> string; }
+        class Box {
+            public:
+            value = 0;
+            Box(v: int) { this.value = v; }
+        }
+        impl<T> Show for Box {
+            func show() -> string { return "box:" + this.value; }
+        }
+        new Box(7).show()
+    )"), "box:7");
+}
+
+TEST(ImplTest, GenericImplRenamesToClassParams) {
+    EXPECT_EQ(eval(R"(
+        trait Boxed { func unbox(); }
+        class Pair<T> {
+            public:
+            first = 0;
+            second = 0;
+            Pair(a: int, b: int) { this.first = a; this.second = b; }
+            func get() -> T { return this.first; }
+        }
+        impl<U> Boxed for Pair {
+            func unbox() -> U { return this.get(); }
+        }
+        let p = new Pair(3, 4);
+        p.unbox()
+    )"), "3");
+}
+
+TEST(ImplTest, GenericImplOmittedOnGenericClass) {
+    EXPECT_EQ(eval(R"(
+        class Pair<T> {
+            public:
+            a = 0;
+            b = 0;
+            Pair(x: int, y: int) { this.a = x; this.b = y; }
+        }
+        impl Pair {
+            func sum() -> int { return this.a + this.b; }
+        }
+        new Pair(2, 5).sum()
+    )"), "7");
+}
+
+TEST(ImplTest, BlanketImplRejected) {
+    EXPECT_THROW(eval(R"(
+        trait Show { func show() -> string; }
+        class Box { }
+        impl<T> Show for T {
+            func show() -> string { return "any"; }
+        }
+        1
+    )"), std::runtime_error);
+}

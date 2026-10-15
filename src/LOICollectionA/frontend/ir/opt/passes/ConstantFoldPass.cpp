@@ -162,6 +162,7 @@ namespace LOICollection::frontend::ir::opt {
             case MirOp::JMP:
             case MirOp::RETURN:
             case MirOp::HALT:
+            case MirOp::PANIC:
                 return emitOriginal(instr);
 
             case MirOp::MAKE_LAMBDA:

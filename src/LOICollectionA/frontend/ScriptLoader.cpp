@@ -191,6 +191,28 @@ namespace LOICollection::frontend {
         std::unordered_set<std::string> merged;
         std::unordered_map<std::string, std::pair<std::string, size_t>> definedAt;
 
+        // Collect, per imported file, the union of every symbol requested across
+        // all import sites. "*" marks an unqualified (whole-file) import.
+        std::unordered_map<std::string, std::unordered_set<std::string>> requested;
+        for (auto& path : order) {
+            for (auto& part : modules.at(path)->parts) {
+                if (part->getType() != ASTNode::Type::Import)
+                    continue;
+
+                auto& import = static_cast<ImportNode&>(*part);
+                auto resolved = (std::filesystem::path(root) / import.path).lexically_normal().generic_string();
+
+                auto& wanted = requested[resolved];
+                if (!import.hasSymbols) {
+                    wanted.insert("*");
+                    continue;
+                }
+
+                if (!wanted.contains("*"))
+                    wanted.insert(import.symbols.begin(), import.symbols.end());
+            }
+        }
+
         for (auto& path : order) {
             auto& program = modules.at(path);
             std::vector<std::unique_ptr<ASTNode>> nodes;
@@ -203,8 +225,22 @@ namespace LOICollection::frontend {
 
                     if (merged.insert(resolved).second) {
                         auto& imported = expanded.at(resolved);
-                        for (auto& node : imported)
+
+                        auto wantedIt = requested.find(resolved);
+                        const bool wholeFile =
+                            wantedIt == requested.end() || wantedIt->second.contains("*");
+                        const auto& wanted =
+                            wholeFile ? std::unordered_set<std::string>{} : wantedIt->second;
+
+                        for (auto& node : imported) {
+                            if (!wholeFile) {
+                                const std::string* name = definitionName(*node);
+                                if (!name || !wanted.contains(*name))
+                                    continue;
+                            }
+
                             nodes.push_back(std::move(node));
+                        }
                         imported.clear();
                     }
 

@@ -59,6 +59,7 @@ namespace LOICollection::frontend {
         std::vector<MethodParam> parseParams();
 
         std::unique_ptr<ReturnNode> parseReturn();
+        std::unique_ptr<PanicNode> parsePanicStatement();
 
         std::unique_ptr<AssignmentNode> parseVariableDeclaration();
 

@@ -286,3 +286,100 @@ TEST(ForInTest, LambdaCapturesCurrentIterationValue) {
         "let last = fns[1]; last()"),
         "1");
 }
+
+TEST(ForInTest, LazyNextProtocol) {
+    EXPECT_EQ(eval(R"(
+        class Count {
+            public:
+            i = 0;
+            n = 0;
+            Count(limit: int) { this.n = limit; }
+            func next() -> optional<int> {
+                if (this.i >= this.n) [ return None; ]
+                this.i = this.i + 1;
+                return this.i;
+            }
+        }
+        let total = 0;
+        for (v in new Count(4)) [ total = total + v; ]
+        total
+    )"), "10");
+}
+
+TEST(ForInTest, LazyNextProtocolWithIndex) {
+    EXPECT_EQ(eval(R"(
+        class Count {
+            public:
+            i = 0;
+            n = 0;
+            Count(limit: int) { this.n = limit; }
+            func next() -> optional<int> {
+                if (this.i >= this.n) [ return None; ]
+                this.i = this.i + 1;
+                return this.i;
+            }
+        }
+        let s = "";
+        for (i, v in new Count(3)) [ s += i + ":" + v + " "; ]
+        s
+    )"), "0:1 1:2 2:3 ");
+}
+
+TEST(ForInTest, LazyNextProtocolEmpty) {
+    EXPECT_EQ(eval(R"(
+        class Count {
+            public:
+            i = 0;
+            n = 0;
+            Count(limit: int) { this.n = limit; }
+            func next() -> optional<int> {
+                if (this.i >= this.n) [ return None; ]
+                this.i = this.i + 1;
+                return this.i;
+            }
+        }
+        let ran = 0;
+        for (v in new Count(0)) [ ran = ran + 1; ]
+        ran
+    )"), "0");
+}
+
+TEST(ForInTest, LazyInfiniteIteratorWithBreak) {
+    EXPECT_EQ(eval(R"(
+        class Nats {
+            public:
+            i = 0;
+            func next() -> optional<int> {
+                this.i = this.i + 1;
+                return this.i;
+            }
+        }
+        let total = 0;
+        for (v in new Nats()) [
+            if (v > 5) [ break; ]
+            total = total + v;
+        ]
+        total
+    )"), "15");
+}
+
+TEST(ForInTest, LazyNextProtocolInherited) {
+    EXPECT_EQ(eval(R"(
+        class Base {
+            public:
+            i = 0;
+            n = 0;
+            func next() -> optional<int> {
+                if (this.i >= this.n) [ return None; ]
+                this.i = this.i + 1;
+                return this.i;
+            }
+        }
+        class Sub extends Base {
+            Sub(limit: int) { this.n = limit; }
+        }
+        let total = 0;
+        for (v in new Sub(3)) [ total = total + v; ]
+        total
+    )"), "6");
+}

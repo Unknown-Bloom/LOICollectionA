@@ -229,6 +229,18 @@ namespace LOICollection::frontend::ir {
                 }
                 case MirOp::HALT:
                     return this->regOf(this->frames.back(), 0);
+                case MirOp::PANIC: {
+                    std::string message = "panic";
+                    if (instr.src1 >= 0) {
+                        const ValueNode::ValueType& value = this->regOf(frame, instr.src1);
+                        const std::string rendered = VM::valueToString(value);
+                        if (!rendered.empty())
+                            message += ": " + rendered;
+                    }
+
+                    this->diagnostics.addError(instr.loc, message);
+                    return std::string("");
+                }
                 default:
                     this->diagnostics.addError(this->currentLoc, "Unknown opcode");
                     break;

@@ -151,7 +151,7 @@ namespace LOICollection::frontend::ir::opt {
             const MirOp op = instr.op;
             if (op == MirOp::RETURN)
                 return true;
-            if (transfersControl(op) || op == MirOp::HALT ||
+            if (transfersControl(op) || op == MirOp::HALT || op == MirOp::PANIC ||
                 op == MirOp::LOAD_VAR || op == MirOp::STORE_VAR)
                 return false;
         }

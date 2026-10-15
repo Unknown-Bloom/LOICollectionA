@@ -514,6 +514,42 @@ namespace LOICollection::frontend {
         return std::make_unique<ReturnNode>(loc, std::move(value));
     }
 
+    std::unique_ptr<PanicNode> Parser::parsePanicStatement() {
+        SourceLocation loc = currentToken.loc;
+
+        if (!eat(TokenType::TOKEN_PANIC)) return nullptr;
+
+        std::unique_ptr<ExprNode> message;
+
+        if (currentToken.type == TokenType::TOKEN_LPAREN) {
+            if (!eat(TokenType::TOKEN_LPAREN)) return nullptr;
+
+            if (currentToken.type != TokenType::TOKEN_RPAREN) {
+                message = parseBaseExpression();
+                if (!message)
+                    return nullptr;
+            }
+
+            if (!eat(TokenType::TOKEN_RPAREN)) {
+                synchronize({ TokenType::TOKEN_SEMICOLON, TokenType::TOKEN_RBRACE, TokenType::TOKEN_RBRCKET });
+                return nullptr;
+            }
+        } else if (currentToken.type != TokenType::TOKEN_SEMICOLON &&
+                   currentToken.type != TokenType::TOKEN_RBRACE &&
+                   currentToken.type != TokenType::TOKEN_RBRCKET &&
+                   currentToken.type != TokenType::TOKEN_COLON &&
+                   currentToken.type != TokenType::TOKEN_EOF) {
+            message = parseBaseExpression();
+            if (!message)
+                return nullptr;
+        }
+
+        if (currentToken.type == TokenType::TOKEN_SEMICOLON)
+            eat(TokenType::TOKEN_SEMICOLON);
+
+        return std::make_unique<PanicNode>(loc, std::move(message));
+    }
+
     std::unique_ptr<BlockNode> Parser::parseBlock(TokenType stopToken, bool stopOnColon) {
         auto block = std::make_unique<BlockNode>();
 
@@ -717,6 +753,9 @@ namespace LOICollection::frontend {
 
         if (currentToken.type == TokenType::TOKEN_RETURN)
             return parseReturn();
+
+        if (currentToken.type == TokenType::TOKEN_PANIC)
+            return parsePanicStatement();
 
         if (currentToken.type == TokenType::TOKEN_USING)
             return parseUsing();

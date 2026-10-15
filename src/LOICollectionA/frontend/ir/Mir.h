@@ -119,6 +119,7 @@ namespace LOICollection::frontend::ir {
         JMP_IF_TRUE,
         JMP,
         HALT,
+        PANIC,
 
         BIND_THIS,
         LOAD_LEN,

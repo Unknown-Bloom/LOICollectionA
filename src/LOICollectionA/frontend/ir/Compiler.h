@@ -90,6 +90,7 @@ namespace LOICollection::frontend::ir {
         void visit(BlockNode& node) override;
         void visit(ClassNode& node) override;
         void visit(ReturnNode& node) override;
+        void visit(PanicNode& node) override;
         void visit(NewNode& node) override;
         void visit(MemberAccessNode& node) override;
         void visit(MethodCallNode& node) override;
@@ -146,6 +147,7 @@ namespace LOICollection::frontend::ir {
 
         void compileForInCounter(ForInNode& node, size_t uid);
         void compileForInIterable(ForInNode& node, size_t uid, const IterableProtocol& protocol);
+        void compileForInLazy(ForInNode& node, size_t uid, const IterableProtocol& protocol);
         int emitIterableLength(const IterableProtocol& protocol, int seqSlot, const SourceLocation& loc);
         int emitIterableElement(const IterableProtocol& protocol, int seqSlot, int idxSlot, const SourceLocation& loc);
         int emitArithmeticOp(

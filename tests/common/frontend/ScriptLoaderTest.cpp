@@ -173,3 +173,59 @@ TEST(ScriptLoaderTest, MissingImportFileReportsError) {
     EXPECT_FALSE(loaded.has_value());
     EXPECT_NE(diagnostics.getErrorMessage().find("Cannot read imported file"), std::string::npos);
 }
+
+TEST(ScriptLoaderTest, SelectiveImportFiltersSymbols) {
+    FileMap files = {
+        {"/lib.lcui", "func keep() -> int { return 1; }\nfunc drop() -> int { return 2; }\nclass KeepClass { }\n"},
+        {"/main.lcui", "import \"lib.lcui\" { keep };\nlet r = keep();\nr"},
+    };
+
+    EXPECT_EQ(evalFiles(files, "/main.lcui"), "1");
+}
+
+TEST(ScriptLoaderTest, SelectiveImportMultipleSymbols) {
+    FileMap files = {
+        {"/lib.lcui", "func f() -> int { return 10; }\nfunc g() -> int { return 20; }\nfunc h() -> int { return 30; }\n"},
+        {"/main.lcui", "import \"lib.lcui\" { f, h };\nf() + h()"},
+    };
+
+    EXPECT_EQ(evalFiles(files, "/main.lcui"), "40");
+}
+
+TEST(ScriptLoaderTest, SelectiveImportExcludedSymbolIsUndefined) {
+    FileMap files = {
+        {"/lib.lcui", "func keep() -> int { return 1; }\nfunc drop() -> int { return 2; }\n"},
+        {"/main.lcui", "import \"lib.lcui\" { keep };\ndrop()"},
+    };
+
+    EXPECT_THROW(evalFiles(files, "/main.lcui"), std::runtime_error);
+}
+
+TEST(ScriptLoaderTest, SelectiveImportUnlistedClassIsUndefined) {
+    FileMap files = {
+        {"/lib.lcui", "func keep() -> int { return 1; }\nclass Hidden { }\n"},
+        {"/main.lcui", "import \"lib.lcui\" { keep };\nnew Hidden()"},
+    };
+
+    EXPECT_THROW(evalFiles(files, "/main.lcui"), std::runtime_error);
+}
+
+TEST(ScriptLoaderTest, SelectiveImportUnionAcrossSites) {
+    FileMap files = {
+        {"/common.lcui", "func base() -> int { return 5; }\nfunc extra() -> int { return 6; }\n"},
+        {"/a.lcui", "import \"common.lcui\" { base };\nfunc aVal() -> int { return base() + 1; }\n"},
+        {"/b.lcui", "import \"common.lcui\" { extra };\nfunc bVal() -> int { return extra() + 2; }\n"},
+        {"/main.lcui", "import \"a.lcui\";\nimport \"b.lcui\";\naVal() + bVal()"},
+    };
+
+    EXPECT_EQ(evalFiles(files, "/main.lcui"), "14");
+}
+
+TEST(ScriptLoaderTest, SelectiveImportWildcardStillMergesEverything) {
+    FileMap files = {
+        {"/lib.lcui", "func f() -> int { return 3; }\nfunc g() -> int { return 4; }\n"},
+        {"/main.lcui", "import \"lib.lcui\";\nf() + g()"},
+    };
+
+    EXPECT_EQ(evalFiles(files, "/main.lcui"), "7");
+}

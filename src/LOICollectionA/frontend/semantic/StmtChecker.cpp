@@ -95,6 +95,12 @@ namespace LOICollection::frontend {
             case ASTNode::Type::Return:
                 checkReturn(static_cast<ReturnNode&>(node), scope);
                 return;
+            case ASTNode::Type::Panic: {
+                auto& panicNode = static_cast<PanicNode&>(node);
+                if (panicNode.message)
+                    checkExpr(*panicNode.message, scope);
+                return;
+            }
             case ASTNode::Type::While: {
                 auto& whileNode = static_cast<WhileNode&>(node);
                 ++scope.loopDepth;
@@ -134,7 +140,8 @@ namespace LOICollection::frontend {
                     this->diagnostics.addError(forIn.loc,
                         "for-in iterable must be an array, a string or a class providing '" +
                         std::string(lengthMethod) + "()' and '" + std::string(elementMethod) +
-                        "(int)', got " + typeInfoToString(iterableType));
+                        "(int)', or a lazy iterator providing '" + std::string(nextMethod) +
+                        "()' returning optional, got " + typeInfoToString(iterableType));
                 }
 
                 auto declareLoopVar = [this](const std::string& name, TypeInfo type) {
@@ -146,8 +153,11 @@ namespace LOICollection::frontend {
 
                 if (forIn.hasIndexVar)
                     declareLoopVar(forIn.indexVar, TypeInfo{ TypeKind::Int });
-                declareLoopVar(forIn.elementVar,
-                    protocol ? protocol->elementType : TypeInfo{});
+
+                TypeInfo elementType = protocol ? protocol->elementType : TypeInfo{};
+                if (elementType.kind == TypeKind::Optional && elementType.optionalInner)
+                    elementType = *elementType.optionalInner;
+                declareLoopVar(forIn.elementVar, elementType);
 
                 if (forIn.body)
                     checkStatement(*forIn.body, scope);

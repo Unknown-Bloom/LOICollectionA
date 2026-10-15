@@ -75,6 +75,14 @@ namespace LOICollection::frontend::detail {
 
         return IterableProtocol{ IterableShape::Convention, element->returnType, cls.name };
     }
+
+    std::optional<IterableProtocol> lazyConvention(const ClassNode& cls, const ClassLookup& lookup) {
+        const MethodDecl* next = findMethod(cls, nextMethod, 0, lookup);
+        if (!next)
+            return std::nullopt;
+
+        return IterableProtocol{ IterableShape::Lazy, next->returnType, cls.name };
+    }
 }
 
 namespace LOICollection::frontend {
@@ -102,6 +110,9 @@ namespace LOICollection::frontend {
         if (!cls)
             return std::nullopt;
 
-        return scriptConvention(*cls, lookup);
+        if (auto convention = scriptConvention(*cls, lookup))
+            return convention;
+
+        return lazyConvention(*cls, lookup);
     }
 }

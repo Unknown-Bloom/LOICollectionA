@@ -704,6 +704,8 @@ namespace LOICollection::frontend::ir {
 
         if (protocol->shape == IterableShape::Counter)
             this->compileForInCounter(node, uid);
+        else if (protocol->shape == IterableShape::Lazy)
+            this->compileForInLazy(node, uid, *protocol);
         else
             this->compileForInIterable(node, uid, *protocol);
     }
@@ -1054,6 +1056,13 @@ namespace LOICollection::frontend::ir {
         const int reg = node.value ? this->compilePart(*node.value) : -1;
 
         this->current.get().emit(MirOp::RETURN, 0, -1, reg, -1, node.loc);
+        this->lastResultReg = -1;
+    }
+
+    void Compiler::visit(PanicNode& node) {
+        const int reg = node.message ? this->compilePart(*node.message) : -1;
+
+        this->current.get().emit(MirOp::PANIC, 0, -1, reg, -1, node.loc);
         this->lastResultReg = -1;
     }
 

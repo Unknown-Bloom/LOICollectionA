@@ -9,6 +9,7 @@ namespace LOICollection::frontend::lsp::detail {
         "public", "private", "extends", "instanceof", "static", "using",
         "None", "while", "for", "in", "break", "continue",
         "import", "component", "let", "const", "trait", "impl",
+        "panic",
         "true", "false"
     };
 

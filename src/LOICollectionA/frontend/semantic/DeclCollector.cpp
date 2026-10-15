@@ -15,6 +15,16 @@
 
 namespace LOICollection::frontend {
 
+    namespace {
+        void renameTypeVars(TypeExpr& expr, const std::unordered_map<std::string, std::string>& map) {
+            if (auto it = map.find(expr.name); it != map.end())
+                expr.name = it->second;
+
+            for (auto& arg : expr.args)
+                renameTypeVars(arg, map);
+        }
+    }
+
     void SemanticAnalyzer::resolveHierarchy() {
         std::unordered_set<std::string> visiting;
         std::unordered_set<std::string> visited;
@@ -186,25 +196,24 @@ namespace LOICollection::frontend {
             auto clsOpt = this->findClass(targetName);
             if (!clsOpt) {
                 this->diagnostics.addError(impl.loc,
-                    "impl target '" + targetName + "' is not a class");
+                    "impl target '" + targetName +
+                    "' is not a class (blanket impls are not supported)");
                 continue;
             }
             ClassNode& cls = clsOpt->get();
 
-            if (cls.typeParams.size() != impl.typeParams.size()) {
-                this->diagnostics.addError(impl.loc,
-                    "impl for generic class '" + targetName +
-                    "' must declare matching type parameters");
-                continue;
-            }
-            for (size_t i = 0; i < impl.typeParams.size(); ++i) {
-                if (impl.typeParams[i].name != cls.typeParams[i].name) {
-                    this->diagnostics.addError(impl.loc,
-                        "impl type parameter '" + impl.typeParams[i].name +
-                        "' does not match class type parameter '" + cls.typeParams[i].name + "'");
-                    break;
-                }
-            }
+            // impl type parameters map onto the class parameters by position; rename
+            // them so method signatures line up with the class vocabulary.
+            std::unordered_map<std::string, std::string> renameMap;
+            for (size_t i = 0; i < impl.typeParams.size() && i < cls.typeParams.size(); ++i)
+                renameMap[impl.typeParams[i].name] = cls.typeParams[i].name;
+
+            // Parameters with no class counterpart (e.g. on a non-generic class) stay
+            // available as method-scoped generic variables instead.
+            std::vector<TypeParam> methodScopedParams;
+            for (size_t i = std::min(impl.typeParams.size(), cls.typeParams.size());
+                 i < impl.typeParams.size(); ++i)
+                methodScopedParams.push_back(impl.typeParams[i]);
 
             std::string traitName;
             if (impl.trait) {
@@ -238,10 +247,26 @@ namespace LOICollection::frontend {
                         targetName + "'");
                     continue;
                 }
+
+                renameTypeVars(method.returnTypeExpr, renameMap);
+                for (auto& param : method.params)
+                    renameTypeVars(param.typeExpr, renameMap);
+
+                for (const auto& extra : methodScopedParams) {
+                    bool shadowed = false;
+                    for (const auto& own : method.typeParams)
+                        if (own.name == extra.name)
+                            shadowed = true;
+                    if (!shadowed)
+                        method.typeParams.push_back(extra);
+                }
+
                 cls.methods.push_back(std::move(method));
             }
 
             for (auto& member : impl.consts) {
+                renameTypeVars(member.typeExpr, renameMap);
+
                 if (constNames.contains(member.name)) {
                     this->diagnostics.addError(member.loc,
                         "Duplicate associated constant '" + member.name +

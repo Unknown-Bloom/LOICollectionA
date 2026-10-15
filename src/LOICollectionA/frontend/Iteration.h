@@ -10,11 +10,13 @@
 namespace LOICollection::frontend {
     inline constexpr std::string_view lengthMethod  = "length";
     inline constexpr std::string_view elementMethod = "element";
+    inline constexpr std::string_view nextMethod     = "next";
 
     enum class IterableShape {
         Counter,
         Indexed,
-        Convention
+        Convention,
+        Lazy
     };
 
     struct IterableProtocol {

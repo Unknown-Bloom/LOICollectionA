@@ -10,7 +10,8 @@ namespace LOICollection::frontend::ir::opt {
     }
 
     inline bool isTerminator(MirOp op) {
-        return op == MirOp::JMP || op == MirOp::RETURN || op == MirOp::HALT;
+        return op == MirOp::JMP || op == MirOp::RETURN || op == MirOp::HALT ||
+               op == MirOp::PANIC;
     }
 
     inline bool isStoreOp(MirOp op) {

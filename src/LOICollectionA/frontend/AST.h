@@ -127,7 +127,7 @@ namespace LOICollection::frontend {
             While, For, Break, Continue,
             CompoundAssign, ForIn, Range, Coalesce,
             Import, Component,
-            Trait, Impl, Match
+            Trait, Impl, Match, Panic
         };
         [[nodiscard]] virtual Type getType() const = 0;
         
@@ -706,6 +706,22 @@ namespace LOICollection::frontend {
         }
     };
 
+    struct PanicNode : ASTNode {
+        SourceLocation loc;
+        std::unique_ptr<ExprNode> message;
+
+        PanicNode(SourceLocation location, std::unique_ptr<ExprNode> msg)
+            : loc(location), message(std::move(msg)) {}
+
+        explicit PanicNode(SourceLocation location) : loc(location) {}
+
+        [[nodiscard]] Type getType() const override { return Type::Panic; }
+
+        void accept(ASTVisitor& visitor) override {
+            visitor.visit(*this);
+        }
+    };
+
     struct NewNode : ExprNode {
         SourceLocation loc;
         std::string className;
@@ -938,6 +954,8 @@ namespace LOICollection::frontend {
     struct ImportNode : ASTNode {
         SourceLocation loc;
         std::string path;
+        std::vector<std::string> symbols;
+        bool hasSymbols = false;
 
         ImportNode(SourceLocation location, std::string p)
             : loc(location), path(std::move(p)) {}

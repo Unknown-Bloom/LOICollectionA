@@ -220,6 +220,7 @@ namespace LOICollection::frontend {
             {"impl", TokenType::TOKEN_IMPL},
             {"const", TokenType::TOKEN_CONST},
             {"dyn", TokenType::TOKEN_DYN},
+            {"panic", TokenType::TOKEN_PANIC},
         };
 
         auto it = keywordTokens.find(id);

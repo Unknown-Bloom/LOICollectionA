@@ -124,15 +124,18 @@ TEST(GenericClassTest, TypeArgumentsOnPlainClassError) {
     )"), std::runtime_error);
 }
 
-TEST(GenericClassTest, ImplTypeParamMismatchError) {
-    EXPECT_THROW(eval(R"(
+TEST(GenericClassTest, ImplTypeParamPositionalRename) {
+    // impl<U> on class Box<T>: U maps onto T by position, so the old
+    // "type parameter name mismatch" error is gone and the call works.
+    EXPECT_EQ(eval(R"(
         class Box<T> {
             public: value: T;
             Box(v: T) { this.value = v; }
         }
         impl<U> Box<U> {
-            func extra() -> U { return value; }
+            func extra() -> U { return this.value; }
         }
-        1
-    )"), std::runtime_error);
+        let b = new Box(41);
+        b.extra()
+    )"), "41");
 }
