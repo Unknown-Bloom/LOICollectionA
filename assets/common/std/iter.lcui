@@ -1,0 +1,325 @@
+/* Std: lazy iterator combinators (Rust-style).
+ *
+ * Everything is built on the next() iteration protocol of the language:
+ * `for (v in it)` works out of the box, and manual pulls keep the optional
+ * semantics (`let v = it.next(); if (v) [...]`).
+ *
+ * Combinators are methods on Iter so they chain:
+ *
+ *     import "../std/iter.lcui";
+ *
+ *     let squares = range(1, 10).map(new Square()).filter(new Big()).collect();
+ *
+ * Mappers and predicates are Fn1/Fn2 subclasses (the script equivalent of
+ * implementing an Fn trait):
+ *
+ *     class Square extends Fn1 {
+ *         func call(x) { return x * x; }
+ *     }
+ *
+ * Implementation note: method-local `let` names are deliberately unique per
+ * method. Locals compile to by-name slots shared across the whole program,
+ * so a generic name like `cur` here and in a user iterator's next() would
+ * silently collide (a documented language limitation).
+ */
+
+class Fn1 {
+    func call(x) {
+        return x;
+    }
+}
+
+class Fn2 {
+    func call(a, b) {
+        return b;
+    }
+}
+
+class Iter {
+    func next() {
+        return None;
+    }
+
+    func map(f: Fn1) -> Iter {
+        return new MapIter(this, f);
+    }
+
+    func filter(pred: Fn1) -> Iter {
+        return new FilterIter(this, pred);
+    }
+
+    func take(n: int) -> Iter {
+        return new TakeIter(this, n);
+    }
+
+    func takeWhile(pred: Fn1) -> Iter {
+        return new TakeWhileIter(this, pred);
+    }
+
+    func skip(n: int) -> Iter {
+        return new SkipIter(this, n);
+    }
+
+    func zip(other: Iter) -> Iter {
+        return new ZipIter(this, other);
+    }
+
+    func chain(other: Iter) -> Iter {
+        return new ChainIter(this, other);
+    }
+
+    func stepBy(n: int) -> Iter {
+        return new StepByIter(this, n);
+    }
+
+    func collect() {
+        let out = [];
+        while (true) [
+            let cval = this.next();
+            if (!cval) [ break; ]
+            out.push(cval);
+        ]
+        return out;
+    }
+
+    func fold(seed, f: Fn2) {
+        let acc = seed;
+        while (true) [
+            let fdval = this.next();
+            if (!fdval) [ break; ]
+            acc = f.call(acc, fdval);
+        ]
+        return acc;
+    }
+
+    func sum() {
+        let total = 0;
+        while (true) [
+            let smval = this.next();
+            if (!smval) [ break; ]
+            total = total + smval;
+        ]
+        return total;
+    }
+
+    func count() -> int {
+        let num = 0;
+        while (true) [
+            let cnval = this.next();
+            if (!cnval) [ break; ]
+            num = num + 1;
+        ]
+        return num;
+    }
+
+    func forEach(f: Fn1) {
+        while (true) [
+            let feval = this.next();
+            if (!feval) [ break; ]
+            f.call(feval);
+        ]
+    }
+
+    func any(pred: Fn1) -> bool {
+        while (true) [
+            let anval = this.next();
+            if (!anval) [ return false; ]
+            if (pred.call(anval)) [ return true; ]
+        ]
+        return false;
+    }
+
+    func all(pred: Fn1) -> bool {
+        while (true) [
+            let alval = this.next();
+            if (!alval) [ return true; ]
+            if (!pred.call(alval)) [ return false; ]
+        ]
+        return true;
+    }
+
+    func find(pred: Fn1) {
+        while (true) [
+            let fval = this.next();
+            if (!fval) [ return None; ]
+            if (pred.call(fval)) [ return fval; ]
+        ]
+        return None;
+    }
+
+    func position(pred: Fn1) -> int {
+        let idx = 0;
+        while (true) [
+            let pval = this.next();
+            if (!pval) [ return -1; ]
+            if (pred.call(pval)) [ return idx; ]
+            idx = idx + 1;
+        ]
+        return -1;
+    }
+
+    func last() {
+        let ltail = None;
+        while (true) [
+            let laval = this.next();
+            if (!laval) [ break; ]
+            ltail = laval;
+        ]
+        return ltail;
+    }
+
+    func max() {
+        let mxseen = false;
+        let mxcur = 0;
+        while (true) [
+            let mxval = this.next();
+            if (!mxval) [ break; ]
+            if (!mxseen) [ mxcur = mxval; mxseen = true; ]
+            if (mxval > mxcur) [ mxcur = mxval; ]
+        ]
+        if (!mxseen) [ return None; ]
+        return mxcur;
+    }
+
+    func min() {
+        let mnseen = false;
+        let mncur = 0;
+        while (true) [
+            let mnval = this.next();
+            if (!mnval) [ break; ]
+            if (!mnseen) [ mncur = mnval; mnseen = true; ]
+            if (mnval < mncur) [ mncur = mnval; ]
+        ]
+        if (!mnseen) [ return None; ]
+        return mncur;
+    }
+}
+
+class MapIter extends Iter {
+    public: src: Iter; f: Fn1;
+    MapIter(s: Iter, m: Fn1) { this.src = s; this.f = m; }
+    func next() {
+        let mval = this.src.next();
+        if (mval) [ return this.f.call(mval); ]
+        return None;
+    }
+}
+
+class FilterIter extends Iter {
+    public: src: Iter; pred: Fn1;
+    FilterIter(s: Iter, p: Fn1) { this.src = s; this.pred = p; }
+    func next() {
+        let fv = this.src.next();
+        while (fv && !this.pred.call(fv)) [
+            fv = this.src.next();
+        ]
+        return fv;
+    }
+}
+
+class TakeIter extends Iter {
+    public: src: Iter; n: int; taken: int = 0;
+    TakeIter(s: Iter, limit: int) { this.src = s; this.n = limit; }
+    func next() {
+        if (this.taken >= this.n) [ return None; ]
+        this.taken = this.taken + 1;
+        return this.src.next();
+    }
+}
+
+class TakeWhileIter extends Iter {
+    public: src: Iter; pred: Fn1; done: bool = false;
+    TakeWhileIter(s: Iter, p: Fn1) { this.src = s; this.pred = p; }
+    func next() {
+        if (this.done) [ return None; ]
+        let tv = this.src.next();
+        if (tv && this.pred.call(tv)) [ return tv; ]
+        this.done = true;
+        return None;
+    }
+}
+
+class SkipIter extends Iter {
+    public: src: Iter; n: int; skipped: int = 0;
+    SkipIter(s: Iter, limit: int) { this.src = s; this.n = limit; }
+    func next() {
+        while (this.skipped < this.n) [
+            this.skipped = this.skipped + 1;
+            let sv = this.src.next();
+            if (!sv) [ return None; ]
+        ]
+        return this.src.next();
+    }
+}
+
+/* ZipIter yields [a, b] pairs; lcui has no tuples, so small arrays stand in. */
+class ZipIter extends Iter {
+    public: a: Iter; b: Iter;
+    ZipIter(x: Iter, y: Iter) { this.a = x; this.b = y; }
+    func next() {
+        let zx = this.a.next();
+        if (!zx) [ return None; ]
+        let zy = this.b.next();
+        if (!zy) [ return None; ]
+        return [zx, zy];
+    }
+}
+
+class ChainIter extends Iter {
+    public: a: Iter; b: Iter; first: bool = true;
+    ChainIter(x: Iter, y: Iter) { this.a = x; this.b = y; }
+    func next() {
+        if (this.first) [
+            let cv = this.a.next();
+            if (cv) [ return cv; ]
+            this.first = false;
+        ]
+        return this.b.next();
+    }
+}
+
+class StepByIter extends Iter {
+    public: src: Iter; step: int; pos: int = 0;
+    StepByIter(s: Iter, n: int) { this.src = s; this.step = n; }
+    func next() {
+        let stv = this.src.next();
+        while (stv) [
+            if (this.pos % this.step == 0) [
+                this.pos = this.pos + 1;
+                return stv;
+            ]
+            this.pos = this.pos + 1;
+            stv = this.src.next();
+        ]
+        return None;
+    }
+}
+
+/* Seeds: range(a, b) iterates [a, b); repeat(v) yields v forever. */
+
+class RangeIter extends Iter {
+    public: i: int = 0; end: int = 0;
+    RangeIter(start: int, stop: int) { this.i = start; this.end = stop; }
+    func next() {
+        if (this.i >= this.end) [ return None; ]
+        let rval = this.i;
+        this.i = this.i + 1;
+        return rval;
+    }
+}
+
+class RepeatIter extends Iter {
+    public: v = 0;
+    RepeatIter(value) { this.v = value; }
+    func next() {
+        return this.v;
+    }
+}
+
+func range(start: int, end: int) -> RangeIter {
+    return new RangeIter(start, end);
+}
+
+func repeat(value) -> RepeatIter {
+    return new RepeatIter(value);
+}

@@ -1,0 +1,146 @@
+/* Std: string helpers, replacing the former `string::` native namespace.
+ *
+ * Everything here is plain script on top of the String value methods
+ * (.length() / .indexOf() / .split() / .contains() / .startsWith() /
+ * .endsWith() / .toInt() / .toFloat()) and Unicode-aware char iteration.
+ *
+ * upper/lower map ASCII letters, exactly like the removed native
+ * implementation; non-letters pass through unchanged.
+ */
+
+func length(s) {
+    return s.length();
+}
+
+func charAt(s, i) {
+    for (j, c in s) [
+        if (j == i) [ return c; ]
+    ]
+    return "";
+}
+
+func isSpace(c) -> bool {
+    return c == " " || c == "\t" || c == "\n" || c == "\r";
+}
+
+/* slice(s, start, end) keeps chars in [start, end). */
+func slice(s, start: int, end: int) {
+    let out = "";
+    let i = 0;
+    for (c in s) [
+        if (i >= start && i < end) [ out = out + c; ]
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* substr(s, start, count) keeps `count` chars beginning at `start`. */
+func substr(s, start: int, count: int) {
+    return slice(s, start, start + count);
+}
+
+func upper(s) {
+    let low = "abcdefghijklmnopqrstuvwxyz";
+    let up = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let out = "";
+    for (c in s) [
+        let p = low.indexOf(c);
+        let mapped = c;
+        if (p >= 0) [ mapped = charAt(up, p); ]
+        out = out + mapped;
+    ]
+    return out;
+}
+
+func lower(s) {
+    let low = "abcdefghijklmnopqrstuvwxyz";
+    let up = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let out = "";
+    for (c in s) [
+        let p = up.indexOf(c);
+        let mapped = c;
+        if (p >= 0) [ mapped = charAt(low, p); ]
+        out = out + mapped;
+    ]
+    return out;
+}
+
+func capitalize(s) {
+    if (s.length() == 0) [ return s; ]
+    return upper(charAt(s, 0)) + substr(s, 1, s.length() - 1);
+}
+
+func trim(s) {
+    let start = 0;
+    let end = s.length();
+    while (start < end && isSpace(charAt(s, start))) [
+        start = start + 1;
+    ]
+    while (end > start && isSpace(charAt(s, end - 1))) [
+        end = end - 1;
+    ]
+    return slice(s, start, end);
+}
+
+func startsWithAt(s, needle, at: int) -> bool {
+    let k = 0;
+    let m = needle.length();
+    while (k < m) [
+        if (charAt(s, at + k) != charAt(needle, k)) [ return false; ]
+        k = k + 1;
+    ]
+    return true;
+}
+
+/* replace replaces every occurrence of `from` with `to`. */
+func replace(s, from, to) {
+    if (from.length() == 0) [ return s; ]
+    let out = "";
+    let i = 0;
+    let n = s.length();
+    let m = from.length();
+    while (i < n) [
+        if (startsWithAt(s, from, i)) [
+            out = out + to;
+            i = i + m;
+:
+            out = out + charAt(s, i);
+            i = i + 1;
+        ]
+    ]
+    return out;
+}
+
+func repeat(s, times: int) {
+    let out = "";
+    let i = 0;
+    while (i < times) [
+        out = out + s;
+        i = i + 1;
+    ]
+    return out;
+}
+
+func padLeft(s, width: int, pad) {
+    let out = s;
+    while (out.length() < width) [
+        out = pad + out;
+    ]
+    return out;
+}
+
+func padRight(s, width: int, pad) {
+    let out = s;
+    while (out.length() < width) [
+        out = out + pad;
+    ]
+    return out;
+}
+
+func reverse(s) {
+    let out = "";
+    for (c in s) [
+        out = c + out;
+    ]
+    return out;
+}

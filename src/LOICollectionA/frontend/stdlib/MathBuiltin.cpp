@@ -14,50 +14,8 @@
 using namespace LOICollection::frontend;
 
 namespace MathBuiltin {
-    ll::Expected<TypedValue> abs(const CallbackTypeValues& args) {
-        return std::visit([](auto&& arg) -> ll::Expected<TypedValue> {
-            using T = std::decay_t<decltype(arg)>;
-
-            if constexpr (std::is_same_v<T, int> || std::is_same_v<T, float>) {
-                if constexpr (std::is_same_v<T, int>) {
-                    if (arg == std::numeric_limits<int>::min())
-                        return ll::makeStringError("math::abs: INT_MIN is out of range");
-                }
-
-                return std::abs(arg);
-            }
-
-            return ll::makeStringError("math::abs: requires a numeric argument");
-        }, args[0]);
-    }
-
-    TypedValue min(const CallbackTypeValues& args) {
-        return std::visit([](auto&& arg1, auto&& arg2) -> TypedValue {
-            using T1 = std::decay_t<decltype(arg1)>;
-            using T2 = std::decay_t<decltype(arg2)>;
-
-            if constexpr (
-                (std::is_same_v<T1, int> && std::is_same_v<T2, int>) ||
-                (std::is_same_v<T1, float> && std::is_same_v<T2, float>)
-            ) return std::min(arg1, arg2);
-
-            return {};
-        }, args[0], args[1]);
-    }
-
-    TypedValue max(const CallbackTypeValues& args) {
-        return std::visit([](auto&& arg1, auto&& arg2) -> TypedValue {
-            using T1 = std::decay_t<decltype(arg1)>;
-            using T2 = std::decay_t<decltype(arg2)>;
-
-            if constexpr (
-                (std::is_same_v<T1, int> && std::is_same_v<T2, int>) ||
-                (std::is_same_v<T1, float> && std::is_same_v<T2, float>)
-            ) return std::max(arg1, arg2);
-
-            return {};
-        }, args[0], args[1]);
-    }
+    /* abs/min/max/clamp/lerp moved to assets/common/std/math.lcui (pure
+     * script); this file keeps only what scripts cannot compute. */
 
     TypedValue sqrt(const CallbackTypeValues& args) {
         return std::visit([](auto&& arg) -> TypedValue {
@@ -149,12 +107,6 @@ namespace MathBuiltin {
     void registerFunctions(const std::string& namespaces) {
         FunctionCall& functions = FunctionCall::getInstance();
 
-        functions.registerFunction(namespaces, "abs", abs, { ParamType::INT });
-        functions.registerFunction(namespaces, "abs", abs, { ParamType::FLOAT });
-        functions.registerFunction(namespaces, "min", min, { ParamType::INT, ParamType::INT });
-        functions.registerFunction(namespaces, "min", min, { ParamType::FLOAT, ParamType::FLOAT });
-        functions.registerFunction(namespaces, "max", max, { ParamType::INT, ParamType::INT });
-        functions.registerFunction(namespaces, "max", max, { ParamType::FLOAT, ParamType::FLOAT });
         functions.registerFunction(namespaces, "sqrt", sqrt, { ParamType::INT });
         functions.registerFunction(namespaces, "sqrt", sqrt, { ParamType::FLOAT });
         functions.registerFunction(namespaces, "pow", pow, { ParamType::INT, ParamType::INT });

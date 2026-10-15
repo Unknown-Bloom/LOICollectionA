@@ -118,6 +118,8 @@ let form = new CustomForm("wallet.main", {tr("wallet.gui.title")}) {
 
 ## 多文件导入（import）
 
+`import` 路径**相对导入语句所在的文件**解析（入口文件即其所在目录）；`std/` 标准库模块互相引用也因此稳定，无论入口脚本放在哪里。
+
 脚本顶部可以使用 `import` 引入其他 `.lcui` 文件的顶层定义（`class` / `func` / `using` / `component`），实现跨文件复用。内置脚本的公共界面词汇表（分页按钮、保存/取消文案等）就抽取在 `generic.lcui` 中：
 
 ```lcui
@@ -684,7 +686,7 @@ for (v in new Nats()) [          // 无限序列
 
 - `for (item in arr)` 遍历元素；`for (i, item in arr)` 中 `i` 为下标、`item` 为元素。
 - 字符串按 Unicode 字符遍历，不是按字节：`"你好".length()` 返回 `2`，`for (c in "你好")` 也迭代 2 次。
-  `indexOf` 返回字符下标，`string::substr(s, start, count)` 按字符截取，与 `length()` 一致。
+  `indexOf` 返回字符下标，标准库 `substr(s, start, count)` 按字符截取，与 `length()` 一致。
 - 循环体中 `continue` 不会跳过步进；每轮会重新读取长度，遍历期间追加的元素也会被遍历到。
 - 元素变量在每轮迭代中是独立副本：迭代内创建的 lambda 捕获的是当轮的值。
 - 区间是语法级构造，遍历时不产生中间序列。
@@ -760,6 +762,41 @@ match (shape) [
 - 守卫只在模式命中后才求值，因此 `Square s if (...)` 不会对非 `Square` 的值执行判断。
 - 穷尽性是强制的：必须存在一个不带守卫的绑定或 `_` 分支（`bool` 目标也可以由 `true` 与 `false` 两个字面量分支覆盖），否则编译报错。
 - 绑定变量只在自己的分支内可见，允许遮蔽外层同名变量；类型模式的类名在编译期校验，未知类会报错。
+
+## 标准库（std）
+
+`assets/common/std/` 下的 `.lcui` 脚本即标准库：能拆出 C++ 的都拆成了脚本，原生层只保留 VM 值原语、超越函数与 ll/ui 相关类。入口脚本相对自己所在目录引用：
+
+```lcui
+import "std/iter.lcui";        // 整个模块
+import "std/array.lcui" { arrSum, arrZip };   // 只取需要的定义
+```
+
+> 宿主从 `assets/common/gui/` 等目录加载脚本时，路径形如 `import "../std/iter.lcui";`。
+
+| 模块 | 内容 |
+| --- | --- |
+| `iter.lcui` | 惰性迭代器：`range(a, b)` / `repeat(v)` 种子，`Iter` 上的 `map` / `filter` / `take` / `skip` / `takeWhile` / `stepBy` / `zip` / `chain` 组合子，以及 `collect` / `fold` / `sum` / `count` / `any` / `all` / `find` / `position` / `max` / `min` / `last` 终结操作。映射与谓词是 `Fn1` / `Fn2` 的子类（脚本世界的 Fn trait）：`class Square extends Fn1 { func call(x) { return x * x; } }`。 |
+| `array.lcui` | 急切数组函数：`arrMap` / `arrFilter` / `arrReverse` / `arrSum` / `arrProduct` / `arrAny` / `arrAll` / `arrFind` / `arrFindIndex` / `arrDedup` / `arrZip` / `arrLast` / `arrChunk`。 |
+| `string.lcui` | `upper` / `lower` / `capitalize` / `trim` / `trimStart` / `trimEnd` / `substr` / `slice` / `charAt` / `repeat` / `replace` / `padLeft` / `padRight` / `reverse`（按 Unicode 字符；大小写映射 ASCII）。 |
+| `math.lcui` | `abs` / `min` / `max` / `clamp` / `lerp`（超越函数仍在原生 `math::` 命名空间）。 |
+| `result.lcui` | `Result` 可恢复错误类型：`Result.Ok(v)` / `Result.Err(e)`、`unwrap` / `unwrapOr` / `expect` / `errOr` / `map` / `mapErr` / `andThen`。 |
+
+示例——惰性流水线：
+
+```lcui
+import "std/iter.lcui";
+
+class Square extends Fn1 { func call(x) { return x * x; } }
+class Big extends Fn1 { func call(x) { return x > 4; } }
+
+let out = range(1, 10).map(new Square()).filter(new Big()).collect().join(",");
+// "25,36,49,64,81"
+```
+
+> **可选值语义**：`let v = it.next();` 把原始值或 `None` 存进变量（动态目标不自动解包），`if (v)`、`v.has_value`、`v.value` 与 `??`/`?.` 因此行为一致；类型标注为 `T` 的目标才会在赋值时立即解包。
+
+> **已知限制（方法局部按名存储）**：方法体内的 `let` 局部变量编译为按名存储；当名字与 `this` 对象的字段名相同时，写入会优先落到对象字段。为迭代器类定义 `next()` 时，请避免使用与标准库方法局部名相同或与类字段相同的变量名（标准库内部的局部名已全部独特化）。
 
 ## 函数
 
@@ -1007,8 +1044,7 @@ for (i, card in deck) [
 
 | 命名空间 | 函数 | 说明 |
 | --- | --- | --- |
-| `math` | `abs`、`min`、`max`、`sqrt`、`pow`、`log`、`sin`、`cos`、`random` | 数学函数 |
-| `string` | `length`、`upper`、`lower`、`substr`、`trim`、`replace` | 字符串函数 |
+| `math` | `sqrt`、`pow`、`log`、`sin`、`cos`、`random` | 数学函数（超越函数；`abs`/`min`/`max` 等可脚本化的已移入标准库） |
 | `std` | `format(formatStr, array)` | 使用数组中的值格式化字符串（fmt 风格） |
 | `mc` | `runCmd(command)` | 以当前玩家身份执行命令 |
 | `GUIManager` | `value(id)`、`request(id, args)`、`callback(id, args)`、`open(id, formId, type[, ctx])`、`switchTo(id, type)` | 与 GUI 数据交互 |
@@ -1169,14 +1205,14 @@ let form = new CustomForm("example.shop", {tr("example.shop.title")}) {
 | --- | --- | --- |
 | 常量折叠 | `1 + 2 * 3` | 编译期算成 `PUSH_INT 7`，运行期不再计算 |
 | 变量值转发 | `let x = 1; if (x == 1) [...]` | 后续读取 `x` 直接替换为已知值，条件分支随之消除 |
-| 纯函数折叠 | `math::abs(-3)`、`math::pow(2, 10)` | 全常量参数的 `math::` 纯函数在编译期求值；`math::random` 等非纯函数不折叠 |
+| 纯函数折叠 | `math::sqrt(9)`、`math::pow(2, 10)` | 全常量参数的 `math::` 纯函数在编译期求值；`math::random` 等非纯函数不折叠 |
 | 超级指令 | `let x = 1`（`DUP` + `STORE_VAR`） | 高频指令对融合为单条 `DUP_STORE` / `DUP_IS_NONE`，一次分发完成两件事 |
 | 跳转窥孔 | 条件跳转后紧跟同目标无条件跳转 | 双重跳转合并，中间不可达代码整体删除 |
 | 死代码删除 | `while (false) [...]`、`if (false) [...]` | 不可达分支整体移除 |
 
 优化器会反复迭代以上过程直到字节码不再变化（不动点），因此一条优化暴露出的新机会（如变量转发让条件变为常量）会在下一轮被继续吃掉。
 
-运行期还有一层**内联缓存**：脚本反复调用同一个原生函数或原生方法时（例如循环里的 `math::abs(...)`、`arr.push(...)`），VM 会记住上一次的解析结果，命中时跳过签名匹配与注册表查找。这只影响速度不影响行为——缓存失效（如插件重载导致注册表变化）时自动回退到完整查找。
+运行期还有一层**内联缓存**：脚本反复调用同一个原生函数或原生方法时（例如循环里的 `math::sqrt(...)`、`arr.push(...)`），VM 会记住上一次的解析结果，命中时跳过签名匹配与注册表查找。这只影响速度不影响行为——缓存失效（如插件重载导致注册表变化）时自动回退到完整查找。
 
 ## 字节码产物
 

@@ -1,0 +1,75 @@
+/* Std: Result — a recoverable error type (Rust-inspired).
+ *
+ *     import "../std/result.lcui";
+ *
+ *     let r = divide(10, 2);
+ *     if (r.isOk()) [ println("got " + r.unwrap()); ]
+ *     : [ println("failed: " + r.errOr("unknown")); ]
+ *
+ * Ok wraps a success value, Err wraps an error payload. unwrap()/expect()
+ * panic on an Err, unwrapOr() falls back, and()/map() chain like Rust.
+ */
+
+import "iter.lcui" { Fn1 };
+
+class Result {
+    public: ok: bool = true; value = 0; err = "";
+
+    Result(isOk: bool, v, e) {
+        this.ok = isOk;
+        this.value = v;
+        this.err = e;
+    }
+
+    static func Ok(v) -> Result {
+        return new Result(true, v, "");
+    }
+
+    static func Err(e) -> Result {
+        return new Result(false, 0, e);
+    }
+
+    func isOk() -> bool {
+        return this.ok;
+    }
+
+    func isErr() -> bool {
+        return !this.ok;
+    }
+
+    func unwrap() {
+        if (this.ok) [ return this.value; ]
+        panic("unwrap on Err: " + this.err);
+    }
+
+    func unwrapOr(fallback) {
+        if (this.ok) [ return this.value; ]
+        return fallback;
+    }
+
+    func expect(msg) {
+        if (this.ok) [ return this.value; ]
+        panic(msg + ": " + this.err);
+    }
+
+    func errOr(fallback) {
+        if (this.ok) [ return fallback; ]
+        return this.err;
+    }
+
+    func map(f: Fn1) -> Result {
+        if (this.ok) [ return new Result(true, f.call(this.value), ""); ]
+        return this;
+    }
+
+    func mapErr(f: Fn1) -> Result {
+        if (this.ok) [ return this; ]
+        return new Result(false, 0, f.call(this.err));
+    }
+
+    /* andThen chains a follow-up operation that itself returns a Result. */
+    func andThen(f: Fn1) -> Result {
+        if (this.ok) [ return f.call(this.value); ]
+        return this;
+    }
+}

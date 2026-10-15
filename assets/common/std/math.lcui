@@ -1,0 +1,31 @@
+/* Std: small math helpers, replacing the former `math::abs/min/max` natives.
+ *
+ * Transcendental functions stay native (`math::sqrt/pow/log/sin/cos/random`)
+ * because scripts cannot compute them; these helpers are the scriptable part.
+ * Parameters are dynamic so the same function serves int and float.
+ */
+
+func abs(x) {
+    if (x < 0) [ return -x; ]
+    return x;
+}
+
+func min(a, b) {
+    if (a < b) [ return a; ]
+    return b;
+}
+
+func max(a, b) {
+    if (a > b) [ return a; ]
+    return b;
+}
+
+func clamp(x, lo, hi) {
+    if (x < lo) [ return lo; ]
+    if (x > hi) [ return hi; ]
+    return x;
+}
+
+func lerp(a, b, t) {
+    return a + (b - a) * t;
+}

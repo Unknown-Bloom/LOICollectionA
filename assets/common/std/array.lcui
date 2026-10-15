@@ -1,0 +1,126 @@
+/* Std: eager array helpers (Rust slice/Vec inspired).
+ *
+ * Built on the native Array value methods (.push() / .pop() / .length() /
+ * .slice() / .sort() / .contains() / .indexOf() / .join()) and for-in.
+ * Functions taking a mapper or predicate expect an Fn1/Fn2 subclass from
+ * iter.lcui.
+ */
+
+import "iter.lcui" { Fn1, Fn2 };
+
+func arrMap(a, f: Fn1) {
+    let out = [];
+    for (v in a) [
+        out.push(f.call(v));
+    ]
+    return out;
+}
+
+func arrFilter(a, pred: Fn1) {
+    let out = [];
+    for (v in a) [
+        if (pred.call(v)) [ out.push(v); ]
+    ]
+    return out;
+}
+
+func arrReverse(a) {
+    let out = [];
+    let i = a.length() - 1;
+    while (i >= 0) [
+        out.push(a[i]);
+        i = i - 1;
+    ]
+    return out;
+}
+
+func arrSum(a) {
+    let total = 0;
+    for (v in a) [
+        total = total + v;
+    ]
+    return total;
+}
+
+func arrProduct(a) {
+    let total = 1;
+    for (v in a) [
+        total = total * v;
+    ]
+    return total;
+}
+
+func arrAny(a, pred: Fn1) -> bool {
+    for (v in a) [
+        if (pred.call(v)) [ return true; ]
+    ]
+    return false;
+}
+
+func arrAll(a, pred: Fn1) -> bool {
+    for (v in a) [
+        if (!pred.call(v)) [ return false; ]
+    ]
+    return true;
+}
+
+/* arrFind returns the first match, or None when nothing matched. */
+func arrFind(a, pred: Fn1) {
+    for (v in a) [
+        if (pred.call(v)) [ return v; ]
+    ]
+    return None;
+}
+
+/* arrFindIndex returns the first matching position, or -1. */
+func arrFindIndex(a, pred: Fn1) -> int {
+    let i = 0;
+    while (i < a.length()) [
+        if (pred.call(a[i])) [ return i; ]
+        i = i + 1;
+    ]
+    return -1;
+}
+
+func arrDedup(a) {
+    let out = [];
+    for (v in a) [
+        if (!out.contains(v)) [ out.push(v); ]
+    ]
+    return out;
+}
+
+/* arrZip pairs elements of a and b as [x, y] arrays, stopping at the
+ * shorter input. */
+func arrZip(a, b) {
+    let out = [];
+    let n = a.length();
+    if (b.length() < n) [ n = b.length(); ]
+    let i = 0;
+    while (i < n) [
+        out.push([a[i], b[i]]);
+        i = i + 1;
+    ]
+    return out;
+}
+
+func arrLast(a) {
+    if (a.length() == 0) [ return None; ]
+    return a[a.length() - 1];
+}
+
+func arrChunk(a, size: int) {
+    let out = [];
+    let cur = [];
+    let i = 0;
+    while (i < a.length()) [
+        cur.push(a[i]);
+        if (cur.length() >= size) [
+            out.push(cur);
+            cur = [];
+        ]
+        i = i + 1;
+    ]
+    if (cur.length() > 0) [ out.push(cur); ]
+    return out;
+}

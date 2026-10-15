@@ -181,10 +181,10 @@ TEST(VMInlineCacheTest, RepeatedNativeFunctionCalls) {
         "let i = 0; "
         "let s = 0; "
         "while (i < 4) [ "
-        "    s = s + math::abs(0 - i - 1); "
+        "    s = s + math::pow(2, i + 1); "
         "    i = i + 1; "
         "]; "
-        "s"), "10");
+        "s"), "30");
 }
 
 TEST(VMInlineCacheTest, RepeatedNativeValueMethodCalls) {
@@ -203,9 +203,9 @@ TEST(VMInlineCacheTest, MixedShapeNativeCallsStayCorrect) {
         "let i = 0; "
         "let s = \"\"; "
         "while (i < 2) [ "
-        "    s = s + math::abs(0 - i); "
-        "    s = s + math::abs(i - 0.5); "
+        "    s = s + math::pow(2, i); "
+        "    s = s + \"ab\".length(); "
         "    i = i + 1; "
         "]; "
-        "s"), "00.510.5");
+        "s"), "1222");
 }

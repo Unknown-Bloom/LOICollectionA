@@ -295,6 +295,15 @@ namespace LOICollection::frontend {
         if (node.value)
             rhs = checkExpr(*node.value, scope);
 
+        // Dynamic (untyped) targets keep the optional on the right-hand side:
+        // `let v = it.next()` stores the raw value or None so `if (v)` /
+        // `v.has_value` / `v.value` behave consistently instead of eagerly
+        // unwrapping (which turns a terminating None into a runtime error).
+        const auto keepOptionalRhs = [&node, &rhs]() {
+            if (node.value && rhs.kind == TypeKind::Optional)
+                node.value->preserveOptional = true;
+        };
+
         switch (node.target->getType()) {
             case ASTNode::Type::Variable: {
                 auto& var = static_cast<VariableNode&>(*node.target);
@@ -308,6 +317,8 @@ namespace LOICollection::frontend {
                                     rhs.kind == TypeKind::Optional && node.value) {
                                     node.value->preserveOptional = true;
                                 }
+                            } else {
+                                keepOptionalRhs();
                             }
                             return rhs;
                         }
@@ -327,6 +338,8 @@ namespace LOICollection::frontend {
                                     rhs.kind == TypeKind::Optional && node.value) {
                                     node.value->preserveOptional = true;
                                 }
+                            } else {
+                                keepOptionalRhs();
                             }
 
                             if (scope.methodRef().isConstructor)
@@ -384,6 +397,7 @@ namespace LOICollection::frontend {
                     }
 
                     locals[var.name] = rhs;
+                    keepOptionalRhs();
                     return rhs;
                 }
 
@@ -401,6 +415,9 @@ namespace LOICollection::frontend {
                         if (found != it->end()) {
                             if (rhs.kind != TypeKind::Unknown && rhs.kind != TypeKind::None)
                                 found->second = rhs;
+                            if (found->second.kind == TypeKind::Unknown ||
+                                found->second.kind == TypeKind::Optional)
+                                keepOptionalRhs();
                             return rhs;
                         }
                     }
@@ -408,6 +425,7 @@ namespace LOICollection::frontend {
                     if (!this->isNameDefined(var.name, scope)) {
                         this->requireLet(node, var);
                         this->blockScopes.back()[var.name] = rhs;
+                        keepOptionalRhs();
                         return rhs;
                     }
                 }
@@ -480,6 +498,7 @@ namespace LOICollection::frontend {
                     globalTypes[var.name] = rhs;
                 else
                     globalTypes.try_emplace(var.name, rhs);
+                keepOptionalRhs();
 
                 return rhs;
             }
@@ -574,6 +593,8 @@ namespace LOICollection::frontend {
                             rhs.kind == TypeKind::Optional && node.value) {
                             node.value->preserveOptional = true;
                         }
+                    } else {
+                        keepOptionalRhs();
                     }
 
                     if (scope.hasMethod() && scope.methodRef().isConstructor &&
@@ -592,6 +613,9 @@ namespace LOICollection::frontend {
                 auto& indexNode = static_cast<IndexAccessNode&>(*node.target);
                 TypeInfo targetType = checkExpr(*indexNode.target, scope);
                 TypeInfo indexType = checkExpr(*indexNode.index, scope);
+
+                if (targetType.kind == TypeKind::Unknown || targetType.kind == TypeKind::Array)
+                    keepOptionalRhs();
 
                 if (targetType.kind == TypeKind::Unknown)
                     return rhs;

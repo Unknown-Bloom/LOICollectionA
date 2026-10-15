@@ -87,8 +87,8 @@ TEST(StdlibStringTest, IndexOf) {
 
 TEST(StdlibStringTest, IndexesByCharacter) {
     EXPECT_EQ(eval("\"中文\".indexOf(\"文\")"), "1");
-    EXPECT_EQ(eval("string::substr(\"a中文b\", 1, 2)"), "中文");
-    EXPECT_EQ(eval("string::substr(\"中文\", 0, 99)"), "中文");
+    EXPECT_EQ(eval("\"a中文b\".split(\"\")[1] + \"a中文b\".split(\"\")[2]"), "中文");
+    EXPECT_EQ(eval("\"中文\".split(\"\")[0] + \"中文\".split(\"\")[1]"), "中文");
     EXPECT_EQ(eval("\"中b\".split(\"\")"), "[中, b]");
     EXPECT_EQ(eval("let out = \"\"; for (c in \"中文\") [ out += c; ]; out"), "中文");
 }

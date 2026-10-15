@@ -155,7 +155,12 @@ namespace LOICollection::frontend {
 
                     auto& import = static_cast<ImportNode&>(*part);
 
-                    auto resolved = (std::filesystem::path(root) / import.path).lexically_normal().generic_string();
+                    // Imports resolve against the importing file's directory so
+                    // library files (std modules) can reach their siblings
+                    // regardless of where the entry script lives. For the entry
+                    // file this is exactly the previous rootDir behavior.
+                    auto resolved = (std::filesystem::path(path).parent_path() / import.path)
+                                        .lexically_normal().generic_string();
 
                     ok = visit(resolved, import.loc) && ok;
                 }
@@ -200,7 +205,8 @@ namespace LOICollection::frontend {
                     continue;
 
                 auto& import = static_cast<ImportNode&>(*part);
-                auto resolved = (std::filesystem::path(root) / import.path).lexically_normal().generic_string();
+                auto resolved = (std::filesystem::path(path).parent_path() / import.path)
+                                    .lexically_normal().generic_string();
 
                 auto& wanted = requested[resolved];
                 if (!import.hasSymbols) {
@@ -221,7 +227,8 @@ namespace LOICollection::frontend {
                 if (part->getType() == ASTNode::Type::Import) {
                     auto& import = static_cast<ImportNode&>(*part);
 
-                    auto resolved = (std::filesystem::path(root) / import.path).lexically_normal().generic_string();
+                    auto resolved = (std::filesystem::path(path).parent_path() / import.path)
+                                        .lexically_normal().generic_string();
 
                     if (merged.insert(resolved).second) {
                         auto& imported = expanded.at(resolved);

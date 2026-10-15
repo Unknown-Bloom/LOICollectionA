@@ -19,7 +19,7 @@ TEST(LengthTest, StringLength) {
 TEST(LengthTest, StringLengthCountsCharacters) {
     EXPECT_EQ(eval("\"中文\".length()"), "2");
     EXPECT_EQ(eval("\"a中b\".length()"), "3");
-    EXPECT_EQ(eval("string::length(\"中文\")"), "2");
+    EXPECT_EQ(eval("\"中文\".length()"), "2");
 }
 
 TEST(LengthTest, MapLength) {

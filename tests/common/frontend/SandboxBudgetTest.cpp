@@ -59,7 +59,7 @@ TEST(SandboxBudgetTest, NativeCallLimit) {
     budget.maxNativeCalls = 3;
 
     const RunResult result = runWithBudget(
-        "let i = 0; let s = 0; while (i < 10) [ s = s + math::abs(0 - i); i = i + 1; ]; s",
+        "let i = 0; let s = 0; while (i < 10) [ s = s + math::sqrt(i); i = i + 1; ]; s",
         budget
     );
 
@@ -84,7 +84,7 @@ TEST(SandboxBudgetTest, ArrayElementLimit) {
     SandboxBudget budget;
     budget.maxArrayElements = 3;
 
-    const RunResult result = runWithBudget("let n = string::length(\"abc\"); [n, n, n, n]", budget);
+    const RunResult result = runWithBudget("let n = math::random(1, 9); [n, n, n, n]", budget);
 
     EXPECT_TRUE(result.hasErrors);
     EXPECT_EQ(result.violation, SandboxBudget::Violation::ArrayElementLimit);
@@ -95,7 +95,7 @@ TEST(SandboxBudgetTest, StringConcatLimit) {
     budget.maxStringBytes = 1024;
 
     const RunResult result = runWithBudget(
-        "let s = string::lower(\"A\"); let i = 0; while (i < 30) [ s = s + s; i = i + 1; ]; s",
+        "let s = \"A\"; let i = 0; while (i < 30) [ s = s + s; i = i + 1; ]; s",
         budget
     );
 

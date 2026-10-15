@@ -7,9 +7,6 @@
 using namespace LOICollection::frontend;
 
 TEST(MathBuiltinsTest, BasicMath) {
-    EXPECT_EQ(eval("math::abs(-10)"), "10");
-    EXPECT_EQ(eval("math::min(5,3)"), "3");
-    EXPECT_EQ(eval("math::max(5,3)"), "5");
     EXPECT_EQ(eval("math::sqrt(9)"), "3");
     EXPECT_EQ(eval("math::pow(2,4)"), "16");
     EXPECT_EQ(eval("math::sin(0)"), "0");
@@ -17,9 +14,6 @@ TEST(MathBuiltinsTest, BasicMath) {
 }
 
 TEST(MathBuiltinsTest, MoreMath) {
-    EXPECT_EQ(eval("math::abs(-3.5)"), "3.5");
-    EXPECT_EQ(eval("math::min(2.5, 1.5)"), "1.5");
-    EXPECT_EQ(eval("math::max(2.5, 1.5)"), "2.5");
     EXPECT_EQ(eval("math::sqrt(16)"), "4");
     EXPECT_EQ(eval("math::log(1)"), "0");
     EXPECT_EQ(eval("math::pow(2.5, 2.0)"), "6.25");
@@ -33,37 +27,8 @@ TEST(MathBuiltinsTest, RandomInRange) {
     }
 }
 
-TEST(MathBuiltinsTest, AbsIntMinErrors) {
-    EXPECT_THROW(eval("math::abs(-2147483647 - 1)"), std::runtime_error);
-}
-
 TEST(MathBuiltinsTest, RandomInvalidRangeErrors) {
     EXPECT_THROW(eval("math::random(5, 1)"), std::runtime_error);
-}
-
-TEST(StringBuiltinsTest, BasicString) {
-    EXPECT_EQ(eval("string::length(\"hello\")"), "5");
-    EXPECT_EQ(eval("string::upper(\"abc\")"), "ABC");
-    EXPECT_EQ(eval("string::lower(\"ABC\")"), "abc");
-    EXPECT_EQ(eval("string::substr(\"hello\", 1, 3)"), "ell");
-    EXPECT_EQ(eval("string::trim(\"  hi \")"), "hi");
-    EXPECT_EQ(eval("string::replace(\"abcabc\", \"a\", \"x\")"), "xbcxbc");
-}
-
-TEST(StringBuiltinsTest, MoreString) {
-    EXPECT_EQ(eval("string::length(\"\")"), "0");
-    EXPECT_EQ(eval("string::substr(\"hello\", 0, 5)"), "hello");
-    EXPECT_EQ(eval("string::substr(\"hello\", 10, 2)"), "");
-    EXPECT_EQ(eval("string::substr(\"hello\", 1, -1)"), "");
-    EXPECT_EQ(eval("string::trim(\"\t hi \n\")"), "hi");
-    EXPECT_EQ(eval("string::replace(\"abc\", \"\", \"x\")"), "abc");
-    EXPECT_EQ(eval("string::upper(\"aBc\")"), "ABC");
-    EXPECT_EQ(eval("string::lower(\"XyZ\")"), "xyz");
-}
-
-TEST(StringBuiltinsTest, Utf8CaseConversion) {
-    EXPECT_EQ(eval("string::upper(\"中文abc\")"), "中文ABC");
-    EXPECT_EQ(eval("string::lower(\"中文ABC\")"), "中文abc");
 }
 
 TEST(BuiltinsTest, UnregisteredFunction) {
@@ -72,7 +37,7 @@ TEST(BuiltinsTest, UnregisteredFunction) {
 }
 
 TEST(BuiltinsTest, WrongArgumentType) {
-    EXPECT_THROW(eval("math::abs(\"x\")"), std::runtime_error);
+    EXPECT_THROW(eval("math::sqrt(\"x\")"), std::runtime_error);
     EXPECT_THROW(eval("string::length(123)"), std::runtime_error);
 }
 
