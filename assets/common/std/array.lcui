@@ -8,6 +8,7 @@
 
 import "iter.lcui" { Fn1, Fn2 };
 
+/* arrMap applies f to every element, returning a new array. */
 func arrMap(a, f: Fn1) {
     let out = [];
     for (v in a) [
@@ -16,6 +17,7 @@ func arrMap(a, f: Fn1) {
     return out;
 }
 
+/* arrFilter keeps only the elements where pred returns true. */
 func arrFilter(a, pred: Fn1) {
     let out = [];
     for (v in a) [
@@ -24,6 +26,7 @@ func arrFilter(a, pred: Fn1) {
     return out;
 }
 
+/* arrReverse returns the elements in reverse order. */
 func arrReverse(a) {
     let out = [];
     let i = a.length() - 1;
@@ -34,6 +37,7 @@ func arrReverse(a) {
     return out;
 }
 
+/* arrSum returns the arithmetic sum of all elements (0 for empty). */
 func arrSum(a) {
     let total = 0;
     for (v in a) [
@@ -42,6 +46,7 @@ func arrSum(a) {
     return total;
 }
 
+/* arrProduct returns the product of all elements (1 for empty). */
 func arrProduct(a) {
     let total = 1;
     for (v in a) [
@@ -50,6 +55,7 @@ func arrProduct(a) {
     return total;
 }
 
+/* arrAny returns true if any element satisfies pred. */
 func arrAny(a, pred: Fn1) -> bool {
     for (v in a) [
         if (pred.call(v)) [ return true; ]
@@ -57,6 +63,7 @@ func arrAny(a, pred: Fn1) -> bool {
     return false;
 }
 
+/* arrAll returns true if every element satisfies pred. */
 func arrAll(a, pred: Fn1) -> bool {
     for (v in a) [
         if (!pred.call(v)) [ return false; ]
@@ -82,6 +89,7 @@ func arrFindIndex(a, pred: Fn1) -> int {
     return -1;
 }
 
+/* arrDedup removes duplicate elements, preserving first-seen order. */
 func arrDedup(a) {
     let out = [];
     for (v in a) [
@@ -104,11 +112,13 @@ func arrZip(a, b) {
     return out;
 }
 
+/* arrLast returns the final element, or None for an empty array. */
 func arrLast(a) {
     if (a.length() == 0) [ return None; ]
     return a[a.length() - 1];
 }
 
+/* arrChunk splits the array into consecutive chunks of at most `size`. */
 func arrChunk(a, size: int) {
     let out = [];
     let cur = [];

@@ -8,10 +8,12 @@
  * implementation; non-letters pass through unchanged.
  */
 
+/* length returns the number of Unicode characters in s. */
 func length(s) {
     return s.length();
 }
 
+/* charAt returns the character at index i, or "" if out of range. */
 func charAt(s, i) {
     for (j, c in s) [
         if (j == i) [ return c; ]
@@ -19,6 +21,7 @@ func charAt(s, i) {
     return "";
 }
 
+/* isSpace reports whether c is a space, tab, newline or carriage return. */
 func isSpace(c) -> bool {
     return c == " " || c == "\t" || c == "\n" || c == "\r";
 }
@@ -39,6 +42,7 @@ func substr(s, start: int, count: int) {
     return slice(s, start, start + count);
 }
 
+/* upper returns s with ASCII letters upper-cased; other chars pass through. */
 func upper(s) {
     let low = "abcdefghijklmnopqrstuvwxyz";
     let up = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -52,6 +56,7 @@ func upper(s) {
     return out;
 }
 
+/* lower returns s with ASCII letters lower-cased; other chars pass through. */
 func lower(s) {
     let low = "abcdefghijklmnopqrstuvwxyz";
     let up = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -65,11 +70,13 @@ func lower(s) {
     return out;
 }
 
+/* capitalize upper-cases the first character and keeps the rest unchanged. */
 func capitalize(s) {
     if (s.length() == 0) [ return s; ]
     return upper(charAt(s, 0)) + substr(s, 1, s.length() - 1);
 }
 
+/* trim strips leading and trailing whitespace from s. */
 func trim(s) {
     let start = 0;
     let end = s.length();
@@ -82,6 +89,7 @@ func trim(s) {
     return slice(s, start, end);
 }
 
+/* startsWithAt reports whether needle occurs at index `at` in s. */
 func startsWithAt(s, needle, at: int) -> bool {
     let k = 0;
     let m = needle.length();
@@ -103,7 +111,7 @@ func replace(s, from, to) {
         if (startsWithAt(s, from, i)) [
             out = out + to;
             i = i + m;
-:
+        :
             out = out + charAt(s, i);
             i = i + 1;
         ]
@@ -111,6 +119,7 @@ func replace(s, from, to) {
     return out;
 }
 
+/* repeat concatenates s `times` times (empty result when times <= 0). */
 func repeat(s, times: int) {
     let out = "";
     let i = 0;
@@ -121,6 +130,7 @@ func repeat(s, times: int) {
     return out;
 }
 
+/* padLeft left-pads s with `pad` until its length reaches `width`. */
 func padLeft(s, width: int, pad) {
     let out = s;
     while (out.length() < width) [
@@ -129,6 +139,7 @@ func padLeft(s, width: int, pad) {
     return out;
 }
 
+/* padRight right-pads s with `pad` until its length reaches `width`. */
 func padRight(s, width: int, pad) {
     let out = s;
     while (out.length() < width) [
@@ -137,6 +148,7 @@ func padRight(s, width: int, pad) {
     return out;
 }
 
+/* reverse returns the characters of s in reverse order. */
 func reverse(s) {
     let out = "";
     for (c in s) [

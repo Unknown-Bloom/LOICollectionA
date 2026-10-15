@@ -3,8 +3,7 @@
  *     import "../std/result.lcui";
  *
  *     let r = divide(10, 2);
- *     if (r.isOk()) [ println("got " + r.unwrap()); ]
- *     : [ println("failed: " + r.errOr("unknown")); ]
+ *     if (r.isOk()) [ println("got " + r.unwrap()) : println("failed: " + r.errOr("unknown")) ]
  *
  * Ok wraps a success value, Err wraps an error payload. unwrap()/expect()
  * panic on an Err, unwrapOr() falls back, and()/map() chain like Rust.
@@ -21,47 +20,57 @@ class Result {
         this.err = e;
     }
 
+    /* Ok wraps a success value. */
     static func Ok(v) -> Result {
         return new Result(true, v, "");
     }
 
+    /* Err wraps an error payload. */
     static func Err(e) -> Result {
         return new Result(false, 0, e);
     }
 
+    /* isOk reports whether this is an Ok result. */
     func isOk() -> bool {
         return this.ok;
     }
 
+    /* isErr reports whether this is an Err result. */
     func isErr() -> bool {
         return !this.ok;
     }
 
+    /* unwrap returns the value, panicking on Err. */
     func unwrap() {
         if (this.ok) [ return this.value; ]
         panic("unwrap on Err: " + this.err);
     }
 
+    /* unwrapOr returns the value, or `fallback` on Err. */
     func unwrapOr(fallback) {
         if (this.ok) [ return this.value; ]
         return fallback;
     }
 
+    /* expect returns the value, panicking with `msg` on Err. */
     func expect(msg) {
         if (this.ok) [ return this.value; ]
         panic(msg + ": " + this.err);
     }
 
+    /* errOr returns the error payload, or `fallback` on Ok. */
     func errOr(fallback) {
         if (this.ok) [ return fallback; ]
         return this.err;
     }
 
+    /* map transforms an Ok value via f, passing Err through. */
     func map(f: Fn1) -> Result {
         if (this.ok) [ return new Result(true, f.call(this.value), ""); ]
         return this;
     }
 
+    /* mapErr transforms an Err payload via f, passing Ok through. */
     func mapErr(f: Fn1) -> Result {
         if (this.ok) [ return this; ]
         return new Result(false, 0, f.call(this.err));

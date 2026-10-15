@@ -5,27 +5,32 @@
  * Parameters are dynamic so the same function serves int and float.
  */
 
+/* abs returns the absolute value of x. */
 func abs(x) {
     if (x < 0) [ return -x; ]
     return x;
 }
 
+/* min returns the smaller of a and b. */
 func min(a, b) {
     if (a < b) [ return a; ]
     return b;
 }
 
+/* max returns the larger of a and b. */
 func max(a, b) {
     if (a > b) [ return a; ]
     return b;
 }
 
+/* clamp constrains x into the inclusive range [lo, hi]. */
 func clamp(x, lo, hi) {
     if (x < lo) [ return lo; ]
     if (x > hi) [ return hi; ]
     return x;
 }
 
+/* lerp linearly interpolates from a to b by t (t in [0, 1]). */
 func lerp(a, b, t) {
     return a + (b - a) * t;
 }

@@ -17,61 +17,73 @@
  *         func call(x) { return x * x; }
  *     }
  *
- * Implementation note: method-local `let` names are deliberately unique per
- * method. Locals compile to by-name slots shared across the whole program,
- * so a generic name like `cur` here and in a user iterator's next() would
- * silently collide (a documented language limitation).
+ * Implementation note: method-local `let` compiles to its own slot, fully
+ * decoupled from `this` fields, so names here never collide with a caller's
+ * iterator — the earlier unique-naming workaround is no longer needed.
  */
 
+/* Fn1 is the script stand-in for a unary Fn trait: override call(x). */
 class Fn1 {
     func call(x) {
         return x;
     }
 }
 
+/* Fn2 is the script stand-in for a binary Fn trait: override call(a, b). */
 class Fn2 {
     func call(a, b) {
         return b;
     }
 }
 
+/* Iter is the lazy iterator base; combinators return new Iters that chain. */
 class Iter {
+    /* next returns the next element wrapped in optional, or None at the end. */
     func next() {
         return None;
     }
 
+    /* map lazily transforms each element via f. */
     func map(f: Fn1) -> Iter {
         return new MapIter(this, f);
     }
 
+    /* filter keeps only elements where pred returns true. */
     func filter(pred: Fn1) -> Iter {
         return new FilterIter(this, pred);
     }
 
+    /* take yields at most n elements. */
     func take(n: int) -> Iter {
         return new TakeIter(this, n);
     }
 
+    /* takeWhile yields elements until pred first fails. */
     func takeWhile(pred: Fn1) -> Iter {
         return new TakeWhileIter(this, pred);
     }
 
+    /* skip drops the first n elements. */
     func skip(n: int) -> Iter {
         return new SkipIter(this, n);
     }
 
+    /* zip pairs each element with the matching one from `other`. */
     func zip(other: Iter) -> Iter {
         return new ZipIter(this, other);
     }
 
+    /* chain yields this iterator, then `other`. */
     func chain(other: Iter) -> Iter {
         return new ChainIter(this, other);
     }
 
+    /* stepBy yields every n-th element (n >= 1). */
     func stepBy(n: int) -> Iter {
         return new StepByIter(this, n);
     }
 
+    /* collect drains the iterator into an array. */
     func collect() {
         let out = [];
         while (true) [
@@ -82,6 +94,7 @@ class Iter {
         return out;
     }
 
+    /* fold accumulates elements left-to-right from `seed` via f(a, b). */
     func fold(seed, f: Fn2) {
         let acc = seed;
         while (true) [
@@ -92,6 +105,7 @@ class Iter {
         return acc;
     }
 
+    /* sum returns the arithmetic sum of all elements. */
     func sum() {
         let total = 0;
         while (true) [
@@ -102,6 +116,7 @@ class Iter {
         return total;
     }
 
+    /* count returns the number of elements. */
     func count() -> int {
         let num = 0;
         while (true) [
@@ -112,6 +127,7 @@ class Iter {
         return num;
     }
 
+    /* forEach invokes f for every element. */
     func forEach(f: Fn1) {
         while (true) [
             let feval = this.next();
@@ -120,6 +136,7 @@ class Iter {
         ]
     }
 
+    /* any returns true if any element satisfies pred. */
     func any(pred: Fn1) -> bool {
         while (true) [
             let anval = this.next();
@@ -129,6 +146,7 @@ class Iter {
         return false;
     }
 
+    /* all returns true if every element satisfies pred. */
     func all(pred: Fn1) -> bool {
         while (true) [
             let alval = this.next();
@@ -138,6 +156,7 @@ class Iter {
         return true;
     }
 
+    /* find returns the first element satisfying pred, or None. */
     func find(pred: Fn1) {
         while (true) [
             let fval = this.next();
@@ -147,6 +166,7 @@ class Iter {
         return None;
     }
 
+    /* position returns the index of the first match, or -1. */
     func position(pred: Fn1) -> int {
         let idx = 0;
         while (true) [
@@ -158,6 +178,7 @@ class Iter {
         return -1;
     }
 
+    /* last returns the final element, or None if the iterator is empty. */
     func last() {
         let ltail = None;
         while (true) [
@@ -168,6 +189,7 @@ class Iter {
         return ltail;
     }
 
+    /* max returns the largest element, or None if the iterator is empty. */
     func max() {
         let mxseen = false;
         let mxcur = 0;
@@ -181,6 +203,7 @@ class Iter {
         return mxcur;
     }
 
+    /* min returns the smallest element, or None if the iterator is empty. */
     func min() {
         let mnseen = false;
         let mncur = 0;
@@ -195,6 +218,7 @@ class Iter {
     }
 }
 
+/* MapIter applies f to each element of src. */
 class MapIter extends Iter {
     public: src: Iter; f: Fn1;
     MapIter(s: Iter, m: Fn1) { this.src = s; this.f = m; }
@@ -205,6 +229,7 @@ class MapIter extends Iter {
     }
 }
 
+/* FilterIter keeps src elements where pred holds. */
 class FilterIter extends Iter {
     public: src: Iter; pred: Fn1;
     FilterIter(s: Iter, p: Fn1) { this.src = s; this.pred = p; }
@@ -217,6 +242,7 @@ class FilterIter extends Iter {
     }
 }
 
+/* TakeIter yields at most n elements from src. */
 class TakeIter extends Iter {
     public: src: Iter; n: int; taken: int = 0;
     TakeIter(s: Iter, limit: int) { this.src = s; this.n = limit; }
@@ -227,6 +253,7 @@ class TakeIter extends Iter {
     }
 }
 
+/* TakeWhileIter yields src elements until pred fails. */
 class TakeWhileIter extends Iter {
     public: src: Iter; pred: Fn1; done: bool = false;
     TakeWhileIter(s: Iter, p: Fn1) { this.src = s; this.pred = p; }
@@ -239,6 +266,7 @@ class TakeWhileIter extends Iter {
     }
 }
 
+/* SkipIter drops the first n elements of src. */
 class SkipIter extends Iter {
     public: src: Iter; n: int; skipped: int = 0;
     SkipIter(s: Iter, limit: int) { this.src = s; this.n = limit; }
@@ -265,6 +293,7 @@ class ZipIter extends Iter {
     }
 }
 
+/* ChainIter yields a, then b once a is exhausted. */
 class ChainIter extends Iter {
     public: a: Iter; b: Iter; first: bool = true;
     ChainIter(x: Iter, y: Iter) { this.a = x; this.b = y; }
@@ -278,6 +307,7 @@ class ChainIter extends Iter {
     }
 }
 
+/* StepByIter yields every n-th element of src. */
 class StepByIter extends Iter {
     public: src: Iter; step: int; pos: int = 0;
     StepByIter(s: Iter, n: int) { this.src = s; this.step = n; }
@@ -297,6 +327,7 @@ class StepByIter extends Iter {
 
 /* Seeds: range(a, b) iterates [a, b); repeat(v) yields v forever. */
 
+/* RangeIter yields the half-open integer range [start, stop). */
 class RangeIter extends Iter {
     public: i: int = 0; end: int = 0;
     RangeIter(start: int, stop: int) { this.i = start; this.end = stop; }
@@ -308,6 +339,7 @@ class RangeIter extends Iter {
     }
 }
 
+/* RepeatIter yields `value` forever. */
 class RepeatIter extends Iter {
     public: v = 0;
     RepeatIter(value) { this.v = value; }
@@ -316,10 +348,12 @@ class RepeatIter extends Iter {
     }
 }
 
+/* range builds a half-open integer iterator over [start, stop). */
 func range(start: int, end: int) -> RangeIter {
     return new RangeIter(start, end);
 }
 
+/* repeat builds an infinite iterator that always yields `value`. */
 func repeat(value) -> RepeatIter {
     return new RepeatIter(value);
 }
