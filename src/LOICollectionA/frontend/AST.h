@@ -489,6 +489,10 @@ namespace LOICollection::frontend {
         std::string namespaces;
         std::string name;
 
+        bool isStaticClassCall = false;
+        std::string staticClassName;
+        int methodOrdinal = -1;
+
         FunctionNode(auto&& a, std::string ns, std::string n)
             : args(std::forward<decltype(a)>(a)),
               namespaces(std::move(ns)),

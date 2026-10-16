@@ -943,6 +943,25 @@ namespace LOICollection::frontend::ir {
 
     void Compiler::visit(FunctionNode& node) {
         const int argCount = static_cast<int>(node.args.size());
+
+        if (node.isStaticClassCall) {
+            const int base = this->reserveRegs(argCount);
+            for (int i = 0; i < argCount; ++i)
+                this->compileArg(base + i, *node.args[i], node.loc);
+
+            auto it = this->classStaticMethodIndices.find(node.staticClassName);
+            if (it != this->classStaticMethodIndices.end() && node.methodOrdinal >= 0 &&
+                static_cast<size_t>(node.methodOrdinal) < it->second.size()) {
+                const int dst = this->allocReg();
+                this->current.get().emitCall(
+                    MirOp::CALL_FUNC, it->second[node.methodOrdinal], dst, base, -1, argCount, node.loc);
+                this->lastResultReg = dst;
+            } else {
+                this->diagnostics.addError(node.loc, "Unresolved static method call: " + node.name);
+            }
+            return;
+        }
+
         const int base = this->reserveRegs(argCount);
 
         for (int i = 0; i < argCount; ++i)

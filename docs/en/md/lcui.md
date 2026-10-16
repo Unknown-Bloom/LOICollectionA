@@ -540,7 +540,7 @@ Private members are not inherited; a subclass cannot access the base class's pri
 
 ### Static Members
 
-`static` declares a static field or static method, accessed via `ClassName.member`:
+`static` declares a static field or static method, accessed via `ClassName::member` (instance members use `.`, static members use `::` to distinguish):
 
 ```lcui
 class Counter {
@@ -553,8 +553,8 @@ public:
     }
 }
 
-Counter.inc();  // 1
-Counter.total;  // 1
+Counter::inc();  // 1
+Counter::total;  // 1
 ```
 
 Static fields are shared across all instances; `this` cannot be used in a static method, and instance objects cannot call static methods directly. Static members support inheritance and overriding.

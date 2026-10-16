@@ -275,10 +275,42 @@ namespace LOICollection::frontend {
                 return unary.op == "!" ? TypeInfo{ TypeKind::Bool } : operand;
             }
 
-            case ASTNode::Type::Function:
-                for (auto& arg : static_cast<FunctionNode&>(node).args)
-                    checkExpr(*arg, scope);
+            case ASTNode::Type::Function: {
+                auto& fn = static_cast<FunctionNode&>(node);
+                const size_t argCount = fn.args.size();
+                std::vector<TypeInfo> argTypes;
+                argTypes.reserve(argCount);
+                for (auto& arg : fn.args)
+                    argTypes.push_back(checkExpr(*arg, scope));
+
+                // `ClassName::method(args)` resolves to a class static method when
+                // the namespace names a known class; native classes keep the
+                // existing global function lookup and other names fall through.
+                if (auto clsOpt = this->findClass(fn.namespaces)) {
+                    auto staticMethod = this->findStaticMethod(
+                        clsOpt->get(), fn.name, argTypes, scope);
+                    if (!staticMethod) {
+                        diagnostics.addError(fn.loc,
+                            "No matching static method '" + fn.name + "' with " +
+                            std::to_string(argCount) + " argument(s) in class '" +
+                            fn.namespaces + "'");
+                        return {};
+                    }
+
+                    MethodDecl& method = staticMethod->method.get();
+                    fn.isStaticClassCall = true;
+                    fn.staticClassName = fn.namespaces;
+                    fn.methodOrdinal = this->staticMethodOrdinal(
+                        fn.namespaces, this->methodSignature(method));
+                    for (size_t j = 0; j < argCount; ++j) {
+                        if (method.paramTypes[j].kind == TypeKind::Optional &&
+                            argTypes[j].kind == TypeKind::Optional)
+                            fn.args[j]->preserveOptional = true;
+                    }
+                    return method.returnType;
+                }
                 return {};
+            }
 
             case ASTNode::Type::Macro:
                 for (auto& arg : static_cast<MacroNode&>(node).args)

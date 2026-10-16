@@ -780,7 +780,7 @@ import "std/array.lcui" { arrSum, arrZip };   // 只取需要的定义
 | `array.lcui` | 急切数组函数：`arrMap` / `arrFilter` / `arrReverse` / `arrSum` / `arrProduct` / `arrAny` / `arrAll` / `arrFind` / `arrFindIndex` / `arrDedup` / `arrZip` / `arrLast` / `arrChunk`。 |
 | `string.lcui` | `upper` / `lower` / `capitalize` / `trim` / `trimStart` / `trimEnd` / `substr` / `slice` / `charAt` / `repeat` / `replace` / `padLeft` / `padRight` / `reverse`（按 Unicode 字符；大小写映射 ASCII）。 |
 | `math.lcui` | `abs` / `min` / `max` / `clamp` / `lerp`（超越函数仍在原生 `math::` 命名空间）。 |
-| `result.lcui` | `Result` 可恢复错误类型：`Result.Ok(v)` / `Result.Err(e)`、`unwrap` / `unwrapOr` / `expect` / `errOr` / `map` / `mapErr` / `andThen`。 |
+| `result.lcui` | `Result` 可恢复错误类型：`Result::Ok(v)` / `Result::Err(e)`、`unwrap` / `unwrapOr` / `expect` / `errOr` / `map` / `mapErr` / `andThen`。 |
 
 示例——惰性流水线：
 
@@ -898,7 +898,7 @@ box.secret;         // 报错：私有字段
 
 ### 静态成员
 
-使用 `static` 声明静态字段或静态方法，通过 `类名.成员` 访问：
+使用 `static` 声明静态字段或静态方法，通过 `类名::成员` 访问（实例成员用 `.`，静态成员用 `::` 区分）：
 
 ```lcui
 class Counter {
@@ -911,8 +911,8 @@ public:
     }
 }
 
-Counter.inc();  // 1
-Counter.total;  // 1
+Counter::inc();  // 1
+Counter::total;  // 1
 ```
 
 静态字段在所有实例之间共享；静态方法中不能使用 `this`，实例对象也不能直接调用静态方法。静态成员支持继承与重写。
