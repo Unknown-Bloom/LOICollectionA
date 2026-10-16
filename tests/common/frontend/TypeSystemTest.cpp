@@ -121,10 +121,10 @@ TEST(TypeSystemTest, TypedMembers) {
 TEST(TypeSystemTest, StaticTypedMembers) {
     EXPECT_EQ(eval(
         "class A { public: static x: optional<int> = None; } "
-        "A.x.has_value"), "false");
+        "A::x.has_value"), "false");
     EXPECT_THROW(eval(
         "class A { public: static x: optional<int> = None; } "
-        "A.x"), std::runtime_error);
+        "A::x"), std::runtime_error);
 }
 
 TEST(TypeSystemTest, UntypedMembersAreDynamic) {

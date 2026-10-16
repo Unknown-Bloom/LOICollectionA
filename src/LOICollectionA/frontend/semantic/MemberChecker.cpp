@@ -19,6 +19,19 @@ namespace LOICollection::frontend {
         if (node.target->getType() == ASTNode::Type::Variable) {
             auto& var = static_cast<VariableNode&>(*node.target);
             if (auto clsOpt = this->findClass(var.name)) {
+                if (!node.isColonColon) {
+                    const bool isStaticMember =
+                        static_cast<bool>(this->findStaticField(clsOpt->get(), node.memberName)) ||
+                        static_cast<bool>(this->findStaticMethod(
+                            clsOpt->get(), node.memberName, std::vector<TypeInfo>{}, scope));
+                    diagnostics.addError(node.loc,
+                        isStaticMember
+                            ? "Static member '" + node.memberName + "' of class '" + clsOpt->get().name +
+                              "' must be accessed with '::' (found '" + clsOpt->get().name + "." + node.memberName + "')"
+                            : "Class '" + clsOpt->get().name + "' has no static member '" + node.memberName + "'");
+                    return {};
+                }
+
                 auto field = this->findStaticField(clsOpt->get(), node.memberName);
                 if (!field) {
                     diagnostics.addError(node.loc,
@@ -41,6 +54,13 @@ namespace LOICollection::frontend {
             }
 
             if (isNativeClass(var.name)) {
+                if (!node.isColonColon) {
+                    diagnostics.addError(node.loc,
+                        "Native class '" + var.name + "' members must be accessed with '::' (found '" +
+                        var.name + "." + node.memberName + "')");
+                    return {};
+                }
+
                 if (ClassCall::getInstance().hasStaticField(var.name, node.memberName)) {
                     node.isStaticAccess = true;
                     node.staticClassName = var.name;

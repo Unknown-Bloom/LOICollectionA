@@ -103,7 +103,7 @@ namespace LOICollection::frontend {
         return type;
     }
 
-    std::unique_ptr<FunctionNode> Parser::parseFunction() {
+    std::unique_ptr<ExprNode> Parser::parseFunction() {
         SourceLocation loc = currentToken.loc;
 
         std::string namespaces = currentToken.value;
@@ -114,18 +114,27 @@ namespace LOICollection::frontend {
         std::string name = currentToken.value;
 
         if (!eat(TokenType::TOKEN_IDENT)) return nullptr;
-        if (!eat(TokenType::TOKEN_LPAREN)) return nullptr;
 
-        auto args = parseArgs();
+        if (currentToken.type == TokenType::TOKEN_LPAREN) {
+            if (!eat(TokenType::TOKEN_LPAREN)) return nullptr;
 
-        if (!eat(TokenType::TOKEN_RPAREN)) return nullptr;
+            auto args = parseArgs();
 
-        return std::make_unique<FunctionNode>(
-            loc,
-            std::move(args),
-            std::move(namespaces),
-            std::move(name)
-        );
+            if (!eat(TokenType::TOKEN_RPAREN)) return nullptr;
+
+            return std::make_unique<FunctionNode>(
+                loc,
+                std::move(args),
+                std::move(namespaces),
+                std::move(name)
+            );
+        }
+
+        // `ns::name` without parentheses: static field access.
+        auto target = std::make_unique<VariableNode>(loc, std::move(namespaces));
+        auto access = std::make_unique<MemberAccessNode>(loc, std::move(target), std::move(name));
+        access->isColonColon = true;
+        return access;
     }
 
     std::unique_ptr<MacroNode> Parser::parseMacro() {

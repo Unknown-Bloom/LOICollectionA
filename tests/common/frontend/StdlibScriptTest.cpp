@@ -166,17 +166,17 @@ TEST(StdlibScriptTest, ArrayHelpersPullFn1ThroughSelectiveImport) {
 
 TEST(StdlibScriptTest, ResultType) {
     EXPECT_EQ(evalStd(
-        "import \"/result.lcui\"; Result.Ok(42).unwrap()"), "42");
+        "import \"/result.lcui\"; Result::Ok(42).unwrap()"), "42");
     EXPECT_EQ(evalStd(
-        "import \"/result.lcui\"; Result.Err(\"boom\").unwrapOr(-1)"), "-1");
+        "import \"/result.lcui\"; Result::Err(\"boom\").unwrapOr(-1)"), "-1");
     EXPECT_EQ(evalStd(
-        "import \"/result.lcui\"; Result.Err(\"boom\").errOr(\"none\")"), "boom");
+        "import \"/result.lcui\"; Result::Err(\"boom\").errOr(\"none\")"), "boom");
     EXPECT_EQ(evalStd(
         "import \"/result.lcui\";"
         "class Inc extends Fn1 { func call(x) { return x + 1; } }"
-        "Result.Ok(1).map(new Inc()).unwrap()"), "2");
+        "Result::Ok(1).map(new Inc()).unwrap()"), "2");
     EXPECT_ANY_THROW(evalStd(
-        "import \"/result.lcui\"; Result.Err(\"boom\").unwrap()"));
+        "import \"/result.lcui\"; Result::Err(\"boom\").unwrap()"));
 }
 
 TEST(StdlibScriptTest, ManualNextKeepsOptionalOnDynamicLet) {

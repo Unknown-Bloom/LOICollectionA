@@ -56,6 +56,13 @@ namespace LOICollection::frontend {
         if (node.target->getType() == ASTNode::Type::Variable) {
             auto& var = static_cast<VariableNode&>(*node.target);
             if (auto clsOpt = this->findClass(var.name)) {
+                if (!node.isColonColon) {
+                    diagnostics.addError(node.loc,
+                        "Static method '" + node.methodName + "' of class '" + clsOpt->get().name +
+                        "' must be accessed with '::' (found '" + clsOpt->get().name + "." + node.methodName + "')");
+                    return {};
+                }
+
                 std::vector<TypeInfo> argTypes = checkArgs();
 
                 auto staticMethod = this->findStaticMethod(
@@ -87,6 +94,13 @@ namespace LOICollection::frontend {
             }
 
             if (isNativeClass(var.name)) {
+                if (!node.isColonColon) {
+                    diagnostics.addError(node.loc,
+                        "Native class '" + var.name + "' members must be accessed with '::' (found '" +
+                        var.name + "." + node.methodName + "')");
+                    return {};
+                }
+
                 std::vector<TypeInfo> argTypes = checkArgs();
 
                 std::vector<CallbackTypeArgs> signatures =

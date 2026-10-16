@@ -756,6 +756,7 @@ namespace LOICollection::frontend {
         std::unique_ptr<ExprNode> target;
         std::string memberName;
         bool isStaticAccess = false;
+        bool isColonColon = false;
         std::string staticClassName;
         bool isSafe = false;
         MemberKind memberKind = MemberKind::Normal;
@@ -780,6 +781,7 @@ namespace LOICollection::frontend {
         int methodOrdinal = -1;
         bool dynamicDispatch = false;
         bool isStaticCall = false;
+        bool isColonColon = false;
         std::string staticClassName;
 
         MethodCallNode(SourceLocation location, auto&& t, std::string name, auto&& a)

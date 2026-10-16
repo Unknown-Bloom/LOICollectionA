@@ -70,6 +70,6 @@ TEST(ArrayTest, FieldDefaultIsolation) {
 TEST(ArrayTest, StaticArrayField) {
     EXPECT_EQ(eval(
         "class A { public: static arr = [1, 2]; } "
-        "A.arr[1]"),
+        "A::arr[1]"),
         "2");
 }

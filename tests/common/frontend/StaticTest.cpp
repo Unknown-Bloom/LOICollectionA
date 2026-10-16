@@ -5,15 +5,15 @@
 using namespace LOICollection::frontend;
 
 TEST(StaticTest, StaticFieldDefault) {
-    EXPECT_EQ(eval("class A { public: static count = 1; } A.count"), "1");
+    EXPECT_EQ(eval("class A { public: static count = 1; } A::count"), "1");
 }
 
 TEST(StaticTest, StaticFieldAssignment) {
-    EXPECT_EQ(eval("class A { public: static count = 1; } A.count = 5; A.count"), "5");
+    EXPECT_EQ(eval("class A { public: static count = 1; } A::count = 5; A::count"), "5");
 }
 
 TEST(StaticTest, StaticMethod) {
-    EXPECT_EQ(eval("class A { public: static func make() -> int { return 42; } } A.make()"), "42");
+    EXPECT_EQ(eval("class A { public: static func make() -> int { return 42; } } A::make()"), "42");
 }
 
 TEST(StaticTest, StaticMethodAccessStaticField) {
@@ -23,8 +23,8 @@ TEST(StaticTest, StaticMethodAccessStaticField) {
         "static count = 1; "
         "static func inc() -> int { count = count + 1; return count; } "
         "} "
-        "A.inc(); "
-        "A.inc()"),
+        "A::inc(); "
+        "A::inc()"),
         "3");
 }
 
@@ -35,7 +35,7 @@ TEST(StaticTest, StaticMethodCallsStaticMethod) {
         "static func helper() -> int { return 1; } "
         "static func call() -> int { return helper(); } "
         "} "
-        "A.call()"),
+        "A::call()"),
         "1");
 }
 
@@ -44,10 +44,10 @@ TEST(StaticTest, StaticFieldSharedAcrossInstances) {
         "class A { "
         "public: "
         "static count = 10; "
-        "func get() -> int { return A.count; } "
+        "func get() -> int { return A::count; } "
         "} "
         "let a = new A(); "
-        "A.count = 20; "
+        "A::count = 20; "
         "a.get()"),
         "20");
 }
@@ -60,7 +60,7 @@ TEST(StaticTest, StaticInheritance) {
         "static func get() -> int { return count; } "
         "} "
         "class B extends A {} "
-        "B.count + B.get()"),
+        "B::count + B::get()"),
         "14");
 }
 
@@ -68,7 +68,7 @@ TEST(StaticTest, StaticFieldOverride) {
     EXPECT_EQ(eval(
         "class A { public: static count = 1; } "
         "class B extends A { public: static count = 2; } "
-        "A.count + B.count"),
+        "A::count + B::count"),
         "3");
 }
 
@@ -76,7 +76,7 @@ TEST(StaticTest, StaticMethodOverride) {
     EXPECT_EQ(eval(
         "class A { public: static func f() -> int { return 1; } } "
         "class B extends A { public: static func f() -> int { return 2; } } "
-        "A.f() + B.f()"),
+        "A::f() + B::f()"),
         "3");
 }
 
@@ -88,11 +88,11 @@ TEST(StaticTest, PrivateStaticMember) {
         "public: "
         "static func get() -> int { return secret; } "
         "} "
-        "A.get()"),
+        "A::get()"),
         "42");
     EXPECT_THROW(eval(
         "class A { private: static secret = 42; } "
-        "A.secret"),
+        "A::secret"),
         std::runtime_error);
 }
 
@@ -103,7 +103,7 @@ TEST(StaticTest, ThisNotAllowedInStaticMethod) {
         "x = 1; "
         "static func bad() -> int { return this.x; } "
         "} "
-        "A.bad()"),
+        "A::bad()"),
         std::runtime_error);
 }
 
@@ -123,7 +123,7 @@ TEST(StaticTest, StaticMethodInInstanceMethodViaClassName) {
         "class A { "
         "public: "
         "static func f() -> int { return 9; } "
-        "func g() -> int { return A.f(); } "
+        "func g() -> int { return A::f(); } "
         "} "
         "let a = new A(); "
         "a.g()"),
@@ -161,9 +161,9 @@ TEST(StaticTest, NativeStaticFieldAndMethod) {
             return 42;
         }, {});
 
-    EXPECT_EQ(eval("NativeStaticDemo.version"), "1");
-    EXPECT_EQ(eval("NativeStaticDemo.version = 9; NativeStaticDemo.version"), "9");
-    EXPECT_EQ(eval("NativeStaticDemo.versioned()"), "42");
-    EXPECT_EQ(eval("let o = NativeStaticDemo.create(5); o.value"), "5");
+    EXPECT_EQ(eval("NativeStaticDemo::version"), "1");
+    EXPECT_EQ(eval("NativeStaticDemo::version = 9; NativeStaticDemo::version"), "9");
+    EXPECT_EQ(eval("NativeStaticDemo::versioned()"), "42");
+    EXPECT_EQ(eval("let o = NativeStaticDemo::create(5); o.value"), "5");
     EXPECT_EQ(eval("new NativeStaticDemo().value"), "7");
 }
