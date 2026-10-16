@@ -1,8 +1,12 @@
-/* Std: small math helpers, replacing the former `math::abs/min/max` natives.
+/* Std: math helpers, replacing the former `math::abs/min/max` natives.
  *
  * Transcendental functions stay native (`math::sqrt/pow/log/sin/cos/random`)
  * because scripts cannot compute them; these helpers are the scriptable part.
  * Parameters are dynamic so the same function serves int and float.
+ *
+ * The language has no float->int cast and `%` is integral-only, so the
+ * rounding helpers go through the decimal text form of the number:
+ * `trunc` cuts at the '.', and floor/ceil/round are expressed on top of it.
  */
 
 /* abs returns the absolute value of x. */
@@ -33,4 +37,251 @@ func clamp(x, lo, hi) {
 /* lerp linearly interpolates from a to b by t (t in [0, 1]). */
 func lerp(a, b, t) {
     return a + (b - a) * t;
+}
+
+/* pi returns the ratio of a circle's circumference to its diameter. */
+func pi() {
+    return 3.141592653589793;
+}
+
+/* tau returns the ratio of a circle's circumference to its radius (2*pi). */
+func tau() {
+    return 6.283185307179586;
+}
+
+/* euler returns Euler's number, the base of the natural logarithm. */
+func euler() {
+    return 2.718281828459045;
+}
+
+/* sign returns -1 when x is negative, 1 when positive and 0 for zero. */
+func sign(x) -> int {
+    if (x < 0) [ return -1; ]
+    if (x > 0) [ return 1; ]
+    return 0;
+}
+
+/* trunc drops the fractional part of x, rounding toward zero. */
+func trunc(x) -> int {
+    let text = "" + x;
+    let dot = text.indexOf(".");
+    if (dot < 0) [ return text.toInt(); ]
+
+    let whole = "";
+    let i = 0;
+    for (c in text) [
+        if (i >= dot) [ break; ]
+        whole = whole + c;
+        i = i + 1;
+    ]
+    return whole.toInt();
+}
+
+/* floor returns the greatest integer that is <= x. */
+func floor(x) -> int {
+    let whole = trunc(x);
+    if (x < whole) [ return whole - 1; ]
+    return whole;
+}
+
+/* ceil returns the smallest integer that is >= x. */
+func ceil(x) -> int {
+    let whole = trunc(x);
+    if (x > whole) [ return whole + 1; ]
+    return whole;
+}
+
+/* round returns x rounded to the nearest integer, halves away from zero. */
+func round(x) -> int {
+    if (x >= 0) [ return floor(x + 0.5); ]
+    return ceil(x - 0.5);
+}
+
+/* roundTo rounds x to `digits` decimal places. */
+func roundTo(x, digits: int) {
+    let factor = 1;
+    let i = 0;
+    while (i < digits) [
+        factor = factor * 10;
+        i = i + 1;
+    ]
+    return round(x * factor) / factor;
+}
+
+/* mod returns a modulo b with a non-negative result, unlike the `%`
+ * operator which keeps the sign of the dividend. */
+func mod(a: int, b: int) -> int {
+    let r = a % b;
+    if (r < 0) [ r = r + b; ]
+    return r;
+}
+
+/* gcd returns the greatest common divisor of two non-negative integers. */
+func gcd(a: int, b: int) -> int {
+    let x = abs(a);
+    let y = abs(b);
+    while (y != 0) [
+        let t = y;
+        y = x % y;
+        x = t;
+    ]
+    return x;
+}
+
+/* lcm returns the least common multiple of two non-zero integers. */
+func lcm(a: int, b: int) -> int {
+    if (a == 0 || b == 0) [ return 0; ]
+    return abs(a * b) / gcd(a, b);
+}
+
+/* factorial returns n! (1 for n <= 1). */
+func factorial(n: int) -> int {
+    let out = 1;
+    let i = 2;
+    while (i <= n) [
+        out = out * i;
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* fib returns the n-th Fibonacci number with fib(0) = 0 and fib(1) = 1. */
+func fib(n: int) -> int {
+    if (n < 2) [ return n; ]
+    let prev = 0;
+    let cur = 1;
+    let i = 2;
+    while (i <= n) [
+        let next = prev + cur;
+        prev = cur;
+        cur = next;
+        i = i + 1;
+    ]
+    return cur;
+}
+
+/* isPrime reports whether n is a prime number. */
+func isPrime(n: int) -> bool {
+    if (n < 2) [ return false; ]
+    if (n < 4) [ return true; ]
+    if (n % 2 == 0) [ return false; ]
+    let d = 3;
+    while (d * d <= n) [
+        if (n % d == 0) [ return false; ]
+        d = d + 2;
+    ]
+    return true;
+}
+
+/* isEven reports whether n is divisible by two. */
+func isEven(n: int) -> bool {
+    return n % 2 == 0;
+}
+
+/* isOdd reports whether n is not divisible by two. */
+func isOdd(n: int) -> bool {
+    return n % 2 != 0;
+}
+
+/* sqrt returns the square root of x. */
+func sqrt(x) {
+    return math::sqrt(x);
+}
+
+/* hypot returns the length of the hypotenuse of a right triangle with
+ * legs a and b, avoiding overflow for large inputs. */
+func hypot(a, b) {
+    return math::sqrt(a * a + b * b);
+}
+
+/* dist returns the Euclidean distance between (x1, y1) and (x2, y2). */
+func dist(x1, y1, x2, y2) {
+    return hypot(x1 - x2, y1 - y2);
+}
+
+/* log10 returns the base-10 logarithm of x (x > 0). */
+func log10(x) {
+    return math::log(x) / math::log(10);
+}
+
+/* log2 returns the base-2 logarithm of x (x > 0). */
+func log2(x) {
+    return math::log(x) / math::log(2);
+}
+
+/* degToRad converts an angle in degrees to radians. */
+func degToRad(deg) {
+    return deg * pi() / 180;
+}
+
+/* radToDeg converts an angle in radians to degrees. */
+func radToDeg(rad) {
+    return rad * 180 / pi();
+}
+
+/* mapRange rescales v from [inMin, inMax] onto [outMin, outMax]. */
+func mapRange(v, inMin, inMax, outMin, outMax) {
+    if (inMax == inMin) [ return outMin; ]
+    return outMin + (v - inMin) * (outMax - outMin) / (inMax - inMin);
+}
+
+/* clamp01 constrains x into the inclusive range [0, 1]. */
+func clamp01(x) {
+    return clamp(x, 0, 1);
+}
+
+/* approxEq reports whether a and b differ by at most `eps`. */
+func approxEq(a, b, eps) -> bool {
+    return abs(a - b) <= eps;
+}
+
+/* sum returns the arithmetic sum of every element in a (0 for empty). */
+func sum(a) {
+    let total = 0;
+    for (v in a) [
+        total = total + v;
+    ]
+    return total;
+}
+
+/* mean returns the arithmetic average of a, or 0 for an empty array. */
+func mean(a) {
+    if (a.length() == 0) [ return 0; ]
+    return sum(a) / a.length();
+}
+
+/* minOf returns the smallest element of a, or None when empty. */
+func minOf(a) {
+    if (a.length() == 0) [ return None; ]
+    let best = a[0];
+    for (v in a) [
+        if (v < best) [ best = v; ]
+    ]
+    return best;
+}
+
+/* maxOf returns the largest element of a, or None when empty. */
+func maxOf(a) {
+    if (a.length() == 0) [ return None; ]
+    let best = a[0];
+    for (v in a) [
+        if (v > best) [ best = v; ]
+    ]
+    return best;
+}
+
+/* median returns the middle element of a once sorted, or None when empty. */
+func median(a) {
+    if (a.length() == 0) [ return None; ]
+
+    let sorted = [];
+    for (v in a) [
+        sorted.push(v);
+    ]
+    sorted.sort();
+
+    let n = sorted.length();
+    let mid = floor(n / 2);
+    if (n % 2 == 1) [ return sorted[mid]; ]
+    return (sorted[mid - 1] + sorted[mid]) / 2;
 }

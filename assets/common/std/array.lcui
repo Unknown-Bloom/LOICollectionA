@@ -7,6 +7,7 @@
  */
 
 import "iter.lcui" { Fn1, Fn2 };
+import "map.lcui" { mapNew, mapHas, mapGet, mapSet, mapSize, mapKeys };
 
 /* arrMap applies f to every element, returning a new array. */
 func arrMap(a, f: Fn1) {
@@ -132,5 +133,302 @@ func arrChunk(a, size: int) {
         i = i + 1;
     ]
     if (cur.length() > 0) [ out.push(cur); ]
+    return out;
+}
+
+/* arrFirst returns the first element, or None for an empty array. */
+func arrFirst(a) {
+    if (a.length() == 0) [ return None; ]
+    return a[0];
+}
+
+/* arrFlatten concatenates one level of nested arrays. */
+func arrFlatten(a) {
+    let out = [];
+    for (v in a) [
+        for (x in v) [
+            out.push(x);
+        ]
+    ]
+    return out;
+}
+
+/* arrFlatMap applies f to every element and flattens the results one level. */
+func arrFlatMap(a, f: Fn1) {
+    let out = [];
+    for (v in a) [
+        let mapped = f.call(v);
+        for (x in mapped) [
+            out.push(x);
+        ]
+    ]
+    return out;
+}
+
+/* arrTake returns the first n elements (or all of them when shorter). */
+func arrTake(a, n: int) {
+    let out = [];
+    let i = 0;
+    while (i < n && i < a.length()) [
+        out.push(a[i]);
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* arrSkip returns the elements after the first n. */
+func arrSkip(a, n: int) {
+    let out = [];
+    let i = n;
+    while (i < a.length()) [
+        out.push(a[i]);
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* arrConcat returns a new array holding a followed by b. */
+func arrConcat(a, b) {
+    let out = [];
+    for (v in a) [
+        out.push(v);
+    ]
+    for (v in b) [
+        out.push(v);
+    ]
+    return out;
+}
+
+/* arrCount returns how many elements satisfy pred. */
+func arrCount(a, pred: Fn1) -> int {
+    let total = 0;
+    for (v in a) [
+        if (pred.call(v)) [ total = total + 1; ]
+    ]
+    return total;
+}
+
+/* arrReduce folds a left-to-right from `seed` via f(acc, v). */
+func arrReduce(a, f: Fn2, seed) {
+    let acc = seed;
+    for (v in a) [
+        acc = f.call(acc, v);
+    ]
+    return acc;
+}
+
+/* arrMin returns the smallest element, or None when empty. */
+func arrMin(a) {
+    if (a.length() == 0) [ return None; ]
+    let best = a[0];
+    for (v in a) [
+        if (v < best) [ best = v; ]
+    ]
+    return best;
+}
+
+/* arrMax returns the largest element, or None when empty. */
+func arrMax(a) {
+    if (a.length() == 0) [ return None; ]
+    let best = a[0];
+    for (v in a) [
+        if (v > best) [ best = v; ]
+    ]
+    return best;
+}
+
+/* arrMean returns the arithmetic average, or 0 for an empty array. */
+func arrMean(a) {
+    if (a.length() == 0) [ return 0; ]
+    let total = 0;
+    for (v in a) [
+        total = total + v;
+    ]
+    return total / a.length();
+}
+
+/* arrSortBy orders a copy of a by the key returned by f (stable). */
+func arrSortBy(a, f: Fn1) {
+    let out = [];
+    for (v in a) [
+        out.push(v);
+    ]
+
+    let i = 1;
+    while (i < out.length()) [
+        let cur = out[i];
+        let curKey = f.call(cur);
+        let j = i - 1;
+        while (j >= 0 && f.call(out[j]) > curKey) [
+            out[j + 1] = out[j];
+            j = j - 1;
+        ]
+        out[j + 1] = cur;
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* arrGroupBy buckets the elements by the key returned from f, keyed by the
+ * text form of that key. */
+func arrGroupBy(a, f: Fn1) {
+    let out = mapNew();
+    for (v in a) [
+        let k = "" + f.call(v);
+        if (mapHas(out, k)) [
+            let bucket = mapGet(out, k);
+            bucket.push(v);
+            mapSet(out, k, bucket);
+        :
+            let fresh = [];
+            fresh.push(v);
+            mapSet(out, k, fresh);
+        ]
+    ]
+    return out;
+}
+
+/* arrPartition splits a into [matching, nonMatching] according to pred. */
+func arrPartition(a, pred: Fn1) {
+    let yes = [];
+    let no = [];
+    for (v in a) [
+        if (pred.call(v)) [ yes.push(v); : no.push(v); ]
+    ]
+    return [yes, no];
+}
+
+/* arrWindow returns every consecutive run of `size` elements. */
+func arrWindow(a, size: int) {
+    let out = [];
+    if (size <= 0) [ return out; ]
+
+    let i = 0;
+    while (i + size <= a.length()) [
+        let win = [];
+        let j = 0;
+        while (j < size) [
+            win.push(a[i + j]);
+            j = j + 1;
+        ]
+        out.push(win);
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* arrUnion returns the elements of a and b with duplicates removed. */
+func arrUnion(a, b) {
+    let out = [];
+    for (v in a) [
+        if (!out.contains(v)) [ out.push(v); ]
+    ]
+    for (v in b) [
+        if (!out.contains(v)) [ out.push(v); ]
+    ]
+    return out;
+}
+
+/* arrIntersect returns the elements present in both a and b. */
+func arrIntersect(a, b) {
+    let out = [];
+    for (v in a) [
+        if (b.contains(v) && !out.contains(v)) [ out.push(v); ]
+    ]
+    return out;
+}
+
+/* arrDifference returns the elements of a that are absent from b. */
+func arrDifference(a, b) {
+    let out = [];
+    for (v in a) [
+        if (!b.contains(v) && !out.contains(v)) [ out.push(v); ]
+    ]
+    return out;
+}
+
+/* arrFill returns an array of n copies of v. */
+func arrFill(n: int, v) {
+    let out = [];
+    let i = 0;
+    while (i < n) [
+        out.push(v);
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* arrRange returns the integers in [from, to). */
+func arrRange(from: int, to: int) {
+    let out = [];
+    let i = from;
+    while (i < to) [
+        out.push(i);
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* arrEqual reports whether a and b hold the same elements in the same order. */
+func arrEqual(a, b) -> bool {
+    if (a.length() != b.length()) [ return false; ]
+
+    let i = 0;
+    while (i < a.length()) [
+        if (a[i] != b[i]) [ return false; ]
+        i = i + 1;
+    ]
+    return true;
+}
+
+/* arrIsEmpty reports whether a has no elements. */
+func arrIsEmpty(a) -> bool {
+    return a.length() == 0;
+}
+
+/* arrIndexOfValue returns the first position of v in a, or -1. */
+func arrIndexOfValue(a, v) -> int {
+    let i = 0;
+    while (i < a.length()) [
+        if (a[i] == v) [ return i; ]
+        i = i + 1;
+    ]
+    return -1;
+}
+
+/* arrRotate returns the elements shifted left by n (negative shifts right). */
+func arrRotate(a, n: int) {
+    let out = [];
+    let len = a.length();
+    if (len == 0) [ return out; ]
+
+    let shift = n;
+    while (shift < 0) [
+        shift = shift + len;
+    ]
+
+    let i = 0;
+    while (i < len) [
+        out.push(a[(i + shift) % len]);
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* arrShuffle returns a randomly permuted copy of a. */
+func arrShuffle(a) {
+    let out = [];
+    for (v in a) [
+        out.push(v);
+    ]
+
+    let i = out.length() - 1;
+    while (i > 0) [
+        let j = math::random(0, i);
+        let tmp = out[i];
+        out[i] = out[j];
+        out[j] = tmp;
+        i = i - 1;
+    ]
     return out;
 }

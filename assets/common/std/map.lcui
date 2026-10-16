@@ -1,0 +1,174 @@
+/* Std: map and set helpers built on the native Map value type.
+ *
+ * The native Map is mutable and indexed by string keys; `for (k in m)` walks
+ * its keys. Every helper takes the map as its first argument so the native
+ * methods are always invoked on a parameter.
+ *
+ * Sets are maps whose keys are the members and whose values are `true`, which
+ * keeps membership O(1) and lets a set be inspected like any other map.
+ */
+
+/* mapNew returns an empty map. */
+func mapNew() {
+    return new Map();
+}
+
+/* mapSet stores value under key, returning the same map for chaining. */
+func mapSet(m: Map, k, v) {
+    m.set(k, v);
+    return m;
+}
+
+/* mapGet returns the value stored under key, or None when absent. */
+func mapGet(m: Map, k) {
+    if (!m.has(k)) [ return None; ]
+    return m.get(k);
+}
+
+/* mapGetOr returns the value stored under key, or `fallback` when absent. */
+func mapGetOr(m: Map, k, fallback) {
+    if (!m.has(k)) [ return fallback; ]
+    return m.get(k);
+}
+
+/* mapHas reports whether key is present. */
+func mapHas(m: Map, k) -> bool {
+    return m.has(k);
+}
+
+/* mapSize returns the number of entries. */
+func mapSize(m: Map) -> int {
+    return m.length();
+}
+
+/* mapIsEmpty reports whether the map has no entries. */
+func mapIsEmpty(m: Map) -> bool {
+    return m.length() == 0;
+}
+
+/* mapRemove deletes key, reporting whether it was present. */
+func mapRemove(m: Map, k) -> bool {
+    if (!m.has(k)) [ return false; ]
+    m.remove(k);
+    return true;
+}
+
+/* mapKeys returns every key as an array. */
+func mapKeys(m: Map) {
+    let out = [];
+    for (k in m) [
+        out.push(k);
+    ]
+    return out;
+}
+
+/* mapValues returns every value as an array, in key order. */
+func mapValues(m: Map) {
+    let out = [];
+    for (k in m) [
+        out.push(m.get(k));
+    ]
+    return out;
+}
+
+/* mapEntries returns one [key, value] pair per entry, in key order. */
+func mapEntries(m: Map) {
+    let out = [];
+    for (k in m) [
+        out.push([k, m.get(k)]);
+    ]
+    return out;
+}
+
+/* mapMerge copies every entry of `other` into `m` and returns m. */
+func mapMerge(m: Map, other: Map) {
+    for (k in other) [
+        m.set(k, other.get(k));
+    ]
+    return m;
+}
+
+/* mapFromEntries builds a map from an array of [key, value] pairs. */
+func mapFromEntries(a) {
+    let out = new Map();
+    for (pair in a) [
+        out.set(pair[0], pair[1]);
+    ]
+    return out;
+}
+
+/* setNew returns an empty set. */
+func setNew() {
+    return new Map();
+}
+
+/* setAdd inserts v into the set, returning the set for chaining. */
+func setAdd(s: Map, v) {
+    s.set("" + v, true);
+    return s;
+}
+
+/* setHas reports whether v is a member of the set. */
+func setHas(s: Map, v) -> bool {
+    return s.has("" + v);
+}
+
+/* setRemove deletes v, reporting whether it was present. */
+func setRemove(s: Map, v) -> bool {
+    if (!s.has("" + v)) [ return false; ]
+    s.remove("" + v);
+    return true;
+}
+
+/* setSize returns the number of members. */
+func setSize(s: Map) -> int {
+    return s.length();
+}
+
+/* setToArray returns the members as an array of their text forms. */
+func setToArray(s: Map) {
+    let out = [];
+    for (k in s) [
+        out.push(k);
+    ]
+    return out;
+}
+
+/* setFromArray builds a set from the elements of a. */
+func setFromArray(a) {
+    let out = new Map();
+    for (v in a) [
+        out.set("" + v, true);
+    ]
+    return out;
+}
+
+/* setUnion returns the members present in either set. */
+func setUnion(a: Map, b: Map) {
+    let out = new Map();
+    for (k in a) [
+        out.set(k, true);
+    ]
+    for (k in b) [
+        out.set(k, true);
+    ]
+    return out;
+}
+
+/* setIntersect returns the members present in both sets. */
+func setIntersect(a: Map, b: Map) {
+    let out = new Map();
+    for (k in a) [
+        if (b.has(k)) [ out.set(k, true); ]
+    ]
+    return out;
+}
+
+/* setDifference returns the members of a that are missing from b. */
+func setDifference(a: Map, b: Map) {
+    let out = new Map();
+    for (k in a) [
+        if (!b.has(k)) [ out.set(k, true); ]
+    ]
+    return out;
+}

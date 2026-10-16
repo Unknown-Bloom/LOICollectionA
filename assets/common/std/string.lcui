@@ -156,3 +156,281 @@ func reverse(s) {
     ]
     return out;
 }
+
+/* trimStart strips leading whitespace from s. */
+func trimStart(s) {
+    let start = 0;
+    let n = s.length();
+    while (start < n && isSpace(charAt(s, start))) [
+        start = start + 1;
+    ]
+    return slice(s, start, n);
+}
+
+/* trimEnd strips trailing whitespace from s. */
+func trimEnd(s) {
+    let end = s.length();
+    while (end > 0 && isSpace(charAt(s, end - 1))) [
+        end = end - 1;
+    ]
+    return slice(s, 0, end);
+}
+
+/* startsWith reports whether s begins with prefix. */
+func startsWith(s, prefix) -> bool {
+    return startsWithAt(s, prefix, 0);
+}
+
+/* endsWith reports whether s ends with suffix. */
+func endsWith(s, suffix) -> bool {
+    let at = s.length() - suffix.length();
+    if (at < 0) [ return false; ]
+    return startsWithAt(s, suffix, at);
+}
+
+/* contains reports whether needle occurs anywhere in s. */
+func contains(s, needle) -> bool {
+    return indexOf(s, needle) >= 0;
+}
+
+/* indexOf returns the first position of needle in s, or -1 when absent. */
+func indexOf(s, needle) -> int {
+    if (needle.length() == 0) [ return 0; ]
+    let i = 0;
+    let last = s.length() - needle.length();
+    while (i <= last) [
+        if (startsWithAt(s, needle, i)) [ return i; ]
+        i = i + 1;
+    ]
+    return -1;
+}
+
+/* lastIndexOf returns the last position of needle in s, or -1 when absent. */
+func lastIndexOf(s, needle) -> int {
+    if (needle.length() == 0) [ return s.length(); ]
+    let i = s.length() - needle.length();
+    while (i >= 0) [
+        if (startsWithAt(s, needle, i)) [ return i; ]
+        i = i - 1;
+    ]
+    return -1;
+}
+
+/* count returns how many non-overlapping times needle occurs in s. */
+func count(s, needle) -> int {
+    if (needle.length() == 0) [ return 0; ]
+    let total = 0;
+    let i = 0;
+    let last = s.length() - needle.length();
+    while (i <= last) [
+        if (startsWithAt(s, needle, i)) [
+            total = total + 1;
+            i = i + needle.length();
+        :
+            i = i + 1;
+        ]
+    ]
+    return total;
+}
+
+/* split splits s on every occurrence of sep, returning an array. */
+func split(s, sep) {
+    return s.split(sep);
+}
+
+/* join concatenates the elements of a, separated by sep. */
+func join(a, sep) {
+    return a.join(sep);
+}
+
+/* words splits s on runs of whitespace, dropping empty entries. */
+func words(s) {
+    let out = [];
+    let cur = "";
+    for (c in s) [
+        if (isSpace(c)) [
+            if (cur.length() > 0) [ out.push(cur); ]
+            cur = "";
+        :
+            cur = cur + c;
+        ]
+    ]
+    if (cur.length() > 0) [ out.push(cur); ]
+    return out;
+}
+
+/* lines splits s on newlines, dropping empty entries and trailing \r. */
+func lines(s) {
+    let out = [];
+    let cur = "";
+    for (c in s) [
+        if (c == "\n") [
+            if (cur.length() > 0) [ out.push(cur); ]
+            cur = "";
+        :
+            if (c != "\r") [ cur = cur + c; ]
+        ]
+    ]
+    if (cur.length() > 0) [ out.push(cur); ]
+    return out;
+}
+
+/* isEmpty reports whether s has no characters. */
+func isEmpty(s) -> bool {
+    return s.length() == 0;
+}
+
+/* isBlank reports whether s is empty or made only of whitespace. */
+func isBlank(s) -> bool {
+    return trim(s).length() == 0;
+}
+
+/* isUpper reports whether c is a single ASCII upper-case letter. */
+func isUpper(c) -> bool {
+    if (c.length() != 1) [ return false; ]
+    return indexOf("ABCDEFGHIJKLMNOPQRSTUVWXYZ", c) >= 0;
+}
+
+/* isLower reports whether c is a single ASCII lower-case letter. */
+func isLower(c) -> bool {
+    if (c.length() != 1) [ return false; ]
+    return indexOf("abcdefghijklmnopqrstuvwxyz", c) >= 0;
+}
+
+/* isDigit reports whether c is a single ASCII decimal digit. */
+func isDigit(c) -> bool {
+    if (c.length() != 1) [ return false; ]
+    return indexOf("0123456789", c) >= 0;
+}
+
+/* isAlpha reports whether c is an ASCII letter. */
+func isAlpha(c) -> bool {
+    return isUpper(c) || isLower(c);
+}
+
+/* isAlphaNum reports whether c is an ASCII letter or digit. */
+func isAlphaNum(c) -> bool {
+    return isAlpha(c) || isDigit(c);
+}
+
+/* swapCase flips the case of every ASCII letter in s. */
+func swapCase(s) {
+    let out = "";
+    for (c in s) [
+        let m = c;
+        if (isUpper(c)) [ m = lower(c); ]
+        if (isLower(c)) [ m = upper(c); ]
+        out = out + m;
+    ]
+    return out;
+}
+
+/* titleCase upper-cases the first letter of every whitespace-separated word. */
+func titleCase(s) {
+    let out = "";
+    let startWord = true;
+    for (c in s) [
+        let m = c;
+        if (startWord) [ m = upper(c); ]
+        out = out + m;
+        startWord = isSpace(c);
+    ]
+    return out;
+}
+
+/* truncate shortens s to at most `max` chars, appending `suffix` when cut. */
+func truncate(s, max: int, suffix) {
+    if (s.length() <= max) [ return s; ]
+    let keep = max - suffix.length();
+    if (keep < 0) [ keep = 0; ]
+    return slice(s, 0, keep) + suffix;
+}
+
+/* stripPrefix removes prefix from the start of s when it is present. */
+func stripPrefix(s, prefix) {
+    if (!startsWith(s, prefix)) [ return s; ]
+    return substr(s, prefix.length(), s.length() - prefix.length());
+}
+
+/* stripSuffix removes suffix from the end of s when it is present. */
+func stripSuffix(s, suffix) {
+    if (!endsWith(s, suffix)) [ return s; ]
+    return slice(s, 0, s.length() - suffix.length());
+}
+
+/* commonPrefix returns the longest shared leading run of a and b. */
+func commonPrefix(a, b) {
+    let n = a.length();
+    if (b.length() < n) [ n = b.length(); ]
+
+    let out = "";
+    let i = 0;
+    while (i < n) [
+        if (charAt(a, i) != charAt(b, i)) [ return out; ]
+        out = out + charAt(a, i);
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* commonSuffix returns the longest shared trailing run of a and b. */
+func commonSuffix(a, b) {
+    let n = a.length();
+    if (b.length() < n) [ n = b.length(); ]
+
+    let out = "";
+    let i = 0;
+    while (i < n) [
+        if (charAt(a, a.length() - 1 - i) != charAt(b, b.length() - 1 - i)) [ return out; ]
+        out = charAt(a, a.length() - 1 - i) + out;
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* insert returns s with sub placed at index `at`. */
+func insert(s, at: int, sub) {
+    return slice(s, 0, at) + sub + slice(s, at, s.length());
+}
+
+/* removeAt returns s with `count` chars deleted starting at index `at`. */
+func removeAt(s, at: int, count: int) {
+    return slice(s, 0, at) + slice(s, at + count, s.length());
+}
+
+/* equalsIgnoreCase compares a and b while ignoring ASCII case. */
+func equalsIgnoreCase(a, b) -> bool {
+    return upper(a) == upper(b);
+}
+
+/* compare returns a negative number, 0, or a positive number when a sorts
+ * before, with, or after b. */
+func compare(a, b) -> int {
+    if (a < b) [ return -1; ]
+    if (a > b) [ return 1; ]
+    return 0;
+}
+
+/* snakeCase converts camelCase or spaced text into snake_case. */
+func snakeCase(s) {
+    let out = "";
+    for (c in s) [
+        let add = c;
+        if (isUpper(c)) [ add = "_" + lower(c); ]
+        if (isSpace(c)) [ add = "_"; ]
+        out = out + add;
+    ]
+    return out;
+}
+
+/* kebabCase converts camelCase or spaced text into kebab-case. */
+func kebabCase(s) {
+    let out = "";
+    for (c in s) [
+        let add = c;
+        if (isUpper(c)) [ add = "-" + lower(c); ]
+        if (isSpace(c)) [ add = "-"; ]
+        out = out + add;
+    ]
+    return out;
+}

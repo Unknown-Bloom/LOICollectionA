@@ -86,7 +86,7 @@ target("LOICollectionA")
     if is_mode("debug") then
         add_defines("DEBUG")
 
-        add_defines('LOICOLLECTION_A_STD_DIR="$(projectdir)/assets/common/std"')
+        add_defines('LOICOLLECTION_A_STD_DIR="std"')
 
         add_packages("gtest")
 

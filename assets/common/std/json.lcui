@@ -1,0 +1,184 @@
+/* Std: JSON reader plus the quoting helpers needed to write JSON by hand.
+ *
+ * `jsonParse` turns JSON text into plain script values: objects become Maps,
+ * arrays become arrays, numbers become int or float, and booleans become
+ * bools. Parsing is driven entirely by the input text, so it needs no
+ * runtime type checks.
+ *
+ * A JSON null becomes an empty string: the language cannot store an empty
+ * optional inside a native container, and `null` at the top level is
+ * reported by `jsonParse` as an empty string too.
+ *
+ * The language cannot inspect a value's type at runtime, so there is no
+ * general `jsonStringify` that accepts anything; use `jsonQuote` (and the
+ * Map/Array walkers) to build JSON text from values you already know the
+ * shape of.
+ */
+
+import "map.lcui" { mapNew, mapSet, mapKeys, mapGet };
+import "string.lcui" { charAt };
+
+/* jsonIsSpace reports whether c is JSON whitespace. */
+func jsonIsSpace(c) -> bool {
+    return c == " " || c == "\t" || c == "\n" || c == "\r";
+}
+
+/* jsonSkipWs returns the first index at or after i holding non-whitespace. */
+func jsonSkipWs(s, i: int) -> int {
+    while (i < s.length()) [
+        if (!jsonIsSpace(charAt(s, i))) [ return i; ]
+        i = i + 1;
+    ]
+    return i;
+}
+
+/* jsonIsNumberChar reports whether c may appear inside a JSON number. */
+func jsonIsNumberChar(c) -> bool {
+    if (c >= "0" && c <= "9") [ return true; ]
+    return c == "-" || c == "+" || c == "." || c == "e" || c == "E";
+}
+
+/* jsonParseString reads the quoted string opening at i and returns
+ * [text, indexAfterClosingQuote]. */
+func jsonParseString(s, i: int) {
+    let out = "";
+    let p = i + 1;
+
+    while (p < s.length()) [
+        let c = charAt(s, p);
+
+        if (c == "\"") [ return [out, p + 1, false]; ]
+
+        if (c == "\\") [
+            let e = charAt(s, p + 1);
+            let add = e;
+            let step = 2;
+
+            if (e == "n") [ add = "\n"; ]
+            if (e == "t") [ add = "\t"; ]
+            if (e == "r") [ add = "\r"; ]
+            if (e == "u") [ add = ""; step = 6; ]
+
+            out = out + add;
+            p = p + step;
+        :
+            out = out + c;
+            p = p + 1;
+        ]
+    ]
+
+    return [out, p, false];
+}
+
+/* jsonParseNumber reads the number starting at i, returning [value, end]. */
+func jsonParseNumber(s, i: int) {
+    let text = "";
+    let p = i;
+
+    while (p < s.length()) [
+        let c = charAt(s, p);
+        if (!jsonIsNumberChar(c)) [ return [jsonToNumber(text), p, false]; ]
+        text = text + c;
+        p = p + 1;
+    ]
+
+    return [jsonToNumber(text), p, false];
+}
+
+/* jsonToNumber converts a numeric literal to int or float. */
+func jsonToNumber(t) {
+    if (t.indexOf(".") >= 0 || t.indexOf("e") >= 0 || t.indexOf("E") >= 0) [
+        return t.toFloat();
+    ]
+    return t.toInt();
+}
+
+/* jsonParseArray reads the array opening at i, returning [array, end]. */
+func jsonParseArray(s, i: int) {
+    let out = [];
+    let p = jsonSkipWs(s, i + 1);
+
+    if (charAt(s, p) == "]") [ return [out, p + 1, false]; ]
+
+    while (p < s.length()) [
+        let item = jsonParseValue(s, p);
+        let val = item[0];
+        if (item[2]) [ val = ""; ]
+        out.push(val);
+        p = jsonSkipWs(s, item[1]);
+
+        if (charAt(s, p) == ",") [ p = jsonSkipWs(s, p + 1); : return [out, p + 1, false]; ]
+    ]
+
+    return [out, p, false];
+}
+
+/* jsonParseObject reads the object opening at i, returning [map, end]. */
+func jsonParseObject(s, i: int) {
+    let out = mapNew();
+    let p = jsonSkipWs(s, i + 1);
+
+    if (charAt(s, p) == "}") [ return [out, p + 1, false]; ]
+
+    while (p < s.length()) [
+        let kv = jsonParseString(s, jsonSkipWs(s, p));
+        let key = kv[0];
+        p = jsonSkipWs(s, kv[1]);
+        p = jsonSkipWs(s, p + 1);
+
+        let vr = jsonParseValue(s, p);
+        let val = vr[0];
+        if (vr[2]) [ val = ""; ]
+        mapSet(out, key, val);
+        p = jsonSkipWs(s, vr[1]);
+
+        if (charAt(s, p) == ",") [ p = jsonSkipWs(s, p + 1); : return [out, p + 1, false]; ]
+    ]
+
+    return [out, p, false];
+}
+
+/* jsonParseValue reads any JSON value at i, returning [value, end]. */
+func jsonParseValue(s, i: int) {
+    let p = jsonSkipWs(s, i);
+    let c = charAt(s, p);
+
+    if (c == "{") [ return jsonParseObject(s, p); ]
+    if (c == "[") [ return jsonParseArray(s, p); ]
+    if (c == "\"") [ return jsonParseString(s, p); ]
+    if (c == "t") [ return [true, p + 4, false]; ]
+    if (c == "f") [ return [false, p + 5, false]; ]
+    if (c == "n") [ return ["", p + 4, true]; ]
+
+    return jsonParseNumber(s, p);
+}
+
+/* jsonFirst returns the value half of a [value, end, isNull] triple. */
+func jsonFirst(triple) {
+    return triple[0];
+}
+
+/* jsonParse returns the value encoded by text. */
+func jsonParse(text) {
+    return jsonFirst(jsonParseValue(text, 0));
+}
+
+/* jsonEscape returns s with the characters JSON requires to be escaped. */
+func jsonEscape(s) {
+    let out = "";
+    for (c in s) [
+        let add = c;
+        if (c == "\"") [ add = "\\\""; ]
+        if (c == "\\") [ add = "\\\\"; ]
+        if (c == "\n") [ add = "\\n"; ]
+        if (c == "\t") [ add = "\\t"; ]
+        if (c == "\r") [ add = "\\r"; ]
+        out = out + add;
+    ]
+    return out;
+}
+
+/* jsonQuote returns s as a quoted JSON string. */
+func jsonQuote(s) {
+    return "\"" + jsonEscape(s) + "\"";
+}
