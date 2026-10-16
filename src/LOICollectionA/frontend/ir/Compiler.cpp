@@ -949,6 +949,15 @@ namespace LOICollection::frontend::ir {
             for (int i = 0; i < argCount; ++i)
                 this->compileArg(base + i, *node.args[i], node.loc);
 
+            if (ClassCall::getInstance().isRegistered(node.staticClassName)) {
+                const int metaIdx = this->addNativeCall(node.staticClassName, node.name, argCount, true);
+                const int dst = this->allocReg();
+                this->current.get().emitCall(
+                    MirOp::CALL_NATIVE_METHOD, metaIdx, dst, base, -1, argCount, node.loc);
+                this->lastResultReg = dst;
+                return;
+            }
+
             auto it = this->classStaticMethodIndices.find(node.staticClassName);
             if (it != this->classStaticMethodIndices.end() && node.methodOrdinal >= 0 &&
                 static_cast<size_t>(node.methodOrdinal) < it->second.size()) {

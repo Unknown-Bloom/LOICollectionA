@@ -27,7 +27,7 @@ TEST(ImplTest, InherentAssociatedFunction) {
         impl Math {
             static func sq(n: int) -> int { return n * n; }
         }
-        Math.sq(5)
+        Math::sq(5)
     )"), "25");
 }
 
@@ -37,7 +37,7 @@ TEST(ImplTest, InherentAssociatedConstant) {
         impl Physics {
             const G = 9.8;
         }
-        Physics.G
+        Physics::G
     )"), "9.8");
 }
 
@@ -60,9 +60,9 @@ TEST(ImplTest, InherentConstantUsedInMethod) {
         class Config { }
         impl Config {
             const BASE = 10;
-            static func scaled(n: int) -> int { return Config.BASE * n; }
+            static func scaled(n: int) -> int { return Config::BASE * n; }
         }
-        Config.scaled(3)
+        Config::scaled(3)
     )"), "30");
 }
 

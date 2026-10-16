@@ -78,7 +78,7 @@ TEST(CompoundAssignTest, FieldTarget) {
 TEST(CompoundAssignTest, StaticFieldTarget) {
     EXPECT_EQ(eval(
         "class Counter { public: static total = 0; } "
-        "Counter.total += 3; Counter.total"),
+        "Counter::total += 3; Counter::total"),
         "3");
 }
 

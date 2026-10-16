@@ -3,6 +3,29 @@
 #include "LOICollectionA/frontend/ir/ChunkCache.h"
 
 namespace LOICollection::frontend::ir {
+    MirChunk::~MirChunk() {
+        std::vector<std::unique_ptr<MirChunk>> pending;
+
+        auto drain = [&pending](MirChunk* node) -> void {
+            while (!node->methodBodies.empty()) {
+                pending.push_back(std::move(node->methodBodies.back()));
+                node->methodBodies.pop_back();
+            }
+        };
+
+        drain(this);
+        while (!pending.empty()) {
+            auto owned = std::move(pending.back());
+            pending.pop_back();
+
+            drain(owned.get());
+        }
+
+        // Drop the per-chunk execution cache so a later chunk that happens to be
+        // allocated at this same address cannot inherit a stale layout/field cache.
+        ChunkCacheRegistry::getInstance().release(this);
+    }
+
     ChunkCacheRegistry& ChunkCacheRegistry::getInstance() {
         static ChunkCacheRegistry instance;
         return instance;

@@ -162,24 +162,7 @@ namespace LOICollection::frontend::ir {
         MirChunk(const MirChunk&) = delete;
         MirChunk& operator=(const MirChunk&) = delete;
 
-        ~MirChunk() {
-            std::vector<std::unique_ptr<MirChunk>> pending;
-
-            auto drain = [&pending](MirChunk* node) -> void {
-                while (!node->methodBodies.empty()) {
-                    pending.push_back(std::move(node->methodBodies.back()));
-                    node->methodBodies.pop_back();
-                }
-            };
-
-            drain(this);
-            while (!pending.empty()) {
-                auto owned = std::move(pending.back());
-                pending.pop_back();
-
-                drain(owned.get());
-            }
-        }
+        ~MirChunk();
 
         size_t emit(MirOp op, int operand = 0, const SourceLocation& loc = {}) {
             this->code.push_back({ op, operand, -1, -1, -1, -1, 0, {}, loc });

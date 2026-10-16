@@ -309,6 +309,26 @@ namespace LOICollection::frontend {
                     }
                     return method.returnType;
                 }
+
+                if (isNativeClass(fn.namespaces)) {
+                    std::vector<CallbackTypeArgs> signatures =
+                        ClassCall::getInstance().getStaticMethodSignatures(fn.namespaces, fn.name);
+                    for (const auto& signature : signatures) {
+                        if (matchesNativeSignature(signature, argTypes)) {
+                            fn.isStaticClassCall = true;
+                            fn.staticClassName = fn.namespaces;
+                            fn.methodOrdinal = -1;
+                            return {};
+                        }
+                    }
+
+                    diagnostics.addError(fn.loc,
+                        "No matching static method '" + fn.name + "' with " +
+                        std::to_string(argCount) + " argument(s) in native class '" +
+                        fn.namespaces + "'");
+                    return {};
+                }
+
                 return {};
             }
 
