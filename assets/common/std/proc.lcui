@@ -1,0 +1,41 @@
+// proc.lcui — lightweight-process scheduler for scripts.
+//
+// Each spawn() creates an *isolated process*: its own VM instance, its own
+// globals table and its own execution budget. Processes talk to each other only
+// through message mailboxes (send/recv). The VM time-slices tasks automatically,
+// so most callers never touch the primitives below — they exist for manual
+// control, much like goroutines and BEAM processes are scheduled by their
+// runtime while still exposing spawn/join-style handles.
+//
+// Model:
+//   - spawn(fn)        spawn an isolated process running fn (like `go fn()`)
+//   - yield()          voluntarily give up the rest of this time slice
+//   - sleep(ms)        pause until the virtual clock advances ms
+//   - send(to, msg)    deliver msg to process `to`'s mailbox
+//   - recv()           take one message from this process's mailbox (blocks)
+//   - join(task)       from a task: block until `task` finishes;
+//                      from host code: drive the scheduler and return its result
+
+func spawn(fn) {
+    return Proc::spawn(fn);
+}
+
+func yield() {
+    Proc::yield();
+}
+
+func sleep(ms: int) {
+    Proc::sleep(ms);
+}
+
+func send(to: int, msg) {
+    Proc::send(to, msg);
+}
+
+func recv() {
+    return Proc::recv();
+}
+
+func join(task: int) {
+    return Proc::join(task);
+}

@@ -5,6 +5,7 @@
 #include <vector>
 #include <functional>
 #include <unordered_map>
+#include <chrono>
 
 #include "LOICollectionA/base/Macro.h"
 
@@ -15,6 +16,14 @@
 #include "LOICollectionA/frontend/ir/Mir.h"
 #include "LOICollectionA/frontend/sandbox/SandboxBudget.h"
 #include "LOICollectionA/frontend/sandbox/SandboxReport.h"
+
+namespace LOICollection::frontend::ir {
+    class VM;
+}
+
+namespace LOICollection::frontend::ir::detail {
+    extern thread_local VM* tlsCurrentVM;
+}
 
 namespace LOICollection::frontend::ir {
     class VM {
@@ -29,6 +38,36 @@ namespace LOICollection::frontend::ir {
             const std::shared_ptr<const MirChunk>& chunk,
             const Context& ctx
         );
+
+        enum class RunOutcome { Completed, Yielded, SliceExpired, Blocked, Failed };
+        enum class BlockKind { None, Sleep, Recv, Join };
+
+        struct TaskEvent {
+            BlockKind kind = BlockKind::None;
+            ValueNode::ValueType arg;
+            uint64_t joinTarget = 0;
+            std::chrono::steady_clock::time_point wakeupAt;
+        };
+
+        LOICOLLECTION_A_NDAPI RunOutcome runTask(
+            const FunctionRefPtr& func,
+            const CallbackTypeValues& args,
+            size_t sliceInstructions
+        );
+
+        LOICOLLECTION_A_API   void setSchedulerManaged(bool managed) { mSchedulerManaged = managed; }
+        LOICOLLECTION_A_NDAPI bool isSchedulerManaged() const { return mSchedulerManaged; }
+
+        LOICOLLECTION_A_API   void requestYield() { if (mSchedulerManaged) mStopRequest = StopKind::Yield; }
+        LOICOLLECTION_A_API   void requestSleep(std::chrono::steady_clock::time_point at) { if (mSchedulerManaged) { mStopRequest = StopKind::Sleep; mWakeupAt = at; } }
+        LOICOLLECTION_A_API   void requestRecv() { if (mSchedulerManaged) mStopRequest = StopKind::Recv; }
+        LOICOLLECTION_A_API   void requestJoin(uint64_t target) { if (mSchedulerManaged) { mStopRequest = StopKind::Join; mJoinTarget = target; } }
+
+        LOICOLLECTION_A_NDAPI RunOutcome lastOutcome() const { return mOutcome; }
+        LOICOLLECTION_A_NDAPI const TaskEvent& blockInfo() const { return mBlockInfo; }
+        LOICOLLECTION_A_NDAPI const ValueNode::ValueType& taskResult() const { return mTaskResult; }
+
+        LOICOLLECTION_A_API   static VM* current() { return detail::tlsCurrentVM; }
 
         LOICOLLECTION_A_API   void setBudget(const sandbox::SandboxBudget& budget) { *mBudget = budget; }
         LOICOLLECTION_A_NDAPI const sandbox::SandboxBudget& budget() const { return *mBudget; }
@@ -126,6 +165,19 @@ namespace LOICollection::frontend::ir {
         [[nodiscard]] bool isDerived(const MirChunk& chunk, int derivedClassIndex, int baseClassIndex) const;
 
         [[nodiscard]] static ValueNode::ValueType cloneValue(const ValueNode::ValueType& val);
+
+        void setupRootFrame(const FunctionRefPtr& func, const CallbackTypeValues& args);
+
+        enum class StopKind { None, Yield, Slice, Sleep, Recv, Join };
+
+        StopKind mStopRequest = StopKind::None;
+        bool mSchedulerManaged = false;
+        RunOutcome mOutcome = RunOutcome::Completed;
+        TaskEvent mBlockInfo;
+        ValueNode::ValueType mTaskResult;
+        std::chrono::steady_clock::time_point mWakeupAt{};
+        uint64_t mJoinTarget = 0;
+        size_t mSliceRemaining = 0;
 
         struct ExecArgs {
             const std::shared_ptr<const MirChunk>& owner;

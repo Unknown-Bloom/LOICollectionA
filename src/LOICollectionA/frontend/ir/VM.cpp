@@ -23,6 +23,7 @@
 
 namespace LOICollection::frontend::ir::detail {
     thread_local std::shared_ptr<sandbox::SandboxBudget> tlsBudget;
+    thread_local VM* tlsCurrentVM = nullptr;
 
     struct BudgetScope {
         std::shared_ptr<sandbox::SandboxBudget> previous;
@@ -37,6 +38,16 @@ namespace LOICollection::frontend::ir::detail {
         }
 
         ~BudgetScope() { tlsBudget = std::move(previous); }
+    };
+
+    /* Pins tlsCurrentVM to the VM executing on this thread for the duration of
+     * one execute() call, restoring the previous value on exit so nested
+     * (host-driven) VM entry within a task does not clobber it. */
+    struct CurrentVMScope {
+        VM* previous;
+
+        explicit CurrentVMScope(VM* vm) : previous(tlsCurrentVM) { tlsCurrentVM = vm; }
+        ~CurrentVMScope() { tlsCurrentVM = previous; }
     };
 }
 
@@ -161,6 +172,7 @@ namespace LOICollection::frontend::ir {
     ) {
         if (!owner) {
             this->diagnostics.addError({ 0, 0, 0 }, "Cannot execute a null bytecode chunk");
+            mOutcome = RunOutcome::Failed;
             return ValueNode::ValueType{};
         }
 
@@ -172,16 +184,20 @@ namespace LOICollection::frontend::ir {
         }
 
         BudgetScope budgetScope(this->mBudget);
+        CurrentVMScope vmScope(this);
 
         while (true) {
-            if (this->diagnostics.hasErrors())
+            if (this->diagnostics.hasErrors()) {
+                mOutcome = RunOutcome::Failed;
                 return std::string("");
+            }
 
             if (const auto violation = this->mBudget->tickInstruction();
                 violation != sandbox::SandboxBudget::Violation::None) {
                 this->failBudget(violation, violation == sandbox::SandboxBudget::Violation::WallTimeLimit
                     ? "Execution timeout"
                     : "Execution budget exhausted");
+                mOutcome = RunOutcome::Failed;
                 return ValueNode::ValueType{};
             }
 
@@ -226,8 +242,10 @@ namespace LOICollection::frontend::ir {
                     this->frames.pop_back();
                     this->localPool.resize(finished.localsBase);
 
-                    if (this->frames.empty())
+                    if (this->frames.empty()) {
+                        mOutcome = RunOutcome::Completed;
                         return result;
+                    }
 
                     if (finished.hasPending)
                         result = std::move(finished.pendingPush);
@@ -238,6 +256,7 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
                 case MirOp::HALT:
+                    mOutcome = RunOutcome::Completed;
                     return this->regOf(this->frames.back(), 0);
                 case MirOp::PANIC: {
                     std::string message = "panic";
@@ -249,11 +268,45 @@ namespace LOICollection::frontend::ir {
                     }
 
                     this->diagnostics.addError(instr.loc, message);
+                    mOutcome = RunOutcome::Failed;
                     return std::string("");
                 }
                 default:
                     this->diagnostics.addError(this->currentLoc, "Unknown opcode");
                     break;
+            }
+
+            if (mSchedulerManaged) {
+                if (mStopRequest != StopKind::None || --mSliceRemaining == 0) {
+                    switch (mStopRequest) {
+                        case StopKind::Yield:
+                            mOutcome = RunOutcome::Yielded;
+                            mBlockInfo.kind = BlockKind::None;
+                            break;
+                        case StopKind::Sleep:
+                            mOutcome = RunOutcome::Blocked;
+                            mBlockInfo.kind = BlockKind::Sleep;
+                            mBlockInfo.wakeupAt = mWakeupAt;
+                            break;
+                        case StopKind::Recv:
+                            mOutcome = RunOutcome::Blocked;
+                            mBlockInfo.kind = BlockKind::Recv;
+                            this->frames.back().ip -= 1;  // replay the recv call on resume
+                            break;
+                        case StopKind::Join:
+                            mOutcome = RunOutcome::Blocked;
+                            mBlockInfo.kind = BlockKind::Join;
+                            mBlockInfo.joinTarget = mJoinTarget;
+                            this->frames.back().ip -= 1;  // replay the join call on resume
+                            break;
+                        case StopKind::None:
+                        case StopKind::Slice:
+                            mOutcome = RunOutcome::SliceExpired;
+                            mBlockInfo.kind = BlockKind::None;
+                            break;
+                    }
+                    return ValueNode::ValueType{};
+                }
             }
         }
     }
@@ -448,6 +501,83 @@ namespace LOICollection::frontend::ir {
             diagnostics.addError({}, pooled->diagnostics().getErrorMessage());
 
         return result;
+    }
+
+    void VM::setupRootFrame(const FunctionRefPtr& func, const CallbackTypeValues& args) {
+        this->frames.clear();
+        this->localPool.clear();
+
+        Frame callee(*func->owner->methodBodies[func->bodyIndex]);
+        callee.hasThis = func->hasThis;
+        callee.returnReg = -1;
+
+        if (func->hasThis) {
+            auto self = func->thisObj.lock();
+            if (!self) {
+                this->diagnostics.addError({}, "Method receiver has been released");
+                return;
+            }
+            callee.thisObj = self;
+        }
+
+        const size_t paramBase = func->captures.size();
+        if (paramBase + static_cast<size_t>(func->argCount) > callee.localsSize) {
+            this->diagnostics.addError({}, "Lambda frame is too small for its parameters");
+            return;
+        }
+
+        this->localPool.resize(callee.localsSize);
+        std::copy_n(func->captures.begin(), paramBase, this->localPool.begin());
+        const size_t n = std::min<size_t>(args.size(), static_cast<size_t>(func->argCount));
+        for (size_t i = 0; i < n; ++i)
+            this->localPool[paramBase + i] = args[i];
+
+        this->frames.push_back(std::move(callee));
+    }
+
+    VM::RunOutcome VM::runTask(const FunctionRefPtr& func, const CallbackTypeValues& args, size_t sliceInstructions) {
+        if (!func || !func->owner) {
+            mOutcome = RunOutcome::Failed;
+            return mOutcome;
+        }
+
+        if (func->bodyIndex < 0 ||
+            func->bodyIndex >= static_cast<int>(func->owner->methodBodies.size())) {
+            mOutcome = RunOutcome::Failed;
+            return mOutcome;
+        }
+
+        if (this->frames.empty()) {
+            this->globals->clear();
+            for (const auto& cls : func->owner->classes) {
+                for (size_t i = 0; i < cls.staticFieldNames.size(); ++i) {
+                    (*this->globals)[cls.name + "::" + cls.staticFieldNames[i]] =
+                        cls.staticHasDefault[i]
+                            ? VM::cloneValue(cls.staticDefaults[i])
+                            : ValueNode::ValueType{};
+                }
+            }
+
+            this->setupRootFrame(func, args);
+            if (this->diagnostics.hasErrors()) {
+                mOutcome = RunOutcome::Failed;
+                return mOutcome;
+            }
+        }
+
+        mSchedulerManaged = true;
+        mSliceRemaining = sliceInstructions;
+        mStopRequest = StopKind::None;
+        mBlockInfo = TaskEvent{};
+        mOutcome = RunOutcome::Completed;
+
+        auto prevTlsBudget = tlsBudget;
+        tlsBudget = this->mBudget;
+        const auto result = this->execute(func->owner, CallbackTypePlaces{});
+        tlsBudget = prevTlsBudget;
+
+        mTaskResult = result;
+        return mOutcome;
     }
 
 }
