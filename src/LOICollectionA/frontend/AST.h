@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -1046,6 +1047,7 @@ namespace LOICollection::frontend {
     struct Object {
         std::string className;
         int classIndex = -1;
+        std::int32_t heapIndex = -1;
         FieldLayoutPtr layout;
         std::vector<ValueNode::ValueType> slots;
         std::unique_ptr<SpillMap> spill;
@@ -1172,6 +1174,8 @@ namespace LOICollection::frontend {
         sandbox::SandboxBudget* budgetOwner = nullptr;
         std::size_t budgetBytes = 0;
 
+        std::int32_t heapIndex = -1;
+
         ArrayValue() = default;
         ArrayValue(const ArrayValue&) = default;
         ArrayValue& operator=(const ArrayValue&) = default;
@@ -1210,6 +1214,7 @@ namespace LOICollection::frontend {
 
         int bodyIndex = -1;
         int argCount = 0;
+        std::int32_t heapIndex = -1;
 
         bool hasThis = false;
         std::weak_ptr<Object> thisObj;

@@ -10,6 +10,7 @@ namespace LOICollection::frontend::sandbox {
         std::size_t executedInstructions = 0;
         std::size_t nativeCallCount = 0;
         std::size_t objectCount = 0;
+        std::size_t collectedObjects = 0;
         std::size_t allocatedBytes = 0;
         std::chrono::milliseconds wallTime{ 0 };
 

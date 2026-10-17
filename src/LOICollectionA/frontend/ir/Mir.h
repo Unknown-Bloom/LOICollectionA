@@ -127,6 +127,11 @@ namespace LOICollection::frontend::ir {
         COUNT
     };
 
+    enum class MirFlag : int {
+        None = 0,
+        ScalarStore = 1 << 0,
+    };
+
     struct MirInstr {
         MirOp op{};
         int operand = 0;
@@ -155,6 +160,8 @@ namespace LOICollection::frontend::ir {
         std::deque<std::unique_ptr<MirChunk>> methodBodies;
 
         int slotCount = 0;
+
+        bool hasRefStores = true;
 
         MirChunk() = default;
         MirChunk(MirChunk&&) noexcept = default;

@@ -159,6 +159,7 @@ namespace LOICollection::frontend::ir {
 
         this->mReport.executedInstructions = this->mBudget->executedInstructions;
         this->mReport.nativeCallCount = this->mBudget->nativeCallCount;
+        this->mReport.collectedObjects = this->mCollector.collect();
         this->mReport.objectCount = this->mBudget->objectCount;
         this->mReport.allocatedBytes = this->mBudget->allocatedBytes;
         this->mReport.wallTime = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -346,7 +347,15 @@ namespace LOICollection::frontend::ir {
             return;
         }
 
-        this->setReg(frame, instr.dst, VM::cloneValue(value));
+        ValueNode::ValueType copy = VM::cloneValue(value);
+
+        if (cur.hasRefStores) {
+            const auto* array = std::get_if<ArrayRef>(&copy);
+            if (array && std::any_of((*array)->elements.begin(), (*array)->elements.end(), CycleCollector::holdsReference))
+                this->mCollector.track(*array);
+        }
+
+        this->setReg(frame, instr.dst, std::move(copy));
     }
 
     void VM::execMove(ExecArgs& s) {
@@ -582,6 +591,10 @@ namespace LOICollection::frontend::ir {
         tlsBudget = prevTlsBudget;
 
         mTaskResult = result;
+
+        if (mOutcome == RunOutcome::Completed || mOutcome == RunOutcome::Failed)
+            (void)this->mCollector.collect();
+
         return mOutcome;
     }
 

@@ -13,6 +13,7 @@
 #include "LOICollectionA/frontend/Context.h"
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
 #include "LOICollectionA/frontend/ir/ChunkCache.h"
+#include "LOICollectionA/frontend/ir/CycleCollector.h"
 #include "LOICollectionA/frontend/ir/Mir.h"
 #include "LOICollectionA/frontend/sandbox/SandboxBudget.h"
 #include "LOICollectionA/frontend/sandbox/SandboxReport.h"
@@ -81,6 +82,9 @@ namespace LOICollection::frontend::ir {
 
         LOICOLLECTION_A_NDAPI DiagnosticEngine& diagnosticsEngine() { return diagnostics; }
 
+        LOICOLLECTION_A_NDAPI std::size_t collectCycles() { return this->mCollector.collect(); }
+        LOICOLLECTION_A_NDAPI std::size_t trackedObjects() const { return this->mCollector.tracked(); }
+
         LOICOLLECTION_A_NDAPI static ValueNode::ValueType callFunctionRef(
             const FunctionRefPtr& func,
             const CallbackTypeValues& args,
@@ -134,6 +138,8 @@ namespace LOICollection::frontend::ir {
 
         std::shared_ptr<ChunkCache> mCache = std::make_shared<ChunkCache>();
         const MirChunk* mCacheChunk = nullptr;
+
+        CycleCollector mCollector;
 
         [[nodiscard]] const FieldLayoutPtr& classLayout(const MirChunk& chunk, int classIndex);
 

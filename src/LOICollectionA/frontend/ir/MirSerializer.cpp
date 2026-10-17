@@ -7,6 +7,8 @@
 
 #include "LOICollectionA/frontend/ir/MirSerializer.h"
 
+#include "LOICollectionA/frontend/ir/opt/analysis/RefStoreAnalysis.h"
+
 #include "LOICollectionA/utils/core/Sha256.h"
 
 namespace LOICollection::frontend::ir::detail {
@@ -639,6 +641,15 @@ namespace LOICollection::frontend::ir::detail {
         return true;
     }
 
+    void refreshRefStores(MirChunk& chunk) {
+        opt::RefStoreAnalysis analysis{ chunk };
+        analysis.run();
+
+        for (auto& body : chunk.methodBodies)
+            if (body)
+                refreshRefStores(*body);
+    }
+
     bool readChunk(Reader& reader, MirChunk& chunk, size_t depth) {
         if (depth > kMaxDepth)
             return false;
@@ -799,6 +810,8 @@ namespace LOICollection::frontend::ir {
         MirChunk chunk;
         if (!readChunk(reader, chunk) || !reader.done())
             return std::nullopt;
+
+        detail::refreshRefStores(chunk);
 
         return chunk;
     }

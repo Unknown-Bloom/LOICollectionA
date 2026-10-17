@@ -85,6 +85,12 @@ namespace LOICollection::frontend::ir {
                 } else {
                     obj->slots[static_cast<size_t>(slot)] = this->regOf(frame, instr.src2);
                 }
+
+                if ((instr.imm & static_cast<int>(MirFlag::ScalarStore)) == 0
+                    && CycleCollector::holdsReference(this->regOf(frame, instr.src2))) {
+                    this->mCollector.noteReferenceStore();
+                    this->mCollector.track(obj);
+                }
             } break;
             case MirOp::LOAD_FIELD_SLOT: {
                 const ValueNode::ValueType& objValue = this->regOf(frame, instr.src1);
@@ -123,6 +129,12 @@ namespace LOICollection::frontend::ir {
                 }
 
                 obj->slots[static_cast<size_t>(instr.operand)] = this->regOf(frame, instr.src2);
+
+                if ((instr.imm & static_cast<int>(MirFlag::ScalarStore)) == 0
+                    && CycleCollector::holdsReference(obj->slots[static_cast<size_t>(instr.operand)])) {
+                    this->mCollector.noteReferenceStore();
+                    this->mCollector.track(obj);
+                }
             } break;
             case MirOp::BIND_THIS: {
                 const ValueNode::ValueType& selfValue = this->regOf(frame, instr.src2);
@@ -187,8 +199,15 @@ namespace LOICollection::frontend::ir {
                 arr->budgetOwner = this->mBudget.get();
                 arr->budgetBytes = arrayBytes;
                 arr->elements.resize(count);
-                for (int i = 0; i < count; ++i)
+
+                bool holdsReferences = false;
+                for (int i = 0; i < count; ++i) {
                     arr->elements[i] = this->regOf(frame, instr.src1 + i);
+                    holdsReferences = holdsReferences || CycleCollector::holdsReference(arr->elements[i]);
+                }
+
+                if (holdsReferences)
+                    this->mCollector.track(arr);
 
                 this->setReg(frame, instr.dst, arr);
             } break;
@@ -270,6 +289,12 @@ namespace LOICollection::frontend::ir {
                 } else {
                     arr->elements[index] = value;
                 }
+
+                if ((instr.imm & static_cast<int>(MirFlag::ScalarStore)) == 0
+                    && CycleCollector::holdsReference(value)) {
+                    this->mCollector.noteReferenceStore();
+                    this->mCollector.track(arr);
+                }
             } break;
             default: break;
         }
@@ -299,6 +324,9 @@ namespace LOICollection::frontend::ir {
                     this->localPool.begin() + frame.localsBase + captureCount
                 );
                 func->globals = this->globals;
+
+                if (instr.imm > 0)
+                    this->mCollector.track(func);
 
                 this->setReg(frame, instr.dst, func);
             } break;
@@ -373,8 +401,14 @@ namespace LOICollection::frontend::ir {
                 obj->resize(cls.fieldNames.size());
 
                 for (size_t i = 0; i < cls.fieldNames.size(); ++i) {
-                    if (cls.hasDefault[i])
-                        obj->slots[i] = VM::cloneValue(cls.defaults[i]);
+                    if (!cls.hasDefault[i])
+                        continue;
+
+                    obj->slots[i] = VM::cloneValue(cls.defaults[i]);
+
+                    const auto* array = std::get_if<ArrayRef>(&obj->slots[i]);
+                    if (array && std::any_of((*array)->elements.begin(), (*array)->elements.end(), CycleCollector::holdsReference))
+                        this->mCollector.track(*array);
                 }
 
                 this->setReg(frame, instr.dst, obj);

@@ -1,5 +1,6 @@
 #include "LOICollectionA/frontend/ir/opt/OptContext.h"
 #include "LOICollectionA/frontend/ir/opt/analysis/JumpTargetAnalysis.h"
+#include "LOICollectionA/frontend/ir/opt/analysis/RefStoreAnalysis.h"
 #include "LOICollectionA/frontend/ir/opt/passes/ConstantFoldPass.h"
 #include "LOICollectionA/frontend/ir/opt/passes/DeadCodePass.h"
 #include "LOICollectionA/frontend/ir/opt/passes/DeadStorePass.h"
@@ -57,6 +58,9 @@ namespace LOICollection::frontend::ir {
             if (once.folded == 0 && once.removed == 0)
                 break;
         }
+
+        opt::RefStoreAnalysis refStores{ chunk };
+        refStores.run();
 
         return total;
     }
