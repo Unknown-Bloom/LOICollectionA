@@ -17,6 +17,13 @@ namespace LOICollection::frontend::runtime {
 
     using TaskId = uint64_t;
 
+    struct ProcSchedulerConfig {
+        size_t sliceInstructions = 100'000;
+        size_t joinMaxPumps = 100'000'000;
+        size_t drainGuard = 100'000'000;
+        sandbox::SandboxBudget taskBudget;
+    };
+
     enum class TaskState {
         Ready,
         Sleeping,
@@ -42,6 +49,9 @@ namespace LOICollection::frontend::runtime {
         size_t pump();
 
         void drain();
+
+        void setConfig(const ProcSchedulerConfig& cfg) { config_ = cfg; }
+        const ProcSchedulerConfig& config() const { return config_; }
 
         size_t taskCount() const { return tasks_.size(); }
         size_t readyCount() const { return ready_.size(); }
@@ -86,8 +96,7 @@ namespace LOICollection::frontend::runtime {
         std::vector<std::unique_ptr<Task>> tasks_;
         std::deque<TaskId> ready_;
         TaskId nextId_ = 1;
-
-        static constexpr size_t kDefaultSlice = 100'000;
+        ProcSchedulerConfig config_;
     };
 
 }

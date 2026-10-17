@@ -41,7 +41,7 @@ namespace LOICollection::frontend::runtime {
     }
 
     void ProcScheduler::runSlice(Task& task, std::chrono::steady_clock::time_point now) {
-        const auto outcome = task.vm->runTask(task.fn, task.args, kDefaultSlice);
+        const auto outcome = task.vm->runTask(task.fn, task.args, config_.sliceInstructions);
         switch (outcome) {
             case ir::VM::RunOutcome::Completed:
                 task.result = task.vm->taskResult();
@@ -99,6 +99,7 @@ namespace LOICollection::frontend::runtime {
         task->diag = std::make_shared<DiagnosticEngine>();
         task->vm = std::make_shared<ir::VM>(*task->diag);
         task->vm->setSchedulerManaged(true);
+        task->vm->setBudget(config_.taskBudget);
         task->fn = fn;
         task->args = args;
         task->scriptId = scriptId;
@@ -142,7 +143,7 @@ namespace LOICollection::frontend::runtime {
         if (!t)
             return std::string("joined task does not exist");
 
-        const size_t kMaxPumps = 100'000'000;
+        const size_t kMaxPumps = config_.joinMaxPumps;
         size_t pumps = 0;
         while (t->state != TaskState::Done) {
             if (++pumps > kMaxPumps)
@@ -196,7 +197,7 @@ namespace LOICollection::frontend::runtime {
 
     void ProcScheduler::drain() {
         size_t guard = 0;
-        while (guard++ < 100'000'000) {
+        while (guard++ < config_.drainGuard) {
             bool any = false;
             for (auto& t : tasks_) {
                 if (t && t->state != TaskState::Done) {
