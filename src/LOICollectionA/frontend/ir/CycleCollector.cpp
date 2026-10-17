@@ -72,35 +72,45 @@ namespace LOICollection::frontend::ir {
         this->mCompactAt = std::max(kCompactFloor, this->tracked() * 2);
     }
 
-    void CycleCollector::track(const ObjectRef& object) {
-        if (!object || object->heapIndex != kUntracked)
+    template <class Tracked>
+    void CycleCollector::trackNode(const std::shared_ptr<Tracked>& node, std::vector<std::weak_ptr<Tracked>>& registry) {
+        if (!node)
             return;
 
-        object->heapIndex = kPending;
+        if (node->heapIndex != kUntracked)
+            return;
+
+        const auto lock = this->guard();
+        if (node->heapIndex != kUntracked)
+            return;
+
+        node->heapIndex = kPending;
         this->reserveHeadroom();
-        this->mObjects.emplace_back(object);
+        registry.emplace_back(node);
+    }
+
+    void CycleCollector::track(const ObjectRef& object) {
+        this->trackNode(object, this->mObjects);
     }
 
     void CycleCollector::track(const ArrayRef& array) {
-        if (!array || array->heapIndex != kUntracked)
-            return;
-
-        array->heapIndex = kPending;
-        this->reserveHeadroom();
-        this->mArrays.emplace_back(array);
+        this->trackNode(array, this->mArrays);
     }
 
     void CycleCollector::track(const FunctionRefPtr& closure) {
-        if (!closure || closure->heapIndex != kUntracked)
-            return;
-
-        closure->heapIndex = kPending;
-        this->reserveHeadroom();
-        this->mClosures.emplace_back(closure);
+        this->trackNode(closure, this->mClosures);
     }
 
     void CycleCollector::noteReferenceStore() {
-        ++this->mReferenceStores;
+        this->mReferenceStores = 1;
+    }
+
+    void CycleCollector::enter() {
+        this->mActive.fetch_add(1, std::memory_order_acq_rel);
+    }
+
+    void CycleCollector::leave() {
+        this->mActive.fetch_sub(1, std::memory_order_acq_rel);
     }
 
     void CycleCollector::markNode(std::size_t index) {
@@ -132,7 +142,11 @@ namespace LOICollection::frontend::ir {
     }
 
     void CycleCollector::barrier(const ValueNode::ValueType* previous, const ValueNode::ValueType& value) {
-        if (this->mPhase == Phase::Idle)
+        if (!this->collecting())
+            return;
+
+        const auto lock = this->guard();
+        if (!this->collecting())
             return;
 
         if (previous)
@@ -341,6 +355,11 @@ namespace LOICollection::frontend::ir {
     }
 
     void CycleCollector::step(std::size_t budget) {
+        if (!this->exclusive())
+            return;
+
+        const auto lock = this->guard();
+
         if (this->mPhase == Phase::Idle && !this->begin()) {
             this->reserveHeadroom();
             return;
@@ -368,14 +387,41 @@ namespace LOICollection::frontend::ir {
     }
 
     std::size_t CycleCollector::collect() {
+        if (!this->exclusive())
+            return 0;
+
+        const auto lock = this->guard();
+
         if (!this->begin()) {
             this->compact();
             return 0;
         }
 
         while (this->mPhase != Phase::Idle)
-            this->step(SIZE_MAX);
+            this->stepLocked(SIZE_MAX);
 
         return this->mReclaimed;
+    }
+
+    void CycleCollector::stepLocked(std::size_t budget) {
+        if (budget == 0)
+            budget = 1;
+
+        switch (this->mPhase) {
+            case Phase::Build:
+                this->buildStep(budget);
+                break;
+            case Phase::Index:
+                this->indexStep(budget);
+                break;
+            case Phase::Mark:
+                this->markStep(budget);
+                break;
+            case Phase::Sweep:
+                this->sweepStep(budget);
+                break;
+            case Phase::Idle:
+                break;
+        }
     }
 }

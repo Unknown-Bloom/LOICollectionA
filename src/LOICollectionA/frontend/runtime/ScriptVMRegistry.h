@@ -9,6 +9,7 @@
 
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
 #include "LOICollectionA/frontend/ir/VM.h"
+#include "LOICollectionA/frontend/runtime/ScriptHeap.h"
 #include "LOICollectionA/frontend/sandbox/SandboxBudget.h"
 
 namespace LOICollection::frontend::runtime {
@@ -47,6 +48,7 @@ namespace LOICollection::frontend::runtime {
             mVM(vm) {
             mVM.diagnostics().clear();
             mVM.vm().reset();
+            mVM.vm().setHeap(ScriptHeapRegistry::getInstance().forScript(mVM.scriptId()));
             mVM.vm().setGlobals(std::move(globals));
             mVM.vm().setBudget(budget);
         }

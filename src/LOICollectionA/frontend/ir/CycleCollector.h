@@ -1,7 +1,10 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <memory>
+#include <mutex>
+#include <utility>
 #include <vector>
 
 #include "LOICollectionA/base/Macro.h"
@@ -11,11 +14,23 @@
 namespace LOICollection::frontend::ir {
     class CycleCollector {
     public:
+        explicit CycleCollector(bool shared = false) : mShared(shared) {}
+
         LOICOLLECTION_A_API void track(const ObjectRef& object);
         LOICOLLECTION_A_API void track(const ArrayRef& array);
         LOICOLLECTION_A_API void track(const FunctionRefPtr& closure);
 
+        // The counter only answers "did anything store a reference since the last
+        // pass", so a relaxed store of 1 is enough and keeps the write barrier free
+        // of a read-modify-write on every reference store.
         LOICOLLECTION_A_API void noteReferenceStore();
+
+        LOICOLLECTION_A_API void enter();
+        LOICOLLECTION_A_API void leave();
+
+        [[nodiscard]] LOICOLLECTION_A_NDAPI bool exclusive() const {
+            return this->mActive.load(std::memory_order_relaxed) <= 1;
+        }
 
         LOICOLLECTION_A_API void barrier(const ValueNode::ValueType* previous, const ValueNode::ValueType& value);
 
@@ -23,7 +38,9 @@ namespace LOICollection::frontend::ir {
 
         LOICOLLECTION_A_NDAPI std::size_t collect();
 
-        LOICOLLECTION_A_NDAPI bool collecting() const { return this->mPhase != Phase::Idle; }
+        LOICOLLECTION_A_NDAPI bool collecting() const {
+            return this->mPhase != Phase::Idle;
+        }
 
         LOICOLLECTION_A_NDAPI static bool holdsReference(const ValueNode::ValueType& value);
 
@@ -37,6 +54,14 @@ namespace LOICollection::frontend::ir {
 
     private:
         static constexpr std::size_t kCompactFloor = 4096;
+
+        [[nodiscard]] std::unique_lock<std::mutex> guard() const {
+            std::unique_lock<std::mutex> lock(this->mMutex, std::defer_lock);
+            if (this->mShared)
+                lock.lock();
+
+            return lock;
+        }
 
         enum class Phase : unsigned char { Idle, Build, Index, Mark, Sweep };
         enum class Kind : unsigned char { Object, Array, Closure };
@@ -52,6 +77,10 @@ namespace LOICollection::frontend::ir {
         bool begin();
         void compact();
         void reserveHeadroom();
+        void stepLocked(std::size_t budget);
+
+        template <class Tracked>
+        void trackNode(const std::shared_ptr<Tracked>& node, std::vector<std::weak_ptr<Tracked>>& registry);
 
         void buildStep(std::size_t budget);
         void indexStep(std::size_t budget);
@@ -81,7 +110,11 @@ namespace LOICollection::frontend::ir {
         std::size_t mCursor = 0;
         std::size_t mReclaimed = 0;
         std::size_t mReferenceStores = 0;
+        std::atomic<int> mActive = 0;
         std::size_t mCompactAt = kCompactFloor;
+
+        bool mShared;
+        mutable std::mutex mMutex;
         Phase mPhase = Phase::Idle;
     };
 }

@@ -82,10 +82,17 @@ namespace LOICollection::frontend::ir {
             globals = std::move(globalsTable);
         }
 
+        LOICOLLECTION_A_API void setHeap(std::shared_ptr<CycleCollector> heap) {
+            if (heap)
+                this->mHeap = std::move(heap);
+        }
+
+        [[nodiscard]] LOICOLLECTION_A_NDAPI CycleCollector& heap() const { return *mHeap; }
+
         LOICOLLECTION_A_NDAPI DiagnosticEngine& diagnosticsEngine() { return diagnostics; }
 
-        LOICOLLECTION_A_NDAPI std::size_t collectCycles() { return this->mCollector.collect(); }
-        LOICOLLECTION_A_NDAPI std::size_t trackedObjects() const { return this->mCollector.tracked(); }
+        LOICOLLECTION_A_NDAPI std::size_t collectCycles() { return this->heap().collect(); }
+        LOICOLLECTION_A_NDAPI std::size_t trackedObjects() const { return this->heap().tracked(); }
 
         LOICOLLECTION_A_NDAPI static ValueNode::ValueType callFunctionRef(
             const FunctionRefPtr& func,
@@ -166,7 +173,7 @@ namespace LOICollection::frontend::ir {
         std::array<HostCallCacheEntry, kInlineCacheSize> mHostCallCache{};
         std::uint64_t mInlineEpoch = 0;
 
-        CycleCollector mCollector;
+        std::shared_ptr<CycleCollector> mHeap = std::make_shared<CycleCollector>();
 
         [[nodiscard]] const FieldLayoutPtr& classLayout(const MirChunk& chunk, int classIndex);
 

@@ -25,6 +25,14 @@ namespace LOICollection::frontend::ir::detail {
     thread_local std::shared_ptr<sandbox::SandboxBudget> tlsBudget;
     thread_local VM* tlsCurrentVM = nullptr;
 
+    struct HeapLease {
+        CycleCollector& heap;
+
+        explicit HeapLease(CycleCollector& target) : heap(target) { this->heap.enter(); }
+
+        ~HeapLease() { this->heap.leave(); }
+    };
+
     struct BudgetScope {
         std::shared_ptr<sandbox::SandboxBudget> previous;
         std::shared_ptr<sandbox::SandboxBudget> budget;
@@ -155,6 +163,8 @@ namespace LOICollection::frontend::ir {
         this->frames.emplace_back(*chunk);
         this->localPool.resize(chunk->slotCount);
 
+        const HeapLease lease{ this->heap() };
+
         CallbackTypePlaces placeholders = ctx.params;
         if (!ctx.scriptId.empty())
             placeholders[Context::kScriptIdKey] = ctx.scriptId;
@@ -164,7 +174,7 @@ namespace LOICollection::frontend::ir {
 
         this->mReport.executedInstructions = this->mBudget->executedInstructions;
         this->mReport.nativeCallCount = this->mBudget->nativeCallCount;
-        this->mReport.collectedObjects = this->mCollector.collect();
+        this->mReport.collectedObjects = this->heap().collect();
         this->mReport.objectCount = this->mBudget->objectCount;
         this->mReport.allocatedBytes = this->mBudget->allocatedBytes;
         this->mReport.wallTime = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -235,9 +245,9 @@ namespace LOICollection::frontend::ir {
             }
 
             if ((this->mBudget->executedInstructions & 1023u) == 0
-                && (this->mCollector.collecting()
+                && (this->heap().collecting()
                     || this->mBudget->objectCount >= this->mBudget->maxObjectCount / 2))
-                this->mCollector.step(1024);
+                this->heap().step(1024);
 
             Frame& frame = this->frames.back();
             const MirChunk& cur = frame.chunk.get();
@@ -389,7 +399,7 @@ namespace LOICollection::frontend::ir {
         if (cur.hasRefStores) {
             const auto* array = std::get_if<ArrayRef>(&copy);
             if (array && std::any_of((*array)->elements.begin(), (*array)->elements.end(), CycleCollector::holdsReference))
-                this->mCollector.track(*array);
+                this->heap().track(*array);
         }
 
         this->setReg(frame, instr.dst, std::move(copy));
@@ -637,7 +647,7 @@ namespace LOICollection::frontend::ir {
 
         if (mOutcome == RunOutcome::Completed || mOutcome == RunOutcome::Failed
             || this->mBudget->objectCount >= this->mBudget->maxObjectCount / 4)
-            (void)this->mCollector.collect();
+            (void)this->heap().collect();
 
         return mOutcome;
     }

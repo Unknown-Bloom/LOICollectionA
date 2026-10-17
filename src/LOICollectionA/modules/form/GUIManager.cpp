@@ -42,6 +42,7 @@
 #include "LOICollectionA/frontend/sandbox/ScriptPermission.h"
 
 #include "LOICollectionA/frontend/ir/ChunkCache.h"
+#include "LOICollectionA/frontend/runtime/ScriptHeap.h"
 #include "LOICollectionA/frontend/runtime/ScriptVMRegistry.h"
 
 namespace LOICollection::form::detail {
@@ -213,6 +214,7 @@ namespace LOICollection::form {
                 this->mImpl->cache.insert_or_assign(id, std::make_shared<frontend::ir::MirChunk>(std::move(*chunk)));
                 this->mImpl->globals.insert_or_assign(id, std::unordered_map<std::string, std::shared_ptr<frontend::GlobalsTable>>{});
                 frontend::runtime::ScriptVMRegistry::getInstance().releaseScript(id);
+                frontend::runtime::ScriptHeapRegistry::getInstance().release(id);
                 warnIfMissingPermission(id);
                 return {};
             }
@@ -653,6 +655,7 @@ namespace LOICollection::form {
         this->mImpl->globals.clear();
 
         frontend::runtime::ScriptVMRegistry::getInstance().releaseAll();
+        frontend::runtime::ScriptHeapRegistry::getInstance().releaseAll();
         frontend::ir::ChunkCacheRegistry::getInstance().releaseAll();
     }
 
