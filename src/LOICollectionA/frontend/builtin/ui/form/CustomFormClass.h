@@ -18,6 +18,10 @@ namespace CustomFormClass {
             this->show.reset();
         }
 
+        void trace(LOICollection::frontend::ValueVisitor& visitor) override {
+            visitor.visitClosure(this->show);
+        }
+
         ~CustomFormHandle() override { this->release(); }
     };
 

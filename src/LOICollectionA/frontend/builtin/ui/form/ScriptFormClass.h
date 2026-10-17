@@ -37,6 +37,10 @@ namespace ScriptFormClass {
         }
 
         ~ScriptFormHandle() override { this->release(); }
+
+        void trace(LOICollection::frontend::ValueVisitor& visitor) override {
+            visitor.visitClosure(this->show);
+        }
     };
 }
 

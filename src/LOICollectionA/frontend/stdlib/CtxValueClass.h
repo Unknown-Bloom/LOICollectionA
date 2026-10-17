@@ -7,6 +7,10 @@
 namespace CtxValueClass {
     struct CtxValueHandle : LOICollection::frontend::NativeHandle {
         LOICollection::frontend::ValueNode::ValueType value;
+
+        void trace(LOICollection::frontend::ValueVisitor& visitor) override {
+            LOICollection::frontend::visitScriptValue(visitor, this->value);
+        }
     };
 
     void registerClasses(const std::string& name);

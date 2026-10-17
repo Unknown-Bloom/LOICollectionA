@@ -78,6 +78,12 @@ namespace LOICollection::frontend::ir {
 
                 auto obj = std::get<ObjectRef>(objValue);
                 int slot = this->resolveFieldSlot(*obj, name, instr);
+
+                ValueNode::ValueType previous;
+                const bool collectBarrier = this->mCollector.collecting();
+                if (collectBarrier && slot >= 0)
+                    previous = obj->slots[static_cast<size_t>(slot)];
+
                 if (slot < 0) {
                     obj->addField(name, this->regOf(frame, instr.src2));
                 } else {
@@ -88,6 +94,9 @@ namespace LOICollection::frontend::ir {
                     && CycleCollector::holdsReference(this->regOf(frame, instr.src2))) {
                     this->mCollector.noteReferenceStore();
                     this->mCollector.track(obj);
+
+                    if (collectBarrier)
+                        this->mCollector.barrier(slot >= 0 ? &previous : nullptr, this->regOf(frame, instr.src2));
                 }
             } break;
             case MirOp::LOAD_FIELD_SLOT: {
@@ -126,12 +135,20 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
+                const bool collectBarrier = this->mCollector.collecting();
+                ValueNode::ValueType previous;
+                if (collectBarrier)
+                    previous = obj->slots[static_cast<size_t>(instr.operand)];
+
                 obj->slots[static_cast<size_t>(instr.operand)] = this->regOf(frame, instr.src2);
 
                 if ((instr.imm & static_cast<int>(MirFlag::ScalarStore)) == 0
                     && CycleCollector::holdsReference(obj->slots[static_cast<size_t>(instr.operand)])) {
                     this->mCollector.noteReferenceStore();
                     this->mCollector.track(obj);
+
+                    if (collectBarrier)
+                        this->mCollector.barrier(&previous, obj->slots[static_cast<size_t>(instr.operand)]);
                 }
             } break;
             case MirOp::BIND_THIS: {
@@ -148,6 +165,9 @@ namespace LOICollection::frontend::ir {
 
                 (*func)->hasThis = true;
                 (*func)->thisObj = *self;
+
+                if (this->mCollector.collecting())
+                    this->mCollector.barrier(nullptr, selfValue);
 
                 for (auto& captured : (*func)->captures) {
                     if (const auto* held = std::get_if<ObjectRef>(&captured); held && *held == *self)
@@ -277,6 +297,11 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
+                const bool collectBarrier = this->mCollector.collecting();
+                ValueNode::ValueType previous;
+                if (collectBarrier && index < static_cast<int>(arr->elements.size()))
+                    previous = arr->elements[static_cast<size_t>(index)];
+
                 if (index == static_cast<int>(arr->elements.size())) {
                     if (static_cast<std::size_t>(index + 1) > this->mBudget->maxArrayElements) {
                         this->failBudget(sandbox::SandboxBudget::Violation::ArrayElementLimit, "Array size budget exhausted");
@@ -292,6 +317,9 @@ namespace LOICollection::frontend::ir {
                     && CycleCollector::holdsReference(value)) {
                     this->mCollector.noteReferenceStore();
                     this->mCollector.track(arr);
+
+                    if (collectBarrier)
+                        this->mCollector.barrier(index < static_cast<int>(arr->elements.size()) ? &previous : nullptr, value);
                 }
             } break;
             default: break;

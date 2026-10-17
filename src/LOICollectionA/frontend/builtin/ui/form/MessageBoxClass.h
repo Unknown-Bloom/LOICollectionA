@@ -21,6 +21,10 @@ namespace MessageBoxClass {
             this->show.reset();
         }
 
+        void trace(LOICollection::frontend::ValueVisitor& visitor) override {
+            visitor.visitClosure(this->show);
+        }
+
         ~MessageBoxHandle() override { this->release(); }
     };
 

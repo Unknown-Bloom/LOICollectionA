@@ -226,6 +226,11 @@ namespace LOICollection::frontend::ir {
                 return ValueNode::ValueType{};
             }
 
+            if ((this->mBudget->executedInstructions & 1023u) == 0
+                && (this->mCollector.collecting()
+                    || this->mBudget->objectCount >= this->mBudget->maxObjectCount / 2))
+                this->mCollector.step(1024);
+
             Frame& frame = this->frames.back();
             const MirChunk& cur = frame.chunk.get();
 

@@ -155,7 +155,19 @@ void registerMyClass(const std::string&) {
 | `registerStaticField(className, field, defaultValue?)` | 追加静态字段 |
 
 > [!NOTE]
-> 原生方法返回 `self` 可实现脚本中的链式调用（如 `form.label(...).button(...)`）。`Object` 结构包含 `className`、`classIndex` 与 `native`（`std::any`，存放任意原生句柄）。
+> 原生方法返回 `self` 可实现脚本中的链式调用（如 `form.label(...).button(...)`）。`Object` 的 `native` 持有任意原生句柄（`std::shared_ptr<NativeHandle>`）。
+
+若句柄内部保存了脚本值（`ObjectRef`、`ArrayRef`、`FunctionRefPtr`），需要实现 `NativeHandle::trace`，否则这些引用对环回收不可见：
+
+```cpp
+struct MyClassHandle : NativeHandle {
+    FunctionRefPtr onSelect;
+
+    void trace(ValueVisitor& visitor) override { visitor.visitClosure(this->onSelect); }
+};
+```
+
+只保存 `std::string`、数值或宿主对象时不必实现，基类默认实现为空。
 
 ## 注册入口：REGISTER_CALLBACK 宏
 

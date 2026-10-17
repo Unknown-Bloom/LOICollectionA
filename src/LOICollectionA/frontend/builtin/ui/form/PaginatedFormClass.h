@@ -51,6 +51,10 @@ namespace PaginatedFormClass {
             this->show.reset();
         }
 
+        void trace(LOICollection::frontend::ValueVisitor& visitor) override {
+            visitor.visitClosure(this->show);
+        }
+
         ~PaginatedFormHandle() override { this->release(); }
     };
 

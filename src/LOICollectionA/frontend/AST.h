@@ -992,11 +992,30 @@ namespace LOICollection::frontend {
         }
     };
 
+    struct ValueVisitor {
+        virtual ~ValueVisitor() = default;
+
+        virtual void visitObject(ObjectRef& value) = 0;
+        virtual void visitArray(ArrayRef& value) = 0;
+        virtual void visitClosure(FunctionRefPtr& value) = 0;
+    };
+
     struct NativeHandle {
         virtual ~NativeHandle() = default;
 
         virtual void release() {}
+
+        virtual void trace(ValueVisitor&) {}
     };
+
+    inline void visitScriptValue(ValueVisitor& visitor, ValueNode::ValueType& value) {
+        if (auto* object = std::get_if<ObjectRef>(&value))
+            visitor.visitObject(*object);
+        else if (auto* array = std::get_if<ArrayRef>(&value))
+            visitor.visitArray(*array);
+        else if (auto* closure = std::get_if<FunctionRefPtr>(&value))
+            visitor.visitClosure(*closure);
+    }
 
     struct FieldLayout {
         std::vector<std::string> names;

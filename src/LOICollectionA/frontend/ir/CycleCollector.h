@@ -17,7 +17,13 @@ namespace LOICollection::frontend::ir {
 
         LOICOLLECTION_A_API void noteReferenceStore();
 
+        LOICOLLECTION_A_API void barrier(const ValueNode::ValueType* previous, const ValueNode::ValueType& value);
+
+        LOICOLLECTION_A_API void step(std::size_t budget);
+
         LOICOLLECTION_A_NDAPI std::size_t collect();
+
+        LOICOLLECTION_A_NDAPI bool collecting() const { return this->mPhase != Phase::Idle; }
 
         LOICOLLECTION_A_NDAPI static bool holdsReference(const ValueNode::ValueType& value);
 
@@ -32,15 +38,50 @@ namespace LOICollection::frontend::ir {
     private:
         static constexpr std::size_t kCompactFloor = 4096;
 
+        enum class Phase : unsigned char { Idle, Build, Index, Mark, Sweep };
+        enum class Kind : unsigned char { Object, Array, Closure };
+
+        struct Node {
+            Kind kind = Kind::Object;
+            void* raw = nullptr;
+            std::shared_ptr<void> hold;
+            std::size_t indegree = 0;
+            bool marked = false;
+        };
+
+        bool begin();
         void compact();
         void reserveHeadroom();
+
+        void buildStep(std::size_t budget);
+        void indexStep(std::size_t budget);
+        void markStep(std::size_t budget);
+        void sweepStep(std::size_t budget);
+
+        void markValue(const ValueNode::ValueType& value);
+        void markNode(std::size_t index);
+
+        template <class Visitor>
+        static void visitEdges(const Node& node, Visitor&& visit);
+
+        static void detachEdges(Node& node, std::vector<ValueNode::ValueType>& graveyard);
+        static void stamp(const Node& node, std::int32_t index);
 
         std::vector<std::weak_ptr<Object>> mObjects;
         std::vector<std::weak_ptr<ArrayValue>> mArrays;
         std::vector<std::weak_ptr<FunctionRef>> mClosures;
 
+        std::vector<Node> mNodes;
+        std::vector<std::size_t> mPending;
+        std::vector<ValueNode::ValueType> mGraveyard;
+
+        std::size_t mObjectCursor = 0;
+        std::size_t mArrayCursor = 0;
+        std::size_t mClosureCursor = 0;
+        std::size_t mCursor = 0;
+        std::size_t mReclaimed = 0;
         std::size_t mReferenceStores = 0;
         std::size_t mCompactAt = kCompactFloor;
-        bool mCollecting = false;
+        Phase mPhase = Phase::Idle;
     };
 }
