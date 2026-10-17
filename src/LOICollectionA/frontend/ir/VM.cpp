@@ -187,6 +187,14 @@ namespace LOICollection::frontend::ir {
             return ValueNode::ValueType{};
         }
 
+        const std::uint64_t generation = chunkGeneration();
+        if (this->mInlineEpoch != generation) {
+            this->mInlineEpoch = generation;
+            this->mFieldCache.fill({});
+            this->mByNameCache.fill({});
+            this->mHostCallCache.fill({});
+        }
+
         if (this->mCacheChunk != owner.get()) {
             this->mCacheChunk = owner.get();
             this->mCache = ChunkCacheRegistry::getInstance().forChunk(owner.get());
@@ -346,6 +354,11 @@ namespace LOICollection::frontend::ir {
         this->localPool.clear();
         this->mReport = sandbox::SandboxReport{};
         this->currentLoc = SourceLocation{};
+
+        this->mFieldCache.fill({});
+        this->mByNameCache.fill({});
+        this->mHostCallCache.fill({});
+        this->mInlineEpoch = 0;
     }
 
     void VM::failBudget(sandbox::SandboxBudget::Violation violation, const std::string& message) {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -12,6 +14,8 @@
 #include "LOICollectionA/frontend/ir/Mir.h"
 
 namespace LOICollection::frontend::ir {
+    LOICOLLECTION_A_NDAPI std::uint64_t chunkGeneration();
+
     struct ChunkCache {
         std::unordered_map<int, FunctionCallCacheSlot> functionCallSlots;
         std::unordered_map<int, NativeMethodCacheSlot> nativeMethodSlots;

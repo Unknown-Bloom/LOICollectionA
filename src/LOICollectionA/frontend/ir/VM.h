@@ -164,6 +164,7 @@ namespace LOICollection::frontend::ir {
         std::array<FieldCacheEntry, kInlineCacheSize> mFieldCache{};
         std::array<ByNameCacheEntry, kInlineCacheSize> mByNameCache{};
         std::array<HostCallCacheEntry, kInlineCacheSize> mHostCallCache{};
+        std::uint64_t mInlineEpoch = 0;
 
         CycleCollector mCollector;
 

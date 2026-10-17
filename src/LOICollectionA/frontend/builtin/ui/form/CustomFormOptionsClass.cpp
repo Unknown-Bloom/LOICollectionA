@@ -16,6 +16,21 @@
 using namespace LOICollection::frontend;
 
 namespace CustomFormOptionsClass::detail {
+    std::string describe(const TypedValue& value) {
+        return std::visit([](auto&& arg) -> std::string {
+            using T = std::decay_t<decltype(arg)>;
+
+            if constexpr (std::is_same_v<T, int>) return "int";
+            else if constexpr (std::is_same_v<T, float>) return "float";
+            else if constexpr (std::is_same_v<T, bool>) return "bool";
+            else if constexpr (std::is_same_v<T, ArrayRef>) return "array";
+            else if constexpr (std::is_same_v<T, FunctionRefPtr>) return "function";
+            else if constexpr (std::is_same_v<T, ObjectRef>) return arg ? "object '" + arg->className + "'" : "a null object";
+            else if constexpr (std::is_same_v<T, std::monostate>) return "none";
+            else return "string";
+        }, value);
+    }
+
     ll::Expected<double> toDouble(const TypedValue& value) {
         return std::visit([](auto&& arg) -> ll::Expected<double> {
             using T = std::decay_t<decltype(arg)>;
@@ -50,7 +65,8 @@ namespace CustomFormOptionsClass {
             }
 
             return ll::makeStringError(
-                "expected a string, UIRawMessage, ObservableString or ObservableUIRawMessage");
+                "expected a string, UIRawMessage, ObservableString or ObservableUIRawMessage, got "
+                + describe(value));
         }, value);
     }
 
@@ -132,14 +148,16 @@ namespace CustomFormOptionsClass {
             return ll::makeStringError("DropdownItem is missing 'label'");
         auto label = toTextValue(*labelField);
         if (!label)
-            return ll::Unexpected(label.error());
+            return ll::makeStringError(
+                "DropdownItem 'label' must be a text value, got " + describe(*labelField));
 
         const auto* valueField = item->find("value");
         if (!valueField)
             return ll::makeStringError("DropdownItem is missing 'value'");
         auto value = toDouble(*valueField);
         if (!value)
-            return ll::Unexpected(value.error());
+            return ll::makeStringError(
+                "DropdownItem 'value' must be a number, got " + describe(*valueField));
 
         auto description = readOptional<ll::ui::TextValue>(item, "description", toTextValue);
         if (!description)

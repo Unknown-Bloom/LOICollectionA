@@ -3,6 +3,14 @@
 #include "LOICollectionA/frontend/ir/ChunkCache.h"
 
 namespace LOICollection::frontend::ir {
+    namespace {
+        std::atomic<std::uint64_t> generation{ 1 };
+    }
+
+    std::uint64_t chunkGeneration() {
+        return generation.load(std::memory_order_acquire);
+    }
+
     MirChunk::~MirChunk() {
         std::vector<std::unique_ptr<MirChunk>> pending;
 
@@ -24,6 +32,7 @@ namespace LOICollection::frontend::ir {
         // Drop the per-chunk execution cache so a later chunk that happens to be
         // allocated at this same address cannot inherit a stale layout/field cache.
         ChunkCacheRegistry::getInstance().release(this);
+        generation.fetch_add(1, std::memory_order_release);
     }
 
     ChunkCacheRegistry& ChunkCacheRegistry::getInstance() {
