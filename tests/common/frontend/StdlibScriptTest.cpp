@@ -242,7 +242,7 @@ TEST(StdlibScriptTest, StringTransform) {
     EXPECT_EQ(evalStd("import \"/string.lcui\"; isUpper(\"A\")"), "true");
     EXPECT_EQ(evalStd("import \"/string.lcui\"; isDigit(\"7\")"), "true");
     EXPECT_EQ(evalStd("import \"/string.lcui\"; swapCase(\"aBcD\")"), "AbCd");
-    EXPECT_EQ(evalStd("import \"/string.lcui\"; titleCase(\"hello world\")"), "Hello world");
+    EXPECT_EQ(evalStd("import \"/string.lcui\"; titleCase(\"hello world\")"), "Hello World");
     EXPECT_EQ(evalStd("import \"/string.lcui\"; truncate(\"abcdefgh\", 5, \"...\")"), "ab...");
     EXPECT_EQ(evalStd("import \"/string.lcui\"; stripPrefix(\"TestFoo\", \"Test\")"), "Foo");
     EXPECT_EQ(evalStd("import \"/string.lcui\"; stripSuffix(\"foo.txt\", \".txt\")"), "foo");
