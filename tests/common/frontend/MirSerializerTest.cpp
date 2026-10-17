@@ -10,6 +10,7 @@
 #include "LOICollectionA/frontend/Parser.h"
 #include "LOICollectionA/frontend/SemanticAnalyzer.h"
 
+#include "LOICollectionA/frontend/ir/Abi.h"
 #include "LOICollectionA/frontend/ir/Compiler.h"
 #include "LOICollectionA/frontend/ir/Mir.h"
 #include "LOICollectionA/frontend/ir/MirSerializer.h"
@@ -20,6 +21,7 @@
 
 using namespace LOICollection::frontend;
 using namespace LOICollection::frontend::ir;
+using LOICollection::frontend::ir::layoutFingerprint;
 using LOICollection::utils::Sha256;
 
 namespace {
@@ -132,6 +134,53 @@ TEST(MirSerializerTest, RoundTripPreservesBehavior) {
     ASSERT_TRUE(restored.has_value());
 
     EXPECT_EQ(runChunk(std::make_shared<MirChunk>(std::move(*restored))), "42");
+}
+
+TEST(MirSerializerTest, RoundTripPreservesTheLayoutFingerprint) {
+    const std::string source = R"(
+        class Node {
+            public:
+                next = 0;
+                func value() -> int { return 1; }
+        }
+        let node = new Node();
+        node.value()
+    )";
+
+    auto chunk = compileScript(source);
+    ASSERT_NE(chunk, nullptr);
+
+    auto blob = MirSerializer::serialize(*chunk, headerFor(source));
+    ASSERT_TRUE(blob.has_value());
+
+    auto restored = MirSerializer::deserialize(blob.value(), headerFor(source));
+    ASSERT_TRUE(restored.has_value());
+
+    EXPECT_EQ(layoutFingerprint(*restored), layoutFingerprint(*chunk));
+}
+
+TEST(MirSerializerTest, RejectsAForgedLayoutDigest) {
+    auto chunk = compileScript(kSource);
+    ASSERT_NE(chunk, nullptr);
+
+    auto serialized = MirSerializer::serialize(*chunk, headerFor(kSource));
+    ASSERT_TRUE(serialized.has_value());
+
+    constexpr std::size_t kHeaderSize = 4 + 4 + 4 + 4 + 32 + 1 + 32 + 4;
+    constexpr std::size_t kDigestSize = 32;
+    constexpr std::size_t kChecksumAt = kHeaderSize;
+    constexpr std::size_t kBodyAt = kHeaderSize + kDigestSize;
+
+    std::string blob = *serialized;
+    ASSERT_GT(blob.size(), kBodyAt + kDigestSize);
+
+    std::string body = blob.substr(kBodyAt);
+    body[0] = static_cast<char>(body[0] ^ 0x7f);
+
+    blob.replace(kChecksumAt, kDigestSize, Sha256::compute(body));
+    blob.replace(kBodyAt, body.size(), body);
+
+    EXPECT_FALSE(MirSerializer::deserialize(blob, headerFor(kSource)).has_value());
 }
 
 TEST(MirSerializerTest, RoundTripPreservesEveryTypeKind) {

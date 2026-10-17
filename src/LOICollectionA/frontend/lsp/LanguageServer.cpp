@@ -178,6 +178,7 @@ namespace LOICollection::frontend::lsp::detail {
                     } },
                     { "hoverProvider", true },
                     { "definitionProvider", true },
+                    { "codeActionProvider", true },
                 },
             },
             { "serverInfo", nlohmann::ordered_json{ { "name", "LOICollectionA LCUI" } } },
@@ -277,6 +278,55 @@ namespace LOICollection::frontend::lsp {
         return Location{ uri, symbol->range };
     }
 
+    std::vector<CodeAction> LanguageServer::codeActionsAt(
+        const std::string& uri, const std::string& text, const Range& range,
+        const std::vector<Diagnostic>& diagnostics
+    ) {
+        std::vector<CodeAction> actions;
+
+        const auto before = [](const Position& left, const Position& right) {
+            return left.line < right.line || (left.line == right.line && left.character < right.character);
+        };
+
+        const auto overlaps = [&before](const Range& left, const Range& right) {
+            return !before(left.end, right.start) && !before(right.end, left.start);
+        };
+
+        for (const auto& diagnostic : diagnostics) {
+            constexpr std::string_view kNotDeclared = "is not declared";
+
+            if (diagnostic.message.find(kNotDeclared) == std::string::npos)
+                continue;
+
+            if (!overlaps(diagnostic.range, range))
+                continue;
+
+            const auto quoteStart = diagnostic.message.find('\'');
+            const auto quoteEnd = quoteStart == std::string::npos
+                ? std::string::npos
+                : diagnostic.message.find('\'', quoteStart + 1);
+
+            if (quoteEnd == std::string::npos || quoteEnd == quoteStart + 1)
+                continue;
+
+            const std::string name = diagnostic.message.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
+            if (wordAt(text, offsetOf(text, diagnostic.range.start)) != name)
+                continue;
+
+            const Position cursor = diagnostic.range.start;
+
+            CodeAction action;
+            action.title = "Declare '" + name + "' with let";
+            action.uri = uri;
+            action.diagnostics.push_back(diagnostic);
+            action.edits.push_back(TextEdit{ Range{ cursor, cursor }, "let " });
+
+            actions.push_back(std::move(action));
+        }
+
+        return actions;
+    }
+
     std::string LanguageServer::dispatch(const nlohmann::ordered_json& message) {
         if (!message.is_object() || !message.contains("method"))
             return {};
@@ -325,6 +375,9 @@ namespace LOICollection::frontend::lsp {
 
         if (method == "textDocument/definition")
             return encodeMessage(makeResponse(id, this->documentDefinition(params)));
+
+        if (method == "textDocument/codeAction")
+            return encodeMessage(makeResponse(id, this->documentCodeActions(params)));
 
         return encodeMessage(makeError(id, -32601, "Method not found: " + method));
     }
@@ -405,6 +458,17 @@ namespace LOICollection::frontend::lsp {
             this->uriOf(params), this->textOf(params), params.at("position").get<Position>());
 
         return location ? nlohmann::ordered_json(*location) : nlohmann::ordered_json(nullptr);
+    }
+
+    nlohmann::ordered_json LanguageServer::documentCodeActions(const nlohmann::ordered_json& params) const {
+        if (!params.contains("range"))
+            return nlohmann::ordered_json::array();
+
+        const std::string& text = this->textOf(params);
+        const auto analysis = analyze(text);
+
+        return LanguageServer::codeActionsAt(
+            this->uriOf(params), text, params.at("range").get<Range>(), analysis.diagnostics);
     }
 
     const std::string& LanguageServer::textOf(const nlohmann::ordered_json& params) const {

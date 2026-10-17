@@ -200,6 +200,73 @@ namespace LOICollection::frontend::lsp {
         EXPECT_TRUE(hover.at("result").contains("contents"));
     }
 
+    TEST(LspTest, CodeActionDeclaresAMissingVariable) {
+        const std::string text =
+            "func total() -> int {\n"
+            "    sum = 1;\n"
+            "    return sum;\n"
+            "}\n";
+
+        const auto analysis = analyze(text);
+        ASSERT_FALSE(analysis.diagnostics.empty());
+
+        const Range cursor{ Position{ 1, 4 }, Position{ 1, 4 } };
+        const auto actions = LanguageServer::codeActionsAt(kUri, text, cursor, analysis.diagnostics);
+
+        ASSERT_EQ(actions.size(), 1u);
+        EXPECT_EQ(actions.front().kind, "quickfix");
+        EXPECT_NE(actions.front().title.find("sum"), std::string::npos);
+        ASSERT_EQ(actions.front().edits.size(), 1u);
+        EXPECT_EQ(actions.front().edits.front().newText, "let ");
+        EXPECT_EQ(actions.front().edits.front().range.start.line, 1u);
+        EXPECT_EQ(actions.front().edits.front().range.start.character, 4u);
+    }
+
+    TEST(LspTest, CodeActionIgnoresUnrelatedDiagnostics) {
+        const std::string text = "func total() -> int { return 1; }\n";
+
+        const auto analysis = analyze(text);
+        const Range cursor{ Position{ 0, 0 }, Position{ 0, 0 } };
+
+        EXPECT_TRUE(LanguageServer::codeActionsAt(kUri, text, cursor, analysis.diagnostics).empty());
+    }
+
+    TEST(LspTest, ServerAnswersCodeAction) {
+        LanguageServer server;
+
+        const std::string text =
+            "func total() -> int {\n"
+            "    sum = 1;\n"
+            "    return sum;\n"
+            "}\n";
+
+        nlohmann::ordered_json document;
+        document["uri"] = kUri;
+        document["languageId"] = "lcui";
+        document["version"] = 1;
+        document["text"] = text;
+
+        nlohmann::ordered_json didOpen;
+        didOpen["textDocument"] = document;
+
+        server.handle(encodeMessage(makeNotification("textDocument/didOpen", didOpen)));
+
+        nlohmann::ordered_json params;
+        params["textDocument"] = nlohmann::ordered_json{ { "uri", kUri } };
+        params["range"] = Range{ Position{ 1, 4 }, Position{ 1, 4 } };
+        params["context"] = nlohmann::ordered_json{ { "diagnostics", nlohmann::ordered_json::array() } };
+
+        const auto response = singleMessage(server.handle(
+            encodeMessage(request(5, "textDocument/codeAction", params))));
+
+        ASSERT_TRUE(response.is_object());
+        ASSERT_TRUE(response.at("result").is_array());
+        ASSERT_FALSE(response.at("result").empty());
+        EXPECT_EQ(response.at("result").front().value("kind", std::string{}), "quickfix");
+        EXPECT_EQ(response.at("result").front().at("edit").at("changes").at(kUri).front()
+            .value("newText", std::string{}), "let ");
+    }
+
     TEST(LspTest, ServerRejectsUnknownMethod) {
         LanguageServer server;
 

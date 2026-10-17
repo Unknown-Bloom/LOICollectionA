@@ -29,6 +29,11 @@ namespace LOICollection::frontend::lsp {
             const std::string& uri, const std::string& text, const Position& position
         );
 
+        LOICOLLECTION_A_NDAPI static std::vector<CodeAction> codeActionsAt(
+            const std::string& uri, const std::string& text, const Range& range,
+            const std::vector<Diagnostic>& diagnostics
+        );
+
     private:
         struct Document {
             std::string text;
@@ -50,6 +55,7 @@ namespace LOICollection::frontend::lsp {
         nlohmann::ordered_json documentCompletion(const nlohmann::ordered_json& params) const;
         nlohmann::ordered_json documentHover(const nlohmann::ordered_json& params) const;
         nlohmann::ordered_json documentDefinition(const nlohmann::ordered_json& params) const;
+        nlohmann::ordered_json documentCodeActions(const nlohmann::ordered_json& params) const;
 
         const std::string& textOf(const nlohmann::ordered_json& params) const;
         std::string uriOf(const nlohmann::ordered_json& params) const;

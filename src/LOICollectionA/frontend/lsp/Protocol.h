@@ -80,6 +80,19 @@ namespace LOICollection::frontend::lsp {
         std::optional<Range> range;
     };
 
+    struct TextEdit {
+        Range range{};
+        std::string newText;
+    };
+
+    struct CodeAction {
+        std::string title;
+        std::string kind = "quickfix";
+        std::string uri;
+        std::vector<Diagnostic> diagnostics;
+        std::vector<TextEdit> edits;
+    };
+
     LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const Position& value);
     LOICOLLECTION_A_API void from_json(const nlohmann::ordered_json& j, Position& value);
 
@@ -93,6 +106,10 @@ namespace LOICollection::frontend::lsp {
     LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const CompletionItem& value);
 
     LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const Hover& value);
+
+    LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const TextEdit& value);
+
+    LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const CodeAction& value);
 
     LOICOLLECTION_A_NDAPI nlohmann::ordered_json makeResponse(const nlohmann::ordered_json& id, nlohmann::ordered_json result);
 

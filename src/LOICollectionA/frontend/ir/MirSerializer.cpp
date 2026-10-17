@@ -7,6 +7,8 @@
 
 #include "LOICollectionA/frontend/ir/MirSerializer.h"
 
+#include "LOICollectionA/frontend/ir/Abi.h"
+
 #include "LOICollectionA/frontend/ir/opt/analysis/RefStoreAnalysis.h"
 
 #include "LOICollectionA/utils/core/Sha256.h"
@@ -725,6 +727,10 @@ namespace LOICollection::frontend::ir {
             return std::nullopt;
 
         Writer payload;
+
+        const std::string layout = layoutFingerprint(chunk);
+        payload.raw(layout.data(), layout.size());
+
         if (!writeChunk(payload, chunk))
             return std::nullopt;
 
@@ -814,8 +820,15 @@ namespace LOICollection::frontend::ir {
         if (bodyChecksum)
             *bodyChecksum = checksum;
 
+        std::string layout(kDigestSize, '\0');
+        if (!reader.raw(layout.data(), layout.size()))
+            return std::nullopt;
+
         MirChunk chunk;
         if (!readChunk(reader, chunk) || !reader.done())
+            return std::nullopt;
+
+        if (layoutFingerprint(chunk) != layout)
             return std::nullopt;
 
         detail::refreshChunkMetadata(chunk);

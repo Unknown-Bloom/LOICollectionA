@@ -4,10 +4,15 @@
 
 #include "LOICollectionA/frontend/Callback.h"
 #include "LOICollectionA/frontend/ir/Abi.h"
+#include "LOICollectionA/frontend/ir/Mir.h"
 #include "LOICollectionA/utils/core/Sha256.h"
 
 using namespace LOICollection::frontend;
 using LOICollection::frontend::ir::abiFingerprint;
+using LOICollection::frontend::ir::ClassMeta;
+using LOICollection::frontend::ir::layoutFingerprint;
+using LOICollection::frontend::ir::MethodMeta;
+using LOICollection::frontend::ir::MirChunk;
 using LOICollection::utils::Sha256;
 
 TEST(AbiTest, FingerprintIsStableAndThirtyTwoBytes) {
@@ -63,4 +68,42 @@ TEST(AbiTest, RegisteringANativeClassChangesTheFingerprint) {
     EXPECT_NE(shapeAfter.find("field AbiProbeClass.probeField"), std::string::npos);
     EXPECT_NE(before, after);
     EXPECT_EQ(after, abiFingerprint());
+}
+
+TEST(AbiTest, LayoutFingerprintTracksTheClassTable) {
+    MirChunk chunk;
+
+    ClassMeta node;
+    node.name = "Node";
+    node.fieldNames = { "next", "value" };
+    node.hasDefault = { true, false };
+    chunk.classes.push_back(node);
+
+    const std::string before = layoutFingerprint(chunk);
+    EXPECT_EQ(before.size(), 32u);
+    EXPECT_EQ(layoutFingerprint(chunk), before);
+
+    chunk.classes.front().fieldNames = { "value", "next" };
+    const std::string reordered = layoutFingerprint(chunk);
+    EXPECT_NE(before, reordered);
+
+    chunk.classes.front().fieldNames.push_back("extra");
+    chunk.classes.front().hasDefault.push_back(false);
+    EXPECT_NE(reordered, layoutFingerprint(chunk));
+}
+
+TEST(AbiTest, LayoutFingerprintCoversMethodsAndBodies) {
+    MirChunk chunk;
+    chunk.slotCount = 4;
+    chunk.methods.push_back(MethodMeta{ "run", 1, -1, 0 });
+
+    const std::string before = layoutFingerprint(chunk);
+
+    chunk.methods.front().argCount = 2;
+    const std::string widened = layoutFingerprint(chunk);
+    EXPECT_NE(before, widened);
+
+    chunk.methodBodies.push_back(std::make_unique<MirChunk>());
+    chunk.methodBodies.back()->slotCount = 9;
+    EXPECT_NE(widened, layoutFingerprint(chunk));
 }

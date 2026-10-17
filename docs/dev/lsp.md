@@ -27,16 +27,21 @@
 
 | LSP 方法 | 行为 |
 | --- | --- |
-| `initialize` | 返回 `textDocumentSync: 1`（全量同步）、`completionProvider`（触发字符 `.`）、`hoverProvider`、`definitionProvider` |
+| `initialize` | 返回 `textDocumentSync: 1`（全量同步）、`completionProvider`（触发字符 `.`）、`hoverProvider`、`definitionProvider`、`codeActionProvider` |
 | `textDocument/didOpen` | 记录文档，立即推送 `publishDiagnostics` |
 | `textDocument/didChange` | 整体替换文本（取最后一条 `contentChanges`），重新推送诊断 |
 | `textDocument/didClose` | 移除文档并清空该文档的诊断 |
 | `textDocument/completion` | 见「补全规则」 |
 | `textDocument/hover` | 返回光标处标识符的声明签名 |
 | `textDocument/definition` | 返回声明处的 `Location` |
+| `textDocument/codeAction` | 为请求区间内的诊断返回 `quickfix`，见「快速修复规则」 |
 | `shutdown` / `exit` | 正常结束 |
 
 未实现的方法返回 `-32601 Method not found`，`$/...` 通知静默忽略。
+
+## 快速修复规则
+
+`textDocument/codeAction` 会重新跑一遍分析，只保留与请求区间相交、且消息含 `is not declared` 的诊断：在标识符前插入 `let `，标题为 `Declare '<name>' with let`。插入点取自诊断起点，并用文档内容校验该位置确实是同名标识符，避免诊断定位偏移时改错位置。
 
 ## 接线方式
 
@@ -89,3 +94,4 @@ if (!outbound.empty())
 - 不解析 `import`，跨文件符号需要调用方先把导入图展开后逐文档喂入
 - 每次请求都会重新跑一遍完整前端，未做增量分析；单文件脚本规模下开销可忽略
 - 诊断区间长度为 1 个字符（诊断引擎只记录起点，不记录词法单元长度）
+- 快速修复目前只覆盖「变量未声明」一类，且只插入 `let`，不推断初始值

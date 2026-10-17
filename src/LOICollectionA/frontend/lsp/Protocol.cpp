@@ -50,6 +50,29 @@ namespace LOICollection::frontend::lsp {
             j["range"] = *value.range;
     }
 
+    void to_json(nlohmann::ordered_json& j, const TextEdit& value) {
+        j = nlohmann::ordered_json{
+            { "range", value.range },
+            { "newText", value.newText },
+        };
+    }
+
+    void to_json(nlohmann::ordered_json& j, const CodeAction& value) {
+        nlohmann::ordered_json diagnostics = nlohmann::ordered_json::array();
+        for (const auto& diagnostic : value.diagnostics)
+            diagnostics.push_back(diagnostic);
+
+        nlohmann::ordered_json changes = nlohmann::ordered_json::object();
+        changes[value.uri] = value.edits;
+
+        j = nlohmann::ordered_json{
+            { "title", value.title },
+            { "kind", value.kind },
+            { "diagnostics", std::move(diagnostics) },
+            { "edit", nlohmann::ordered_json{ { "changes", std::move(changes) } } },
+        };
+    }
+
     nlohmann::ordered_json makeResponse(const nlohmann::ordered_json& id, nlohmann::ordered_json result) {
         return nlohmann::ordered_json{
             { "jsonrpc", "2.0" },

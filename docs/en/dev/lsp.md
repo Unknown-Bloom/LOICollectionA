@@ -27,13 +27,14 @@ Two reasons for this split: the plugin itself must not host a resident server ju
 
 | LSP method | Behavior |
 | --- | --- |
-| `initialize` | Returns `textDocumentSync: 1` (full sync), `completionProvider` (trigger character `.`), `hoverProvider`, `definitionProvider` |
+| `initialize` | Returns `textDocumentSync: 1` (full sync), `completionProvider` (trigger character `.`), `hoverProvider`, `definitionProvider`, `codeActionProvider` |
 | `textDocument/didOpen` | Registers the document and immediately publishes diagnostics |
 | `textDocument/didChange` | Replaces the whole text (last `contentChanges` entry wins) and republishes diagnostics |
 | `textDocument/didClose` | Removes the document and clears its diagnostics |
 | `textDocument/completion` | See "Completion Rules" |
 | `textDocument/hover` | Returns the declaration signature of the identifier under the cursor |
 | `textDocument/definition` | Returns the `Location` of the declaration |
+| `textDocument/codeAction` | Returns a `quickfix` for diagnostics inside the requested range |
 | `shutdown` / `exit` | Terminates cleanly |
 
 Unimplemented methods return `-32601 Method not found`; `$/...` notifications are ignored silently.
