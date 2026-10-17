@@ -22,7 +22,7 @@ TEST(OpTraitsTest, IsJumpCoversEveryConditionalAndUnconditionalForm) {
         const auto op = static_cast<MirOp>(value);
 
         EXPECT_EQ(isJump(op), op_traits_test_support::isOneOf(op, {
-            MirOp::JMP, MirOp::JMP_IF_FALSE, MirOp::JMP_IF_TRUE
+            MirOp::JMP, MirOp::JMP_IF_FALSE, MirOp::JMP_IF_TRUE, MirOp::JMP_IF_CMP_FALSE
         })) << "op " << value;
     }
 }
@@ -41,6 +41,7 @@ TEST(OpTraitsTest, IsTerminatorStopsFlowWithoutBeingAJump) {
     EXPECT_FALSE(isTerminator(MirOp::JMP_IF_TRUE));
     EXPECT_TRUE(isJump(MirOp::JMP_IF_FALSE));
     EXPECT_TRUE(isJump(MirOp::JMP_IF_TRUE));
+    EXPECT_TRUE(isJump(MirOp::JMP_IF_CMP_FALSE));
 }
 
 TEST(OpTraitsTest, IsStoreOpOnlyCoversVariableSlots) {

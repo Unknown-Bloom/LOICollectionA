@@ -125,6 +125,8 @@ namespace LOICollection::frontend::ir {
         BIND_THIS,
         LOAD_LEN,
 
+        JMP_IF_CMP_FALSE,
+
         COUNT
     };
 

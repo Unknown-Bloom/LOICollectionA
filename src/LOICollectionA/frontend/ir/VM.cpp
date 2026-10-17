@@ -187,8 +187,6 @@ namespace LOICollection::frontend::ir {
             return ValueNode::ValueType{};
         }
 
-        const MirChunk& chunk = *owner;
-
         if (this->mCacheChunk != owner.get()) {
             this->mCacheChunk = owner.get();
             this->mCache = ChunkCacheRegistry::getInstance().forChunk(owner.get());
@@ -199,6 +197,19 @@ namespace LOICollection::frontend::ir {
 
         BudgetScope budgetScope(this->mBudget);
         CurrentVMScope vmScope(this);
+
+        if (this->mSchedulerManaged)
+            return this->executeLoop<true>(owner, placeholders);
+
+        return this->executeLoop<false>(owner, placeholders);
+    }
+
+    template <bool Managed>
+    ValueNode::ValueType VM::executeLoop(
+        const std::shared_ptr<const MirChunk>& owner,
+        const CallbackTypePlaces& placeholders
+    ) {
+        const MirChunk& chunk = *owner;
 
         while (true) {
             if (this->diagnostics.hasErrors()) {
@@ -246,7 +257,7 @@ namespace LOICollection::frontend::ir {
                     this->execComparison(s); break;
                 case MirOp::LOGIC_AND: case MirOp::LOGIC_OR: case MirOp::NEG: case MirOp::NOT: this->execLogic(s); break;
                 case MirOp::CALL: case MirOp::CALL_MACRO: this->execHostCall(s); break;
-                case MirOp::JMP_IF_FALSE: case MirOp::JMP_IF_TRUE: case MirOp::JMP: this->execBranch(s); break;
+                case MirOp::JMP_IF_FALSE: case MirOp::JMP_IF_TRUE: case MirOp::JMP: case MirOp::JMP_IF_CMP_FALSE: this->execBranch(s); break;
                 case MirOp::RETURN: {
                     auto result = instr.src1 >= 0
                         ? this->regOf(frame, instr.src1)
@@ -290,7 +301,7 @@ namespace LOICollection::frontend::ir {
                     break;
             }
 
-            if (mSchedulerManaged) {
+            if constexpr (Managed) {
                 if (mStopRequest != StopKind::None || --mSliceRemaining == 0) {
                     switch (mStopRequest) {
                         case StopKind::Yield:
@@ -390,6 +401,12 @@ namespace LOICollection::frontend::ir {
             } break;
             case MirOp::JMP: {
                 frame.ip += instr.operand;
+            } break;
+            case MirOp::JMP_IF_CMP_FALSE: {
+                if (!VM::applyComparison(
+                        this->regOf(frame, instr.src1), this->regOf(frame, instr.src2),
+                        static_cast<MirOp>(instr.imm), this->diagnostics, this->currentLoc))
+                    frame.ip += instr.operand;
             } break;
             default: break;
         }

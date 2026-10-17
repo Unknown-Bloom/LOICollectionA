@@ -8,6 +8,7 @@
 #include "LOICollectionA/frontend/ir/opt/passes/CSEPass.h"
 #include "LOICollectionA/frontend/ir/opt/passes/DeadValuePass.h"
 #include "LOICollectionA/frontend/ir/opt/passes/InlinePass.h"
+#include "LOICollectionA/frontend/ir/opt/passes/BranchFusionPass.h"
 
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 
@@ -57,6 +58,12 @@ namespace LOICollection::frontend::ir {
 
             if (once.folded == 0 && once.removed == 0)
                 break;
+        }
+
+        if (this->enabled(Pass::BranchFusion)) {
+            const opt::JumpTargetAnalysis jumps{ chunk.code };
+            opt::BranchFusionPass fusion{ chunk, jumps };
+            total.removed += fusion.run(true);
         }
 
         opt::RefStoreAnalysis refStores{ chunk };

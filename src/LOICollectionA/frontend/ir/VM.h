@@ -180,6 +180,12 @@ namespace LOICollection::frontend::ir {
             const CallbackTypePlaces& placeholders
         );
 
+        template <bool Managed>
+        ValueNode::ValueType executeLoop(
+            const std::shared_ptr<const MirChunk>& owner,
+            const CallbackTypePlaces& placeholders
+        );
+
         [[nodiscard]] ValueNode::ValueType& regOf(Frame& frame, int index);
         [[nodiscard]] const ValueNode::ValueType& regOf(const Frame& frame, int index);
 
