@@ -56,6 +56,12 @@ namespace LOICollection::frontend::runtime {
         size_t taskCount() const { return tasks_.size(); }
         size_t readyCount() const { return ready_.size(); }
         bool hasTask(TaskId id) const { return findTask(id) != nullptr; }
+        bool anyTaskPending() const {
+            for (auto& t : tasks_)
+                if (t && t->state != TaskState::Done)
+                    return true;
+            return false;
+        }
         bool isDone(TaskId id) const {
             const Task* t = findTask(id);
             return t != nullptr && t->state == TaskState::Done;
@@ -91,7 +97,7 @@ namespace LOICollection::frontend::runtime {
         Task* findTask(TaskId id) const;
         Task* findTaskByVM(ir::VM* vm);
         void completeTask(Task& task);
-        void runSlice(Task& task, std::chrono::steady_clock::time_point now);
+        void runSlice(Task& task);
 
         std::vector<std::unique_ptr<Task>> tasks_;
         std::deque<TaskId> ready_;

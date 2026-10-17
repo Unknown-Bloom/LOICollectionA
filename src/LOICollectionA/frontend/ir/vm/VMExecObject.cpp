@@ -182,7 +182,10 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
+                const std::size_t arrayBytes = static_cast<std::size_t>(count) * 16;
                 auto arr = std::make_shared<ArrayValue>();
+                arr->budgetOwner = this->mBudget.get();
+                arr->budgetBytes = arrayBytes;
                 arr->elements.resize(count);
                 for (int i = 0; i < count; ++i)
                     arr->elements[i] = this->regOf(frame, instr.src1 + i);
@@ -363,6 +366,7 @@ namespace LOICollection::frontend::ir {
                 const auto& cls = chunk.classes[instr.operand];
 
                 auto obj = std::make_shared<Object>();
+                obj->budgetOwner = this->mBudget.get();
                 obj->className = cls.name;
                 obj->classIndex = instr.operand;
                 obj->layout = this->classLayout(chunk, instr.operand);
@@ -396,12 +400,6 @@ namespace LOICollection::frontend::ir {
                 }
             } break;
             case MirOp::NEW_NATIVE: {
-                if (const auto violation = this->mBudget->accountObject();
-                    violation != sandbox::SandboxBudget::Violation::None) {
-                    this->failBudget(violation, "Object count budget exhausted");
-                    break;
-                }
-
                 const auto& meta = chunk.nativeCalls[instr.operand];
 
                 auto result = ClassCall::getInstance().createCached(
@@ -415,6 +413,10 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
+                // Native objects are owned by host-side code (ClassCall), not by the VM's
+                // heap, so their lifetime is not something the sandbox budget can track via
+                // a per-instance release hook without aliasing an external shared_ptr. They
+                // are therefore not counted against the object budget.
                 this->setReg(frame, instr.dst, result.value());
             } break;
             default: break;

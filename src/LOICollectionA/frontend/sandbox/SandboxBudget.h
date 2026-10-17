@@ -15,6 +15,8 @@ namespace LOICollection::frontend::sandbox {
         std::size_t maxTotalBytes = 64 << 20;
 
         std::chrono::steady_clock::duration accumulatedWall{};
+        std::chrono::steady_clock::time_point wallAnchor{};
+        bool wallRunning = false;
         std::size_t executedInstructions = 0;
         std::size_t nativeCallCount = 0;
         std::size_t objectCount = 0;
@@ -23,11 +25,31 @@ namespace LOICollection::frontend::sandbox {
 
         void reset() {
             accumulatedWall = std::chrono::steady_clock::duration{};
+            wallRunning = false;
             executedInstructions = 0;
             nativeCallCount = 0;
             objectCount = 0;
             allocatedBytes = 0;
             activeFrames = 0;
+        }
+
+        void beginWall() {
+            wallAnchor = std::chrono::steady_clock::now();
+            wallRunning = true;
+        }
+
+        void endWall() {
+            if (wallRunning) {
+                accumulatedWall += std::chrono::steady_clock::now() - wallAnchor;
+                wallRunning = false;
+            }
+        }
+
+        std::chrono::steady_clock::duration elapsedWall() const {
+            std::chrono::steady_clock::duration e = accumulatedWall;
+            if (wallRunning)
+                e += std::chrono::steady_clock::now() - wallAnchor;
+            return e;
         }
 
         enum class Violation {
@@ -46,7 +68,7 @@ namespace LOICollection::frontend::sandbox {
             if (++executedInstructions > maxInstructions)
                 return Violation::InstructionLimit;
 
-            if ((executedInstructions & 1023u) == 0 && accumulatedWall > maxWallTime)
+            if ((executedInstructions & 1023u) == 0 && elapsedWall() > maxWallTime)
                 return Violation::WallTimeLimit;
 
             return Violation::None;
@@ -64,12 +86,21 @@ namespace LOICollection::frontend::sandbox {
             return ++objectCount > maxObjectCount ? Violation::ObjectCountLimit : Violation::None;
         }
 
+        void releaseObject() {
+            if (objectCount > 0)
+                --objectCount;
+        }
+
         Violation accountArray(std::size_t elementCount) {
             if (elementCount > maxArrayElements)
                 return Violation::ArrayElementLimit;
 
             allocatedBytes += elementCount * 16;
             return allocatedBytes > maxTotalBytes ? Violation::TotalByteLimit : Violation::None;
+        }
+
+        void releaseBytes(std::size_t bytes) {
+            allocatedBytes = (bytes >= allocatedBytes) ? std::size_t{0} : (allocatedBytes - bytes);
         }
 
         Violation accountString(std::size_t byteCount) {

@@ -16,7 +16,7 @@ namespace sandbox_budget_accounting_test_support {
         budget.reset();
         budget.maxInstructions = maxInstructions;
         budget.maxWallTime = std::chrono::milliseconds(1);
-        budget.startTime = std::chrono::steady_clock::now() - std::chrono::seconds(1);
+        budget.accountWall(std::chrono::milliseconds(2));
 
         return budget;
     }

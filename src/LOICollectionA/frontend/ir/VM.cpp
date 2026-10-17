@@ -28,7 +28,6 @@ namespace LOICollection::frontend::ir::detail {
     struct BudgetScope {
         std::shared_ptr<sandbox::SandboxBudget> previous;
         std::shared_ptr<sandbox::SandboxBudget> budget;
-        std::chrono::steady_clock::time_point wallBegin;
 
         explicit BudgetScope(std::shared_ptr<sandbox::SandboxBudget>& b) : previous(tlsBudget), budget(b) {
             if (!previous)
@@ -37,11 +36,11 @@ namespace LOICollection::frontend::ir::detail {
                 budget = previous;
 
             tlsBudget = budget;
-            wallBegin = std::chrono::steady_clock::now();
+            budget->beginWall();
         }
 
         ~BudgetScope() {
-            budget->accountWall(std::chrono::steady_clock::now() - wallBegin);
+            budget->endWall();
             tlsBudget = std::move(previous);
         }
     };

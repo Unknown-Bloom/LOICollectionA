@@ -10,6 +10,7 @@
 
 #include "LOICollectionA/frontend/ASTVisitor.h"
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
+#include "LOICollectionA/frontend/sandbox/SandboxBudget.h"
 
 namespace LOICollection::frontend {
     struct Object;
@@ -1051,6 +1052,13 @@ namespace LOICollection::frontend {
 
         std::shared_ptr<NativeHandle> native;
 
+        sandbox::SandboxBudget* budgetOwner = nullptr;
+
+        ~Object() {
+            if (budgetOwner)
+                budgetOwner->releaseObject();
+        }
+
         void resize(size_t count) {
             this->slots.resize(count);
         }
@@ -1161,6 +1169,9 @@ namespace LOICollection::frontend {
     struct ArrayValue {
         std::vector<ValueNode::ValueType> elements;
 
+        sandbox::SandboxBudget* budgetOwner = nullptr;
+        std::size_t budgetBytes = 0;
+
         ArrayValue() = default;
         ArrayValue(const ArrayValue&) = default;
         ArrayValue& operator=(const ArrayValue&) = default;
@@ -1168,6 +1179,9 @@ namespace LOICollection::frontend {
         ArrayValue& operator=(ArrayValue&&) noexcept = default;
 
         ~ArrayValue() {
+            if (budgetOwner)
+                budgetOwner->releaseBytes(budgetBytes);
+
             std::vector<ArrayRef> pending;
 
             auto drainInto = [&pending](std::vector<ValueNode::ValueType>& items) -> void {

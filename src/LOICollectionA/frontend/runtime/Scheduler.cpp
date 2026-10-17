@@ -40,7 +40,7 @@ namespace LOICollection::frontend::runtime {
         task.joiners.clear();
     }
 
-    void ProcScheduler::runSlice(Task& task, std::chrono::steady_clock::time_point now) {
+    void ProcScheduler::runSlice(Task& task) {
         const auto outcome = task.vm->runTask(task.fn, task.args, config_.sliceInstructions);
         switch (outcome) {
             case ir::VM::RunOutcome::Completed:
@@ -185,7 +185,7 @@ namespace LOICollection::frontend::runtime {
             Task* t = findTask(id);
             if (!t || t->state != TaskState::Ready)
                 continue;
-            runSlice(*t, now);
+            runSlice(*t);
             ++ran;
         }
         return ran;
