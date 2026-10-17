@@ -21,6 +21,7 @@
 #include "LOICollectionA/include/ModuleBase.h"
 #include "LOICollectionA/include/ModManager.h"
 #include "LOICollectionA/include/CallbackUtils.h"
+#include "LOICollectionA/include/ProcSchedulerDriver.h"
 #include "LOICollectionA/include/form/GUIManager.h"
 
 #include "LOICollectionA/base/Wrapper.h"
@@ -171,6 +172,7 @@ namespace LOICollection {
             getI18n().getCurrentLanguage()->mCode.get() : this->config.ConsoleLanguage;
 
         LOICollectionAPI::CallbackUtils::getInstance().compile();
+        LOICollectionAPI::ProcSchedulerDriver::getInstance().start();
 
         if (this->config.LanguageServer.enabled) {
             this->lspServer_ = std::make_unique<frontend::lsp::LspServer>(this->lspEngine_);
@@ -206,6 +208,8 @@ namespace LOICollection {
 
     bool A::disable() {
         ll::io::Logger& logger = this->mSelf.getLogger();
+
+        LOICollectionAPI::ProcSchedulerDriver::getInstance().stop();
 
         if (this->lspServer_) {
             this->lspServer_->stop();
