@@ -27,17 +27,23 @@ namespace LOICollection::frontend::ir::detail {
 
     struct BudgetScope {
         std::shared_ptr<sandbox::SandboxBudget> previous;
+        std::shared_ptr<sandbox::SandboxBudget> budget;
+        std::chrono::steady_clock::time_point wallBegin;
 
-        explicit BudgetScope(std::shared_ptr<sandbox::SandboxBudget>& budget) : previous(tlsBudget) {
+        explicit BudgetScope(std::shared_ptr<sandbox::SandboxBudget>& b) : previous(tlsBudget), budget(b) {
             if (!previous)
                 budget->reset();
             else
                 budget = previous;
 
             tlsBudget = budget;
+            wallBegin = std::chrono::steady_clock::now();
         }
 
-        ~BudgetScope() { tlsBudget = std::move(previous); }
+        ~BudgetScope() {
+            budget->accountWall(std::chrono::steady_clock::now() - wallBegin);
+            tlsBudget = std::move(previous);
+        }
     };
 
     /* Pins tlsCurrentVM to the VM executing on this thread for the duration of

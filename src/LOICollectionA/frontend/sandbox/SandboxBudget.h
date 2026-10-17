@@ -14,7 +14,7 @@ namespace LOICollection::frontend::sandbox {
         std::size_t maxStringBytes = 1 << 20;
         std::size_t maxTotalBytes = 64 << 20;
 
-        std::chrono::steady_clock::time_point startTime{};
+        std::chrono::steady_clock::duration accumulatedWall{};
         std::size_t executedInstructions = 0;
         std::size_t nativeCallCount = 0;
         std::size_t objectCount = 0;
@@ -22,7 +22,7 @@ namespace LOICollection::frontend::sandbox {
         std::size_t activeFrames = 0;
 
         void reset() {
-            startTime = std::chrono::steady_clock::now();
+            accumulatedWall = std::chrono::steady_clock::duration{};
             executedInstructions = 0;
             nativeCallCount = 0;
             objectCount = 0;
@@ -46,11 +46,14 @@ namespace LOICollection::frontend::sandbox {
             if (++executedInstructions > maxInstructions)
                 return Violation::InstructionLimit;
 
-            if ((executedInstructions & 1023u) == 0 &&
-                std::chrono::steady_clock::now() - startTime > maxWallTime)
+            if ((executedInstructions & 1023u) == 0 && accumulatedWall > maxWallTime)
                 return Violation::WallTimeLimit;
 
             return Violation::None;
+        }
+
+        void accountWall(std::chrono::steady_clock::duration elapsed) {
+            accumulatedWall += elapsed;
         }
 
         Violation accountNativeCall() {
