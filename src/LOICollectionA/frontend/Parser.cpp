@@ -35,7 +35,10 @@ namespace LOICollection::frontend {
             if (currentToken.type == TokenType::TOKEN_SEMICOLON) {
                 eat(TokenType::TOKEN_SEMICOLON);
             } else if (stmtType == ASTNode::Type::Class || stmtType == ASTNode::Type::FunctionDef ||
-                       stmtType == ASTNode::Type::Trait || stmtType == ASTNode::Type::Impl) {
+                       stmtType == ASTNode::Type::Trait || stmtType == ASTNode::Type::Impl ||
+                       stmtType == ASTNode::Type::If || stmtType == ASTNode::Type::While ||
+                       stmtType == ASTNode::Type::For || stmtType == ASTNode::Type::ForIn ||
+                       stmtType == ASTNode::Type::Block) {
             } else if (currentToken.type != TokenType::TOKEN_EOF) {
                 if (currentToken.loc.line > stmtStartLine)
                     continue;

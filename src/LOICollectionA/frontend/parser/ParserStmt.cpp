@@ -626,13 +626,17 @@ namespace LOICollection::frontend {
                 continue;
             }
 
+            const ASTNode::Type stmtType = stmt->getType();
             block->addPart(std::move(stmt));
 
             if (currentToken.type == TokenType::TOKEN_SEMICOLON) {
                 eat(TokenType::TOKEN_SEMICOLON);
             } else if (currentToken.type != TokenType::TOKEN_COLON &&
                 currentToken.type != TokenType::TOKEN_RBRCKET &&
-                currentToken.type != TokenType::TOKEN_RBRACE) {
+                currentToken.type != TokenType::TOKEN_RBRACE &&
+                stmtType != ASTNode::Type::If && stmtType != ASTNode::Type::While &&
+                stmtType != ASTNode::Type::For && stmtType != ASTNode::Type::ForIn &&
+                stmtType != ASTNode::Type::Block) {
                 if (currentToken.loc.line > stmtStartLine)
                     continue;
 
