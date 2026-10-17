@@ -22,16 +22,16 @@ namespace LOICollection::frontend::ir {
         if (!obj.layout)
             obj.adoptLayout();
 
-        FieldCacheSlot& cached = this->mCache->fieldSlots[&instr];
         const FieldLayout* layout = obj.layout.get();
+        FieldCacheEntry& cached = this->mFieldCache[inlineCacheSlot(&instr)];
 
-        int slot = cached.probe(layout);
-        if (slot < 0) {
-            slot = obj.slotOf(name);
-            cached.store(layout, slot);
+        if (cached.instr != &instr || cached.layout != layout) {
+            cached.instr = &instr;
+            cached.layout = layout;
+            cached.slot = obj.slotOf(name);
         }
 
-        return slot;
+        return cached.slot;
     }
 
     void VM::execFieldAccess(ExecArgs& s) {
@@ -80,8 +80,6 @@ namespace LOICollection::frontend::ir {
                 int slot = this->resolveFieldSlot(*obj, name, instr);
                 if (slot < 0) {
                     obj->addField(name, this->regOf(frame, instr.src2));
-                    slot = obj->slotOf(name);
-                    this->mCache->fieldSlots[&instr].store(obj->layout.get(), slot);
                 } else {
                     obj->slots[static_cast<size_t>(slot)] = this->regOf(frame, instr.src2);
                 }
@@ -385,10 +383,18 @@ namespace LOICollection::frontend::ir {
         Frame& frame = s.frame;
         switch (instr.op) {
             case MirOp::NEW: {
-                if (const auto violation = this->mBudget->accountObject();
-                    violation != sandbox::SandboxBudget::Violation::None) {
-                    this->failBudget(violation, "Object count budget exhausted");
-                    break;
+                auto violation = this->mBudget->accountObject();
+                if (violation != sandbox::SandboxBudget::Violation::None) {
+                    if (this->mCollector.collect() == 0) {
+                        this->failBudget(violation, "Object count budget exhausted");
+                        break;
+                    }
+
+                    violation = this->mBudget->accountObject();
+                    if (violation != sandbox::SandboxBudget::Violation::None) {
+                        this->failBudget(violation, "Object count budget exhausted");
+                        break;
+                    }
                 }
 
                 const auto& cls = chunk.classes[instr.operand];
@@ -415,8 +421,7 @@ namespace LOICollection::frontend::ir {
 
                 if (cls.constructorIndex != -1) {
                     const auto& ctor = chunk.methods[cls.constructorIndex];
-
-                    auto args = this->collectArgs(frame, instr.src1, ctor.argCount);
+                    const size_t argsBase = frame.localsBase + static_cast<size_t>(instr.src1);
 
                     Frame callee(*chunk.methodBodies[ctor.bodyIndex]);
                     callee.hasThis = true;
@@ -428,9 +433,7 @@ namespace LOICollection::frontend::ir {
                     if (!this->pushFrame(std::move(callee)))
                         break;
 
-                    const size_t base = this->frames.back().localsBase;
-                    for (size_t i = 0; i < args.size(); ++i)
-                        this->localPool[base + i] = std::move(args[i]);
+                    this->placeArgs(argsBase, ctor.argCount);
                 }
             } break;
             case MirOp::NEW_NATIVE: {

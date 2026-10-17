@@ -66,6 +66,9 @@ namespace LOICollection::frontend::ir {
 
         const auto& cls = chunk.classes[derivedClassIndex];
 
+        if (baseClassIndex >= 0 && baseClassIndex < 64)
+            return ((cls.ancestorMask >> baseClassIndex) & 1u) != 0;
+
         return std::ranges::any_of(cls.ancestorIndices, [baseClassIndex](int idx) -> bool {
             return idx == baseClassIndex;
         });
@@ -118,10 +121,12 @@ namespace LOICollection::frontend::ir {
         return args;
     }
 
-    void VM::placeArgs(std::vector<ValueNode::ValueType>&& args, size_t offset) {
+    void VM::placeArgs(std::size_t sourceBase, int count, std::size_t offset) {
         const size_t base = this->frames.back().localsBase + offset;
-        for (size_t i = 0; i < args.size(); ++i)
-            this->localPool[base + i] = std::move(args[i]);
+        for (int i = 0; i < count; ++i) {
+            const size_t index = static_cast<size_t>(i);
+            this->localPool[base + index] = std::move(this->localPool[sourceBase + index]);
+        }
     }
 
     ValueNode::ValueType VM::run(
@@ -188,6 +193,9 @@ namespace LOICollection::frontend::ir {
             this->mCacheChunk = owner.get();
             this->mCache = ChunkCacheRegistry::getInstance().forChunk(owner.get());
         }
+
+        if (this->frames.capacity() < this->mBudget->maxFrames)
+            this->frames.reserve(this->mBudget->maxFrames);
 
         BudgetScope budgetScope(this->mBudget);
         CurrentVMScope vmScope(this);
@@ -592,7 +600,8 @@ namespace LOICollection::frontend::ir {
 
         mTaskResult = result;
 
-        if (mOutcome == RunOutcome::Completed || mOutcome == RunOutcome::Failed)
+        if (mOutcome == RunOutcome::Completed || mOutcome == RunOutcome::Failed
+            || this->mBudget->objectCount >= this->mBudget->maxObjectCount / 4)
             (void)this->mCollector.collect();
 
         return mOutcome;

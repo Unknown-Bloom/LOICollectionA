@@ -104,11 +104,7 @@ namespace LOICollection::frontend::sandbox {
         }
 
         Violation accountString(std::size_t byteCount) {
-            if (byteCount > maxStringBytes)
-                return Violation::StringByteLimit;
-
-            allocatedBytes += byteCount;
-            return allocatedBytes > maxTotalBytes ? Violation::TotalByteLimit : Violation::None;
+            return byteCount > maxStringBytes ? Violation::StringByteLimit : Violation::None;
         }
     };
 }

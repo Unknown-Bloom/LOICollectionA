@@ -54,7 +54,7 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
-                auto args = this->collectArgs(frame, instr.src1, meta.argCount);
+                const size_t argsBase = frame.localsBase + static_cast<size_t>(instr.src1);
 
                 Frame callee(*chunk.methodBodies[meta.bodyIndex]);
                 callee.hasThis = true;
@@ -64,7 +64,7 @@ namespace LOICollection::frontend::ir {
                 if (!this->pushFrame(std::move(callee)))
                     break;
 
-                this->placeArgs(std::move(args), 0);
+                this->placeArgs(argsBase, meta.argCount);
             } break;
             case MirOp::CALL_METHOD_VIRTUAL: {
                 const auto& meta = cur.virtualCalls[instr.operand];
@@ -100,7 +100,7 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
-                auto args = this->collectArgs(frame, instr.src1, method.argCount);
+                const size_t argsBase = frame.localsBase + static_cast<size_t>(instr.src1);
 
                 Frame callee(*chunk.methodBodies[method.bodyIndex]);
                 callee.hasThis = true;
@@ -110,7 +110,7 @@ namespace LOICollection::frontend::ir {
                 if (!this->pushFrame(std::move(callee)))
                     break;
 
-                this->placeArgs(std::move(args), 0);
+                this->placeArgs(argsBase, method.argCount);
             } break;
             case MirOp::CALL_METHOD_BY_NAME: {
                 const auto& meta = cur.byNameCalls[instr.operand];
@@ -128,14 +128,24 @@ namespace LOICollection::frontend::ir {
                 }
 
                 const auto& cls = chunk.classes[obj->classIndex];
-                int ordinal = -1;
-                for (size_t o = 0; o < cls.methods.size(); ++o) {
-                    const auto& m = chunk.methods[cls.methods[o]];
-                    if (m.name == meta.methodName && m.argCount == meta.argCount) {
-                        ordinal = static_cast<int>(o);
-                        break;
+
+                ByNameCacheEntry& cached = this->mByNameCache[inlineCacheSlot(&instr)];
+                if (cached.instr != &instr || cached.classIndex != obj->classIndex) {
+                    int ordinal = -1;
+                    for (size_t o = 0; o < cls.methods.size(); ++o) {
+                        const auto& m = chunk.methods[cls.methods[o]];
+                        if (m.name == meta.methodName && m.argCount == meta.argCount) {
+                            ordinal = static_cast<int>(o);
+                            break;
+                        }
                     }
+
+                    cached.instr = &instr;
+                    cached.classIndex = obj->classIndex;
+                    cached.ordinal = ordinal;
                 }
+
+                const int ordinal = cached.ordinal;
 
                 if (ordinal < 0) {
                     this->diagnostics.addError(this->currentLoc,
@@ -145,7 +155,7 @@ namespace LOICollection::frontend::ir {
 
                 const auto& method = chunk.methods[cls.methods[ordinal]];
 
-                auto args = this->collectArgs(frame, instr.src1, method.argCount);
+                const size_t argsBase = frame.localsBase + static_cast<size_t>(instr.src1);
 
                 Frame callee(*chunk.methodBodies[method.bodyIndex]);
                 callee.hasThis = true;
@@ -155,7 +165,7 @@ namespace LOICollection::frontend::ir {
                 if (!this->pushFrame(std::move(callee)))
                     break;
 
-                this->placeArgs(std::move(args), 0);
+                this->placeArgs(argsBase, method.argCount);
             } break;
             case MirOp::CALL_SUPER_CTOR: {
                 const auto& meta = cur.superCalls[instr.operand];
@@ -180,7 +190,7 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
-                auto args = this->collectArgs(frame, instr.src1, ctor.argCount);
+                const size_t argsBase = frame.localsBase + static_cast<size_t>(instr.src1);
 
                 Frame callee(*chunk.methodBodies[ctor.bodyIndex]);
                 callee.hasThis = true;
@@ -190,7 +200,7 @@ namespace LOICollection::frontend::ir {
                 if (!this->pushFrame(std::move(callee)))
                     break;
 
-                this->placeArgs(std::move(args), 0);
+                this->placeArgs(argsBase, ctor.argCount);
             } break;
             default: break;
         }
@@ -282,7 +292,7 @@ namespace LOICollection::frontend::ir {
             case MirOp::CALL_FUNC: {
                 const auto& meta = chunk.methods[instr.operand];
 
-                auto args = this->collectArgs(frame, instr.src1, meta.argCount);
+                const size_t argsBase = frame.localsBase + static_cast<size_t>(instr.src1);
 
                 Frame callee(*chunk.methodBodies[meta.bodyIndex]);
                 callee.hasThis = false;
@@ -291,7 +301,7 @@ namespace LOICollection::frontend::ir {
                 if (!this->pushFrame(std::move(callee)))
                     break;
 
-                this->placeArgs(std::move(args), 0);
+                this->placeArgs(argsBase, meta.argCount);
             } break;
             case MirOp::CALL_LAMBDA: {
                 const ValueNode::ValueType& funcValue = this->regOf(frame, instr.src2);
@@ -322,7 +332,7 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
-                auto args = this->collectArgs(frame, instr.src1, func->argCount);
+                const size_t argsBase = frame.localsBase + static_cast<size_t>(instr.src1);
 
                 Frame callee(*func->owner->methodBodies[func->bodyIndex]);
                 callee.hasThis = func->hasThis;
@@ -343,8 +353,7 @@ namespace LOICollection::frontend::ir {
 
                 const size_t base = this->frames.back().localsBase;
                 std::copy_n(func->captures.begin(), paramBase, this->localPool.begin() + base);
-                for (size_t i = 0; i < args.size(); ++i)
-                    this->localPool[base + paramBase + i] = std::move(args[i]);
+                this->placeArgs(argsBase, func->argCount, paramBase);
             } break;
             default: break;
         }
@@ -370,10 +379,16 @@ namespace LOICollection::frontend::ir {
                 for (int i = 0; i < instr.imm; ++i)
                     args.push_back(this->regOf(frame, instr.src1 + i));
 
-                auto ns = meta.name.substr(0, meta.name.find("::"));
-                auto func = meta.name.substr(meta.name.find("::") + 2);
+                HostCallCacheEntry& cached = this->mHostCallCache[inlineCacheSlot(&instr)];
+                if (cached.instr != &instr) {
+                    const size_t pos = meta.name.find("::");
+                    cached.namespaces = meta.name.substr(0, pos);
+                    cached.function = meta.name.substr(pos + 2);
+                    cached.instr = &instr;
+                }
+
                 auto result = FunctionCall::getInstance().callFunctionCached(
-                    ns, func, args, s.placeholders,
+                    cached.namespaces, cached.function, args, s.placeholders,
                     this->mCache->functionCallSlots[instr.operand], this->diagnostics, this->currentLoc
                 );
 

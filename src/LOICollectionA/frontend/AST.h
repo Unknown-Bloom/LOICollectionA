@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -1030,7 +1031,10 @@ namespace LOICollection::frontend {
     }
 
     inline FieldLayoutPtr extendShape(const FieldLayout* base, const std::string& name) {
+        static std::mutex mutex;
         static std::unordered_map<detail::ShapeKey, FieldLayoutPtr, detail::ShapeKeyHash> transitions;
+
+        const std::lock_guard lock(mutex);
         detail::ShapeKey key{base, name};
         if (auto it = transitions.find(key); it != transitions.end())
             return it->second;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -139,9 +141,37 @@ namespace LOICollection::frontend::ir {
         std::shared_ptr<ChunkCache> mCache = std::make_shared<ChunkCache>();
         const MirChunk* mCacheChunk = nullptr;
 
+        struct FieldCacheEntry {
+            const MirInstr* instr = nullptr;
+            const FieldLayout* layout = nullptr;
+            int slot = -1;
+        };
+
+        struct ByNameCacheEntry {
+            const MirInstr* instr = nullptr;
+            int classIndex = -1;
+            int ordinal = -1;
+        };
+
+        struct HostCallCacheEntry {
+            const MirInstr* instr = nullptr;
+            std::string namespaces;
+            std::string function;
+        };
+
+        static constexpr std::size_t kInlineCacheSize = 128;
+
+        std::array<FieldCacheEntry, kInlineCacheSize> mFieldCache{};
+        std::array<ByNameCacheEntry, kInlineCacheSize> mByNameCache{};
+        std::array<HostCallCacheEntry, kInlineCacheSize> mHostCallCache{};
+
         CycleCollector mCollector;
 
         [[nodiscard]] const FieldLayoutPtr& classLayout(const MirChunk& chunk, int classIndex);
+
+        [[nodiscard]] static std::size_t inlineCacheSlot(const MirInstr* instr) {
+            return (reinterpret_cast<std::uintptr_t>(instr) >> 4) & (kInlineCacheSize - 1);
+        }
 
         [[nodiscard]] int resolveFieldSlot(Object& obj, const std::string& name, const MirInstr& instr);
 
@@ -157,7 +187,7 @@ namespace LOICollection::frontend::ir {
 
         [[nodiscard]] std::vector<ValueNode::ValueType> collectArgs(const Frame& frame, int base, int count);
 
-        void placeArgs(std::vector<ValueNode::ValueType>&& args, size_t offset);
+        void placeArgs(std::size_t sourceBase, int count, std::size_t offset = 0);
 
         void storeVariable(
             const MirChunk& chunk,

@@ -641,13 +641,20 @@ namespace LOICollection::frontend::ir::detail {
         return true;
     }
 
-    void refreshRefStores(MirChunk& chunk) {
+    void refreshChunkMetadata(MirChunk& chunk) {
+        for (auto& cls : chunk.classes) {
+            cls.ancestorMask = 0;
+            for (int ancestor : cls.ancestorIndices)
+                if (ancestor >= 0 && ancestor < 64)
+                    cls.ancestorMask |= std::uint64_t{ 1 } << ancestor;
+        }
+
         opt::RefStoreAnalysis analysis{ chunk };
         analysis.run();
 
         for (auto& body : chunk.methodBodies)
             if (body)
-                refreshRefStores(*body);
+                refreshChunkMetadata(*body);
     }
 
     bool readChunk(Reader& reader, MirChunk& chunk, size_t depth) {
@@ -811,7 +818,7 @@ namespace LOICollection::frontend::ir {
         if (!readChunk(reader, chunk) || !reader.done())
             return std::nullopt;
 
-        detail::refreshRefStores(chunk);
+        detail::refreshChunkMetadata(chunk);
 
         return chunk;
     }

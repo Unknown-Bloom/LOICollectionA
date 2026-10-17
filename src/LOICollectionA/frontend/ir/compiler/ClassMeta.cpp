@@ -72,6 +72,10 @@ namespace LOICollection::frontend::ir {
             meta.staticHasDefault = base.staticHasDefault;
             meta.ancestorIndices.push_back(baseIdx);
             meta.ancestorIndices.insert(meta.ancestorIndices.end(), base.ancestorIndices.begin(), base.ancestorIndices.end());
+
+            meta.ancestorMask = base.ancestorMask;
+            if (baseIdx >= 0 && baseIdx < 64)
+                meta.ancestorMask |= std::uint64_t{ 1 } << baseIdx;
         }
 
         for (const auto& member : node.members) {

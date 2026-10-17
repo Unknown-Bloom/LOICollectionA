@@ -126,7 +126,7 @@ TEST(SandboxBudgetAccountingTest, ArrayAccountingReportsTotalBytesWhenTheSharedB
     EXPECT_EQ(budget.allocatedBytes, 112u);
 }
 
-TEST(SandboxBudgetAccountingTest, StringAccountingChargesOneBytePerByte) {
+TEST(SandboxBudgetAccountingTest, StringAccountingOnlyEnforcesThePerValueLimit) {
     SandboxBudget budget;
     budget.reset();
     budget.maxStringBytes = 100;
@@ -134,7 +134,8 @@ TEST(SandboxBudgetAccountingTest, StringAccountingChargesOneBytePerByte) {
 
     EXPECT_EQ(budget.accountString(0), SandboxBudget::Violation::None);
     EXPECT_EQ(budget.accountString(40), SandboxBudget::Violation::None);
-    EXPECT_EQ(budget.allocatedBytes, 40u);
+    EXPECT_EQ(budget.accountString(100'000'000), SandboxBudget::Violation::StringByteLimit);
+    EXPECT_EQ(budget.allocatedBytes, 0u);
 }
 
 TEST(SandboxBudgetAccountingTest, OversizedStringIsRejectedWithoutChargingBytes) {
@@ -147,10 +148,10 @@ TEST(SandboxBudgetAccountingTest, OversizedStringIsRejectedWithoutChargingBytes)
     EXPECT_EQ(budget.allocatedBytes, 0u);
 
     EXPECT_EQ(budget.accountString(8), SandboxBudget::Violation::None);
-    EXPECT_EQ(budget.allocatedBytes, 8u);
+    EXPECT_EQ(budget.allocatedBytes, 0u);
 }
 
-TEST(SandboxBudgetAccountingTest, ArraysAndStringsShareOneByteBudget) {
+TEST(SandboxBudgetAccountingTest, StringsDoNotConsumeTheContainerByteBudget) {
     SandboxBudget budget;
     budget.reset();
     budget.maxArrayElements = 1000;
@@ -160,11 +161,11 @@ TEST(SandboxBudgetAccountingTest, ArraysAndStringsShareOneByteBudget) {
     EXPECT_EQ(budget.accountArray(10), SandboxBudget::Violation::None);
     EXPECT_EQ(budget.allocatedBytes, 160u);
 
-    EXPECT_EQ(budget.accountString(41), SandboxBudget::Violation::TotalByteLimit);
-    EXPECT_EQ(budget.allocatedBytes, 201u);
+    EXPECT_EQ(budget.accountString(1000), SandboxBudget::Violation::None);
+    EXPECT_EQ(budget.allocatedBytes, 160u);
 }
 
-TEST(SandboxBudgetAccountingTest, ZeroTotalByteBudgetRejectsAnyAllocation) {
+TEST(SandboxBudgetAccountingTest, ZeroTotalByteBudgetRejectsContainerAllocation) {
     SandboxBudget budget;
     budget.reset();
     budget.maxArrayElements = std::numeric_limits<std::size_t>::max();
@@ -172,5 +173,5 @@ TEST(SandboxBudgetAccountingTest, ZeroTotalByteBudgetRejectsAnyAllocation) {
     budget.maxTotalBytes = 0;
 
     EXPECT_EQ(budget.accountArray(1), SandboxBudget::Violation::TotalByteLimit);
-    EXPECT_EQ(budget.accountString(1), SandboxBudget::Violation::TotalByteLimit);
+    EXPECT_EQ(budget.accountString(1), SandboxBudget::Violation::None);
 }

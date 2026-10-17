@@ -39,6 +39,7 @@ namespace LOICollection::frontend::ir {
         std::vector<std::string> staticMethodSignatures;
 
         std::vector<int> ancestorIndices;
+        std::uint64_t ancestorMask = 0;
     };
 
     struct VirtualCallMeta {

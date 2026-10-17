@@ -12,27 +12,6 @@
 #include "LOICollectionA/frontend/ir/Mir.h"
 
 namespace LOICollection::frontend::ir {
-    struct FieldCacheSlot {
-        static constexpr int Capacity = 4;
-
-        const FieldLayout* layouts[Capacity] = {};
-        int slots[Capacity] = {};
-        int head = -1;
-
-        [[nodiscard]] int probe(const FieldLayout* layout) const {
-            for (int i = 0; i < Capacity; ++i)
-                if (layouts[i] == layout) return slots[i];
-
-            return -1;
-        }
-
-        void store(const FieldLayout* layout, int slot) {
-            head = (head + 1) % Capacity;
-            layouts[head] = layout;
-            slots[head] = slot;
-        }
-    };
-
     struct ChunkCache {
         std::unordered_map<int, FunctionCallCacheSlot> functionCallSlots;
         std::unordered_map<int, NativeMethodCacheSlot> nativeMethodSlots;
@@ -40,7 +19,6 @@ namespace LOICollection::frontend::ir {
         std::unordered_map<int, NativeValueMethodCacheSlot> nativeValueMethodSlots;
         std::unordered_map<int, NativeConstructorCacheSlot> nativeConstructorSlots;
         std::unordered_map<int, FieldLayoutPtr> classLayouts;
-        std::unordered_map<const MirInstr*, FieldCacheSlot> fieldSlots;
     };
 
     class ChunkCacheRegistry {

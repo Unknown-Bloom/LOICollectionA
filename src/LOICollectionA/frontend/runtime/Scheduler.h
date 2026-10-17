@@ -5,7 +5,9 @@
 #include <deque>
 #include <functional>
 #include <memory>
+#include <queue>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "LOICollectionA/frontend/AST.h"
@@ -99,7 +101,11 @@ namespace LOICollection::frontend::runtime {
         void completeTask(Task& task);
         void runSlice(Task& task);
 
+        using Sleeper = std::pair<std::chrono::steady_clock::time_point, TaskId>;
+
         std::vector<std::unique_ptr<Task>> tasks_;
+        std::unordered_map<TaskId, Task*> index_;
+        std::priority_queue<Sleeper, std::vector<Sleeper>, std::greater<>> sleepers_;
         std::deque<TaskId> ready_;
         TaskId nextId_ = 1;
         ProcSchedulerConfig config_;

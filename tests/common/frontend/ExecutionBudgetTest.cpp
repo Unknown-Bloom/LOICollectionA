@@ -29,6 +29,15 @@ TEST(ExecutionBudgetTest, InfiniteLoopExhaustsBudget) {
     EXPECT_NE(message.find("Execution budget exhausted"), std::string::npos) << message;
 }
 
+TEST(ExecutionBudgetTest, LongStringConcatenationStaysWithinBudget) {
+    EXPECT_EQ(eval(R"(
+        let text = "";
+        let i = 0;
+        while (i < 20000) [ text = text + "x"; i = i + 1; ]
+        text.length()
+    )"), "20000");
+}
+
 TEST(ExecutionBudgetTest, UnboundedRecursionHitsDepthLimit) {
     const std::string message = failureOf(R"(
         func boom(n) -> int {

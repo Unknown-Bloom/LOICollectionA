@@ -12,10 +12,8 @@ namespace LOICollection::frontend::runtime {
     }
 
     ProcScheduler::Task* ProcScheduler::findTask(TaskId id) const {
-        for (auto& t : tasks_)
-            if (t && t->id == id)
-                return t.get();
-        return nullptr;
+        auto it = index_.find(id);
+        return it == index_.end() ? nullptr : it->second;
     }
 
     ProcScheduler::Task* ProcScheduler::findTaskByVM(ir::VM* vm) {
@@ -63,6 +61,7 @@ namespace LOICollection::frontend::runtime {
                 if (ev.kind == ir::VM::BlockKind::Sleep) {
                     task.state = TaskState::Sleeping;
                     task.wakeupAt = ev.wakeupAt;
+                    sleepers_.emplace(ev.wakeupAt, task.id);
                 } else if (ev.kind == ir::VM::BlockKind::Recv) {
                     task.state = TaskState::BlockedRecv;
                 } else if (ev.kind == ir::VM::BlockKind::Join) {
@@ -106,6 +105,7 @@ namespace LOICollection::frontend::runtime {
         task->state = TaskState::Ready;
 
         const TaskId id = task->id;
+        index_.emplace(id, task.get());
         tasks_.push_back(std::move(task));
         ready_.push_back(id);
         return id;
@@ -170,11 +170,16 @@ namespace LOICollection::frontend::runtime {
     }
 
     size_t ProcScheduler::pump(std::chrono::steady_clock::time_point now) {
-        for (auto& pt : tasks_) {
-            if (pt && pt->state == TaskState::Sleeping && pt->wakeupAt <= now) {
-                pt->state = TaskState::Ready;
-                ready_.push_back(pt->id);
-            }
+        while (!sleepers_.empty() && sleepers_.top().first <= now) {
+            const Sleeper sleeper = sleepers_.top();
+            sleepers_.pop();
+
+            Task* task = findTask(sleeper.second);
+            if (!task || task->state != TaskState::Sleeping || task->wakeupAt != sleeper.first)
+                continue;
+
+            task->state = TaskState::Ready;
+            ready_.push_back(task->id);
         }
 
         size_t ran = 0;
@@ -213,6 +218,8 @@ namespace LOICollection::frontend::runtime {
 
     void ProcScheduler::reset() {
         tasks_.clear();
+        index_.clear();
+        sleepers_ = {};
         ready_.clear();
         nextId_ = 1;
         clockFn = {};
