@@ -66,7 +66,7 @@ namespace CustomFormOptionsClass {
 
             return ll::makeStringError(
                 "expected a string, UIRawMessage, ObservableString or ObservableUIRawMessage, got "
-                + describe(value));
+                + describe(arg));
         }, value);
     }
 
