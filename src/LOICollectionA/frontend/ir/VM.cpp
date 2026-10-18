@@ -325,7 +325,14 @@ namespace LOICollection::frontend::ir {
             }
 
             if constexpr (Managed) {
-                if (mStopRequest != StopKind::None || --mSliceRemaining == 0) {
+                if (mStopRequest != StopKind::None || this->mCancelToken.cancelled() || --mSliceRemaining == 0) {
+                    if (mStopRequest == StopKind::Cancel || this->mCancelToken.cancelled()) {
+                        mOutcome = RunOutcome::Canceled;
+                        mBlockInfo.kind = BlockKind::None;
+                        this->frames.clear();
+                        return ValueNode::ValueType{};
+                    }
+
                     switch (mStopRequest) {
                         case StopKind::Yield:
                             mOutcome = RunOutcome::Yielded;
@@ -339,16 +346,17 @@ namespace LOICollection::frontend::ir {
                         case StopKind::Recv:
                             mOutcome = RunOutcome::Blocked;
                             mBlockInfo.kind = BlockKind::Recv;
-                            this->frames.back().ip -= 1;  // replay the recv call on resume
+                            this->frames.back().ip -= 1;
                             break;
                         case StopKind::Join:
                             mOutcome = RunOutcome::Blocked;
                             mBlockInfo.kind = BlockKind::Join;
                             mBlockInfo.joinTarget = mJoinTarget;
-                            this->frames.back().ip -= 1;  // replay the join call on resume
+                            this->frames.back().ip -= 1;
                             break;
                         case StopKind::None:
                         case StopKind::Slice:
+                        case StopKind::Cancel:
                             mOutcome = RunOutcome::SliceExpired;
                             mBlockInfo.kind = BlockKind::None;
                             break;

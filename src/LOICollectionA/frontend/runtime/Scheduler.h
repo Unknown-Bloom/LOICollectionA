@@ -12,6 +12,7 @@
 
 #include "LOICollectionA/frontend/AST.h"
 #include "LOICollectionA/frontend/Callback.h"
+#include "LOICollectionA/frontend/CancelToken.h"
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
 #include "LOICollectionA/frontend/ir/VM.h"
 
@@ -42,6 +43,13 @@ namespace LOICollection::frontend::runtime {
                      const std::string& scriptId = "", const std::string& ownerId = "");
 
         void send(TaskId to, ValueNode::ValueType msg);
+
+        bool cancel(TaskId id);
+
+        bool isCancelled(TaskId id) const {
+            const Task* t = findTask(id);
+            return t != nullptr && t->cancelled;
+        }
 
         bool recvCurrent(ValueNode::ValueType& out);
 
@@ -92,6 +100,8 @@ namespace LOICollection::frontend::runtime {
             std::vector<TaskId> joiners;
             ValueNode::ValueType result;
             bool hasError = false;
+            bool cancelled = false;
+            CancelToken token;
             std::string errorMessage;
             std::string scriptId;
         };

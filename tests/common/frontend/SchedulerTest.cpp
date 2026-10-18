@@ -191,3 +191,46 @@ TEST_F(SchedulerTest, InterleavedCounterViaMailbox) {
         "join(producer);"
         "join(consumer)"), "3");
 }
+
+TEST_F(SchedulerTest, CancelStopsARunningTask) {
+    EXPECT_EQ(evalProc(
+        "import \"/proc.lcui\";"
+        "let id = spawn(func() {"
+        "  while (true) { yield(); }"
+        "  return 1;"
+        "});"
+        "cancel(id);"
+        "join(id)"), "task cancelled");
+}
+
+TEST_F(SchedulerTest, CancelStopsASleepingTask) {
+    auto& sch = ProcScheduler::getInstance();
+    long long vclock = 0;
+    sch.clockFn = [&]() {
+        vclock += 5;
+        return std::chrono::steady_clock::time_point(std::chrono::milliseconds(vclock));
+    };
+
+    EXPECT_EQ(evalProc(
+        "import \"/proc.lcui\";"
+        "let sleeper = spawn(func() { sleep(1000); return 1; });"
+        "let controller = spawn(func() { sleep(1); cancel(1); return 0; });"
+        "join(controller);"
+        "join(sleeper)"), "task cancelled");
+
+    resetScheduler();
+}
+
+TEST_F(SchedulerTest, CancelOfAFinalizedTaskReportsFalse) {
+    auto& sch = ProcScheduler::getInstance();
+
+    EXPECT_EQ(evalProc(
+        "import \"/proc.lcui\";"
+        "let id = spawn(func() { return 7; });"
+        "join(id)"), "7");
+
+    const TaskId id = 1;
+    EXPECT_TRUE(sch.isDone(id));
+    EXPECT_FALSE(sch.cancel(id));
+    EXPECT_FALSE(sch.isCancelled(id));
+}

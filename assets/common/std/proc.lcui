@@ -13,6 +13,7 @@
 //   - sleep(ms)        pause until the virtual clock advances ms
 //   - send(to, msg)    deliver msg to process `to`'s mailbox
 //   - recv()           take one message from this process's mailbox (blocks)
+//   - cancel(task)     request a process to stop at its next slice boundary
 //   - join(task)       from a task: block until `task` finishes;
 //                      from host code: drive the scheduler and return its result
 
@@ -34,6 +35,10 @@ func send(to: int, msg) {
 
 func recv() {
     return Proc::recv();
+}
+
+func cancel(task: int) {
+    Proc::cancel(task);
 }
 
 func join(task: int) {

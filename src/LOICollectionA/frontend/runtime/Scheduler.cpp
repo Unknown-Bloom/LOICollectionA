@@ -51,6 +51,10 @@ namespace LOICollection::frontend::runtime {
                 task.errorMessage = task.diag->getErrorMessage();
                 completeTask(task);
                 break;
+            case ir::VM::RunOutcome::Canceled:
+                task.cancelled = true;
+                completeTask(task);
+                break;
             case ir::VM::RunOutcome::Yielded:
             case ir::VM::RunOutcome::SliceExpired:
                 task.state = TaskState::Ready;
@@ -98,6 +102,7 @@ namespace LOICollection::frontend::runtime {
         task->diag = std::make_shared<DiagnosticEngine>();
         task->vm = std::make_shared<ir::VM>(*task->diag);
         task->vm->setSchedulerManaged(true);
+        task->vm->setCancelToken(task->token);
         task->vm->setBudget(config_.taskBudget);
         task->fn = fn;
         task->args = args;
@@ -120,6 +125,20 @@ namespace LOICollection::frontend::runtime {
             t->state = TaskState::Ready;
             ready_.push_back(t->id);
         }
+    }
+
+    bool ProcScheduler::cancel(TaskId id) {
+        Task* t = findTask(id);
+        if (!t || t->state == TaskState::Done)
+            return false;
+
+        t->cancelled = true;
+        t->token.cancel();
+
+        if (t->state != TaskState::Ready)
+            completeTask(*t);
+
+        return true;
     }
 
     bool ProcScheduler::recvCurrent(ValueNode::ValueType& out) {
@@ -164,6 +183,8 @@ namespace LOICollection::frontend::runtime {
 
         if (t->state != TaskState::Done)
             return std::string("join deadlocked: target is blocked with no runnable sender");
+        if (t->cancelled)
+            return std::string("task cancelled");
         if (t->hasError)
             return std::string("task failed: " + t->errorMessage);
         return t->result;

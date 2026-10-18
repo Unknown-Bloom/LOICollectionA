@@ -71,6 +71,14 @@ namespace ProcBuiltin {
         return std::monostate{};
     }
 
+    ll::Expected<TypedValue> cancel(const CallbackTypeValues& args) {
+        if (args.empty())
+            return ll::makeStringError("Proc::cancel requires a task id");
+
+        ProcScheduler::getInstance().cancel(static_cast<TaskId>(asLong(args[0])));
+        return std::monostate{};
+    }
+
     ll::Expected<TypedValue> join(const CallbackTypeValues& args) {
         if (args.empty())
             return ll::makeStringError("Proc::join requires a task id");
@@ -98,6 +106,7 @@ namespace ProcBuiltin {
             classes.registerStaticMethod("Proc", "send", send, { ParamType::INT, t });
 
         classes.registerStaticMethod("Proc", "recv", recv, {});
+        classes.registerStaticMethod("Proc", "cancel", cancel, { ParamType::INT });
     }
 }
 

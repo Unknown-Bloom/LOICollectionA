@@ -12,6 +12,7 @@
 #include "LOICollectionA/base/Macro.h"
 
 #include "LOICollectionA/frontend/Callback.h"
+#include "LOICollectionA/frontend/CancelToken.h"
 #include "LOICollectionA/frontend/Context.h"
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
 #include "LOICollectionA/frontend/ir/ChunkCache.h"
@@ -42,7 +43,7 @@ namespace LOICollection::frontend::ir {
             const Context& ctx
         );
 
-        enum class RunOutcome { Completed, Yielded, SliceExpired, Blocked, Failed };
+        enum class RunOutcome { Completed, Yielded, SliceExpired, Blocked, Failed, Canceled };
         enum class BlockKind { None, Sleep, Recv, Join };
 
         struct TaskEvent {
@@ -65,6 +66,10 @@ namespace LOICollection::frontend::ir {
         LOICOLLECTION_A_API   void requestSleep(std::chrono::steady_clock::time_point at) { if (mSchedulerManaged) { mStopRequest = StopKind::Sleep; mWakeupAt = at; } }
         LOICOLLECTION_A_API   void requestRecv() { if (mSchedulerManaged) mStopRequest = StopKind::Recv; }
         LOICOLLECTION_A_API   void requestJoin(uint64_t target) { if (mSchedulerManaged) { mStopRequest = StopKind::Join; mJoinTarget = target; } }
+        LOICOLLECTION_A_API   void requestCancel() { if (mSchedulerManaged) mStopRequest = StopKind::Cancel; }
+
+        LOICOLLECTION_A_API   void setCancelToken(CancelToken token) { mCancelToken = std::move(token); }
+        LOICOLLECTION_A_NDAPI const CancelToken& cancelToken() const { return mCancelToken; }
 
         LOICOLLECTION_A_NDAPI const TaskEvent& blockInfo() const { return mBlockInfo; }
         LOICOLLECTION_A_NDAPI const ValueNode::ValueType& taskResult() const { return mTaskResult; }
@@ -216,9 +221,10 @@ namespace LOICollection::frontend::ir {
 
         void setupRootFrame(const FunctionRefPtr& func, const CallbackTypeValues& args);
 
-        enum class StopKind { None, Yield, Slice, Sleep, Recv, Join };
+        enum class StopKind { None, Yield, Slice, Sleep, Recv, Join, Cancel };
 
         StopKind mStopRequest = StopKind::None;
+        CancelToken mCancelToken;
         bool mSchedulerManaged = false;
         RunOutcome mOutcome = RunOutcome::Completed;
         TaskEvent mBlockInfo;
