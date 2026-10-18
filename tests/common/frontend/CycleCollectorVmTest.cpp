@@ -31,7 +31,7 @@ TEST(CycleCollectorVmTest, ReclaimsArraysAbandonedByAFunction) {
 
     ASSERT_FALSE(diagnostics.hasErrors()) << diagnostics.getErrorMessage();
     EXPECT_EQ(vm.report().collectedObjects, 2u);
-    EXPECT_EQ(vm.trackedObjects(), 0u);
+    EXPECT_EQ(vm.heap().tracked(), 0u);
 }
 
 TEST(CycleCollectorVmTest, KeepsArraysReachableFromGlobals) {
@@ -50,9 +50,9 @@ TEST(CycleCollectorVmTest, KeepsArraysReachableFromGlobals) {
 
     ASSERT_FALSE(diagnostics.hasErrors()) << diagnostics.getErrorMessage();
     EXPECT_EQ(vm.report().collectedObjects, 0u);
-    EXPECT_EQ(vm.trackedObjects(), 2u);
-    EXPECT_EQ(vm.collectCycles(), 0u);
-    EXPECT_EQ(vm.trackedObjects(), 2u);
+    EXPECT_EQ(vm.heap().tracked(), 2u);
+    EXPECT_EQ(vm.heap().collect(), 0u);
+    EXPECT_EQ(vm.heap().tracked(), 2u);
 }
 
 TEST(CycleCollectorVmTest, SkipsTrackingWhenAScriptNeverStoresReferences) {
@@ -70,7 +70,7 @@ TEST(CycleCollectorVmTest, SkipsTrackingWhenAScriptNeverStoresReferences) {
     vm.run(chunk, Context{});
 
     ASSERT_FALSE(diagnostics.hasErrors()) << diagnostics.getErrorMessage();
-    EXPECT_EQ(vm.trackedObjects(), 0u);
+    EXPECT_EQ(vm.heap().tracked(), 0u);
     EXPECT_EQ(vm.report().collectedObjects, 0u);
 }
 

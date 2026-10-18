@@ -66,7 +66,6 @@ namespace LOICollection::frontend::ir {
         LOICOLLECTION_A_API   void requestRecv() { if (mSchedulerManaged) mStopRequest = StopKind::Recv; }
         LOICOLLECTION_A_API   void requestJoin(uint64_t target) { if (mSchedulerManaged) { mStopRequest = StopKind::Join; mJoinTarget = target; } }
 
-        LOICOLLECTION_A_NDAPI RunOutcome lastOutcome() const { return mOutcome; }
         LOICOLLECTION_A_NDAPI const TaskEvent& blockInfo() const { return mBlockInfo; }
         LOICOLLECTION_A_NDAPI const ValueNode::ValueType& taskResult() const { return mTaskResult; }
 
@@ -90,9 +89,6 @@ namespace LOICollection::frontend::ir {
         [[nodiscard]] LOICOLLECTION_A_NDAPI CycleCollector& heap() const { return *mHeap; }
 
         LOICOLLECTION_A_NDAPI DiagnosticEngine& diagnosticsEngine() { return diagnostics; }
-
-        LOICOLLECTION_A_NDAPI std::size_t collectCycles() { return this->heap().collect(); }
-        LOICOLLECTION_A_NDAPI std::size_t trackedObjects() const { return this->heap().tracked(); }
 
         LOICOLLECTION_A_NDAPI static ValueNode::ValueType callFunctionRef(
             const FunctionRefPtr& func,

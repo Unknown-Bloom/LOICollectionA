@@ -38,8 +38,8 @@ TEST(CrossHeapTest, SharedHeapReclaimsACycleThatSpansTwoVirtualMachines) {
         first.heap().noteReferenceStore();
     }
 
-    EXPECT_EQ(first.collectCycles(), 2u);
-    EXPECT_EQ(first.trackedObjects(), 0u);
+    EXPECT_EQ(first.heap().collect(), 2u);
+    EXPECT_EQ(first.heap().tracked(), 0u);
 }
 
 TEST(CrossHeapTest, SeparateHeapsStillReclaimTheirOwnCycles) {
@@ -67,8 +67,8 @@ TEST(CrossHeapTest, SeparateHeapsStillReclaimTheirOwnCycles) {
         second.heap().noteReferenceStore();
     }
 
-    EXPECT_EQ(first.collectCycles(), 2u);
-    EXPECT_EQ(second.collectCycles(), 2u);
+    EXPECT_EQ(first.heap().collect(), 2u);
+    EXPECT_EQ(second.heap().collect(), 2u);
 }
 
 TEST(CrossHeapTest, CollectionWaitsUntilTheHeapIsExclusive) {
