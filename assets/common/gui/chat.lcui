@@ -6,11 +6,9 @@ navigateAdd.value = false;
 let navigateRemove = new GlobalValue();
 navigateRemove.value = false;
 
-let addOption = new ButtonOptions();
-addOption.tooltip = {tr("chat.gui.manager.add.tooltip")};
+let addOption = tooltipOption({tr("chat.gui.manager.add.tooltip")});
 
-let removeOption = new ButtonOptions();
-removeOption.tooltip = {tr("chat.gui.manager.remove.tooltip")};
+let removeOption = tooltipOption({tr("chat.gui.manager.remove.tooltip")});
 
 let manage = new CustomForm("chat.manage", {tr("chat.gui.title")}) {
     label({tr("chat.gui.label")}, new TextOptions());
@@ -32,12 +30,12 @@ let manage = new CustomForm("chat.manage", {tr("chat.gui.title")}) {
     closeButton();
     show(func (result) -> void {
         if (navigateAdd.value) [
-            GUIManager::switchTo("chat.add", 3);
+            GUIManager::switchTo("chat.add", FORM_PAGINATED);
             return;
         ]
 
         if (navigateRemove.value) [
-            GUIManager::switchTo("chat.remove", 3);
+            GUIManager::switchTo("chat.remove", FORM_PAGINATED);
         ]
     });
     show();
@@ -49,11 +47,9 @@ navigateTitle.value = false;
 let navigateBlacklist = new GlobalValue();
 navigateBlacklist.value = false;
 
-let setTitleOption = new ButtonOptions();
-setTitleOption.tooltip = {tr("chat.gui.setTitle.tooltip")};
+let setTitleOption = tooltipOption({tr("chat.gui.setTitle.tooltip")});
 
-let setBlacklistOption = new ButtonOptions();
-setBlacklistOption.tooltip = {tr("chat.gui.setBlacklist.tooltip")};
+let setBlacklistOption = tooltipOption({tr("chat.gui.setBlacklist.tooltip")});
 
 let setting = new CustomForm("chat.setting", {tr("chat.gui.title")}) {
     label({tr("chat.gui.label")}, new TextOptions());
@@ -75,12 +71,12 @@ let setting = new CustomForm("chat.setting", {tr("chat.gui.title")}) {
     closeButton();
     show(func (result) -> void {
         if (navigateTitle.value) [
-            GUIManager::switchTo("chat.title", 3);
+            GUIManager::switchTo("chat.title", FORM_PAGINATED);
             return;
         ]
 
         if (navigateBlacklist.value) [
-            GUIManager::switchTo("chat.blacklist", 3);
+            GUIManager::switchTo("chat.blacklist", FORM_PAGINATED);
         ]
     });
     show();
@@ -126,12 +122,12 @@ func buildContentAdd(targetUuid: string) -> void {
         });
         show(func (result) -> void {
             if (!submitDone.value) [
-                GUIManager::open("chat", "chat.add", 3, []);
+                GUIManager::open("chat", "chat.add", FORM_PAGINATED, []);
             ]
         });
     };
 
-    GUIManager::switchTo("chat.content.add", 1);
+    GUIManager::switchTo("chat.content.add", FORM_CUSTOM);
 }
 
 let remove = new PaginatedForm("chat.remove", {tr("chat.gui.title")}, GUIManager::value("chat.players"), 10) {
@@ -161,14 +157,14 @@ func buildContentRemove(targetUuid: string) -> void {
             if (result.selection != "") [
                 GUIManager::callback("chat.title.remove", [ targetUuid, result.selection ]);
 
-                GUIManager::open("chat", "chat.remove", 3, []);
+                GUIManager::open("chat", "chat.remove", FORM_PAGINATED, []);
             :
-                GUIManager::open("chat", "chat.remove", 3, []);
+                GUIManager::open("chat", "chat.remove", FORM_PAGINATED, []);
             ]
         });
     };
 
-    GUIManager::switchTo("chat.content.remove", 3);
+    GUIManager::switchTo("chat.content.remove", FORM_PAGINATED);
 }
 
 let titleInfo = GUIManager::request("chat.title.info", []);
@@ -182,9 +178,9 @@ let title = new PaginatedForm("chat.title", {tr("chat.gui.title")}, GUIManager::
         if (result.selection != "") [
             GUIManager::callback("chat.title.set", [ result.selection ]);
 
-            GUIManager::open("chat", "chat.setting", 1, []);
+            GUIManager::open("chat", "chat.setting", FORM_CUSTOM, []);
         :
-            GUIManager::open("chat", "chat.setting", 1, []);
+            GUIManager::open("chat", "chat.setting", FORM_CUSTOM, []);
         ]
     });
     show();
@@ -193,8 +189,7 @@ let title = new PaginatedForm("chat.title", {tr("chat.gui.title")}, GUIManager::
 let navigateAddBlacklist = new GlobalValue();
 navigateAddBlacklist.value = false;
 
-let blacklistAddOption = new ButtonOptions();
-blacklistAddOption.tooltip = {tr("chat.gui.setBlacklist.add.tooltip")};
+let blacklistAddOption = tooltipOption({tr("chat.gui.setBlacklist.add.tooltip")});
 
 let blacklist = new PaginatedForm("chat.blacklist", {tr("chat.gui.title")}, GUIManager::value("chat.blacklists"), 10) {
     label({tr("chat.gui.label")}, new TextOptions());
@@ -213,9 +208,9 @@ let blacklist = new PaginatedForm("chat.blacklist", {tr("chat.gui.title")}, GUIM
         if (navigateAddBlacklist.value) [
             let checkData = GUIManager::request("chat.blacklist.check", []);
             if (checkData[0]) [
-                GUIManager::switchTo("chat.blacklist.add", 3);
+                GUIManager::switchTo("chat.blacklist.add", FORM_PAGINATED);
             :
-                GUIManager::open("chat", "chat.setting", 1, []);
+                GUIManager::open("chat", "chat.setting", FORM_CUSTOM, []);
             ]
         :
             if (result.selection != "") [
@@ -230,13 +225,13 @@ let blacklist = new PaginatedForm("chat.blacklist", {tr("chat.gui.title")}, GUIM
                         this.close();
                     });
                     show(func (result) -> void {
-                        GUIManager::open("chat", "chat.blacklist", 3, []);
+                        GUIManager::open("chat", "chat.blacklist", FORM_PAGINATED, []);
                     });
                 };
 
-                GUIManager::switchTo("chat.blacklist.set", 1);
+                GUIManager::switchTo("chat.blacklist.set", FORM_CUSTOM);
             :
-                GUIManager::open("chat", "chat.setting", 1, []);
+                GUIManager::open("chat", "chat.setting", FORM_CUSTOM, []);
             ]
         ]
     });
@@ -252,9 +247,9 @@ let blacklistAdd = new PaginatedForm("chat.blacklist.add", {tr("chat.gui.title")
         if (result.selection != "") [
             GUIManager::request("chat.blacklist.add.submit", [ result.selectionIndex ]);
 
-            GUIManager::open("chat", "chat.blacklist", 3, []);
+            GUIManager::open("chat", "chat.blacklist", FORM_PAGINATED, []);
         :
-            GUIManager::open("chat", "chat.blacklist", 3, []);
+            GUIManager::open("chat", "chat.blacklist", FORM_PAGINATED, []);
         ]
     });
     show();

@@ -6,11 +6,9 @@ navigateWantedCreate.value = false;
 let navigateWantedMine = new GlobalValue();
 navigateWantedMine.value = false;
 
-let createOption = new ButtonOptions();
-createOption.tooltip = {tr("market.gui.wanted.create.tooltip")};
+let createOption = tooltipOption({tr("market.gui.wanted.create.tooltip")});
 
-let mineOption = new ButtonOptions();
-mineOption.tooltip = {tr("market.gui.wanted.mine.tooltip")};
+let mineOption = tooltipOption({tr("market.gui.wanted.mine.tooltip")});
 
 let wanted = new PaginatedForm("market.wanted", {tr("market.gui.title")}, GUIManager::value("market.wanted.items"), 10) {
     label({tr("market.gui.wanted.list.label")}, new TextOptions());
@@ -48,7 +46,7 @@ let wanted = new PaginatedForm("market.wanted", {tr("market.gui.title")}, GUIMan
 
             buildWantedInfo(idData[0]);
         :
-            GUIManager::open("market", "market.open", 1);
+            GUIManager::open("market", "market.open", FORM_CUSTOM);
         ]
     });
     show();
@@ -83,17 +81,17 @@ func buildWantedInfo(id: string) -> void {
         show(func (result) -> void {
             if (fillDone.value) [
                 if (fillResult.value) [
-                    GUIManager::open("market.wanted", "market.wanted", 3);
+                    GUIManager::open("market.wanted", "market.wanted", FORM_PAGINATED);
                 :
-                    GUIManager::open("market.wanted", "market.wanted", 3);
+                    GUIManager::open("market.wanted", "market.wanted", FORM_PAGINATED);
                 ]
             :
-                GUIManager::open("market.wanted", "market.wanted", 3);
+                GUIManager::open("market.wanted", "market.wanted", FORM_PAGINATED);
             ]
         });
     };
 
-    GUIManager::switchTo("market.wanted.info", 1);
+    GUIManager::switchTo("market.wanted.info", FORM_CUSTOM);
 }
 
 func buildWantedInventory() -> void {
@@ -108,12 +106,12 @@ func buildWantedInventory() -> void {
 
                 buildWantedCreate(slotData[0]);
             :
-                GUIManager::open("market.wanted", "market.wanted", 3);
+                GUIManager::open("market.wanted", "market.wanted", FORM_PAGINATED);
             ]
         });
     };
 
-    GUIManager::switchTo("market.wanted.inventory", 3);
+    GUIManager::switchTo("market.wanted.inventory", FORM_PAGINATED);
 }
 
 func buildWantedCreate(slot: int) -> void {
@@ -153,17 +151,17 @@ func buildWantedCreate(slot: int) -> void {
         show(func (result) -> void {
             if (createDone.value) [
                 if (createResult.value) [
-                    GUIManager::open("market.wanted", "market.wanted", 3);
+                    GUIManager::open("market.wanted", "market.wanted", FORM_PAGINATED);
                 :
-                    GUIManager::open("market.wanted", "market.wanted", 3);
+                    GUIManager::open("market.wanted", "market.wanted", FORM_PAGINATED);
                 ]
             :
-                GUIManager::open("market.wanted", "market.wanted", 3);
+                GUIManager::open("market.wanted", "market.wanted", FORM_PAGINATED);
             ]
         });
     };
 
-    GUIManager::switchTo("market.wanted.create", 1);
+    GUIManager::switchTo("market.wanted.create", FORM_CUSTOM);
 }
 
 func buildWantedMine() -> void {
@@ -178,12 +176,12 @@ func buildWantedMine() -> void {
 
                 buildWantedCancel(idData[0]);
             :
-                GUIManager::open("market.wanted", "market.wanted", 3);
+                GUIManager::open("market.wanted", "market.wanted", FORM_PAGINATED);
             ]
         });
     };
 
-    GUIManager::switchTo("market.wanted.mine", 3);
+    GUIManager::switchTo("market.wanted.mine", FORM_PAGINATED);
 }
 
 func buildWantedCancel(id: string) -> void {
@@ -209,15 +207,15 @@ func buildWantedCancel(id: string) -> void {
         show(func (result) -> void {
             if (cancelDone.value) [
                 if (cancelResult.value) [
-                    GUIManager::open("market.wanted", "market.wanted", 3);
+                    GUIManager::open("market.wanted", "market.wanted", FORM_PAGINATED);
                 :
-                    GUIManager::open("market.wanted", "market.wanted.mine", 3);
+                    GUIManager::open("market.wanted", "market.wanted.mine", FORM_PAGINATED);
                 ]
             :
-                GUIManager::open("market.wanted", "market.wanted.mine", 3);
+                GUIManager::open("market.wanted", "market.wanted.mine", FORM_PAGINATED);
             ]
         });
     };
 
-    GUIManager::switchTo("market.wanted.cancel", 1);
+    GUIManager::switchTo("market.wanted.cancel", FORM_CUSTOM);
 }

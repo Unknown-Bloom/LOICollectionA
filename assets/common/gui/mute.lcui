@@ -1,10 +1,8 @@
 import "generic.lcui";
 
-let addMuteOption = new ButtonOptions();
-addMuteOption.tooltip = {tr("mute.gui.addMute.tooltip")};
+let addMuteOption = tooltipOption({tr("mute.gui.addMute.tooltip")});
 
-let removeMuteOption = new ButtonOptions();
-removeMuteOption.tooltip = {tr("mute.gui.removeMute.tooltip")};
+let removeMuteOption = tooltipOption({tr("mute.gui.removeMute.tooltip")});
 
 let navigateAdd = new GlobalValue();
 navigateAdd.value = false;
@@ -32,12 +30,12 @@ let open = new CustomForm("mute.open", {tr("mute.gui.title")}) {
     closeButton();
     show(func (result) -> void {
         if (navigateAdd.value) [
-            GUIManager::switchTo("mute.add", 3);
+            GUIManager::switchTo("mute.add", FORM_PAGINATED);
             return;
         ]
 
         if (navigateDelete.value) [
-            GUIManager::switchTo("mute.remove", 3);
+            GUIManager::switchTo("mute.remove", FORM_PAGINATED);
         ]
     });
     show();
@@ -76,19 +74,19 @@ let add = new PaginatedForm("mute.add", {tr("mute.gui.add.title")}, GUIManager::
                     });
                     show(func (result) -> void {
                         if (!contentValue.value) [
-                            GUIManager::open("mute", "mute.add", 3);
+                            GUIManager::open("mute", "mute.add", FORM_PAGINATED);
                         ]
                     });
                 };
 
-                GUIManager::switchTo("mute.content", 1);
+                GUIManager::switchTo("mute.content", FORM_CUSTOM);
             :
                 GUIManager::callback("mute.add", [ result ]);
 
-                GUIManager::open("mute", "mute.open", 1);
+                GUIManager::open("mute", "mute.open", FORM_CUSTOM);
             ]
         :
-            GUIManager::open("mute", "mute.open", 1);
+            GUIManager::open("mute", "mute.open", FORM_CUSTOM);
         ]
     });
 };
@@ -119,19 +117,19 @@ let remove = new PaginatedForm("mute.remove", {tr("mute.gui.remove.title")}, GUI
                     });
                     show(func (result) -> void {
                         if (!infoRemoved.value) [
-                            GUIManager::open("mute", "mute.remove", 3);
+                            GUIManager::open("mute", "mute.remove", FORM_PAGINATED);
                         ]
                     });
                 };
 
-                GUIManager::switchTo("mute.info", 1);
+                GUIManager::switchTo("mute.info", FORM_CUSTOM);
             :
                 GUIManager::callback("mute.remove", [ result ]);
 
-                GUIManager::open("mute", "mute.remove", 3);
+                GUIManager::open("mute", "mute.remove", FORM_PAGINATED);
             ]
         :
-            GUIManager::open("mute", "mute.open", 1);
+            GUIManager::open("mute", "mute.open", FORM_CUSTOM);
         ]
     });
 };

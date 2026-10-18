@@ -11,7 +11,7 @@ let storeList = new PaginatedForm("market.store.list", {tr("market.gui.title")},
 
             buildStoreDetail(idData[0]);
         :
-            GUIManager::open("market", "market.open", 1);
+            GUIManager::open("market", "market.open", FORM_CUSTOM);
         ]
     });
 };
@@ -30,17 +30,13 @@ navigateDissolve.value = false;
 let navigateAudit = new GlobalValue();
 navigateAudit.value = false;
 
-let uploadOption = new ButtonOptions();
-uploadOption.tooltip = {tr("market.gui.store.mine.upload.tooltip")};
+let uploadOption = tooltipOption({tr("market.gui.store.mine.upload.tooltip")});
 
-let manageOption = new ButtonOptions();
-manageOption.tooltip = {tr("market.gui.store.mine.manage.tooltip")};
+let manageOption = tooltipOption({tr("market.gui.store.mine.manage.tooltip")});
 
-let dissolveOption = new ButtonOptions();
-dissolveOption.tooltip = {tr("market.gui.store.mine.dissolve.tooltip")};
+let dissolveOption = tooltipOption({tr("market.gui.store.mine.dissolve.tooltip")});
 
-let auditOption = new ButtonOptions();
-auditOption.tooltip = {tr("market.gui.store.mine.audit.tooltip")};
+let auditOption = tooltipOption({tr("market.gui.store.mine.audit.tooltip")});
 
 let mineForm = new CustomForm("market.store.mine", {tr("market.gui.title")}) {
     label(std::format({tr("market.gui.store.mine.label")}, [ mineInfoData[1], mineInfoData[3] ]), new TextOptions());
@@ -76,7 +72,7 @@ let mineForm = new CustomForm("market.store.mine", {tr("market.gui.title")}) {
     closeButton();
     show(func (result) -> void {
         if (navigateUpload.value) [
-            GUIManager::switchTo("market.store.inventory", 3);
+            GUIManager::switchTo("market.store.inventory", FORM_PAGINATED);
             return;
         ]
 
@@ -93,7 +89,7 @@ let mineForm = new CustomForm("market.store.mine", {tr("market.gui.title")}) {
         if (navigateAudit.value) [
             buildPendingReviews();
         :
-            GUIManager::open("market", "market.personal", 1);
+            GUIManager::open("market", "market.personal", FORM_CUSTOM);
         ]
     });
 };
@@ -137,12 +133,12 @@ let createForm = new CustomForm("market.store.create", {tr("market.gui.title")})
     show(func (result) -> void {
         if (createDone.value) [
             if (createResult.value) [
-                GUIManager::open("market.store", "market.store.mine", 1);
+                GUIManager::open("market.store", "market.store.mine", FORM_CUSTOM);
             :
-                GUIManager::open("market.store", "market.store.create", 1);
+                GUIManager::open("market.store", "market.store.create", FORM_CUSTOM);
             ]
         :
-            GUIManager::open("market", "market.personal", 1);
+            GUIManager::open("market", "market.personal", FORM_CUSTOM);
         ]
     });
 };
@@ -158,7 +154,7 @@ let storeInventory = new PaginatedForm("market.store.inventory", {tr("market.gui
 
             buildStoreSellItem(slotData[0]);
         :
-            GUIManager::open("market.store", "market.store.mine", 1);
+            GUIManager::open("market.store", "market.store.mine", FORM_CUSTOM);
         ]
     });
 };
@@ -201,12 +197,12 @@ func buildStoreDetail(storeId: string) -> void {
             if (navigateReviews.value) [
                 buildStoreReviews(storeId);
             :
-                GUIManager::open("market.store", "market.store.list", 3);
+                GUIManager::open("market.store", "market.store.list", FORM_PAGINATED);
             ]
         });
     };
 
-    GUIManager::switchTo("market.store.detail", 1);
+    GUIManager::switchTo("market.store.detail", FORM_CUSTOM);
 }
 
 func buildStoreItems(storeId: string) -> void {
@@ -226,7 +222,7 @@ func buildStoreItems(storeId: string) -> void {
         });
     };
 
-    GUIManager::switchTo("market.store.items", 3);
+    GUIManager::switchTo("market.store.items", FORM_PAGINATED);
 }
 
 func buildStoreItemInfo(storeId: string, itemId: string) -> void {
@@ -252,7 +248,7 @@ func buildStoreItemInfo(storeId: string, itemId: string) -> void {
         show(func (result) -> void {
             if (buyDone.value) [
                 if (!buyResult.value) [
-                    GUIManager::open("market.store", "market.store.list", 3);
+                    GUIManager::open("market.store", "market.store.list", FORM_PAGINATED);
                 :
                     buildStoreItems(storeId);
                 ]
@@ -262,7 +258,7 @@ func buildStoreItemInfo(storeId: string, itemId: string) -> void {
         });
     };
 
-    GUIManager::switchTo("market.store.item.info", 1);
+    GUIManager::switchTo("market.store.item.info", FORM_CUSTOM);
 }
 
 func buildStoreReviews(storeId: string) -> void {
@@ -290,7 +286,7 @@ func buildStoreReviews(storeId: string) -> void {
         });
     };
 
-    GUIManager::switchTo("market.store.reviews", 3);
+    GUIManager::switchTo("market.store.reviews", FORM_PAGINATED);
 }
 
 func buildReviewForm(storeId: string) -> void {
@@ -298,9 +294,7 @@ func buildReviewForm(storeId: string) -> void {
     let ratingItems = [];
 
     for (i in 1..6) [
-        let ratingItem = new DropdownItem();
-        ratingItem.label = "" + i;
-        ratingItem.value = i - 1;
+        let ratingItem = dropdownItem("" + i, i - 1);
 
         ratingItems.push(ratingItem);
     ]
@@ -334,7 +328,7 @@ func buildReviewForm(storeId: string) -> void {
         });
     };
 
-    GUIManager::switchTo("market.store.review.form", 1);
+    GUIManager::switchTo("market.store.review.form", FORM_CUSTOM);
 }
 
 func buildStoreMyItems() -> void {
@@ -349,12 +343,12 @@ func buildStoreMyItems() -> void {
 
                 buildStoreMyItemInfo(idData[0]);
             :
-                GUIManager::open("market.store", "market.store.mine", 1);
+                GUIManager::open("market.store", "market.store.mine", FORM_CUSTOM);
             ]
         });
     };
 
-    GUIManager::switchTo("market.store.my.items", 3);
+    GUIManager::switchTo("market.store.my.items", FORM_PAGINATED);
 }
 
 func buildStoreMyItemInfo(itemId: string) -> void {
@@ -378,7 +372,7 @@ func buildStoreMyItemInfo(itemId: string) -> void {
         });
     };
 
-    GUIManager::switchTo("market.store.my.item.info", 1);
+    GUIManager::switchTo("market.store.my.item.info", FORM_CUSTOM);
 }
 
 func buildStoreDissolve() -> void {
@@ -408,17 +402,17 @@ func buildStoreDissolve() -> void {
         show(func (result) -> void {
             if (dissolveDone.value) [
                 if (dissolveResult.value) [
-                    GUIManager::open("market", "market.personal", 1);
+                    GUIManager::open("market", "market.personal", FORM_CUSTOM);
                 :
-                    GUIManager::open("market.store", "market.store.mine", 1);
+                    GUIManager::open("market.store", "market.store.mine", FORM_CUSTOM);
                 ]
             :
-                GUIManager::open("market.store", "market.store.mine", 1);
+                GUIManager::open("market.store", "market.store.mine", FORM_CUSTOM);
             ]
         });
     };
 
-    GUIManager::switchTo("market.store.dissolve", 1);
+    GUIManager::switchTo("market.store.dissolve", FORM_CUSTOM);
 }
 
 func buildStoreSellItem(slot: int) -> void {
@@ -463,17 +457,17 @@ func buildStoreSellItem(slot: int) -> void {
         show(func (result) -> void {
             if (sellDone.value) [
                 if (sellResult.value) [
-                    GUIManager::open("market.store", "market.store.mine", 1);
+                    GUIManager::open("market.store", "market.store.mine", FORM_CUSTOM);
                 :
-                    GUIManager::open("market.store", "market.store.inventory", 3);
+                    GUIManager::open("market.store", "market.store.inventory", FORM_PAGINATED);
                 ]
             :
-                GUIManager::open("market.store", "market.store.inventory", 3);
+                GUIManager::open("market.store", "market.store.inventory", FORM_PAGINATED);
             ]
         });
     };
 
-    GUIManager::switchTo("market.store.sell.item", 1);
+    GUIManager::switchTo("market.store.sell.item", FORM_CUSTOM);
 }
 
 func buildPendingReviews() -> void {
@@ -490,12 +484,12 @@ func buildPendingReviews() -> void {
 
                 buildReviewAudit(idData[0]);
             :
-                GUIManager::open("market.store", "market.store.mine", 1);
+                GUIManager::open("market.store", "market.store.mine", FORM_CUSTOM);
             ]
         });
     };
 
-    GUIManager::switchTo("market.store.reviews.pending", 3);
+    GUIManager::switchTo("market.store.reviews.pending", FORM_PAGINATED);
 }
 
 func buildReviewAudit(reviewId: string) -> void {
@@ -526,5 +520,5 @@ func buildReviewAudit(reviewId: string) -> void {
         });
     };
 
-    GUIManager::switchTo("market.store.review.audit", 1);
+    GUIManager::switchTo("market.store.review.audit", FORM_CUSTOM);
 }

@@ -1055,7 +1055,7 @@ GUIManager::callback("example.submit", [ "data" ]);
 let text = std::format({tr("example.gui.info")}, [ 1, "two" ]);
 ```
 
-> `GUIManager::open` 与 `GUIManager::switchTo` 中的 `type` 为整数：`1` 为 CustomForm，`2` 为 MessageBox，`3` 为 PaginatedForm，`4` 为 ScriptForm。
+> `GUIManager::open` 与 `GUIManager::switchTo` 中的 `type` 为整数：`1` 为 CustomForm，`2` 为 MessageBox，`3` 为 PaginatedForm，`4` 为 ScriptForm。内置表单脚本从 `generic.lcui` 导入 `FORM_CUSTOM`、`FORM_MESSAGE`、`FORM_PAGINATED`、`FORM_SCRIPT` 来书写，避免散落的数字。
 
 > [!NOTE]
 > `GUIManager::open` 跳转到其他脚本时，需要在 `gui/permission.json` 的 `scripts.<id>.gui.navigations` 中声明目标脚本 id，否则调用会被拒绝。打开自身表单无需声明。

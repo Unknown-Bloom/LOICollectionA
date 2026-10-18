@@ -11,7 +11,7 @@ let quote = new PaginatedForm("market.quote", {tr("market.gui.title")}, GUIManag
 
             buildQuoteInfo(nameData[0]);
         :
-            GUIManager::open("market", "market.open", 1);
+            GUIManager::open("market", "market.open", FORM_CUSTOM);
         ]
     });
     show();
@@ -25,9 +25,9 @@ func buildQuoteInfo(name: string) -> void {
         SectionHeader();
         closeButton();
         show(func (result) -> void {
-            GUIManager::open("market.quote", "market.quote", 3);
+            GUIManager::open("market.quote", "market.quote", FORM_PAGINATED);
         });
     };
 
-    GUIManager::switchTo("market.quote.info", 1);
+    GUIManager::switchTo("market.quote.info", FORM_CUSTOM);
 }

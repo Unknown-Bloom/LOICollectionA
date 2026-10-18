@@ -1,10 +1,8 @@
 import "generic.lcui";
 
-let addBlacklistOption = new ButtonOptions();
-addBlacklistOption.tooltip = {tr("blacklist.gui.addBlacklist.tooltip")};
+let addBlacklistOption = tooltipOption({tr("blacklist.gui.addBlacklist.tooltip")});
 
-let removeBlacklistOption = new ButtonOptions();
-removeBlacklistOption.tooltip = {tr("blacklist.gui.removeBlacklist.tooltip")};
+let removeBlacklistOption = tooltipOption({tr("blacklist.gui.removeBlacklist.tooltip")});
 
 let navigateAdd = new GlobalValue();
 navigateAdd.value = false;
@@ -32,12 +30,12 @@ let open = new CustomForm("blacklist.open", {tr("blacklist.gui.title")}) {
     closeButton();
     show(func (result) -> void {
         if (navigateAdd.value) [
-            GUIManager::switchTo("blacklist.add", 3);
+            GUIManager::switchTo("blacklist.add", FORM_PAGINATED);
             return;
         ]
 
         if (navigateDelete.value) [
-            GUIManager::switchTo("blacklist.remove", 3);
+            GUIManager::switchTo("blacklist.remove", FORM_PAGINATED);
         ]
     });
     show();
@@ -76,19 +74,19 @@ let add = new PaginatedForm("blacklist.add", {tr("blacklist.gui.add.title")}, GU
                     });
                     show(func (result) -> void {
                         if (!contentValue.value) [
-                            GUIManager::open("blacklist", "blacklist.add", 3);
+                            GUIManager::open("blacklist", "blacklist.add", FORM_PAGINATED);
                         ]
                     });
                 };
 
-                GUIManager::switchTo("blacklist.content", 1);
+                GUIManager::switchTo("blacklist.content", FORM_CUSTOM);
             :
                 GUIManager::callback("blacklist.add", [ result ]);
 
-                GUIManager::open("blacklist", "blacklist.open", 1);
+                GUIManager::open("blacklist", "blacklist.open", FORM_CUSTOM);
             ]
         :
-            GUIManager::open("blacklist", "blacklist.open", 1);
+            GUIManager::open("blacklist", "blacklist.open", FORM_CUSTOM);
         ]
     });
 };
@@ -119,19 +117,19 @@ let remove = new PaginatedForm("blacklist.remove", {tr("blacklist.gui.remove.tit
                     });
                     show(func (result) -> void {
                         if (!infoRemoved.value) [
-                            GUIManager::open("blacklist", "blacklist.remove", 3);
+                            GUIManager::open("blacklist", "blacklist.remove", FORM_PAGINATED);
                         ]
                     });
                 };
 
-                GUIManager::switchTo("blacklist.info", 1);
+                GUIManager::switchTo("blacklist.info", FORM_CUSTOM);
             :
                 GUIManager::callback("blacklist.remove", [ result ]);
 
-                GUIManager::open("blacklist", "blacklist.remove", 3);
+                GUIManager::open("blacklist", "blacklist.remove", FORM_PAGINATED);
             ]
         :
-            GUIManager::open("blacklist", "blacklist.open", 1);
+            GUIManager::open("blacklist", "blacklist.open", FORM_CUSTOM);
         ]
     });
 };

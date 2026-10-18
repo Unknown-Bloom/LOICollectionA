@@ -11,7 +11,7 @@ if (pendingStatistic.value != "") [
         SectionHeader();
         closeButton();
         show(func (result) -> void {
-            GUIManager::open("statistics", "statistics.open", 3, [ "" ]);
+            GUIManager::open("statistics", "statistics.open", FORM_PAGINATED, [ "" ]);
         });
     };
 ]
@@ -31,11 +31,11 @@ let open = new PaginatedForm("statistics.open", {tr("statistics.gui.title")}, GU
                 SectionHeader();
                 closeButton();
                 show(func (result) -> void {
-                    GUIManager::open("statistics", "statistics.open", 3, [ "" ]);
+                    GUIManager::open("statistics", "statistics.open", FORM_PAGINATED, [ "" ]);
                 });
             };
 
-            GUIManager::switchTo("statistics.specific", 1);
+            GUIManager::switchTo("statistics.specific", FORM_CUSTOM);
         ]
     });
 };

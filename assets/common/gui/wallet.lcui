@@ -23,26 +23,19 @@ navigateBank.value = false;
 let navigateRank = new GlobalValue();
 navigateRank.value = false;
 
-let onlineOption = new ButtonOptions();
-onlineOption.tooltip = {tr("wallet.gui.transfer.tooltip")};
+let onlineOption = tooltipOption({tr("wallet.gui.transfer.tooltip")});
 
-let offlineOption = new ButtonOptions();
-offlineOption.tooltip = {tr("wallet.gui.offlineTransfer.tooltip")};
+let offlineOption = tooltipOption({tr("wallet.gui.offlineTransfer.tooltip")});
 
-let redenvelopeOption = new ButtonOptions();
-redenvelopeOption.tooltip = {tr("wallet.gui.redenvelope.tooltip")};
+let redenvelopeOption = tooltipOption({tr("wallet.gui.redenvelope.tooltip")});
 
-let wealthOption = new ButtonOptions();
-wealthOption.tooltip = {tr("wallet.gui.wealth.tooltip")};
+let wealthOption = tooltipOption({tr("wallet.gui.wealth.tooltip")});
 
-let historyOption = new ButtonOptions();
-historyOption.tooltip = {tr("wallet.gui.history.tooltip")};
+let historyOption = tooltipOption({tr("wallet.gui.history.tooltip")});
 
-let bankOption = new ButtonOptions();
-bankOption.tooltip = {tr("wallet.gui.bank.tooltip")};
+let bankOption = tooltipOption({tr("wallet.gui.bank.tooltip")});
 
-let rankOption = new ButtonOptions();
-rankOption.tooltip = {tr("wallet.gui.rank.tooltip")};
+let rankOption = tooltipOption({tr("wallet.gui.rank.tooltip")});
 
 let open = new CustomForm("wallet.open", {tr("wallet.gui.title")}) {
     label(std::format({tr("wallet.gui.label")}, [ infoData[0], infoData[1] ]), new TextOptions());
@@ -100,32 +93,32 @@ let open = new CustomForm("wallet.open", {tr("wallet.gui.title")}) {
     closeButton();
     show(func (result) -> void {
         if (navigateOnline.value) [
-            GUIManager::switchTo("wallet.transfer.online", 3);
+            GUIManager::switchTo("wallet.transfer.online", FORM_PAGINATED);
             return;
         ]
 
         if (navigateOffline.value) [
-            GUIManager::switchTo("wallet.transfer.offline", 3);
+            GUIManager::switchTo("wallet.transfer.offline", FORM_PAGINATED);
             return;
         ]
 
         if (navigateRedenvelope.value) [
-            GUIManager::switchTo("wallet.redenvelope", 1);
+            GUIManager::switchTo("wallet.redenvelope", FORM_CUSTOM);
             return;
         ]
 
         if (navigateHistory.value) [
-            GUIManager::switchTo("wallet.history", 3);
+            GUIManager::switchTo("wallet.history", FORM_PAGINATED);
             return;
         ]
 
         if (navigateBank.value) [
-            GUIManager::switchTo("wallet.bank", 1);
+            GUIManager::switchTo("wallet.bank", FORM_CUSTOM);
             return;
         ]
 
         if (navigateRank.value) [
-            GUIManager::switchTo("wallet.rank", 3);
+            GUIManager::switchTo("wallet.rank", FORM_PAGINATED);
         ]
     });
     show();
@@ -167,11 +160,11 @@ func buildTransferContent(transferType: string, index: int) -> void {
                             ]
                         ]
 
-                        GUIManager::open("wallet", "wallet.open", 1, []);
+                        GUIManager::open("wallet", "wallet.open", FORM_CUSTOM, []);
                     });
                 };
 
-                GUIManager::switchTo("wallet.confirm", 2);
+                GUIManager::switchTo("wallet.confirm", FORM_MESSAGE);
             :
                 submitDone.value = submitResult[0];
                 this.close();
@@ -179,12 +172,12 @@ func buildTransferContent(transferType: string, index: int) -> void {
         });
         show(func (result) -> void {
             if (!submitDone.value) [
-                GUIManager::open("wallet", "wallet.transfer." + transferType, 3, []);
+                GUIManager::open("wallet", "wallet.transfer." + transferType, FORM_PAGINATED, []);
             ]
         });
     };
 
-    GUIManager::switchTo("wallet.content", 1);
+    GUIManager::switchTo("wallet.content", FORM_CUSTOM);
 }
 
 let transferInputOption = new TextFieldOptions();
@@ -199,7 +192,7 @@ let transferOnline = new PaginatedForm("wallet.transfer.online", {tr("wallet.gui
         if (result.selection != "") [
             buildTransferContent("online", result.selectionIndex);
         :
-            GUIManager::open("wallet", "wallet.open", 1, []);
+            GUIManager::open("wallet", "wallet.open", FORM_CUSTOM, []);
         ]
     });
     show();
@@ -214,7 +207,7 @@ let transferOffline = new PaginatedForm("wallet.transfer.offline", {tr("wallet.g
         if (result.selection != "") [
             buildTransferContent("offline", result.selectionIndex);
         :
-            GUIManager::open("wallet", "wallet.open", 1, []);
+            GUIManager::open("wallet", "wallet.open", FORM_CUSTOM, []);
         ]
     });
     show();
@@ -254,7 +247,7 @@ let redenvelope = new CustomForm("wallet.redenvelope", {tr("wallet.gui.title")})
     });
     show(func (result) -> void {
         if (!redeemDone.value) [
-            GUIManager::open("wallet", "wallet.open", 1, []);
+            GUIManager::open("wallet", "wallet.open", FORM_CUSTOM, []);
         ]
     });
     show();
@@ -268,7 +261,7 @@ let history = new PaginatedForm("wallet.history", {tr("wallet.gui.title")}, GUIM
     closeButton();
     show(func (result) -> void {
         if (result.selection == "") [
-            GUIManager::open("wallet", "wallet.open", 1, []);
+            GUIManager::open("wallet", "wallet.open", FORM_CUSTOM, []);
         ]
     });
     show();
@@ -305,7 +298,7 @@ let bank = new CustomForm("wallet.bank", {tr("wallet.gui.title")}) {
     });
     show(func (result) -> void {
         if (!bankDone.value) [
-            GUIManager::open("wallet", "wallet.open", 1, []);
+            GUIManager::open("wallet", "wallet.open", FORM_CUSTOM, []);
         ]
     });
     show();
@@ -324,7 +317,7 @@ let rank = new PaginatedForm("wallet.rank", {tr("wallet.gui.title")}, GUIManager
     closeButton();
     show(func (result) -> void {
         if (result.selection == "") [
-            GUIManager::open("wallet", "wallet.open", 1, []);
+            GUIManager::open("wallet", "wallet.open", FORM_CUSTOM, []);
         ]
     });
     show();

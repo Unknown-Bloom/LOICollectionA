@@ -30,14 +30,11 @@ navigateBlacklist.value = false;
 let navigateAddBlacklist = new GlobalValue();
 navigateAddBlacklist.value = false;
 
-let genericOption = new ButtonOptions();
-genericOption.tooltip = {tr("tpa.gui.setting.generic.tooltip")};
+let genericOption = tooltipOption({tr("tpa.gui.setting.generic.tooltip")});
 
-let blacklistOption = new ButtonOptions();
-blacklistOption.tooltip = {tr("tpa.gui.setting.blacklist.tooltip")};
+let blacklistOption = tooltipOption({tr("tpa.gui.setting.blacklist.tooltip")});
 
-let addBlacklistOption = new ButtonOptions();
-addBlacklistOption.tooltip = {tr("tpa.gui.setting.blacklist.add.tooltip")};
+let addBlacklistOption = tooltipOption({tr("tpa.gui.setting.blacklist.add.tooltip")});
 
 let setting = new CustomForm("tpa.setting", {tr("tpa.gui.setting.title")}) {
     label({tr("tpa.gui.setting.label")}, new TextOptions());
@@ -59,12 +56,12 @@ let setting = new CustomForm("tpa.setting", {tr("tpa.gui.setting.title")}) {
     closeButton();
     show(func (result) -> void {
         if (navigateGeneric.value) [
-            GUIManager::switchTo("tpa.generic", 1);
+            GUIManager::switchTo("tpa.generic", FORM_CUSTOM);
             return;
         ]
 
         if (navigateBlacklist.value) [
-            GUIManager::switchTo("tpa.blacklist", 3);
+            GUIManager::switchTo("tpa.blacklist", FORM_PAGINATED);
         ]
     });
     show();
@@ -88,7 +85,7 @@ let generic = new CustomForm("tpa.generic", {tr("tpa.gui.setting.title")}) {
     });
     show(func (result) -> void {
         if (!inviteSaved.value) [
-            GUIManager::open("tpa", "tpa.setting", 1, [ "", "" ]);
+            GUIManager::open("tpa", "tpa.setting", FORM_CUSTOM, [ "", "" ]);
         ]
     });
     show();
@@ -111,9 +108,9 @@ let blacklist = new PaginatedForm("tpa.blacklist", {tr("tpa.gui.setting.title")}
         if (navigateAddBlacklist.value) [
             let checkData = GUIManager::request("tpa.blacklist.check", []);
             if (checkData[0]) [
-                GUIManager::switchTo("tpa.blacklist.add", 3);
+                GUIManager::switchTo("tpa.blacklist.add", FORM_PAGINATED);
             :
-                GUIManager::open("tpa", "tpa.setting", 1, [ "", "" ]);
+                GUIManager::open("tpa", "tpa.setting", FORM_CUSTOM, [ "", "" ]);
             ]
         :
             if (result.selection != "") [
@@ -128,13 +125,13 @@ let blacklist = new PaginatedForm("tpa.blacklist", {tr("tpa.gui.setting.title")}
                         this.close();
                     });
                     show(func (result) -> void {
-                        GUIManager::open("tpa", "tpa.blacklist", 3, [ "", "" ]);
+                        GUIManager::open("tpa", "tpa.blacklist", FORM_PAGINATED, [ "", "" ]);
                     });
                 };
 
-                GUIManager::switchTo("tpa.blacklist.set", 1);
+                GUIManager::switchTo("tpa.blacklist.set", FORM_CUSTOM);
             :
-                GUIManager::open("tpa", "tpa.setting", 1, [ "", "" ]);
+                GUIManager::open("tpa", "tpa.setting", FORM_CUSTOM, [ "", "" ]);
             ]
         ]
     });
@@ -150,9 +147,9 @@ let blacklistAdd = new PaginatedForm("tpa.blacklist.add", {tr("tpa.gui.setting.t
         if (result.selection != "") [
             GUIManager::request("tpa.blacklist.add.submit", [ result.selectionIndex ]);
 
-            GUIManager::open("tpa", "tpa.setting", 1, [ "", "" ]);
+            GUIManager::open("tpa", "tpa.setting", FORM_CUSTOM, [ "", "" ]);
         :
-            GUIManager::open("tpa", "tpa.setting", 1, [ "", "" ]);
+            GUIManager::open("tpa", "tpa.setting", FORM_CUSTOM, [ "", "" ]);
         ]
     });
     show();
@@ -190,10 +187,10 @@ func buildContent(targetUuid: string) -> void {
         });
         show(func (result) -> void {
             if (!submitDone.value) [
-                GUIManager::open("tpa", "tpa.open", 3, [ "", "" ]);
+                GUIManager::open("tpa", "tpa.open", FORM_PAGINATED, [ "", "" ]);
             ]
         });
     };
 
-    GUIManager::switchTo("tpa.content", 1);
+    GUIManager::switchTo("tpa.content", FORM_CUSTOM);
 }

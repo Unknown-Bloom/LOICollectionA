@@ -9,14 +9,11 @@ navigateRemove.value = false;
 let navigateAward = new GlobalValue();
 navigateAward.value = false;
 
-let addCdkOption = new ButtonOptions();
-addCdkOption.tooltip = {tr("cdk.gui.addCdk.tooltip")};
+let addCdkOption = tooltipOption({tr("cdk.gui.addCdk.tooltip")});
 
-let removeCdkOption = new ButtonOptions();
-removeCdkOption.tooltip = {tr("cdk.gui.removeCdk.tooltip")};
+let removeCdkOption = tooltipOption({tr("cdk.gui.removeCdk.tooltip")});
 
-let addAwardOption = new ButtonOptions();
-addAwardOption.tooltip = {tr("cdk.gui.addAward.tooltip")};
+let addAwardOption = tooltipOption({tr("cdk.gui.addAward.tooltip")});
 
 let cdkOpen = new CustomForm("cdk.open", {tr("cdk.gui.title")}) {
     label({tr("cdk.gui.label")}, new TextOptions());
@@ -45,17 +42,17 @@ let cdkOpen = new CustomForm("cdk.open", {tr("cdk.gui.title")}) {
     closeButton();
     show(func (result) -> void {
         if (navigateNew.value) [
-            GUIManager::switchTo("cdk.new", 1);
+            GUIManager::switchTo("cdk.new", FORM_CUSTOM);
             return;
         ]
 
         if (navigateRemove.value) [
-            GUIManager::switchTo("cdk.remove", 3);
+            GUIManager::switchTo("cdk.remove", FORM_PAGINATED);
             return;
         ]
 
         if (navigateAward.value) [
-            GUIManager::switchTo("cdk.award", 3);
+            GUIManager::switchTo("cdk.award", FORM_PAGINATED);
         ]
     });
     show();
@@ -106,7 +103,7 @@ let cdkNew = new CustomForm("cdk.new", {tr("cdk.gui.title")}) {
     });
     show(func (result) -> void {
         if (!newDone.value) [
-            GUIManager::open("cdk", "cdk.open", 1);
+            GUIManager::open("cdk", "cdk.open", FORM_CUSTOM);
         ]
     });
     show();
@@ -120,7 +117,7 @@ let remove = new PaginatedForm("cdk.remove", {tr("cdk.gui.title")}, GUIManager::
         if (result.selection != "") [
             buildRemoveInfo(result.selection);
         :
-            GUIManager::open("cdk", "cdk.open", 1);
+            GUIManager::open("cdk", "cdk.open", FORM_CUSTOM);
         ]
     });
     show();
@@ -134,7 +131,7 @@ let award = new PaginatedForm("cdk.award", {tr("cdk.gui.title")}, GUIManager::va
         if (result.selection != "") [
             buildAwardInfo(result.selection);
         :
-            GUIManager::open("cdk", "cdk.open", 1);
+            GUIManager::open("cdk", "cdk.open", FORM_CUSTOM);
         ]
     });
     show();
@@ -156,12 +153,12 @@ func buildRemoveInfo(id: string) -> void {
         });
         show(func (result) -> void {
             if (!removeDone.value) [
-                GUIManager::open("cdk", "cdk.open", 1);
+                GUIManager::open("cdk", "cdk.open", FORM_CUSTOM);
             ]
         });
     };
 
-    GUIManager::switchTo("cdk.remove.info", 1);
+    GUIManager::switchTo("cdk.remove.info", FORM_CUSTOM);
 }
 
 func buildAwardInfo(id: string) -> void {
@@ -214,12 +211,12 @@ func buildAwardInfo(id: string) -> void {
             if (navigateTitle.value) [
                 buildAwardTitle(id);
             :
-                GUIManager::open("cdk", "cdk.open", 1);
+                GUIManager::open("cdk", "cdk.open", FORM_CUSTOM);
             ]
         });
     };
 
-    GUIManager::switchTo("cdk.award.info", 1);
+    GUIManager::switchTo("cdk.award.info", FORM_CUSTOM);
 }
 
 func buildAwardScore(id: string) -> void {
@@ -254,7 +251,7 @@ func buildAwardScore(id: string) -> void {
         });
     };
 
-    GUIManager::switchTo("cdk.award.score", 1);
+    GUIManager::switchTo("cdk.award.score", FORM_CUSTOM);
 }
 
 func buildAwardItem(id: string) -> void {
@@ -295,19 +292,15 @@ func buildAwardItem(id: string) -> void {
         });
     };
 
-    GUIManager::switchTo("cdk.award.item", 1);
+    GUIManager::switchTo("cdk.award.item", FORM_CUSTOM);
 }
 
 func buildItemType(id: string) -> void {
     let typeIndex = new ObservableNumber(0.0, true);
 
-    let typeUniversal = new DropdownItem();
-    typeUniversal.label = "universal";
-    typeUniversal.value = 0;
+    let typeUniversal = dropdownItem("universal", 0);
 
-    let typeNbt = new DropdownItem();
-    typeNbt.label = "nbt";
-    typeNbt.value = 1;
+    let typeNbt = dropdownItem("nbt", 1);
 
     let typeItems = [ typeUniversal, typeNbt ];
 
@@ -336,7 +329,7 @@ func buildItemType(id: string) -> void {
         });
     };
 
-    GUIManager::switchTo("cdk.award.item.type", 1);
+    GUIManager::switchTo("cdk.award.item.type", FORM_CUSTOM);
 }
 
 func buildItemCommon(id: string, itemType: string) -> void {
@@ -385,7 +378,7 @@ func buildItemCommon(id: string, itemType: string) -> void {
         });
     };
 
-    GUIManager::switchTo("cdk.award.item.common", 1);
+    GUIManager::switchTo("cdk.award.item.common", FORM_CUSTOM);
 }
 
 func buildInventory(id: string) -> void {
@@ -404,7 +397,7 @@ func buildInventory(id: string) -> void {
         });
     };
 
-    GUIManager::switchTo("cdk.award.inventory", 3);
+    GUIManager::switchTo("cdk.award.inventory", FORM_PAGINATED);
 }
 
 func buildInventoryConfirm(id: string, slot: int) -> void {
@@ -430,7 +423,7 @@ func buildInventoryConfirm(id: string, slot: int) -> void {
         });
     };
 
-    GUIManager::switchTo("cdk.award.inventory.confirm", 1);
+    GUIManager::switchTo("cdk.award.inventory.confirm", FORM_CUSTOM);
 }
 
 func buildAwardTitle(id: string) -> void {
@@ -465,5 +458,5 @@ func buildAwardTitle(id: string) -> void {
         });
     };
 
-    GUIManager::switchTo("cdk.award.title", 1);
+    GUIManager::switchTo("cdk.award.title", FORM_CUSTOM);
 }

@@ -6,11 +6,9 @@ navigateAuctionCreate.value = false;
 let navigateAuctionMine = new GlobalValue();
 navigateAuctionMine.value = false;
 
-let createOption = new ButtonOptions();
-createOption.tooltip = {tr("market.gui.auction.create.tooltip")};
+let createOption = tooltipOption({tr("market.gui.auction.create.tooltip")});
 
-let mineOption = new ButtonOptions();
-mineOption.tooltip = {tr("market.gui.auction.mine.tooltip")};
+let mineOption = tooltipOption({tr("market.gui.auction.mine.tooltip")});
 
 let auction = new PaginatedForm("market.auction", {tr("market.gui.title")}, GUIManager::value("market.auction.items"), 10) {
     label({tr("market.gui.auction.list.label")}, new TextOptions());
@@ -48,7 +46,7 @@ let auction = new PaginatedForm("market.auction", {tr("market.gui.title")}, GUIM
 
             buildAuctionInfo(idData[0]);
         :
-            GUIManager::open("market", "market.open", 1);
+            GUIManager::open("market", "market.open", FORM_CUSTOM);
         ]
     });
     show();
@@ -83,17 +81,17 @@ func buildAuctionInfo(id: string) -> void {
         show(func (result) -> void {
             if (bidDone.value) [
                 if (bidResult.value) [
-                    GUIManager::open("market.auction", "market.auction", 3);
+                    GUIManager::open("market.auction", "market.auction", FORM_PAGINATED);
                 :
-                    GUIManager::open("market.auction", "market.auction", 3);
+                    GUIManager::open("market.auction", "market.auction", FORM_PAGINATED);
                 ]
             :
-                GUIManager::open("market.auction", "market.auction", 3);
+                GUIManager::open("market.auction", "market.auction", FORM_PAGINATED);
             ]
         });
     };
 
-    GUIManager::switchTo("market.auction.info", 1);
+    GUIManager::switchTo("market.auction.info", FORM_CUSTOM);
 }
 
 func buildAuctionInventory() -> void {
@@ -108,12 +106,12 @@ func buildAuctionInventory() -> void {
 
                 buildAuctionCreate(slotData[0]);
             :
-                GUIManager::open("market.auction", "market.auction", 3);
+                GUIManager::open("market.auction", "market.auction", FORM_PAGINATED);
             ]
         });
     };
 
-    GUIManager::switchTo("market.auction.inventory", 3);
+    GUIManager::switchTo("market.auction.inventory", FORM_PAGINATED);
 }
 
 func buildAuctionCreate(slot: int) -> void {
@@ -155,17 +153,17 @@ func buildAuctionCreate(slot: int) -> void {
         show(func (result) -> void {
             if (createDone.value) [
                 if (createResult.value) [
-                    GUIManager::open("market.auction", "market.auction", 3);
+                    GUIManager::open("market.auction", "market.auction", FORM_PAGINATED);
                 :
-                    GUIManager::open("market.auction", "market.auction", 3);
+                    GUIManager::open("market.auction", "market.auction", FORM_PAGINATED);
                 ]
             :
-                GUIManager::open("market.auction", "market.auction", 3);
+                GUIManager::open("market.auction", "market.auction", FORM_PAGINATED);
             ]
         });
     };
 
-    GUIManager::switchTo("market.auction.create", 1);
+    GUIManager::switchTo("market.auction.create", FORM_CUSTOM);
 }
 
 func buildAuctionMine() -> void {
@@ -180,12 +178,12 @@ func buildAuctionMine() -> void {
 
                 buildAuctionMineInfo(idData[0]);
             :
-                GUIManager::open("market.auction", "market.auction", 3);
+                GUIManager::open("market.auction", "market.auction", FORM_PAGINATED);
             ]
         });
     };
 
-    GUIManager::switchTo("market.auction.mine", 3);
+    GUIManager::switchTo("market.auction.mine", FORM_PAGINATED);
 }
 
 func buildAuctionMineInfo(id: string) -> void {
@@ -196,9 +194,9 @@ func buildAuctionMineInfo(id: string) -> void {
         SectionHeader();
         closeButton();
         show(func (result) -> void {
-            GUIManager::open("market.auction", "market.auction.mine", 3);
+            GUIManager::open("market.auction", "market.auction.mine", FORM_PAGINATED);
         });
     };
 
-    GUIManager::switchTo("market.auction.mine.info", 1);
+    GUIManager::switchTo("market.auction.mine.info", FORM_CUSTOM);
 }

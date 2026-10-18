@@ -87,25 +87,25 @@ if (mode.value == "content") [
                                     this.close();
                                 });
                                 show(func (result) -> void {
-                                    GUIManager::open("notice", "notice.content", 1, [ "content", targetId.value ]);
+                                    GUIManager::open("notice", "notice.content", FORM_CUSTOM, [ "content", targetId.value ]);
                                 });
                             };
 
-                            GUIManager::switchTo("notice.line", 1);
+                            GUIManager::switchTo("notice.line", FORM_CUSTOM);
                         :
-                            GUIManager::open("notice", "notice.content", 1, [ "content", targetId.value ]);
+                            GUIManager::open("notice", "notice.content", FORM_CUSTOM, [ "content", targetId.value ]);
                         ]
                     });
                 };
 
-                GUIManager::switchTo("notice.lines", 3);
+                GUIManager::switchTo("notice.lines", FORM_PAGINATED);
                 return;
             ]
 
             if (navigateRefresh.value) [
-                GUIManager::open("notice", "notice.content", 1, [ "content", targetId.value ]);
+                GUIManager::open("notice", "notice.content", FORM_CUSTOM, [ "content", targetId.value ]);
             :
-                GUIManager::open("notice", "notice.edit", 1, [ "", "" ]);
+                GUIManager::open("notice", "notice.edit", FORM_CUSTOM, [ "", "" ]);
             ]
         });
     };
@@ -133,14 +133,11 @@ navigateRemove.value = false;
 let navigateEdit = new GlobalValue();
 navigateEdit.value = false;
 
-let addOption = new ButtonOptions();
-addOption.tooltip = {tr("notice.gui.add.tooltip")};
+let addOption = tooltipOption({tr("notice.gui.add.tooltip")});
 
-let removeOption = new ButtonOptions();
-removeOption.tooltip = {tr("notice.gui.remove.tooltip")};
+let removeOption = tooltipOption({tr("notice.gui.remove.tooltip")});
 
-let editListOption = new ButtonOptions();
-editListOption.tooltip = {tr("notice.gui.edit.list.tooltip")};
+let editListOption = tooltipOption({tr("notice.gui.edit.list.tooltip")});
 
 let edit = new CustomForm("notice.edit", {tr("notice.gui.title")}) {
     label({tr("notice.gui.label")}, new TextOptions());
@@ -169,17 +166,17 @@ let edit = new CustomForm("notice.edit", {tr("notice.gui.title")}) {
     closeButton();
     show(func (result) -> void {
         if (navigateAdd.value) [
-            GUIManager::switchTo("notice.add", 1);
+            GUIManager::switchTo("notice.add", FORM_CUSTOM);
             return;
         ]
 
         if (navigateRemove.value) [
-            GUIManager::switchTo("notice.remove", 3);
+            GUIManager::switchTo("notice.remove", FORM_PAGINATED);
             return;
         ]
 
         if (navigateEdit.value) [
-            GUIManager::switchTo("notice.editList", 3);
+            GUIManager::switchTo("notice.editList", FORM_PAGINATED);
         ]
     });
     show();
@@ -212,7 +209,7 @@ let add = new CustomForm("notice.add", {tr("notice.gui.title")}) {
         this.close();
     });
     show(func (result) -> void {
-        GUIManager::open("notice", "notice.edit", 1, [ "", "" ]);
+        GUIManager::open("notice", "notice.edit", FORM_CUSTOM, [ "", "" ]);
     });
     show();
 };
@@ -237,13 +234,13 @@ let remove = new PaginatedForm("notice.remove", {tr("notice.gui.title")}, GUIMan
                         ]
                     ]
 
-                    GUIManager::open("notice", "notice.edit", 1, [ "", "" ]);
+                    GUIManager::open("notice", "notice.edit", FORM_CUSTOM, [ "", "" ]);
                 });
             };
 
-            GUIManager::switchTo("notice.remove.info", 2);
+            GUIManager::switchTo("notice.remove.info", FORM_MESSAGE);
         :
-            GUIManager::open("notice", "notice.edit", 1, [ "", "" ]);
+            GUIManager::open("notice", "notice.edit", FORM_CUSTOM, [ "", "" ]);
         ]
     });
     show();
@@ -256,9 +253,9 @@ let editList = new PaginatedForm("notice.editList", {tr("notice.gui.title")}, GU
     closeButton();
     show(func (result) -> void {
         if (result.selection != "") [
-            GUIManager::open("notice", "notice.content", 1, [ "content", result.selection ]);
+            GUIManager::open("notice", "notice.content", FORM_CUSTOM, [ "content", result.selection ]);
         :
-            GUIManager::open("notice", "notice.edit", 1, [ "", "" ]);
+            GUIManager::open("notice", "notice.edit", FORM_CUSTOM, [ "", "" ]);
         ]
     });
     show();
@@ -292,7 +289,7 @@ let open = new PaginatedForm("notice.open", {tr("notice.gui.title")}, GUIManager
                 show();
             };
 
-            GUIManager::switchTo("notice.view", 1);
+            GUIManager::switchTo("notice.view", FORM_CUSTOM);
         ]
     });
     show();
