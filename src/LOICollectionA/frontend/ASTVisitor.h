@@ -14,6 +14,7 @@ namespace LOICollection::frontend {
     struct MatchNode;
     struct RangeNode;
     struct CoalesceNode;
+    struct TryNode;
     struct BreakNode;
     struct ContinueNode;
     struct CompareNode;
@@ -58,6 +59,7 @@ namespace LOICollection::frontend {
         virtual void visit(MatchNode& node) = 0;
         virtual void visit(RangeNode& node) = 0;
         virtual void visit(CoalesceNode& node) = 0;
+        virtual void visit(TryNode& node) = 0;
         virtual void visit(BreakNode& node) = 0;
         virtual void visit(ContinueNode& node) = 0;
         virtual void visit(CompareNode& node) = 0;

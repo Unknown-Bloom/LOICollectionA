@@ -366,6 +366,16 @@ namespace LOICollection::frontend {
                 continue;
             }
 
+            if (currentToken.type == TokenType::TOKEN_QUESTION) {
+                SourceLocation loc = currentToken.loc;
+
+                if (!eat(TokenType::TOKEN_QUESTION)) return nullptr;
+
+                expr = std::make_unique<TryNode>(loc, std::move(expr));
+
+                continue;
+            }
+
             if (currentToken.type == TokenType::TOKEN_QUESTION_DOT) {
                 SourceLocation loc = currentToken.loc;
 

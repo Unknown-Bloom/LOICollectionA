@@ -128,7 +128,7 @@ namespace LOICollection::frontend {
             Super, SuperCall, InstanceOf, FunctionDef, FuncCall, Lambda,
             Array, Index, Program, Block, Using,
             While, For, Break, Continue,
-            CompoundAssign, ForIn, Range, Coalesce,
+            CompoundAssign, ForIn, Range, Coalesce, Try,
             Import, Component,
             Trait, Impl, Match, Panic
         };
@@ -257,6 +257,21 @@ namespace LOICollection::frontend {
               right(std::forward<decltype(r)>(r)) {}
 
         [[nodiscard]] Type getType() const override { return Type::Coalesce; }
+
+        void accept(ASTVisitor& visitor) override {
+            visitor.visit(*this);
+        }
+    };
+
+    struct TryNode : ExprNode {
+        SourceLocation loc;
+        std::unique_ptr<ExprNode> operand;
+
+        TryNode(SourceLocation location, auto&& value)
+            : loc(location),
+              operand(std::forward<decltype(value)>(value)) {}
+
+        [[nodiscard]] Type getType() const override { return Type::Try; }
 
         void accept(ASTVisitor& visitor) override {
             visitor.visit(*this);

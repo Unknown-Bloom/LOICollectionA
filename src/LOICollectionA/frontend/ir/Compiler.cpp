@@ -1080,6 +1080,28 @@ namespace LOICollection::frontend::ir {
         this->compileClassBodies(node);
     }
 
+    void Compiler::visit(TryNode& node) {
+        const int value = this->compilePart(*node.operand);
+        const int none = this->allocReg();
+
+        this->current.get().emit(MirOp::IS_NONE, 0, none, value, -1, node.loc);
+
+        const size_t branch = this->current.get().emit(
+            MirOp::JMP_IF_FALSE, 0, -1, none, -1, node.loc);
+
+        const int early = this->allocReg();
+        this->current.get().emit(
+            MirOp::LOAD_CONST, this->addConstant(std::monostate{}), early, -1, -1, node.loc);
+        this->current.get().emit(MirOp::RETURN, 0, -1, early, -1, node.loc);
+
+        const int target = static_cast<int>(this->current.get().currentIP());
+        this->current.get().patchJump(branch, target - static_cast<int>(branch) - 1);
+
+        const int dst = this->allocReg();
+        this->current.get().emit(MirOp::UNWRAP, 0, dst, value, -1, node.loc);
+        this->lastResultReg = dst;
+    }
+
     void Compiler::visit(ReturnNode& node) {
         const int reg = node.value ? this->compilePart(*node.value) : -1;
 

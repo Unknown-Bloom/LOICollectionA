@@ -82,8 +82,7 @@ namespace LOICollection::frontend {
                     if (peekChar() == '.')
                         return makeTwoCharToken(TokenType::TOKEN_QUESTION_DOT);
 
-                    diagnostics.addError({line, column, position}, "Unexpected character '?'");
-                    return makeToken(TokenType::TOKEN_OP);
+                    return makeToken(TokenType::TOKEN_QUESTION);
                 }
                 case '.': {
                     if (std::isdigit(static_cast<unsigned char>(peekChar())))

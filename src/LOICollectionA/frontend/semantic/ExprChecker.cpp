@@ -332,6 +332,24 @@ namespace LOICollection::frontend {
                 return {};
             }
 
+            case ASTNode::Type::Try: {
+                auto& tryNode = static_cast<TryNode&>(node);
+                TypeInfo inner = this->checkExpr(*tryNode.operand, scope);
+
+                if (inner.kind != TypeKind::Optional) {
+                    diagnostics.addError(tryNode.loc, "'?' requires an optional value");
+                    return {};
+                }
+
+                if (!scope.hasMethod() || scope.methodRef().returnType.kind != TypeKind::Optional) {
+                    diagnostics.addError(tryNode.loc,
+                        "'?' requires the enclosing function to return optional<...>");
+                    return {};
+                }
+
+                return inner.optionalInner ? *inner.optionalInner : TypeInfo{};
+            }
+
             case ASTNode::Type::Macro:
                 for (auto& arg : static_cast<MacroNode&>(node).args)
                     checkExpr(*arg, scope);
