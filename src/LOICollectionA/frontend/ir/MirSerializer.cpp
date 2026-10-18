@@ -575,10 +575,20 @@ namespace LOICollection::frontend::ir::detail {
         writer.i32(meta.bodyIndex);
         writer.i32(meta.argCount);
         writer.i32(meta.captureCount);
+        writeVector<LambdaCapture>(writer, meta.captures, [](Writer& w, const LambdaCapture& capture) {
+            w.str(capture.name);
+            w.i32(capture.sourceSlot);
+            w.i32(capture.slot);
+        });
     }
 
     bool readLambdaMeta(Reader& reader, LambdaMeta& meta) {
-        return reader.i32(meta.bodyIndex) && reader.i32(meta.argCount) && reader.i32(meta.captureCount);
+        return reader.i32(meta.bodyIndex)
+            && reader.i32(meta.argCount)
+            && reader.i32(meta.captureCount)
+            && readVector<LambdaCapture>(reader, meta.captures, [](Reader& r, LambdaCapture& capture) -> bool {
+                return r.str(capture.name) && r.i32(capture.sourceSlot) && r.i32(capture.slot);
+            });
     }
 
     bool writeChunkFlat(Writer& writer, const MirChunk& chunk) {

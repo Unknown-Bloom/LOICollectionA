@@ -65,10 +65,17 @@ namespace LOICollection::frontend::ir {
         int bodyIndex = -1;
     };
 
+    struct LambdaCapture {
+        std::string name;
+        int sourceSlot = -1;
+        int slot = -1;
+    };
+
     struct LambdaMeta {
         int bodyIndex = -1;
         int argCount = 0;
         int captureCount = 0;
+        std::vector<LambdaCapture> captures;
     };
 
     struct NativeCallMeta {

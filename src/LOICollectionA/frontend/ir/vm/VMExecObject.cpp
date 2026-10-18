@@ -343,15 +343,28 @@ namespace LOICollection::frontend::ir {
                 if (frame.hasThis)
                     func->thisObj = std::get<ObjectRef>(frame.thisObj);
 
-                const size_t captureCount =
-                    std::min(static_cast<size_t>(instr.imm), frame.localsSize);
-                func->captures.assign(
-                    this->localPool.begin() + frame.localsBase,
-                    this->localPool.begin() + frame.localsBase + captureCount
-                );
+                func->captures.reserve(meta.captures.size());
+                func->captureSlots.reserve(meta.captures.size());
+                for (const auto& capture : meta.captures) {
+                    if (capture.sourceSlot >= 0) {
+                        const size_t index =
+                            frame.localsBase + static_cast<size_t>(capture.sourceSlot);
+
+                        func->captures.push_back(index < this->localPool.size()
+                            ? this->localPool[index]
+                            : ValueNode::ValueType{});
+                    } else {
+                        const auto it = this->globals->find(capture.name);
+                        func->captures.push_back(
+                            it != this->globals->end() ? it->second : ValueNode::ValueType{});
+                    }
+
+                    func->captureSlots.push_back(capture.slot);
+                }
+
                 func->globals = this->globals;
 
-                if (instr.imm > 0)
+                if (!meta.captures.empty())
                     this->heap().track(func);
 
                 this->setReg(frame, instr.dst, func);

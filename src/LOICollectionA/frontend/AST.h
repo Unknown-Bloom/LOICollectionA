@@ -1258,6 +1258,7 @@ namespace LOICollection::frontend {
         std::weak_ptr<Object> thisObj;
 
         std::vector<ValueNode::ValueType> captures;
+        std::vector<int> captureSlots;
         std::weak_ptr<GlobalsTable> globals;
     };
 }

@@ -287,8 +287,35 @@ namespace LOICollection::frontend::ir {
         return std::nullopt;
     }
 
+    int Compiler::captureVariable(const std::string& name, int sourceSlot) {
+        LambdaCaptureCtx& ctx = this->lambdaCtxs.back();
+
+        if (auto it = ctx.slots.find(name); it != ctx.slots.end())
+            return it->second;
+
+        const int slot = this->declareSlot(name);
+        ctx.captures.push_back(LambdaCapture{ name, sourceSlot, slot });
+        ctx.slots.emplace(name, slot);
+        return slot;
+    }
+
+    std::optional<int> Compiler::resolveOrCapture(const std::string& name) {
+        if (auto slot = this->resolveSlot(name))
+            return slot;
+
+        if (this->lambdaCtxs.empty())
+            return std::nullopt;
+
+        for (auto scope = this->scopes.rbegin() + 1; scope != this->scopes.rend(); ++scope) {
+            if (auto it = scope->slots.find(name); it != scope->slots.end())
+                return this->captureVariable(name, it->second);
+        }
+
+        return std::nullopt;
+    }
+
     int Compiler::emitLoad(const std::string& name, const SourceLocation& loc) {
-        if (auto slot = this->resolveSlot(name)) {
+        if (auto slot = this->resolveOrCapture(name)) {
             const int dst = this->takeDst();
             this->current.get().emit(MirOp::LOAD_SLOT, *slot, dst, -1, -1, loc);
             return dst;
@@ -300,7 +327,7 @@ namespace LOICollection::frontend::ir {
     }
 
     int Compiler::emitLoadInto(int dst, const std::string& name, const SourceLocation& loc) {
-        if (auto slot = this->resolveSlot(name)) {
+        if (auto slot = this->resolveOrCapture(name)) {
             this->current.get().emit(MirOp::LOAD_SLOT, *slot, dst, -1, -1, loc);
             return dst;
         }
@@ -310,7 +337,7 @@ namespace LOICollection::frontend::ir {
     }
 
     void Compiler::emitStore(const std::string& name, int srcReg, const SourceLocation& loc) {
-        if (auto slot = this->resolveSlot(name)) {
+        if (auto slot = this->resolveOrCapture(name)) {
             this->current.get().emit(MirOp::STORE_SLOT, *slot, -1, srcReg, -1, loc);
             return;
         }
@@ -422,8 +449,13 @@ namespace LOICollection::frontend::ir {
         return static_cast<int>(this->current.get().macros.size() - 1);
     }
 
-    int Compiler::addLambda(int bodyIndex, int argCount, int captureCount) {
-        this->current.get().lambdas.push_back({bodyIndex, argCount, captureCount});
+    int Compiler::addLambda(int bodyIndex, int argCount, const std::vector<LambdaCapture>& captures) {
+        LambdaMeta meta;
+        meta.bodyIndex = bodyIndex;
+        meta.argCount = argCount;
+        meta.captureCount = static_cast<int>(captures.size());
+        meta.captures = captures;
+        this->current.get().lambdas.push_back(std::move(meta));
         return static_cast<int>(this->current.get().lambdas.size() - 1);
     }
 
@@ -1606,7 +1638,9 @@ namespace LOICollection::frontend::ir {
         this->current = std::ref(bodyChunk);
         auto loops = this->suspendLoops();
 
-        this->pushScope(false, this->scopes.back().next, true);
+        this->pushScope(false, 0, false);
+        this->lambdaCtxs.emplace_back();
+
         for (const auto& param : node.decl.params)
             this->declareSlot(param.name);
 
@@ -1621,15 +1655,18 @@ namespace LOICollection::frontend::ir {
         this->current.get().emit(MirOp::RETURN, 0, -1, lastReg, -1);
 
         this->current = saved;
-
-        const int captureCount = this->scopes.back().base;
         bodyChunk.slotCount = this->closeScope();
 
-        const int lambdaIdx = this->addLambda(bodyIdx, static_cast<int>(node.decl.params.size()), captureCount);
+        const std::vector<LambdaCapture> captures = std::move(this->lambdaCtxs.back().captures);
+        this->lambdaCtxs.pop_back();
+
+        const int lambdaIdx = this->addLambda(
+            bodyIdx, static_cast<int>(node.decl.params.size()), captures);
         const int dst = this->allocReg();
 
         this->current.get().emitCall(
-            MirOp::MAKE_LAMBDA, lambdaIdx, dst, -1, -1, captureCount, node.loc);
+            MirOp::MAKE_LAMBDA, lambdaIdx, dst, -1, -1,
+            static_cast<int>(captures.size()), node.loc);
         this->lastResultReg = dst;
     }
 

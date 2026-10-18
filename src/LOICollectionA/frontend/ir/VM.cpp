@@ -592,17 +592,19 @@ namespace LOICollection::frontend::ir {
             callee.thisObj = self;
         }
 
-        const size_t paramBase = func->captures.size();
-        if (paramBase + static_cast<size_t>(func->argCount) > callee.localsSize) {
+        const size_t captureCount = func->captures.size();
+        if (captureCount + static_cast<size_t>(func->argCount) > callee.localsSize) {
             this->diagnostics.addError({}, "Lambda frame is too small for its parameters");
             return;
         }
 
         this->localPool.resize(callee.localsSize);
-        std::copy_n(func->captures.begin(), paramBase, this->localPool.begin());
+        for (size_t i = 0; i < captureCount; ++i)
+            this->localPool[static_cast<size_t>(func->captureSlots[i])] = func->captures[i];
+
         const size_t n = std::min<size_t>(args.size(), static_cast<size_t>(func->argCount));
         for (size_t i = 0; i < n; ++i)
-            this->localPool[paramBase + i] = args[i];
+            this->localPool[i] = args[i];
 
         this->frames.push_back(std::move(callee));
     }

@@ -325,8 +325,8 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
-                const size_t paramBase = func->captures.size();
-                if (paramBase + static_cast<size_t>(func->argCount) >
+                const size_t captureCount = func->captures.size();
+                if (captureCount + static_cast<size_t>(func->argCount) >
                     static_cast<size_t>(func->owner->methodBodies[func->bodyIndex]->slotCount)) {
                     this->diagnostics.addError(this->currentLoc, "Lambda frame is too small for its parameters");
                     break;
@@ -352,8 +352,9 @@ namespace LOICollection::frontend::ir {
                     break;
 
                 const size_t base = this->frames.back().localsBase;
-                std::copy_n(func->captures.begin(), paramBase, this->localPool.begin() + base);
-                this->placeArgs(argsBase, func->argCount, paramBase);
+                for (size_t i = 0; i < captureCount; ++i)
+                    this->localPool[base + static_cast<size_t>(func->captureSlots[i])] = func->captures[i];
+                this->placeArgs(argsBase, func->argCount, 0);
             } break;
             default: break;
         }

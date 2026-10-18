@@ -59,6 +59,13 @@ namespace LOICollection::frontend::ir {
 
         std::vector<Scope> scopes;
 
+        struct LambdaCaptureCtx {
+            std::vector<LambdaCapture> captures;
+            std::unordered_map<std::string, int> slots;
+        };
+
+        std::vector<LambdaCaptureCtx> lambdaCtxs;
+
         size_t methodCount = 0;
         size_t forInCounter = 0;
         size_t declarativeCounter = 0;
@@ -168,7 +175,7 @@ namespace LOICollection::frontend::ir {
         int addConstant(const ValueNode::ValueType& val);
         int addFunction(const std::string& name, int argCount);
         int addMacro(const std::string& name, int argCount);
-        int addLambda(int bodyIndex, int argCount, int captureCount);
+        int addLambda(int bodyIndex, int argCount, const std::vector<LambdaCapture>& captures);
         int addVirtualCall(int classIndex, int ordinal, int argCount);
         int addByNameCall(const std::string& methodName, int argCount);
         int addSuperCall(int constructorIndex, int argCount);
@@ -186,6 +193,8 @@ namespace LOICollection::frontend::ir {
         int closeScope();
         int declareSlot(const std::string& name);
         [[nodiscard]] std::optional<int> resolveSlot(const std::string& name) const;
+        [[nodiscard]] std::optional<int> resolveOrCapture(const std::string& name);
+        int captureVariable(const std::string& name, int sourceSlot);
 
         void predeclareLocals(ASTNode& body);
 

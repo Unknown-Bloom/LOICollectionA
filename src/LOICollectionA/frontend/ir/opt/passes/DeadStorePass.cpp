@@ -46,6 +46,17 @@ namespace LOICollection::frontend::ir::opt {
                     );
                     break;
 
+                case MirOp::MAKE_LAMBDA: {
+                    const auto& meta = mChunk.lambdas[instr.operand];
+                    for (const auto& capture : meta.captures) {
+                        if (capture.sourceSlot >= 0)
+                            mPending.erase(VariableKey{ capture.sourceSlot });
+                        else
+                            mPending.erase(VariableKey{ capture.name });
+                    }
+                    break;
+                }
+
                 default:
                     break;
             }
