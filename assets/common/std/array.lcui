@@ -432,3 +432,232 @@ func arrShuffle(a) {
     ]
     return out;
 }
+
+/* arrInterleave alternates elements of a and b. */
+func arrInterleave(a, b) {
+    let out = [];
+    let i = 0;
+    while (i < a.length() || i < b.length()) [
+        if (i < a.length()) [ out.push(a[i]); ]
+        if (i < b.length()) [ out.push(b[i]); ]
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* arrIntersperse inserts sep between every pair of elements. */
+func arrIntersperse(a, sep) {
+    let out = [];
+    let i = 0;
+    while (i < a.length()) [
+        if (i > 0) [ out.push(sep); ]
+        out.push(a[i]);
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* arrUniqueBy keeps the first element for each key produced by f. */
+func arrUniqueBy(a, f: Fn1) {
+    let out = [];
+    let seen = new Map();
+    for (v in a) [
+        let key = "" + f.call(v);
+        if (!seen.has(key)) [ seen.set(key, true); out.push(v); ]
+    ]
+    return out;
+}
+
+/* arrZipWith combines paired elements with f. */
+func arrZipWith(a, b, f: Fn2) {
+    let out = [];
+    let n = a.length();
+    if (b.length() < n) [ n = b.length(); ]
+    let i = 0;
+    while (i < n) [ out.push(f.call(a[i], b[i])); i = i + 1; ]
+    return out;
+}
+
+/* arrScan returns the running fold of a starting from seed. */
+func arrScan(a, f: Fn2, seed) {
+    let out = [seed];
+    let acc = seed;
+    for (v in a) [ acc = f.call(acc, v); out.push(acc); ]
+    return out;
+}
+
+/* arrRemoveAt returns a without the element at index i. */
+func arrRemoveAt(a, i: int) {
+    let out = [];
+    let j = 0;
+    while (j < a.length()) [ if (j != i) [ out.push(a[j]); ] j = j + 1; ]
+    return out;
+}
+
+/* arrInsertAt returns a with v inserted at index i. */
+func arrInsertAt(a, i: int, v) {
+    let out = [];
+    let j = 0;
+    while (j < a.length()) [
+        if (j == i) [ out.push(v); ]
+        out.push(a[j]);
+        j = j + 1;
+    ]
+    if (i >= a.length()) [ out.push(v); ]
+    return out;
+}
+
+/* arrSwap returns a copy with the elements at i and j exchanged. */
+func arrSwap(a, i: int, j: int) {
+    let out = [];
+    for (v in a) [ out.push(v); ]
+    let tmp = out[i];
+    out[i] = out[j];
+    out[j] = tmp;
+    return out;
+}
+
+/* arrFrequencies returns a map of element -> occurrence count. */
+func arrFrequencies(a) -> Map {
+    let m = new Map();
+    for (v in a) [
+        let key = "" + v;
+        if (m.has(key)) [ m.set(key, m.get(key) + 1); ]
+        if (!m.has(key)) [ m.set(key, 1); ]
+    ]
+    return m;
+}
+
+/* arrMode returns the most frequent element, or None when empty. */
+func arrMode(a) {
+    let m = arrFrequencies(a);
+    let best = None;
+    let bestCount = 0;
+    for (k in m) [
+        let c = m.get(k);
+        if (c > bestCount) [ bestCount = c; best = k.toInt(); ]
+    ]
+    return best;
+}
+
+/* arrVariance returns the population variance of a (0 for empty). */
+func arrVariance(a) -> float {
+    let n = a.length();
+    if (n == 0) [ return 0.0; ]
+    let mean = 0.0;
+    for (v in a) [ mean = mean + v; ]
+    mean = mean / (n * 1.0);
+    let sumSq = 0.0;
+    for (v in a) [ sumSq = sumSq + (v - mean) * (v - mean); ]
+    return sumSq / (n * 1.0);
+}
+
+/* arrStdDev returns the population standard deviation of a. */
+func arrStdDev(a) -> float {
+    return math::sqrt(arrVariance(a));
+}
+
+/* arrCartesian returns every [x, y] pair from a and b. */
+func arrCartesian(a, b) {
+    let out = [];
+    for (x in a) [ for (y in b) [ out.push([x, y]); ] ]
+    return out;
+}
+
+/* arrSymmetricDifference returns elements present in exactly one of a, b. */
+func arrSymmetricDifference(a, b) {
+    let out = [];
+    for (v in a) [ if (arrIndexOfValue(b, v) < 0) [ out.push(v); ] ]
+    for (v in b) [ if (arrIndexOfValue(a, v) < 0) [ out.push(v); ] ]
+    return out;
+}
+
+/* arrSorted returns a sorted copy of a without mutating it. */
+func arrSorted(a) {
+    let out = [];
+    for (v in a) [ out.push(v); ]
+    out.sort();
+    return out;
+}
+
+/* arrCompact returns a without None elements. */
+func arrCompact(a) {
+    let out = [];
+    for (v in a) [ if (v != None) [ out.push(v); ] ]
+    return out;
+}
+
+/* arrPad extends a with v up to length n. */
+func arrPad(a, n: int, v) {
+    let out = [];
+    for (x in a) [ out.push(x); ]
+    while (out.length() < n) [ out.push(v); ]
+    return out;
+}
+
+/* mapMapValues returns a map with every value transformed by f. */
+func mapMapValues(m: Map, f: Fn1) -> Map {
+    let out = new Map();
+    for (k in m) [ out.set(k, f.call(m.get(k))); ]
+    return out;
+}
+
+/* mapMapKeys returns a map with every key transformed by f. */
+func mapMapKeys(m: Map, f: Fn1) -> Map {
+    let out = new Map();
+    for (k in m) [ out.set("" + f.call(k), m.get(k)); ]
+    return out;
+}
+
+/* mapFilter keeps only entries whose value satisfies pred. */
+func mapFilter(m: Map, pred: Fn2) -> Map {
+    let out = new Map();
+    for (k in m) [ if (pred.call(k, m.get(k))) [ out.set(k, m.get(k)); ] ]
+    return out;
+}
+
+/* mapFromArray builds a map from items via keyFn and valFn. */
+func mapFromArray(a, keyFn: Fn1, valFn: Fn1) -> Map {
+    let out = new Map();
+    for (item in a) [ out.set("" + keyFn.call(item), valFn.call(item)); ]
+    return out;
+}
+
+/* mapKeysWhere returns the keys whose value satisfies pred. */
+func mapKeysWhere(m: Map, pred: Fn1) {
+    let out = [];
+    for (k in m) [ if (pred.call(m.get(k))) [ out.push(k); ] ]
+    return out;
+}
+
+/* mapForEach invokes f for every [key, value] pair. */
+func mapForEach(m: Map, f: Fn2) {
+    for (k in m) [ f.call(k, m.get(k)); ]
+}
+
+/* mapUpdate applies f to the value stored under k, in place. */
+func mapUpdate(m: Map, k, f: Fn1) -> Map {
+    if (m.has(k)) [ m.set(k, f.call(m.get(k))); ]
+    return m;
+}
+
+/* setMap returns a new set with f applied to every member. */
+func setMap(s: Map, f: Fn1) -> Map {
+    let out = new Map();
+    for (k in s) [ out.set("" + f.call(k.toInt()), true); ]
+    return out;
+}
+
+/* setFilter returns a new set keeping members where pred holds. */
+func setFilter(s: Map, pred: Fn1) -> Map {
+    let out = new Map();
+    for (k in s) [ if (pred.call(k.toInt())) [ out.set(k, true); ] ]
+    return out;
+}
+
+/* setCount returns the number of members satisfying pred. */
+func setCount(s: Map, pred: Fn1) -> int {
+    let n = 0;
+    for (k in s) [ if (pred.call(k.toInt())) [ n = n + 1; ] ]
+    return n;
+}

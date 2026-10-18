@@ -172,3 +172,67 @@ func setDifference(a: Map, b: Map) {
     ]
     return out;
 }
+
+/* mapInvert swaps keys and values. */
+func mapInvert(m: Map) -> Map {
+    let out = new Map();
+    for (k in m) [ out.set("" + m.get(k), k); ]
+    return out;
+}
+
+/* mapToArray returns [key, value] pairs in key order. */
+func mapToArray(m: Map) {
+    let out = [];
+    for (k in m) [ out.push([k, m.get(k)]); ]
+    return out;
+}
+
+/* mapHasAny reports whether m contains at least one of keys. */
+func mapHasAny(m: Map, keys) -> bool {
+    for (k in keys) [ if (m.has(k)) [ return true; ] ]
+    return false;
+}
+
+/* mapHasAll reports whether m contains every one of keys. */
+func mapHasAll(m: Map, keys) -> bool {
+    for (k in keys) [ if (!m.has(k)) [ return false; ] ]
+    return true;
+}
+
+/* mapPick returns the submap restricted to keys. */
+func mapPick(m: Map, keys) -> Map {
+    let out = new Map();
+    for (k in keys) [ if (m.has(k)) [ out.set(k, m.get(k)); ] ]
+    return out;
+}
+
+/* mapOmit returns the submap with keys removed. */
+func mapOmit(m: Map, keys) -> Map {
+    let out = new Map();
+    for (k in m) [
+        let drop = false;
+        for (rk in keys) [ if (rk == k) [ drop = true; ] ]
+        if (!drop) [ out.set(k, m.get(k)); ]
+    ]
+    return out;
+}
+
+/* mapEquals reports whether a and b hold identical entries. */
+func mapEquals(a: Map, b: Map) -> bool {
+    if (a.length() != b.length()) [ return false; ]
+    for (k in a) [
+        if (!b.has(k)) [ return false; ]
+        if (b.get(k) != a.get(k)) [ return false; ]
+    ]
+    return true;
+}
+
+/* mapIsSubmap reports whether every entry of a is also in b. */
+func mapIsSubmap(a: Map, b: Map) -> bool {
+    for (k in a) [
+        if (!b.has(k)) [ return false; ]
+        if (b.get(k) != a.get(k)) [ return false; ]
+    ]
+    return true;
+}
+

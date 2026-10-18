@@ -1,0 +1,487 @@
+/* Std: number utilities — formatting, arithmetic helpers and small integer
+ * algorithms. num.lcui deliberately avoids iter.lcui and string.lcui so it
+ * can be imported by any module without disturbing the loader's single-merge
+ * rule for those dependencies. Every function is pure and deterministic. */
+
+/* numClamp restricts x to the inclusive range [lo, hi]. */
+func numClamp(x, lo, hi) {
+    if (x < lo) [ return lo; ]
+    if (x > hi) [ return hi; ]
+    return x;
+}
+
+/* numSign returns -1, 0 or 1 for negative, zero and positive x. */
+func numSign(x) -> int {
+    if (x > 0) [ return 1; ]
+    if (x < 0) [ return -1; ]
+    return 0;
+}
+
+/* numIsEven reports whether n is divisible by two. */
+func numIsEven(n) -> bool {
+    return (n % 2) == 0;
+}
+
+/* numIsOdd reports whether n is not divisible by two. */
+func numIsOdd(n) -> bool {
+    return (n % 2) == 1;
+}
+
+/* numAbs returns the magnitude of x. */
+func numAbs(x) {
+    if (x < 0) [ return -x; ]
+    return x;
+}
+
+/* numIntDiv returns the floor of a / b for b > 0 (integer division). */
+func numIntDiv(a, b) -> int {
+    if (b <= 0) [ return 0; ]
+    let q = 0;
+    let r = a;
+    while (r >= b) [ r = r - b; q = q + 1; ]
+    return q;
+}
+
+/* numGcd returns the greatest common divisor of a and b (non-negative). */
+func numGcd(a, b) -> int {
+    if (a < 0) [ a = -a; ]
+    if (b < 0) [ b = -b; ]
+    while (b != 0) [
+        let t = b;
+        b = a % b;
+        a = t;
+    ]
+    return a;
+}
+
+/* numLcm returns the least common multiple of a and b (non-negative). */
+func numLcm(a, b) -> int {
+    if (a == 0 || b == 0) [ return 0; ]
+    let aa = numAbs(a);
+    let bb = numAbs(b);
+    let i = 1;
+    while (i <= bb) [
+        let m = aa * i;
+        if ((m % bb) == 0) [ return m; ]
+        i = i + 1;
+    ]
+    return 0;
+}
+
+/* numIsPrime reports whether n is a prime number (n >= 2). */
+func numIsPrime(n) -> bool {
+    if (n < 2) [ return false; ]
+    if (n < 4) [ return true; ]
+    if ((n % 2) == 0) [ return false; ]
+    let i = 3;
+    while ((i * i) <= n) [
+        if ((n % i) == 0) [ return false; ]
+        i = i + 2;
+    ]
+    return true;
+}
+
+/* numPrimesUpTo returns every prime in [2, n] as an array. */
+func numPrimesUpTo(n) {
+    let out = [];
+    let i = 2;
+    while (i <= n) [
+        if (numIsPrime(i)) [ out.push(i); ]
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* numFactorize returns the prime factors of n (>=2) least significant first. */
+func numFactorize(n) {
+    let out = [];
+    if (n < 2) [ return out; ]
+    while ((n % 2) == 0) [ out.push(2); n = numIntDiv(n, 2); ]
+    let i = 3;
+    while ((i * i) <= n) [
+        while ((n % i) == 0) [ out.push(i); n = numIntDiv(n, i); ]
+        i = i + 2;
+    ]
+    if (n > 1) [ out.push(n); ]
+    return out;
+}
+
+/* numFactorial returns n! for n >= 0 (overflows past 12). */
+func numFactorial(n) -> int {
+    let r = 1;
+    let i = 2;
+    while (i <= n) [ r = r * i; i = i + 1; ]
+    return r;
+}
+
+/* numFib returns the nth Fibonacci number (fib(0)=0, fib(1)=1). */
+func numFib(n) -> int {
+    if (n < 2) [ return n; ]
+    let a = 0;
+    let b = 1;
+    let i = 2;
+    while (i <= n) [
+        let t = a + b;
+        a = b;
+        b = t;
+        i = i + 1;
+    ]
+    return b;
+}
+
+/* numDigits returns the decimal digits of n (>=0) least significant first. */
+func numDigits(n) {
+    if (n < 0) [ n = -n; ]
+    if (n == 0) [ return [0]; ]
+    let out = [];
+    while (n > 0) [
+        out.push(n % 10);
+        n = numIntDiv(n, 10);
+    ]
+    return out;
+}
+
+/* numSumDigits returns the sum of the decimal digits of n. */
+func numSumDigits(n) -> int {
+    if (n < 0) [ n = -n; ]
+    let total = 0;
+    while (n > 0) [
+        total = total + (n % 10);
+        n = numIntDiv(n, 10);
+    ]
+    return total;
+}
+
+/* numReverse returns the decimal digits of n reversed. */
+func numReverse(n) -> int {
+    if (n < 0) [ return -numReverse(-n); ]
+    let r = 0;
+    while (n > 0) [
+        r = r * 10 + (n % 10);
+        n = numIntDiv(n, 10);
+    ]
+    return r;
+}
+
+/* numIsPalindromeNum reports whether n reads the same forwards and back. */
+func numIsPalindromeNum(n) -> bool {
+    if (n < 0) [ n = -n; ]
+    return n == numReverse(n);
+}
+
+/* numToBin returns the binary (base-2) text form of n (>=0). */
+func numToBin(n) {
+    if (n == 0) [ return "0"; ]
+    if (n < 0) [ return "-" + numToBin(-n); ]
+    let out = "";
+    while (n > 0) [
+        if ((n % 2) == 0) [ out = "0" + out; ]
+        if ((n % 2) == 1) [ out = "1" + out; ]
+        n = numIntDiv(n, 2);
+    ]
+    return out;
+}
+
+/* numToHex returns the hexadecimal (base-16) text form of n (>=0). */
+func numToHex(n) {
+    if (n == 0) [ return "0"; ]
+    let hexd = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f"];
+    let out = "";
+    while (n > 0) [
+        let d = n % 16;
+        out = hexd[d] + out;
+        n = numIntDiv(n, 16);
+    ]
+    return out;
+}
+
+/* numToRoman returns the Roman-numeral text for n in [1, 3999]. */
+func numToRoman(n) {
+    let out = "";
+    let values = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1];
+    let symbols = ["M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"];
+    let i = 0;
+    while (i < values.length()) [
+        while (n >= values[i]) [
+            out = out + symbols[i];
+            n = n - values[i];
+        ]
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* numLerp interpolates linearly from a to b by t in [0, 1]. */
+func numLerp(a, b, t) {
+    return a + (b - a) * t;
+}
+
+/* numPow returns base raised to the non-negative integer exp. */
+func numPow(base, exp) -> int {
+    let r = 1;
+    let i = 0;
+    while (i < exp) [ r = r * base; i = i + 1; ]
+    return r;
+}
+
+/* numDivisors returns every positive divisor of n, sorted ascending. */
+func numDivisors(n) {
+    let out = [];
+    if (n <= 0) [ return out; ]
+    let i = 1;
+    while (i * i <= n) [
+        if ((n % i) == 0) [
+            out.push(i);
+            let j = numIntDiv(n, i);
+            if (j != i) [ out.push(j); ]
+        ]
+        i = i + 1;
+    ]
+    out.sort();
+    return out;
+}
+
+/* numSumOfDivisors returns the sum of every positive divisor of n. */
+func numSumOfDivisors(n) -> int {
+    let total = 0;
+    if (n <= 0) [ return 0; ]
+    let i = 1;
+    while (i * i <= n) [
+        if ((n % i) == 0) [
+            total = total + i;
+            let j = numIntDiv(n, i);
+            if (j != i) [ total = total + j; ]
+        ]
+        i = i + 1;
+    ]
+    return total;
+}
+
+/* numIsPerfect reports whether n equals the sum of its proper divisors. */
+func numIsPerfect(n) -> bool {
+    if (n <= 1) [ return false; ]
+    return numSumOfDivisors(n) == (n * 2);
+}
+
+/* numIsAbundant reports whether n is exceeded by its proper divisors. */
+func numIsAbundant(n) -> bool {
+    if (n <= 1) [ return false; ]
+    return numSumOfDivisors(n) > (n * 2);
+}
+
+/* numIsDeficient reports whether n exceeds the sum of its proper divisors. */
+func numIsDeficient(n) -> bool {
+    if (n <= 1) [ return false; ]
+    return numSumOfDivisors(n) < (n * 2);
+}
+
+/* numTotient returns Euler's totient of n (count coprime to n in [1, n]). */
+func numTotient(n) -> int {
+    if (n <= 0) [ return 0; ]
+    let count = 0;
+    let k = 1;
+    while (k <= n) [
+        if (numGcd(k, n) == 1) [ count = count + 1; ]
+        k = k + 1;
+    ]
+    return count;
+}
+
+/* numDigitCount returns the number of decimal digits of n (>=0 yields 1). */
+func numDigitCount(n) -> int {
+    if (n < 0) [ n = -n; ]
+    if (n == 0) [ return 1; ]
+    let c = 0;
+    while (n > 0) [ c = c + 1; n = numIntDiv(n, 10); ]
+    return c;
+}
+
+/* numIsArmstrong reports whether n equals the sum of its digits raised to
+ * the power of its digit count (a narcissistic number). */
+func numIsArmstrong(n) -> bool {
+    if (n < 0) [ n = -n; ]
+    let len = numDigitCount(n);
+    let sum = 0;
+    let t = n;
+    while (t > 0) [
+        let d = t % 10;
+        sum = sum + numPow(d, len);
+        t = numIntDiv(t, 10);
+    ]
+    return sum == n;
+}
+
+/* numSumRange returns the sum of the integers in [a, b] inclusive. */
+func numSumRange(a, b) -> int {
+    let total = 0;
+    let i = a;
+    while (i <= b) [ total = total + i; i = i + 1; ]
+    return total;
+}
+
+/* numProductRange returns the product of the integers in [a, b] inclusive. */
+func numProductRange(a, b) -> int {
+    let total = 1;
+    let i = a;
+    while (i <= b) [ total = total * i; i = i + 1; ]
+    return total;
+}
+
+/* numManhattan returns the Manhattan distance between two 2D points. */
+func numManhattan(ax, ay, bx, by) -> int {
+    let dx = ax - bx;
+    if (dx < 0) [ dx = -dx; ]
+    let dy = ay - by;
+    if (dy < 0) [ dy = -dy; ]
+    return dx + dy;
+}
+
+/* numIsCoprime reports whether gcd(a, b) equals 1. */
+func numIsCoprime(a, b) -> bool {
+    return numGcd(a, b) == 1;
+}
+
+/* numIsPowerOfTwo reports whether n is a positive power of two. */
+func numIsPowerOfTwo(n) -> bool {
+    if (n <= 0) [ return false; ]
+    while ((n % 2) == 0) [ n = numIntDiv(n, 2); ]
+    return n == 1;
+}
+
+/* numGreatestPowerOfTwoLe returns the largest power of two not exceeding n. */
+func numGreatestPowerOfTwoLe(n) -> int {
+    if (n <= 0) [ return 0; ]
+    let p = 1;
+    while (p * 2 <= n) [ p = p * 2; ]
+    return p;
+}
+
+/* numMin returns the smaller of a and b. */
+func numMin(a, b) {
+    if (a < b) [ return a; ]
+    return b;
+}
+
+/* numMax returns the larger of a and b. */
+func numMax(a, b) {
+    if (a > b) [ return a; ]
+    return b;
+}
+
+/* numIsBetween reports whether n lies within the inclusive [lo, hi]. */
+func numIsBetween(n, lo, hi) -> bool {
+    return n >= lo && n <= hi;
+}
+
+/* numIsSquare reports whether n is a perfect square (n >= 0). */
+func numIsSquare(n) -> bool {
+    if (n < 0) [ return false; ]
+    let k = 0;
+    while (k * k <= n) [
+        if (k * k == n) [ return true; ]
+        k = k + 1;
+    ]
+    return false;
+}
+
+/* numIsTriangular reports whether n is a triangular number. */
+func numIsTriangular(n) -> bool {
+    if (n <= 0) [ return false; ]
+    let sum = 0;
+    let k = 1;
+    while (sum < n) [ sum = sum + k; k = k + 1; ]
+    return sum == n;
+}
+
+/* numTriangular returns the kth triangular number T(k) = k(k+1)/2. */
+func numTriangular(k) -> int {
+    let sum = 0;
+    let i = 1;
+    while (i <= k) [ sum = sum + i; i = i + 1; ]
+    return sum;
+}
+
+/* numFromDigits rebuilds an integer from a least-significant-first digit array. */
+func numFromDigits(arr) -> int {
+    let r = 0;
+    let place = 1;
+    for (d in arr) [
+        r = r + d * place;
+        place = place * 10;
+    ]
+    return r;
+}
+
+/* numIsHarshad reports whether n is divisible by the sum of its digits. */
+func numIsHarshad(n) -> bool {
+    if (n <= 0) [ return false; ]
+    return (n % numSumDigits(n)) == 0;
+}
+
+/* numCountDivisors returns how many positive divisors n has. */
+func numCountDivisors(n) -> int {
+    return numDivisors(n).length();
+}
+
+/* numGcd3 returns the greatest common divisor of three values. */
+func numGcd3(a, b, c) -> int {
+    return numGcd(numGcd(a, b), c);
+}
+
+/* numIsEmirp reports whether n is prime, its reversal is a different prime. */
+func numIsEmirp(n) -> bool {
+    if (!numIsPrime(n)) [ return false; ]
+    let r = numReverse(n);
+    if (r == n) [ return false; ]
+    return numIsPrime(r);
+}
+
+/* numSumOfProperDivisors returns the sum of divisors of n excluding n itself. */
+func numSumOfProperDivisors(n) -> int {
+    return numSumOfDivisors(n) - n;
+}
+
+/* numIsHappy reports whether repeatedly summing squared digits reaches 1. */
+func numIsHappy(n) -> bool {
+    while (n != 1) [
+        let s = 0;
+        let d = numDigits(n);
+        for (x in d) [ s = s + x * x; ]
+        if (s == 1) [ return true; ]
+        if (s == 4) [ return false; ]
+        n = s;
+    ]
+    return true;
+}
+
+/* numNextPrime returns the smallest prime strictly greater than n. */
+func numNextPrime(n) -> int {
+    let m = n + 1;
+    while (!numIsPrime(m)) [ m = m + 1; ]
+    return m;
+}
+
+/* numPrevPrime returns the largest prime strictly less than n, or 0 if none. */
+func numPrevPrime(n) -> int {
+    let m = n - 1;
+    while (m > 1) [
+        if (numIsPrime(m)) [ return m; ]
+        m = m - 1;
+    ]
+    return 0;
+}
+
+/* numIsMersenne reports whether n is prime and one less than a power of two. */
+func numIsMersenne(n) -> bool {
+    if (!numIsPrime(n)) [ return false; ]
+    let t = n + 1;
+    return numIsPowerOfTwo(t);
+}
+
+/* numDigitalRoot returns the single-digit digital root of n (0 for n <= 0). */
+func numDigitalRoot(n) -> int {
+    if (n <= 0) [ return 0; ]
+    let r = n;
+    while (r >= 10) [ r = numSumDigits(r); ]
+    return r;
+}

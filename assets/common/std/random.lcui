@@ -1,0 +1,168 @@
+/* Std: deterministic pseudo-random number generation.
+ *
+ * Implements a 16-bit linear congruential generator (mod 65536, multiplier
+ * 25173, increment 1) which has a full period of 65536. The whole thing is
+ * seedable and side-effect free: every helper takes an explicit Rng, so
+ * results reproduce exactly and never touch the non-seedable native RNG.
+ *
+ * The multiplier is chosen so the largest intermediate product
+ * (65535 * 25173 = 1649996955) still fits in a 32-bit int, which keeps the
+ * values identical across every engine build. */
+
+import "math.lcui" { sqrt };
+
+/* Rng carries the generator state and exposes the raw draw primitives. */
+class Rng {
+    public: state: int = 1;
+
+    /* Rng builds a generator from a seed, normalising it into [0, 65535]. */
+    Rng(seed: int) {
+        let s = seed % 65536;
+        if (s < 0) [ s = s + 65536; ]
+        this.state = s;
+    }
+
+    /* nextU16 returns the next value in [0, 65535]. */
+    func nextU16() -> int {
+        let x = this.state * 25173;
+        x = x + 1;
+        x = x % 65536;
+        this.state = x;
+        return this.state;
+    }
+
+    /* nextUnit returns a float in [0, 1). */
+    func nextUnit() -> float {
+        return this.nextU16() / 65536.0;
+    }
+}
+
+/* randInt returns an integer in the inclusive range [lo, hi]. */
+func randInt(rng: Rng, lo: int, hi: int) -> int {
+    let span = hi - lo + 1;
+    let r = rng.nextU16() % span;
+    if (r < 0) [ r = r + span; ]
+    return lo + r;
+}
+
+/* randFloat returns a float in [lo, hi). */
+func randFloat(rng: Rng, lo: float, hi: float) -> float {
+    return lo + rng.nextUnit() * (hi - lo);
+}
+
+/* randBool returns true with probability 0.5. */
+func randBool(rng: Rng) -> bool {
+    return rng.nextU16() % 2 == 0;
+}
+
+/* randSign returns 1 or -1 with equal probability. */
+func randSign(rng: Rng) -> int {
+    if (randBool(rng)) [ return 1; ]
+    return -1;
+}
+
+/* randChoice returns a uniformly chosen element of a (None for empty). */
+func randChoice(rng: Rng, a) {
+    if (a.length() == 0) [ return None; ]
+    return a[randInt(rng, 0, a.length() - 1)];
+}
+
+/* randShuffle returns a new array with the elements of a in random order
+ * (Fisher-Yates), leaving a unchanged. */
+func randShuffle(rng: Rng, a) {
+    let out = [];
+    for (v in a) [ out.push(v); ]
+    let n = out.length();
+    let i = n - 1;
+    while (i > 0) [
+        let j = randInt(rng, 0, i);
+        let tmp = out[i];
+        out[i] = out[j];
+        out[j] = tmp;
+        i = i - 1;
+    ]
+    return out;
+}
+
+/* randSample returns up to n distinct elements chosen without replacement. */
+func randSample(rng: Rng, a, n: int) {
+    let pool = randShuffle(rng, a);
+    let out = [];
+    let count = 0;
+    while (count < n && count < pool.length()) [
+        out.push(pool[count]);
+        count = count + 1;
+    ]
+    return out;
+}
+
+/* randWeighted picks an index of weights proportional to its value. */
+func randWeighted(rng: Rng, weights) -> int {
+    let total = 0;
+    for (w in weights) [ total = total + w; ]
+    if (total <= 0) [ return 0; ]
+    let pick = rng.nextUnit() * total;
+    let acc = 0;
+    let i = 0;
+    while (i < weights.length()) [
+        acc = acc + weights[i];
+        if (pick < acc) [ return i; ]
+        i = i + 1;
+    ]
+    return weights.length() - 1;
+}
+
+/* randDice rolls `count` dice with `sides` faces and returns the sum. */
+func randDice(rng: Rng, count: int, sides: int) -> int {
+    let total = 0;
+    let i = 0;
+    while (i < count) [
+        total = total + randInt(rng, 1, sides);
+        i = i + 1;
+    ]
+    return total;
+}
+
+/* randInts returns an array of n integers drawn from [lo, hi]. */
+func randInts(rng: Rng, lo: int, hi: int, n: int) {
+    let out = [];
+    let i = 0;
+    while (i < n) [
+        out.push(randInt(rng, lo, hi));
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* randGaussian returns a sample from a normal distribution (mean 0, sd 1)
+ * using the Box-Muller transform. */
+func randGaussian(rng: Rng) -> float {
+    let u1 = rng.nextUnit();
+    let u2 = rng.nextUnit();
+    if (u1 < 0.000000001) [ u1 = 0.000000001; ]
+    let mag = sqrt(-2 * math::log(u1));
+    return mag * math::cos(2 * 3.141592653589793 * u2);
+}
+
+/* randId returns a random lowercase hex identifier of the given length. */
+func randId(rng: Rng, len: int) -> string {
+    let hex = "0123456789abcdef";
+    let out = "";
+    let i = 0;
+    while (i < len) [
+        out = out + charAtHex(hex, randInt(rng, 0, 15));
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* charAtHex is a tiny local helper returning the hex digit at an index. */
+func charAtHex(hex: string, i: int) -> string {
+    let out = "";
+    let j = 0;
+    for (c in hex) [
+        if (j == i) [ out = c; ]
+        j = j + 1;
+    ]
+    return out;
+}

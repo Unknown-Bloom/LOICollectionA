@@ -1,0 +1,101 @@
+/* Std: extra set operations layered on the Map-as-set convention used by
+ * map.lcui (members are stored under their stringified key with value true).
+ * These helpers complement map.lcui's setNew/setAdd/setUnion and friends
+ * with comparisons, predicates and transformations the core set does not
+ * yet cover. Like map.lcui, members compare by their stringified key. */
+
+/* setIsSubset reports whether every member of a is also present in b. */
+func setIsSubset(a: Map, b: Map) -> bool {
+    for (k in a) [ if (!b.has(k)) [ return false; ] ]
+    return true;
+}
+
+/* setIsSuperset reports whether every member of b is also present in a. */
+func setIsSuperset(a: Map, b: Map) -> bool {
+    return setIsSubset(b, a);
+}
+
+/* setContainsAll reports whether a contains every member of b. */
+func setContainsAll(a: Map, b: Map) -> bool {
+    return setIsSubset(b, a);
+}
+
+/* setIsDisjoint reports whether a and b share no member. */
+func setIsDisjoint(a: Map, b: Map) -> bool {
+    for (k in a) [ if (b.has(k)) [ return false; ] ]
+    return true;
+}
+
+/* setEquals reports whether a and b contain exactly the same members. */
+func setEquals(a: Map, b: Map) -> bool {
+    if (a.length() != b.length()) [ return false; ]
+    return setIsSubset(a, b);
+}
+
+/* setSymmetricDifference returns members present in exactly one of a, b. */
+func setSymmetricDifference(a: Map, b: Map) {
+    let out = new Map();
+    for (k in a) [ if (!b.has(k)) [ out.set(k, true); ] ]
+    for (k in b) [ if (!a.has(k)) [ out.set(k, true); ] ]
+    return out;
+}
+
+/* setToggle flips membership of v in the set, mutating it in place. */
+func setToggle(s: Map, v) -> Map {
+    if (s.has("" + v)) [ s.remove("" + v); return s; ]
+    s.set("" + v, true);
+    return s;
+}
+
+/* setClear removes every member, mutating the set in place. */
+func setClear(s: Map) -> Map {
+    let ks = [];
+    for (k in s) [ ks.push(k); ]
+    for (k in ks) [ s.remove(k); ]
+    return s;
+}
+
+/* setIsEmpty reports whether the set has no members. */
+func setIsEmpty(s: Map) -> bool {
+    return s.length() == 0;
+}
+
+/* setCopy returns a new set sharing the members of s. */
+func setCopy(s: Map) {
+    let out = new Map();
+    for (k in s) [ out.set(k, true); ]
+    return out;
+}
+
+/* setMin returns the smallest numeric member, or None if the set is empty. */
+func setMin(s: Map) {
+    let best = None;
+    let seen = false;
+    for (k in s) [
+        let n = k.toInt();
+        if (!seen) [ best = n; seen = true; ]
+        if (n < best) [ best = n; ]
+    ]
+    return best;
+}
+
+/* setMax returns the largest numeric member, or None if the set is empty. */
+func setMax(s: Map) {
+    let best = None;
+    let seen = false;
+    for (k in s) [
+        let n = k.toInt();
+        if (!seen) [ best = n; seen = true; ]
+        if (n > best) [ best = n; ]
+    ]
+    return best;
+}
+
+/* setPop removes and returns an arbitrary member, or None if empty. */
+func setPop(s: Map) {
+    for (k in s) [
+        s.remove(k);
+        return k.toInt();
+    ]
+    return None;
+}

@@ -1,0 +1,154 @@
+/* Std: lightweight 2D vector helpers built on plain [x, y] arrays.
+ *
+ * Vectors are ordinary two-element arrays, so they interop with the arr*
+ * helpers and JSON for free, and every function is a pure script over
+ * numbers. Native math (sqrt, pow) backs the length and norm helpers. */
+
+/* vAdd returns the component-wise sum of a and b. */
+func vAdd(a, b) {
+    return [a[0] + b[0], a[1] + b[1]];
+}
+
+/* vSub returns the component-wise difference a - b. */
+func vSub(a, b) {
+    return [a[0] - b[0], a[1] - b[1]];
+}
+
+/* vScale multiplies every component of a by s. */
+func vScale(a, s) {
+    return [a[0] * s, a[1] * s];
+}
+
+/* vNeg returns the negation of a. */
+func vNeg(a) {
+    return [-a[0], -a[1]];
+}
+
+/* vPerp returns the perpendicular (rotated 90 degrees) of a. */
+func vPerp(a) {
+    return [-a[1], a[0]];
+}
+
+/* vDot returns the dot product of a and b. */
+func vDot(a, b) -> float {
+    return a[0] * b[0] + a[1] * b[1];
+}
+
+/* vLen returns the Euclidean length of a. */
+func vLen(a) -> float {
+    return math::sqrt(a[0] * a[0] + a[1] * a[1]);
+}
+
+/* vDist returns the distance between a and b. */
+func vDist(a, b) -> float {
+    return vLen(vSub(a, b));
+}
+
+/* vNorm returns the unit vector of a, or [0, 0] when a is zero. */
+func vNorm(a) {
+    let l = vLen(a);
+    if (l == 0) [ return [0, 0]; ]
+    return [a[0] / l, a[1] / l];
+}
+
+/* vCross returns the scalar z-component of the 2D cross product. */
+func vCross(a, b) -> float {
+    return a[0] * b[1] - a[1] * b[0];
+}
+
+/* vLerp returns the linear interpolation between a and b by t. */
+func vLerp(a, b, t) {
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+}
+
+/* vMidpoint returns the point halfway between a and b. */
+func vMidpoint(a, b) {
+    return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+}
+
+/* vDistanceSq returns the squared Euclidean distance between a and b. */
+func vDistanceSq(a, b) -> int {
+    let dx = a[0] - b[0];
+    let dy = a[1] - b[1];
+    return dx * dx + dy * dy;
+}
+
+/* vManhattan returns the Manhattan distance between a and b. */
+func vManhattan(a, b) -> int {
+    let dx = a[0] - b[0];
+    if (dx < 0) [ dx = -dx; ]
+    let dy = a[1] - b[1];
+    if (dy < 0) [ dy = -dy; ]
+    return dx + dy;
+}
+
+/* vComponentSum returns the sum of the two components. */
+func vComponentSum(a) -> int {
+    return a[0] + a[1];
+}
+
+/* vIsZero reports whether both components are zero. */
+func vIsZero(a) -> bool {
+    return a[0] == 0 && a[1] == 0;
+}
+
+/* vEq reports whether two vectors are component-wise equal. */
+func vEq(a, b) -> bool {
+    return a[0] == b[0] && a[1] == b[1];
+}
+
+/* vAbs returns the component-wise absolute value of a. */
+func vAbs(a) {
+    let x = a[0];
+    if (x < 0) [ x = -x; ]
+    let y = a[1];
+    if (y < 0) [ y = -y; ]
+    return [x, y];
+}
+
+/* vProject returns the projection of a onto b (zero when b is zero). */
+func vProject(a, b) {
+    let d = vDot(b, b);
+    if (d == 0) [ return [0, 0]; ]
+    let s = vDot(a, b) / d;
+    return [b[0] * s, b[1] * s];
+}
+
+/* vReflect returns a reflected about the normal b (a unchanged if b is zero). */
+func vReflect(a, b) {
+    let d = vDot(b, b);
+    if (d == 0) [ return [a[0], a[1]]; ]
+    let s = 2.0 * vDot(a, b) / d;
+    return [a[0] - b[0] * s, a[1] - b[1] * s];
+}
+
+/* vClampLen caps a's magnitude at maxLen, scaling it down when longer. */
+func vClampLen(a, maxLen) {
+    let l = vLen(a);
+    if (l <= maxLen) [ return [a[0], a[1]]; ]
+    let s = maxLen / l;
+    return [a[0] * s, a[1] * s];
+}
+
+/* vResize scales a to the magnitude len (zero when a is zero). */
+func vResize(a, len) {
+    let l = vLen(a);
+    if (l == 0) [ return [0, 0]; ]
+    let s = len / l;
+    return [a[0] * s, a[1] * s];
+}
+
+/* vFromAngle builds a vector of length len at angle theta (radians). */
+func vFromAngle(theta, len) {
+    return [len * math::cos(theta), len * math::sin(theta)];
+}
+
+/* vDotSelf returns the squared magnitude of a (the dot product of a with itself). */
+func vDotSelf(a) -> int {
+    return a[0] * a[0] + a[1] * a[1];
+}
+
+/* vScaleAdd returns a + s * b, the AXPY of two vectors. */
+func vScaleAdd(a, s, b) {
+    return [a[0] + s * b[0], a[1] + s * b[1]];
+}

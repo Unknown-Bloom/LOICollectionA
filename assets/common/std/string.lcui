@@ -434,3 +434,198 @@ func kebabCase(s) {
     ]
     return out;
 }
+
+/* repeatStr concatenates s `times` times (empty result when times <= 0). */
+func repeatStr(s, times: int) {
+    let out = "";
+    let i = 0;
+    while (i < times) [
+        out = out + s;
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* center centres s between pad characters until it reaches width. */
+func center(s, width: int, pad) {
+    let n = s.length();
+    if (n >= width) [ return s; ]
+    let total = width - n;
+    let out = s;
+    let i = 0;
+    while (i < total) [
+        if (i % 2 == 0) [ out = pad + out; ]
+        if (i % 2 == 1) [ out = out + pad; ]
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* isAlnum reports whether c is an ASCII letter or digit. */
+func isAlnum(c) -> bool {
+    if (isAlpha(c)) [ return true; ]
+    if (isDigit(c)) [ return true; ]
+    return false;
+}
+
+/* isLowerChar reports whether c is a lowercase ASCII letter. */
+func isLowerChar(c) -> bool {
+    let low = "abcdefghijklmnopqrstuvwxyz";
+    return low.indexOf(c) >= 0;
+}
+
+/* levenshtein returns the edit distance between a and b. */
+func levenshtein(a, b) -> int {
+    let m = a.length();
+    let n = b.length();
+    if (m == 0) [ return n; ]
+    if (n == 0) [ return m; ]
+    let prev = [];
+    let i = 0;
+    while (i <= m) [ prev.push(i); i = i + 1; ]
+    let j = 0;
+    while (j < n) [
+        let cur = [j + 1];
+        let i2 = 0;
+        while (i2 < m) [
+            let cost = 0;
+            if (charAt(a, i2) != charAt(b, j)) [ cost = 1; ]
+            let del = prev[i2 + 1] + 1;
+            let ins = cur[i2] + 1;
+            let sub = prev[i2] + cost;
+            let best = del;
+            if (ins < best) [ best = ins; ]
+            if (sub < best) [ best = sub; ]
+            cur.push(best);
+            i2 = i2 + 1;
+        ]
+        prev = cur;
+        j = j + 1;
+    ]
+    return prev[m];
+}
+
+/* hamming returns the position differences between equal-length strings,
+ * or -1 when the lengths differ. */
+func hamming(a, b) -> int {
+    let m = a.length();
+    if (m != b.length()) [ return -1; ]
+    let diff = 0;
+    let i = 0;
+    while (i < m) [
+        if (charAt(a, i) != charAt(b, i)) [ diff = diff + 1; ]
+        i = i + 1;
+    ]
+    return diff;
+}
+
+/* reverseWords reverses the order of space-separated words. */
+func reverseWords(s) {
+    let ws = words(s);
+    let out = "";
+    let i = ws.length() - 1;
+    while (i >= 0) [
+        out = out + ws[i];
+        if (i > 0) [ out = out + " "; ]
+        i = i - 1;
+    ]
+    return out;
+}
+
+/* truncateMiddle keeps `n` characters, replacing the omitted middle with pad. */
+func truncateMiddle(s, n: int, pad) {
+    let len = s.length();
+    if (len <= n) [ return s; ]
+    let keep = n - pad.length();
+    if (keep < 1) [ return pad; ]
+    let left = 0;
+    while (left * 2 < keep) [ left = left + 1; ]
+    let right = keep - left;
+    return slice(s, 0, left) + pad + slice(s, len - right, len);
+}
+
+/* mask replaces every character of s in [start, end) with ch. */
+func mask(s, start: int, end: int, ch) {
+    let out = "";
+    let i = 0;
+    while (i < s.length()) [
+        if (i >= start && i < end) [ out = out + ch; ]
+        if (i < start || i >= end) [ out = out + charAt(s, i); ]
+        i = i + 1;
+    ]
+    return out;
+}
+
+/* expandTabs replaces each tab with `size` spaces. */
+func expandTabs(s, size: int) {
+    let pad = repeatStr(" ", size);
+    let out = "";
+    for (c in s) [
+        if (c == "\t") [ out = out + pad; ]
+        if (c != "\t") [ out = out + c; ]
+    ]
+    return out;
+}
+
+/* wordCount returns the number of space-separated words in s. */
+func wordCount(s) -> int {
+    return words(s).length();
+}
+
+/* initials returns the upper-cased first letter of every word. */
+func initials(s) {
+    let ws = words(s);
+    let out = "";
+    for (w in ws) [ out = out + upper(charAt(w, 0)); ]
+    return out;
+}
+
+/* isPalindrome reports whether s reads the same forwards and backwards. */
+func isPalindrome(s) -> bool {
+    return s == reverse(s);
+}
+
+/* rotateStr rotates the characters of s by n positions to the right. */
+func rotateStr(s, n: int) {
+    let len = s.length();
+    if (len == 0) [ return s; ]
+    let k = n % len;
+    if (k < 0) [ k = k + len; ]
+    return slice(s, len - k, len) + slice(s, 0, len - k);
+}
+
+/* toCharArray splits s into an array of single-character strings. */
+func toCharArray(s) {
+    let out = [];
+    for (c in s) [ out.push(c); ]
+    return out;
+}
+
+/* fromChars joins an array of characters back into a string. */
+func fromChars(a) {
+    let out = "";
+    for (c in a) [ out = out + c; ]
+    return out;
+}
+
+/* normalizeSpaces collapses runs of whitespace to a single space. */
+func normalizeSpaces(s) {
+    let out = "";
+    let prevSpace = false;
+    for (c in s) [
+        if (isSpace(c)) [
+            if (!prevSpace) [ out = out + " "; ]
+            prevSpace = true;
+        ]
+        if (!isSpace(c)) [ out = out + c; prevSpace = false; ]
+    ]
+    return out;
+}
+
+/* isTitle reports whether every word of s begins with an upper-case letter. */
+func isTitle(s) -> bool {
+    let ws = words(s);
+    if (ws.length() == 0) [ return false; ]
+    for (w in ws) [ if (!isUpper(charAt(w, 0))) [ return false; ] ]
+    return true;
+}

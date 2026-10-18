@@ -285,3 +285,100 @@ func median(a) {
     if (n % 2 == 1) [ return sorted[mid]; ]
     return (sorted[mid - 1] + sorted[mid]) / 2;
 }
+
+/* divmod returns the floor quotient and remainder of a / b as [q, r]. */
+func divmod(a: int, b: int) {
+    let q = trunc(a / b);
+    if (a < 0 && (a % b) != 0) [ q = q - 1; ]
+    return [q, a - q * b];
+}
+
+/* isPowerOfTwo reports whether n is a positive power of two. */
+func isPowerOfTwo(n: int) -> bool {
+    if (n <= 0) [ return false; ]
+    while (n % 2 == 0) [ n = trunc(n / 2); ]
+    return n == 1;
+}
+
+/* nextPow2 returns the smallest power of two that is >= n. */
+func nextPow2(n: int) -> int {
+    if (n <= 1) [ return 1; ]
+    let p = 1;
+    while (p < n) [ p = p * 2; ]
+    return p;
+}
+
+/* logn returns the base-`base` logarithm of x. */
+func logn(x, base) -> float {
+    return math::log(x) / math::log(base);
+}
+
+/* exp returns e raised to the power x. */
+func exp(x) -> float {
+    return math::pow(euler(), x);
+}
+
+/* lerpAngle interpolates between angles along the shortest arc. */
+func lerpAngle(a: float, b: float, t: float) -> float {
+    let d = b - a;
+    while (d > 3.141592653589793) [ d = d - 6.283185307179586; ]
+    while (d < -3.141592653589793) [ d = d + 6.283185307179586; ]
+    return a + d * t;
+}
+
+/* clampMagnitude clamps v to lie within [-max, max]. */
+func clampMagnitude(v: float, max: float) -> float {
+    if (v < 0) [ if (-v <= max) [ return v; ] return -max; ]
+    if (v > max) [ return max; ]
+    return v;
+}
+
+/* smoothstep eases x from 0 to 1 between the edges e0 and e1. */
+func smoothstep(e0: float, e1: float, x: float) -> float {
+    if (x <= e0) [ return 0.0; ]
+    if (x >= e1) [ return 1.0; ]
+    let t = (x - e0) / (e1 - e0);
+    return t * t * (3.0 - 2.0 * t);
+}
+
+/* wrap maps x into the half-open interval [0, m). */
+func wrap(x: int, m: int) -> int {
+    let r = x % m;
+    if (r < 0) [ r = r + m; ]
+    return r;
+}
+
+/* normalizeAngle maps rad into (-pi, pi]. */
+func normalizeAngle(rad: float) -> float {
+    let tau = 6.283185307179586;
+    let r = rad;
+    while (r > 3.141592653589793) [ r = r - tau; ]
+    while (r < -3.141592653589793) [ r = r + tau; ]
+    return r;
+}
+
+/* geometricMean returns the geometric mean of the elements of a. */
+func geometricMean(a) -> float {
+    if (a.length() == 0) [ return 0.0; ]
+    let prod = 1.0;
+    for (v in a) [ prod = prod * v; ]
+    return math::pow(prod, 1.0 / (a.length() * 1.0));
+}
+
+/* product returns the multiplicative product of every element of a. */
+func product(a) -> int {
+    let p = 1;
+    for (v in a) [ p = p * v; ]
+    return p;
+}
+
+/* isInteger reports whether x has no fractional part. */
+func isInteger(x: float) -> bool {
+    return x == trunc(x);
+}
+
+/* roundHalfUp rounds x away from zero at the half. */
+func roundHalfUp(x) -> int {
+    if (x >= 0) [ return floor(x + 0.5); ]
+    return ceil(x - 0.5);
+}

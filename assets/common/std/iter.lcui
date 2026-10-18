@@ -216,6 +216,17 @@ class Iter {
         if (!mnseen) [ return None; ]
         return mncur;
     }
+
+    /* enumerate pairs each element with its zero-based index. */
+    func enumerate() -> Iter { return new EnumerateIter(this); }
+    /* chunk groups elements into arrays of at most `size`. */
+    func chunk(size: int) -> Iter { return new ChunkIter(this, size); }
+    /* dedup yields each distinct element once, keeping first occurrence. */
+    func dedup() -> Iter { return new DedupIter(this); }
+    /* cycle repeats the iterator forever once it is exhausted. */
+    func cycle() -> Iter { return new CycleIter(this); }
+    /* inspect invokes f for every element before yielding it. */
+    func inspect(f: Fn1) -> Iter { return new InspectIter(this, f); }
 }
 
 /* MapIter applies f to each element of src. */
@@ -356,4 +367,77 @@ func range(start: int, end: int) -> RangeIter {
 /* repeat builds an infinite iterator that always yields `value`. */
 func repeat(value) -> RepeatIter {
     return new RepeatIter(value);
+}
+
+/* EnumerateIter yields [index, value] pairs. */
+class EnumerateIter extends Iter {
+    public: src: Iter; i: int = 0;
+    EnumerateIter(s: Iter) { this.src = s; }
+    func next() {
+        let v = this.src.next();
+        if (!v) [ return None; ]
+        let idx = this.i;
+        this.i = this.i + 1;
+        return [idx, v];
+    }
+}
+
+/* ChunkIter yields arrays of at most `size` consecutive elements. */
+class ChunkIter extends Iter {
+    public: src: Iter; n: int;
+    ChunkIter(s: Iter, size: int) { this.src = s; this.n = size; }
+    func next() {
+        if (this.n <= 0) [ return None; ]
+        let chunk = [];
+        let i = 0;
+        while (i < this.n) [
+            let v = this.src.next();
+            if (!v) [ break; ]
+            chunk.push(v);
+            i = i + 1;
+        ]
+        if (chunk.length() == 0) [ return None; ]
+        return chunk;
+    }
+}
+
+/* DedupIter yields each distinct element once, keeping first occurrence. */
+class DedupIter extends Iter {
+    public: src: Iter; seen: Map;
+    DedupIter(s: Iter) { this.src = s; this.seen = new Map(); }
+    func next() {
+        while (true) [
+            let v = this.src.next();
+            if (!v) [ return None; ]
+            if (this.seen.has("" + v)) [ v = None; ]
+            if (v) [ this.seen.set("" + v, true); return v; ]
+        ]
+    }
+}
+
+/* CycleIter repeats a finite source forever by buffering it. */
+class CycleIter extends Iter {
+    public: src: Iter; buf: Map; i: int = 0;
+    CycleIter(s: Iter) { this.src = s; this.buf = new Map(); }
+    func next() {
+        let v = this.src.next();
+        if (v) [ this.buf.set("" + this.buf.length(), v); return v; ]
+        if (this.buf.length() == 0) [ return None; ]
+        let bv = this.buf.get("" + this.i);
+        this.i = this.i + 1;
+        if (this.i >= this.buf.length()) [ this.i = 0; ]
+        return bv;
+    }
+}
+
+/* InspectIter yields every element after invoking f on it. */
+class InspectIter extends Iter {
+    public: src: Iter; f: Fn1;
+    InspectIter(s: Iter, fn: Fn1) { this.src = s; this.f = fn; }
+    func next() {
+        let v = this.src.next();
+        if (!v) [ return None; ]
+        this.f.call(v);
+        return v;
+    }
 }

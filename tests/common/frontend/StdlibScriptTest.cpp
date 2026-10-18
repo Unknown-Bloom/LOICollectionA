@@ -64,7 +64,7 @@ namespace {
             throw std::runtime_error("cannot locate assets/common/std (define LOICOLLECTION_A_STD_DIR)");
         }();
 
-        for (const char* name : { "iter", "array", "string", "math", "result", "map", "json" }) {
+        for (const char* name : { "iter", "array", "string", "math", "result", "map", "json", "random", "time", "set", "vec", "num" }) {
             std::ifstream file(std::filesystem::path(stdDir) / (std::string(name) + ".lcui"));
             if (!file)
                 throw std::runtime_error("cannot open std module: " + std::string(name));
@@ -346,4 +346,158 @@ TEST(StdlibScriptTest, ManualNextKeepsOptionalOnDynamicLet) {
         "if (b) [ s = s + b; ];"
         "if (!c) [ s = s + \"end\"; ];"
         "s"), "12end");
+}
+
+TEST(StdlibScriptTest, NumberTheoryAndFormatting) {
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numClamp(15, 0, 10)"), "10");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numSign(-7)"), "-1");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIntDiv(17, 5)"), "3");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numGcd(48, 36)"), "12");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numLcm(4, 6)"), "12");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsPrime(17)"), "true");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numPrimesUpTo(10).join(\",\")"), "2,3,5,7");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numFactorize(60).join(\",\")"), "2,2,3,5");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numFactorial(5)"), "120");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numFib(10)"), "55");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numDigits(1234).join(\",\")"), "4,3,2,1");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numSumDigits(123)"), "6");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numReverse(12345)"), "54321");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsPalindromeNum(121)"), "true");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numToBin(255)"), "11111111");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numToHex(255)"), "ff");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numToRoman(1994)"), "MCMXCIV");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numLerp(0, 10, 0.5)"), "5");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numDivisors(12).join(\",\")"), "1,2,3,4,6,12");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numSumOfDivisors(12)"), "28");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsPerfect(6)"), "true");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsPerfect(28)"), "true");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsAbundant(12)"), "true");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsDeficient(5)"), "true");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numTotient(9)"), "6");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numDigitCount(12345)"), "5");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsArmstrong(153)"), "true");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsArmstrong(123)"), "false");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numSumRange(1, 100)"), "5050");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numProductRange(1, 5)"), "120");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numManhattan(0, 0, 3, 4)"), "7");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsCoprime(8, 15)"), "true");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsCoprime(8, 12)"), "false");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsPowerOfTwo(8)"), "true");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsPowerOfTwo(6)"), "false");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numGreatestPowerOfTwoLe(10)"), "8");
+}
+
+TEST(StdlibScriptTest, VectorHelpers) {
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vAdd([1, 2], [3, 4]).join(\",\")"), "4,6");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vSub([3, 4], [1, 1]).join(\",\")"), "2,3");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vScale([1, 2], 3).join(\",\")"), "3,6");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vDot([1, 2], [3, 4])"), "11");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vLen([3, 4])"), "5");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vDist([0, 0], [3, 4])"), "5");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vCross([1, 0], [0, 1])"), "1");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vDistanceSq([0, 0], [3, 4])"), "25");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vManhattan([0, 0], [3, 4])"), "7");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vComponentSum([3,4])"), "7");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vIsZero([0, 0])"), "true");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vEq([1, 2], [1, 2])"), "true");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vEq([1, 2], [1, 3])"), "false");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vAbs([-3, 4]).join(\",\")"), "3,4");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vProject([4, 0], [2, 0]).join(\",\")"), "4,0");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vReflect([1, 1], [0, 1]).join(\",\")"), "1,-1");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vClampLen([3, 4], 2).join(\",\")"), "1.2,1.6");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vResize([3, 4], 2).join(\",\")"), "1.2,1.6");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vMidpoint([0, 0], [2, 4]).join(\",\")"), "1,2");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vFromAngle(0, 5).join(\",\")"), "5,0");
+}
+
+TEST(StdlibScriptTest, MigratedHigherOrderHelpers) {
+    EXPECT_EQ(evalStd(
+        "import \"/array.lcui\";"
+        "class Dbl extends Fn1 { func call(x) { return x * 2; } }"
+        "let m = mapNew(); mapSet(m, \"a\", 1); mapSet(m, \"b\", 2);"
+        "mapMapValues(m, new Dbl()).get(\"a\")"), "2");
+    EXPECT_EQ(evalStd(
+        "import \"/array.lcui\";"
+        "class Ks extends Fn1 { func call(x) { return \"k_\" + x; } }"
+        "let m = mapNew(); mapSet(m, \"a\", 1); mapSet(m, \"b\", 2);"
+        "mapMapKeys(m, new Ks()).has(\"k_a\")"), "true");
+    EXPECT_EQ(evalStd(
+        "import \"/array.lcui\";"
+        "class Gt1 extends Fn2 { func call(k, v) { return v > 1; } }"
+        "let m = mapNew(); mapSet(m, \"a\", 1); mapSet(m, \"b\", 2);"
+        "mapFilter(m, new Gt1()).has(\"b\")"), "true");
+    EXPECT_EQ(evalStd(
+        "import \"/array.lcui\"; import \"/map.lcui\";"
+        "class Kf extends Fn1 { func call(x) { return x[0]; } }"
+        "class Vf extends Fn1 { func call(x) { return x[1]; } }"
+        "mapFromArray([[\"a\", 1], [\"b\", 2]], new Kf(), new Vf()).get(\"b\")"), "2");
+    EXPECT_EQ(evalStd(
+        "import \"/array.lcui\";"
+        "class Even extends Fn1 { func call(x) { return x % 2 == 0; } }"
+        "let m = mapNew(); mapSet(m, \"a\", 2); mapSet(m, \"b\", 3);"
+        "mapKeysWhere(m, new Even()).length()"), "1");
+    EXPECT_EQ(evalStd(
+        "import \"/array.lcui\";"
+        "class Inc extends Fn1 { func call(x) { return x + 1; } }"
+        "let m = mapNew(); mapSet(m, \"a\", 1); mapUpdate(m, \"a\", new Inc()).get(\"a\")"), "2");
+    EXPECT_EQ(evalStd(
+        "import \"/array.lcui\";"
+        "class Nop extends Fn2 { func call(k, v) { return 0; } }"
+        "let m = mapNew(); mapSet(m, \"a\", 1); mapForEach(m, new Nop()); 7"), "7");
+    EXPECT_EQ(evalStd(
+        "import \"/array.lcui\"; import \"/map.lcui\";"
+        "class Sq extends Fn1 { func call(x) { return x * x; } }"
+        "setMap(setFromArray([1, 2, 3]), new Sq()).has(\"9\")"), "true");
+    EXPECT_EQ(evalStd(
+        "import \"/array.lcui\"; import \"/map.lcui\";"
+        "class OddM extends Fn1 { func call(x) { return x % 2 == 1; } }"
+        "setFilter(setFromArray([1, 2, 3, 4]), new OddM()).has(\"3\")"), "true");
+    EXPECT_EQ(evalStd(
+        "import \"/array.lcui\"; import \"/map.lcui\";"
+        "class EvenM extends Fn1 { func call(x) { return x % 2 == 0; } }"
+        "setCount(setFromArray([1, 2, 3,4]), new EvenM())"), "2");
+}
+
+TEST(StdlibScriptTest, NumberClassification) {
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numMin(3, 7)"), "3");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numMax(3, 7)"), "7");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsBetween(5, 1, 10)"), "true");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsBetween(11, 1, 10)"), "false");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsSquare(25)"), "true");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsSquare(26)"), "false");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsTriangular(6)"), "true");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsTriangular(7)"), "false");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numTriangular(4)"), "10");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numFromDigits([4, 3, 2, 1])"), "1234");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numFromDigits(numDigits(1234))"), "1234");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsHarshad(18)"), "true");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsHarshad(19)"), "false");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numCountDivisors(12)"), "6");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numGcd3(12, 18, 24)"), "6");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsEmirp(13)"), "true");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsEmirp(11)"), "false");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsEmirp(23)"), "false");
+}
+
+TEST(StdlibScriptTest, VectorExtra) {
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vDotSelf([3, 4])"), "25");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vScaleAdd([1, 2], 2, [3, 4]).join(\",\")"), "7,10");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vNeg([1, 2]).join(\",\")"), "-1,-2");
+    EXPECT_EQ(evalStd("import \"/vec.lcui\"; vPerp([1, 2]).join(\",\")"), "-2,1");
+}
+
+TEST(StdlibScriptTest, NumberTheoryExtra) {
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numSumOfDivisors(12)"), "28");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numSumOfProperDivisors(12)"), "16");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsHappy(19)"), "true");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsHappy(4)"), "false");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsHappy(1)"), "true");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numNextPrime(10)"), "11");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numNextPrime(13)"), "17");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numPrevPrime(10)"), "7");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numPrevPrime(2)"), "0");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsMersenne(3)"), "true");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsMersenne(5)"), "false");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numDigitalRoot(123)"), "6");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numDigitalRoot(999)"), "9");
 }

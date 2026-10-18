@@ -1,0 +1,185 @@
+/* Std: time helpers operating on plain integer counts of seconds.
+ *
+ * The language has no clock builtin, so these helpers take epoch seconds
+ * (or a seconds-of-day) as ordinary integers and format, decompose or
+ * reassemble them. Everything is pure and deterministic, so the same input
+ * always yields the same text - handy for logs, countdowns and testable UI
+ * strings. Floor division is provided locally so it works for any sign. */
+
+import "math.lcui" { trunc };
+
+/* pad2 renders n with a leading zero when below ten. */
+func pad2(n: int) -> string {
+    if (n < 10) [ return "0" + n; ]
+    return "" + n;
+}
+
+/* pad4 renders n left-padded with zeros to four digits. */
+func pad4(n: int) -> string {
+    let t = "" + n;
+    while (t.length() < 4) [ t = "0" + t; ]
+    return t;
+}
+
+/* idiv computes the floor of a / b for integer operands. */
+func idiv(a: int, b: int) -> int {
+    let q = trunc(a / b);
+    if (a < 0 && (a % b) != 0) [ q = q - 1; ]
+    return q;
+}
+
+/* isLeapYear reports whether y follows the Gregorian leap rule. */
+func isLeapYear(y: int) -> bool {
+    if (y % 4 != 0) [ return false; ]
+    if (y % 100 != 0) [ return true; ]
+    return y % 400 == 0;
+}
+
+/* daysInYear returns 366 for leap years, otherwise 365. */
+func daysInYear(y: int) -> int {
+    if (isLeapYear(y)) [ return 366; ]
+    return 365;
+}
+
+/* daysInMonth returns the number of days in month m (1..12) of year y. */
+func daysInMonth(y: int, m: int) -> int {
+    if (m == 2) [
+        if (isLeapYear(y)) [ return 29; ]
+        return 28;
+    ]
+    if (m == 4 || m == 6 || m == 9 || m == 11) [ return 30; ]
+    return 31;
+}
+
+/* secondsToHms splits a duration into [sign, days, hours, minutes, seconds]. */
+func secondsToHms(total: int) {
+    let sign = "";
+    let work = total;
+    if (total < 0) [ sign = "-"; work = -total; ]
+    let days = idiv(work, 86400);
+    let rem = work % 86400;
+    let h = idiv(rem, 3600);
+    let m = idiv(rem % 3600, 60);
+    let s = rem % 60;
+    return [sign, days, h, m, s];
+}
+
+/* formatClock renders a seconds-of-day value as HH:MM:SS. */
+func formatClock(secOfDay: int) -> string {
+    let h = idiv(secOfDay, 3600) % 24;
+    let m = idiv(secOfDay % 3600, 60);
+    let s = secOfDay % 60;
+    return pad2(h) + ":" + pad2(m) + ":" + pad2(s);
+}
+
+/* formatClockShort renders a seconds-of-day value as H:MM. */
+func formatClockShort(secOfDay: int) -> string {
+    let h = idiv(secOfDay, 3600) % 24;
+    let m = idiv(secOfDay % 3600, 60);
+    return "" + h + ":" + pad2(m);
+}
+
+/* formatDuration renders a duration as compact "1d 2h 3m 4s" text. */
+func formatDuration(total: int) -> string {
+    let parts = secondsToHms(total);
+    let d = parts[1];
+    let h = parts[2];
+    let m = parts[3];
+    let s = parts[4];
+    let out = "";
+    if (d > 0) [ out = out + d + "d "; ]
+    if (h > 0) [ out = out + h + "h "; ]
+    if (m > 0) [ out = out + m + "m "; ]
+    if (s > 0 || out == "") [ out = out + s + "s"; ]
+    return parts[0] + out;
+}
+
+/* formatDurationShort renders a duration as DdHH:MM:SS or H:MM:SS. */
+func formatDurationShort(total: int) -> string {
+    let parts = secondsToHms(total);
+    let d = parts[1];
+    let h = parts[2];
+    let m = parts[3];
+    let s = parts[4];
+    if (d > 0) [ return d + "d " + pad2(h) + ":" + pad2(m) + ":" + pad2(s); ]
+    if (h > 0) [ return pad2(h) + ":" + pad2(m) + ":" + pad2(s); ]
+    return pad2(m) + ":" + pad2(s);
+}
+
+/* formatCountdown renders a positive remaining duration, or "0s" at zero. */
+func formatCountdown(remaining: int) -> string {
+    if (remaining <= 0) [ return "0s"; ]
+    return formatDuration(remaining);
+}
+
+/* parseClock reads "H:MM:SS" or "M:SS" into seconds. */
+func parseClock(text: string) -> int {
+    let parts = text.split(":");
+    if (parts.length() == 3) [
+        return parts[0].toInt() * 3600 + parts[1].toInt() * 60 + parts[2].toInt();
+    ]
+    if (parts.length() == 2) [ return parts[0].toInt() * 60 + parts[1].toInt(); ]
+    return parts[0].toInt();
+}
+
+/* parseDuration reads "1h2m3s", a bare "Ns", or "H:MM:SS" into seconds. */
+func parseDuration(text: string) -> int {
+    if (text.indexOf("h") < 0 && text.indexOf("m") < 0 && text.indexOf("s") < 0) [
+        if (text.indexOf(":") >= 0) [ return parseClock(text); ]
+        return text.toInt();
+    ]
+    let total = 0;
+    let num = "";
+    for (c in text) [
+        if (c >= "0" && c <= "9") [ num = num + c; ]
+        if (c == "h" || c == "H") [ total = total + num.toInt() * 3600; num = ""; ]
+        if (c == "m" || c == "M") [ total = total + num.toInt() * 60; num = ""; ]
+        if (c == "s" || c == "S") [ total = total + num.toInt(); num = ""; ]
+    ]
+    return total;
+}
+
+/* dateParts decomposes an epoch into [year, month, day] (proleptic Gregorian). */
+func dateParts(epochSec: int) {
+    let days = idiv(epochSec, 86400);
+    let year = 1970;
+    while (days >= daysInYear(year)) [
+        days = days - daysInYear(year);
+        year = year + 1;
+    ]
+    let month = 1;
+    while (days >= daysInMonth(year, month)) [
+        days = days - daysInMonth(year, month);
+        month = month + 1;
+    ]
+    return [year, month, days + 1];
+}
+
+/* formatDate renders an epoch as YYYY-MM-DD. */
+func formatDate(epochSec: int) -> string {
+    let d = dateParts(epochSec);
+    return pad4(d[0]) + "-" + pad2(d[1]) + "-" + pad2(d[2]);
+}
+
+/* formatDateTime renders an epoch as YYYY-MM-DD HH:MM:SS. */
+func formatDateTime(epochSec: int) -> string {
+    return formatDate(epochSec) + " " + formatClock(epochSec % 86400);
+}
+
+/* weekday returns 0 (Sunday) through 6 for the epoch (1970-01-01 is Thursday). */
+func weekday(epochSec: int) -> int {
+    let days = idiv(epochSec, 86400);
+    let w = (4 + days) % 7;
+    if (w < 0) [ w = w + 7; ]
+    return w;
+}
+
+/* startOfDay returns the epoch of midnight containing epochSec. */
+func startOfDay(epochSec: int) -> int {
+    return idiv(epochSec, 86400) * 86400;
+}
+
+/* addDays shifts an epoch by a whole number of days. */
+func addDays(epochSec: int, days: int) -> int {
+    return epochSec + days * 86400;
+}
