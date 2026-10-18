@@ -86,3 +86,68 @@ TEST(CycleCollectorVmTest, TracksChunksThatStoreReferences) {
     ASSERT_TRUE(chunk) << diagnostics.getErrorMessage();
     EXPECT_TRUE(chunk->hasRefStores);
 }
+
+TEST(CycleCollectorVmTest, ReclaimsAFieldCycleAtTheEndOfARunOnASharedHeap) {
+    DiagnosticEngine diagnostics;
+    auto chunk = compile(
+        "class Node {\n"
+        "public:\n"
+        "    value = 0;\n"
+        "    next = 0;\n"
+        "}\n"
+        "func build() -> int {\n"
+        "    let first = new Node();\n"
+        "    let second = new Node();\n"
+        "    first.next = second;\n"
+        "    second.next = first;\n"
+        "    return 0;\n"
+        "}\n"
+        "build();\n",
+        diagnostics
+    );
+    ASSERT_TRUE(chunk) << diagnostics.getErrorMessage();
+    ASSERT_FALSE(chunk->methodBodies.empty());
+    ASSERT_TRUE(chunk->methodBodies.front()->hasRefStores);
+
+    auto heap = std::make_shared<CycleCollector>(true);
+
+    VM vm(diagnostics);
+    vm.setHeap(heap);
+    vm.run(chunk, Context{});
+
+    ASSERT_FALSE(diagnostics.hasErrors()) << diagnostics.getErrorMessage();
+    EXPECT_EQ(vm.report().collectedObjects, 2u);
+    EXPECT_EQ(heap->tracked(), 0u);
+}
+
+TEST(CycleCollectorVmTest, KeepsTheTrackedGraphFlatAcrossRepeatedRuns) {
+    DiagnosticEngine diagnostics;
+    auto chunk = compile(
+        "class Node {\n"
+        "public:\n"
+        "    next = 0;\n"
+        "}\n"
+        "func build() -> int {\n"
+        "    let first = new Node();\n"
+        "    let second = new Node();\n"
+        "    first.next = second;\n"
+        "    second.next = first;\n"
+        "    return 0;\n"
+        "}\n"
+        "build();\n",
+        diagnostics
+    );
+    ASSERT_TRUE(chunk) << diagnostics.getErrorMessage();
+
+    auto heap = std::make_shared<CycleCollector>(true);
+
+    VM vm(diagnostics);
+    vm.setHeap(heap);
+
+    for (int i = 0; i < 200; ++i)
+        vm.run(chunk, Context{});
+
+    ASSERT_FALSE(diagnostics.hasErrors()) << diagnostics.getErrorMessage();
+    EXPECT_LT(heap->tracked(), 4u);
+    EXPECT_GT(vm.report().collectedObjects, 0u);
+}
