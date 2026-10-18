@@ -167,18 +167,20 @@ namespace LOICollection::frontend::ir {
         };
 
         static constexpr std::size_t kInlineCacheSize = 128;
+        static constexpr std::size_t kHostCallCacheSize = 32;
 
         std::array<FieldCacheEntry, kInlineCacheSize> mFieldCache{};
         std::array<ByNameCacheEntry, kInlineCacheSize> mByNameCache{};
-        std::array<HostCallCacheEntry, kInlineCacheSize> mHostCallCache{};
+        std::array<HostCallCacheEntry, kHostCallCacheSize> mHostCallCache{};
         std::uint64_t mInlineEpoch = 0;
 
         std::shared_ptr<CycleCollector> mHeap = std::make_shared<CycleCollector>();
 
         [[nodiscard]] const FieldLayoutPtr& classLayout(const MirChunk& chunk, int classIndex);
 
+        template <std::size_t Size>
         [[nodiscard]] static std::size_t inlineCacheSlot(const MirInstr* instr) {
-            return (reinterpret_cast<std::uintptr_t>(instr) >> 4) & (kInlineCacheSize - 1);
+            return (reinterpret_cast<std::uintptr_t>(instr) >> 4) & (Size - 1);
         }
 
         [[nodiscard]] int resolveFieldSlot(Object& obj, const std::string& name, const MirInstr& instr);

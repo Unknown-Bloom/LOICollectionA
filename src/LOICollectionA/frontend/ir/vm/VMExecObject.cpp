@@ -23,7 +23,7 @@ namespace LOICollection::frontend::ir {
             obj.adoptLayout();
 
         const FieldLayout* layout = obj.layout.get();
-        FieldCacheEntry& cached = this->mFieldCache[inlineCacheSlot(&instr)];
+        FieldCacheEntry& cached = this->mFieldCache[inlineCacheSlot<kInlineCacheSize>(&instr)];
 
         if (cached.instr != &instr || cached.layout != layout) {
             cached.instr = &instr;

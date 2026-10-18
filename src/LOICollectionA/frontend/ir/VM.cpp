@@ -365,9 +365,8 @@ namespace LOICollection::frontend::ir {
         this->mReport = sandbox::SandboxReport{};
         this->currentLoc = SourceLocation{};
 
-        this->mFieldCache.fill({});
-        this->mByNameCache.fill({});
-        this->mHostCallCache.fill({});
+        // The caches are dropped lazily: zeroing the epoch makes the next execute
+        // clear them once, instead of paying for a clear here and again there.
         this->mInlineEpoch = 0;
     }
 

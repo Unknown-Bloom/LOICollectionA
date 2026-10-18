@@ -129,7 +129,7 @@ namespace LOICollection::frontend::ir {
 
                 const auto& cls = chunk.classes[obj->classIndex];
 
-                ByNameCacheEntry& cached = this->mByNameCache[inlineCacheSlot(&instr)];
+                ByNameCacheEntry& cached = this->mByNameCache[inlineCacheSlot<kInlineCacheSize>(&instr)];
                 if (cached.instr != &instr || cached.classIndex != obj->classIndex) {
                     int ordinal = -1;
                     for (size_t o = 0; o < cls.methods.size(); ++o) {
@@ -379,7 +379,7 @@ namespace LOICollection::frontend::ir {
                 for (int i = 0; i < instr.imm; ++i)
                     args.push_back(this->regOf(frame, instr.src1 + i));
 
-                HostCallCacheEntry& cached = this->mHostCallCache[inlineCacheSlot(&instr)];
+                HostCallCacheEntry& cached = this->mHostCallCache[inlineCacheSlot<kHostCallCacheSize>(&instr)];
                 if (cached.instr != &instr) {
                     const size_t pos = meta.name.find("::");
                     cached.namespaces = meta.name.substr(0, pos);
