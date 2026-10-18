@@ -34,6 +34,32 @@ namespace LOICollection::frontend::lsp {
             const std::vector<Diagnostic>& diagnostics
         );
 
+        LOICOLLECTION_A_NDAPI static std::vector<SymbolInformation> symbolsAt(
+            const std::string& uri, const std::string& text
+        );
+
+        LOICOLLECTION_A_NDAPI static std::vector<Location> referencesAt(
+            const std::string& uri, const std::string& text, const Position& position
+        );
+
+        LOICOLLECTION_A_NDAPI static std::vector<DocumentHighlight> highlightsAt(
+            const std::string& text, const Position& position
+        );
+
+        LOICOLLECTION_A_NDAPI static std::vector<TextEdit> renameAt(
+            const std::string& text, const Position& position, const std::string& newName
+        );
+
+        LOICOLLECTION_A_NDAPI static std::optional<Location> typeDefinitionAt(
+            const std::string& uri, const std::string& text, const Position& position
+        );
+
+        LOICOLLECTION_A_NDAPI static std::optional<SignatureHelp> signatureHelpAt(
+            const std::string& text, const Position& position
+        );
+
+        LOICOLLECTION_A_NDAPI static std::vector<TextEdit> formattingEdits(const std::string& text);
+
     private:
         struct Document {
             std::string text;
@@ -56,6 +82,13 @@ namespace LOICollection::frontend::lsp {
         nlohmann::ordered_json documentHover(const nlohmann::ordered_json& params) const;
         nlohmann::ordered_json documentDefinition(const nlohmann::ordered_json& params) const;
         nlohmann::ordered_json documentCodeActions(const nlohmann::ordered_json& params) const;
+        nlohmann::ordered_json documentSymbols(const nlohmann::ordered_json& params) const;
+        nlohmann::ordered_json documentReferences(const nlohmann::ordered_json& params) const;
+        nlohmann::ordered_json documentHighlights(const nlohmann::ordered_json& params) const;
+        nlohmann::ordered_json documentRename(const nlohmann::ordered_json& params) const;
+        nlohmann::ordered_json documentTypeDefinition(const nlohmann::ordered_json& params) const;
+        nlohmann::ordered_json documentSignatureHelp(const nlohmann::ordered_json& params) const;
+        nlohmann::ordered_json documentFormatting(const nlohmann::ordered_json& params) const;
 
         const std::string& textOf(const nlohmann::ordered_json& params) const;
         std::string uriOf(const nlohmann::ordered_json& params) const;

@@ -20,9 +20,6 @@ namespace LOICollection::frontend::ir {
         LOICOLLECTION_A_API void track(const ArrayRef& array);
         LOICOLLECTION_A_API void track(const FunctionRefPtr& closure);
 
-        // The counter only answers "did anything store a reference since the last
-        // pass", so a relaxed store of 1 is enough and keeps the write barrier free
-        // of a read-modify-write on every reference store.
         LOICOLLECTION_A_API void noteReferenceStore();
 
         LOICOLLECTION_A_API void enter();

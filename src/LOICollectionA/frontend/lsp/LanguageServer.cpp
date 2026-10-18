@@ -154,6 +154,66 @@ namespace LOICollection::frontend::lsp::detail {
         return type;
     }
 
+    Position positionOf(const std::string& text, std::size_t offset) {
+        offset = std::min(offset, text.size());
+
+        Position position;
+        for (std::size_t i = 0; i < offset; ++i) {
+            if (text[i] == '\n') {
+                ++position.line;
+                position.character = 0;
+            } else {
+                ++position.character;
+            }
+        }
+
+        return position;
+    }
+
+    Range rangeAt(const std::string& text, std::size_t offset, std::size_t length) {
+        Range range;
+        range.start = positionOf(text, offset);
+        range.end = positionOf(text, offset + length);
+
+        return range;
+    }
+
+    std::vector<std::size_t> wordOccurrences(const std::string& text, const std::string& word) {
+        std::vector<std::size_t> offsets;
+        if (word.empty())
+            return offsets;
+
+        std::size_t search = 0;
+        while (search < text.size()) {
+            const auto found = text.find(word, search);
+            if (found == std::string::npos)
+                break;
+
+            const bool leftClear = found == 0 || !isIdentifierChar(text[found - 1]);
+            const bool rightClear = found + word.size() >= text.size()
+                || !isIdentifierChar(text[found + word.size()]);
+
+            if (leftClear && rightClear)
+                offsets.push_back(found);
+
+            search = found + word.size();
+        }
+
+        return offsets;
+    }
+
+    std::size_t declarationOffsetOf(const std::string& text, const Symbol& symbol) {
+        const std::size_t start = offsetOf(text, symbol.range.start);
+        const auto newline = text.find('\n', start);
+        const std::size_t limit = newline == std::string::npos ? text.size() : newline;
+
+        for (const std::size_t offset : wordOccurrences(text, symbol.name))
+            if (offset >= start && offset < limit)
+                return offset;
+
+        return start;
+    }
+
     CompletionKind completionKindOf(SymbolKind kind) {
         switch (kind) {
             case SymbolKind::Function: return CompletionKind::Function;
@@ -178,6 +238,15 @@ namespace LOICollection::frontend::lsp::detail {
                     } },
                     { "hoverProvider", true },
                     { "definitionProvider", true },
+                    { "typeDefinitionProvider", true },
+                    { "referencesProvider", true },
+                    { "documentHighlightProvider", true },
+                    { "renameProvider", true },
+                    { "documentSymbolProvider", true },
+                    { "signatureHelpProvider", nlohmann::ordered_json{
+                        { "triggerCharacters", nlohmann::ordered_json::array({ "(", "," }) },
+                    } },
+                    { "documentFormattingProvider", true },
                     { "codeActionProvider", true },
                 },
             },
@@ -327,6 +396,223 @@ namespace LOICollection::frontend::lsp {
         return actions;
     }
 
+    std::vector<SymbolInformation> LanguageServer::symbolsAt(
+        const std::string& uri, const std::string& text
+    ) {
+        std::vector<SymbolInformation> result;
+        const auto analysis = analyze(text);
+
+        for (const auto& symbol : analysis.symbols)
+            if (!symbol.name.empty())
+                result.push_back({ symbol.name, symbol.kind, uri, symbol.range, symbol.container });
+
+        return result;
+    }
+
+    std::vector<Location> LanguageServer::referencesAt(
+        const std::string& uri, const std::string& text, const Position& position
+    ) {
+        const std::string word = wordAt(text, offsetOf(text, position));
+        if (word.empty())
+            return {};
+
+        const auto analysis = analyze(text);
+        const auto* symbol = findSymbol(analysis.symbols, word);
+
+        const std::size_t declarationOffset = symbol
+            ? declarationOffsetOf(text, *symbol)
+            : std::string::npos;
+
+        std::vector<Location> result;
+        for (const std::size_t offset : wordOccurrences(text, word))
+            if (offset != declarationOffset)
+                result.push_back(Location{ uri, rangeAt(text, offset, word.size()) });
+
+        return result;
+    }
+
+    std::vector<DocumentHighlight> LanguageServer::highlightsAt(
+        const std::string& text, const Position& position
+    ) {
+        const std::string word = wordAt(text, offsetOf(text, position));
+        if (word.empty())
+            return {};
+
+        const auto analysis = analyze(text);
+        const auto* symbol = findSymbol(analysis.symbols, word);
+
+        const std::size_t declarationOffset = symbol
+            ? declarationOffsetOf(text, *symbol)
+            : std::string::npos;
+
+        std::vector<DocumentHighlight> result;
+        for (const std::size_t offset : wordOccurrences(text, word)) {
+            const bool write = offset == declarationOffset;
+            result.push_back({ rangeAt(text, offset, word.size()), write ? 3 : 2 });
+        }
+
+        return result;
+    }
+
+    std::vector<TextEdit> LanguageServer::renameAt(
+        const std::string& text, const Position& position, const std::string& newName
+    ) {
+        const std::string word = wordAt(text, offsetOf(text, position));
+        if (word.empty() || newName.empty())
+            return {};
+
+        std::vector<TextEdit> edits;
+        for (const std::size_t offset : wordOccurrences(text, word))
+            edits.push_back(TextEdit{ rangeAt(text, offset, word.size()), newName });
+
+        return edits;
+    }
+
+    std::optional<Location> LanguageServer::typeDefinitionAt(
+        const std::string& uri, const std::string& text, const Position& position
+    ) {
+        const std::string word = wordAt(text, offsetOf(text, position));
+        if (word.empty())
+            return std::nullopt;
+
+        const auto analysis = analyze(text);
+        const auto* symbol = findSymbol(analysis.symbols, word);
+        if (!symbol)
+            return std::nullopt;
+
+        const std::string type = classNameOf(*symbol);
+        if (type.empty() || type == word)
+            return std::nullopt;
+
+        for (const auto& candidate : analysis.symbols)
+            if (candidate.kind == SymbolKind::Class && candidate.name == type)
+                return Location{ uri, candidate.range };
+
+        return std::nullopt;
+    }
+
+    std::optional<SignatureHelp> LanguageServer::signatureHelpAt(
+        const std::string& text, const Position& position
+    ) {
+        const std::size_t cursor = offsetOf(text, position);
+
+        std::size_t open = std::string::npos;
+        for (std::size_t i = cursor; i > 0; --i) {
+            if (text[i - 1] == '(') {
+                open = i - 1;
+                break;
+            }
+        }
+
+        if (open == std::string::npos)
+            return std::nullopt;
+
+        for (std::size_t i = open + 1; i < cursor; ++i)
+            if (text[i] == ')')
+                return std::nullopt;
+
+        std::size_t nameEnd = open;
+        while (nameEnd > 0 && (text[nameEnd - 1] == ' ' || text[nameEnd - 1] == '\t'))
+            --nameEnd;
+
+        std::size_t nameStart = nameEnd;
+        while (nameStart > 0 && isIdentifierChar(text[nameStart - 1]))
+            --nameStart;
+
+        const std::string callee = text.substr(nameStart, nameEnd - nameStart);
+        if (callee.empty())
+            return std::nullopt;
+
+        const auto analysis = analyze(text);
+        const auto* symbol = findSymbol(analysis.symbols, callee);
+        if (!symbol)
+            return std::nullopt;
+
+        const auto openParen = symbol->detail.find('(');
+        const auto closeParen = symbol->detail.find(')', openParen);
+        if (openParen == std::string::npos || closeParen == std::string::npos)
+            return std::nullopt;
+
+        SignatureHelp help;
+        help.signatures.push_back({ symbol->detail, {} });
+
+        const std::string body = symbol->detail.substr(
+            openParen + 1, closeParen - openParen - 1);
+
+        std::size_t segmentStart = 0;
+        for (std::size_t i = 0; i <= body.size(); ++i) {
+            if (i != body.size() && body[i] != ',')
+                continue;
+
+            const auto trimmed = body.substr(segmentStart, i - segmentStart);
+            const auto first = trimmed.find_first_not_of(" \t");
+            const auto last = trimmed.find_last_not_of(" \t");
+
+            if (first != std::string::npos)
+                help.signatures.front().parameters.push_back(
+                    trimmed.substr(first, last - first + 1));
+
+            segmentStart = i + 1;
+        }
+
+        int active = 0;
+        for (std::size_t i = open + 1; i < cursor; ++i)
+            if (text[i] == ',')
+                ++active;
+
+        help.activeParameter = active;
+
+        return help;
+    }
+
+    std::vector<TextEdit> LanguageServer::formattingEdits(const std::string& text) {
+        std::string formatted;
+        std::size_t depth = 0;
+        std::size_t lineStart = 0;
+
+        while (lineStart < text.size()) {
+            std::size_t newline = text.find('\n', lineStart);
+            if (newline == std::string::npos)
+                newline = text.size();
+
+            const std::string line = text.substr(lineStart, newline - lineStart);
+            const auto contentStart = line.find_first_not_of(" \t");
+
+            if (contentStart == std::string::npos) {
+                formatted += '\n';
+            } else {
+                const char first = line[contentStart];
+                if (first == '}' || first == ']')
+                    depth = depth == 0 ? 0 : depth - 1;
+
+                formatted.append(depth * 4, ' ');
+                formatted.append(line, contentStart, std::string::npos);
+                formatted += '\n';
+
+                const auto contentEnd = line.find_last_not_of(" \t");
+                const char last = contentEnd == std::string::npos ? '\0' : line[contentEnd];
+                if (last == '{' || last == '[')
+                    ++depth;
+            }
+
+            if (newline == text.size())
+                break;
+
+            lineStart = newline + 1;
+        }
+
+        if (formatted.empty())
+            return {};
+
+        if (!text.ends_with('\n') && formatted.back() == '\n')
+            formatted.pop_back();
+
+        return { TextEdit{
+            Range{ Position{ 0, 0 }, positionOf(text, text.size()) },
+            std::move(formatted),
+        } };
+    }
+
     std::string LanguageServer::dispatch(const nlohmann::ordered_json& message) {
         if (!message.is_object() || !message.contains("method"))
             return {};
@@ -373,11 +659,32 @@ namespace LOICollection::frontend::lsp {
         if (method == "textDocument/hover")
             return encodeMessage(makeResponse(id, this->documentHover(params)));
 
-        if (method == "textDocument/definition")
+        if (method == "textDocument/definition" || method == "textDocument/declaration")
             return encodeMessage(makeResponse(id, this->documentDefinition(params)));
+
+        if (method == "textDocument/typeDefinition")
+            return encodeMessage(makeResponse(id, this->documentTypeDefinition(params)));
 
         if (method == "textDocument/codeAction")
             return encodeMessage(makeResponse(id, this->documentCodeActions(params)));
+
+        if (method == "textDocument/documentSymbol")
+            return encodeMessage(makeResponse(id, this->documentSymbols(params)));
+
+        if (method == "textDocument/references")
+            return encodeMessage(makeResponse(id, this->documentReferences(params)));
+
+        if (method == "textDocument/documentHighlight")
+            return encodeMessage(makeResponse(id, this->documentHighlights(params)));
+
+        if (method == "textDocument/rename")
+            return encodeMessage(makeResponse(id, this->documentRename(params)));
+
+        if (method == "textDocument/signatureHelp")
+            return encodeMessage(makeResponse(id, this->documentSignatureHelp(params)));
+
+        if (method == "textDocument/formatting")
+            return encodeMessage(makeResponse(id, this->documentFormatting(params)));
 
         return encodeMessage(makeError(id, -32601, "Method not found: " + method));
     }
@@ -469,6 +776,84 @@ namespace LOICollection::frontend::lsp {
 
         return LanguageServer::codeActionsAt(
             this->uriOf(params), text, params.at("range").get<Range>(), analysis.diagnostics);
+    }
+
+    nlohmann::ordered_json LanguageServer::documentSymbols(const nlohmann::ordered_json& params) const {
+        nlohmann::ordered_json symbols = nlohmann::ordered_json::array();
+
+        for (const auto& symbol : LanguageServer::symbolsAt(this->uriOf(params), this->textOf(params)))
+            symbols.push_back(symbol);
+
+        return symbols;
+    }
+
+    nlohmann::ordered_json LanguageServer::documentReferences(const nlohmann::ordered_json& params) const {
+        if (!params.contains("position"))
+            return nlohmann::ordered_json::array();
+
+        nlohmann::ordered_json locations = nlohmann::ordered_json::array();
+
+        for (const auto& location : LanguageServer::referencesAt(
+                this->uriOf(params), this->textOf(params), params.at("position").get<Position>()))
+            locations.push_back(location);
+
+        return locations;
+    }
+
+    nlohmann::ordered_json LanguageServer::documentHighlights(const nlohmann::ordered_json& params) const {
+        if (!params.contains("position"))
+            return nlohmann::ordered_json::array();
+
+        nlohmann::ordered_json highlights = nlohmann::ordered_json::array();
+
+        for (const auto& highlight : LanguageServer::highlightsAt(
+                this->textOf(params), params.at("position").get<Position>()))
+            highlights.push_back(highlight);
+
+        return highlights;
+    }
+
+    nlohmann::ordered_json LanguageServer::documentRename(const nlohmann::ordered_json& params) const {
+        if (!params.contains("position"))
+            return nlohmann::ordered_json::object();
+
+        const std::string newName = params.value("newName", std::string{});
+        const auto edits = LanguageServer::renameAt(
+            this->textOf(params), params.at("position").get<Position>(), newName);
+
+        if (edits.empty())
+            return nlohmann::ordered_json::object();
+
+        return nlohmann::ordered_json(WorkspaceEdit{ this->uriOf(params), edits });
+    }
+
+    nlohmann::ordered_json LanguageServer::documentTypeDefinition(const nlohmann::ordered_json& params) const {
+        if (!params.contains("position"))
+            return nlohmann::ordered_json(nullptr);
+
+        const auto location = LanguageServer::typeDefinitionAt(
+            this->uriOf(params), this->textOf(params), params.at("position").get<Position>());
+
+        return location ? nlohmann::ordered_json(*location) : nlohmann::ordered_json(nullptr);
+    }
+
+    nlohmann::ordered_json LanguageServer::documentSignatureHelp(const nlohmann::ordered_json& params) const {
+        if (!params.contains("position"))
+            return nlohmann::ordered_json(nullptr);
+
+        const auto help = LanguageServer::signatureHelpAt(
+            this->textOf(params), params.at("position").get<Position>());
+
+        return help ? nlohmann::ordered_json(*help) : nlohmann::ordered_json(nullptr);
+    }
+
+    nlohmann::ordered_json LanguageServer::documentFormatting(const nlohmann::ordered_json& params) const {
+        nlohmann::ordered_json edits = nlohmann::ordered_json::array();
+
+        for (const auto& edit : LanguageServer::formattingEdits(this->textOf(params)))
+            edits.push_back(edit);
+
+        return edits;
     }
 
     const std::string& LanguageServer::textOf(const nlohmann::ordered_json& params) const {

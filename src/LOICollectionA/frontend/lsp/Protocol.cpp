@@ -73,6 +73,70 @@ namespace LOICollection::frontend::lsp {
         };
     }
 
+    namespace detail {
+        int lspSymbolKind(SymbolKind kind) {
+            switch (kind) {
+                case SymbolKind::Function: return 12;
+                case SymbolKind::Method:
+                case SymbolKind::StaticMethod: return 6;
+                case SymbolKind::Field:
+                case SymbolKind::StaticField: return 8;
+                case SymbolKind::Variable: return 13;
+                case SymbolKind::Constant: return 14;
+                case SymbolKind::Class: return 5;
+                case SymbolKind::Interface: return 11;
+            }
+
+            return 13;
+        }
+    }
+
+    void to_json(nlohmann::ordered_json& j, const SymbolInformation& value) {
+        j = nlohmann::ordered_json{
+            { "name", value.name },
+            { "kind", detail::lspSymbolKind(value.kind) },
+            { "location", Location{ value.uri, value.range } },
+        };
+
+        if (!value.containerName.empty())
+            j["containerName"] = value.containerName;
+    }
+
+    void to_json(nlohmann::ordered_json& j, const DocumentHighlight& value) {
+        j = nlohmann::ordered_json{
+            { "range", value.range },
+            { "kind", value.kind },
+        };
+    }
+
+    void to_json(nlohmann::ordered_json& j, const SignatureHelp& value) {
+        nlohmann::ordered_json signatures = nlohmann::ordered_json::array();
+
+        for (const auto& signature : value.signatures) {
+            nlohmann::ordered_json parameters = nlohmann::ordered_json::array();
+            for (const auto& parameter : signature.parameters)
+                parameters.push_back(nlohmann::ordered_json{ { "label", parameter } });
+
+            signatures.push_back(nlohmann::ordered_json{
+                { "label", signature.label },
+                { "parameters", std::move(parameters) },
+            });
+        }
+
+        j = nlohmann::ordered_json{
+            { "signatures", std::move(signatures) },
+            { "activeSignature", value.activeSignature },
+            { "activeParameter", value.activeParameter },
+        };
+    }
+
+    void to_json(nlohmann::ordered_json& j, const WorkspaceEdit& value) {
+        nlohmann::ordered_json changes = nlohmann::ordered_json::object();
+        changes[value.uri] = value.edits;
+
+        j = nlohmann::ordered_json{ { "changes", std::move(changes) } };
+    }
+
     nlohmann::ordered_json makeResponse(const nlohmann::ordered_json& id, nlohmann::ordered_json result) {
         return nlohmann::ordered_json{
             { "jsonrpc", "2.0" },

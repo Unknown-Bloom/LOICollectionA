@@ -93,6 +93,35 @@ namespace LOICollection::frontend::lsp {
         std::vector<TextEdit> edits;
     };
 
+    struct SymbolInformation {
+        std::string name;
+        SymbolKind kind = SymbolKind::Variable;
+        std::string uri;
+        Range range{};
+        std::string containerName;
+    };
+
+    struct DocumentHighlight {
+        Range range{};
+        int kind = 1;
+    };
+
+    struct SignatureInformation {
+        std::string label;
+        std::vector<std::string> parameters;
+    };
+
+    struct SignatureHelp {
+        std::vector<SignatureInformation> signatures;
+        int activeSignature = 0;
+        int activeParameter = 0;
+    };
+
+    struct WorkspaceEdit {
+        std::string uri;
+        std::vector<TextEdit> edits;
+    };
+
     LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const Position& value);
     LOICOLLECTION_A_API void from_json(const nlohmann::ordered_json& j, Position& value);
 
@@ -110,6 +139,14 @@ namespace LOICollection::frontend::lsp {
     LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const TextEdit& value);
 
     LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const CodeAction& value);
+
+    LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const SymbolInformation& value);
+
+    LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const DocumentHighlight& value);
+
+    LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const SignatureHelp& value);
+
+    LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const WorkspaceEdit& value);
 
     LOICOLLECTION_A_NDAPI nlohmann::ordered_json makeResponse(const nlohmann::ordered_json& id, nlohmann::ordered_json result);
 

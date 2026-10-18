@@ -267,6 +267,213 @@ namespace LOICollection::frontend::lsp {
             .value("newText", std::string{}), "let ");
     }
 
+    TEST(LspTest, SymbolsListDeclarationsWithContainers) {
+        const auto symbols = LanguageServer::symbolsAt(kUri, kSource);
+
+        bool hasClass = false;
+        bool hasMethod = false;
+        bool hasField = false;
+        bool hasVariable = false;
+
+        for (const auto& symbol : symbols) {
+            EXPECT_EQ(symbol.uri, kUri);
+
+            if (symbol.name == "Deck" && symbol.kind == SymbolKind::Class)
+                hasClass = true;
+            if (symbol.name == "size" && symbol.kind == SymbolKind::Method
+                && symbol.containerName == "Deck")
+                hasMethod = true;
+            if (symbol.name == "cards" && symbol.kind == SymbolKind::Field)
+                hasField = true;
+            if (symbol.name == "deck" && symbol.kind == SymbolKind::Variable)
+                hasVariable = true;
+        }
+
+        EXPECT_TRUE(hasClass);
+        EXPECT_TRUE(hasMethod);
+        EXPECT_TRUE(hasField);
+        EXPECT_TRUE(hasVariable);
+    }
+
+    TEST(LspTest, ReferencesSkipTheDeclaration) {
+        const auto references = LanguageServer::referencesAt(kUri, kSource, Position{ 5, 12 });
+
+        ASSERT_EQ(references.size(), 2u);
+        for (const auto& location : references) {
+            EXPECT_EQ(location.uri, kUri);
+            EXPECT_EQ(location.range.start.line, 5u);
+        }
+    }
+
+    TEST(LspTest, HighlightsMarkTheDeclarationAsWrite) {
+        const auto highlights = LanguageServer::highlightsAt(kSource, Position{ 5, 12 });
+
+        ASSERT_EQ(highlights.size(), 3u);
+
+        bool sawWrite = false;
+        for (const auto& highlight : highlights) {
+            if (highlight.range.start.line == 0u) {
+                EXPECT_EQ(highlight.kind, 3);
+                sawWrite = true;
+            } else {
+                EXPECT_EQ(highlight.kind, 2);
+            }
+        }
+
+        EXPECT_TRUE(sawWrite);
+    }
+
+    TEST(LspTest, RenameReplacesEveryOccurrence) {
+        const auto edits = LanguageServer::renameAt(kSource, Position{ 5, 12 }, "Pile");
+
+        ASSERT_EQ(edits.size(), 3u);
+        for (const auto& edit : edits)
+            EXPECT_EQ(edit.newText, "Pile");
+    }
+
+    TEST(LspTest, TypeDefinitionResolvesTheVariableClass) {
+        const auto location = LanguageServer::typeDefinitionAt(kUri, kSource, Position{ 5, 7 });
+
+        ASSERT_TRUE(location.has_value());
+        EXPECT_EQ(location->uri, kUri);
+        EXPECT_EQ(location->range.start.line, 0u);
+    }
+
+    TEST(LspTest, SignatureHelpReadsParametersAndCursor) {
+        const std::string text =
+            "class Vault {\n"
+            "    public:\n"
+            "    func take(index: int, count: int) -> int { return index; }\n"
+            "}\n"
+            "let vault = new Vault();\n"
+            "let got = vault.take(0, 1);\n";
+
+        const auto first = LanguageServer::signatureHelpAt(text, Position{ 5, 21 });
+        ASSERT_TRUE(first.has_value());
+        ASSERT_EQ(first->signatures.size(), 1u);
+        EXPECT_EQ(first->signatures.front().label, "take(index: int, count: int) -> int");
+        ASSERT_EQ(first->signatures.front().parameters.size(), 2u);
+        EXPECT_EQ(first->signatures.front().parameters[0], "index: int");
+        EXPECT_EQ(first->signatures.front().parameters[1], "count: int");
+        EXPECT_EQ(first->activeParameter, 0);
+
+        const auto second = LanguageServer::signatureHelpAt(text, Position{ 5, 24 });
+        ASSERT_TRUE(second.has_value());
+        EXPECT_EQ(second->activeParameter, 1);
+    }
+
+    TEST(LspTest, FormattingReindentsBothBlockStyles) {
+        const std::string text =
+            "class Deck {\n"
+            "cards = [];\n"
+            "func take(n: int) -> int {\n"
+            "while (n > 0) [\n"
+            "n = n - 1;\n"
+            "]\n"
+            "return n;\n"
+            "}\n"
+            "}\n";
+
+        const auto edits = LanguageServer::formattingEdits(text);
+
+        ASSERT_EQ(edits.size(), 1u);
+        EXPECT_EQ(edits.front().newText,
+            "class Deck {\n"
+            "    cards = [];\n"
+            "    func take(n: int) -> int {\n"
+            "        while (n > 0) [\n"
+            "            n = n - 1;\n"
+            "        ]\n"
+            "        return n;\n"
+            "    }\n"
+            "}\n");
+    }
+
+    TEST(LspTest, ServerAnswersDocumentQueries) {
+        LanguageServer server;
+
+        nlohmann::ordered_json document;
+        document["uri"] = kUri;
+        document["languageId"] = "lcui";
+        document["version"] = 1;
+        document["text"] = kSource;
+
+        nlohmann::ordered_json didOpen;
+        didOpen["textDocument"] = document;
+
+        server.handle(encodeMessage(makeNotification("textDocument/didOpen", didOpen)));
+
+        auto query = [&server](int id, const std::string& method, nlohmann::ordered_json params) {
+            return singleMessage(server.handle(encodeMessage(request(id, method, params))));
+        };
+
+        nlohmann::ordered_json symbolParams;
+        symbolParams["textDocument"] = nlohmann::ordered_json{ { "uri", kUri } };
+
+        const auto symbols = query(2, "textDocument/documentSymbol", symbolParams);
+        ASSERT_TRUE(symbols.at("result").is_array());
+        EXPECT_FALSE(symbols.at("result").empty());
+
+        nlohmann::ordered_json posParams;
+        posParams["textDocument"] = nlohmann::ordered_json{ { "uri", kUri } };
+        posParams["position"] = Position{ 5, 12 };
+
+        const auto references = query(3, "textDocument/references", posParams);
+        ASSERT_TRUE(references.at("result").is_array());
+        EXPECT_EQ(references.at("result").size(), 2u);
+
+        const auto highlights = query(4, "textDocument/documentHighlight", posParams);
+        ASSERT_TRUE(highlights.at("result").is_array());
+        EXPECT_EQ(highlights.at("result").size(), 3u);
+
+        nlohmann::ordered_json renameParams = posParams;
+        renameParams["newName"] = "Pile";
+
+        const auto rename = query(5, "textDocument/rename", renameParams);
+        EXPECT_EQ(rename.at("result").at("changes").at(kUri).size(), 3u);
+
+        const auto typeDefinition = query(6, "textDocument/typeDefinition",
+            nlohmann::ordered_json{
+                { "textDocument", nlohmann::ordered_json{ { "uri", kUri } } },
+                { "position", Position{ 5, 7 } },
+            });
+
+        ASSERT_TRUE(typeDefinition.at("result").is_object());
+        EXPECT_EQ(typeDefinition.at("result").value("uri", std::string{}), kUri);
+
+        nlohmann::ordered_json formatParams;
+        formatParams["textDocument"] = nlohmann::ordered_json{ { "uri", kUri } };
+
+        const auto formatting = query(7, "textDocument/formatting", formatParams);
+        ASSERT_TRUE(formatting.at("result").is_array());
+        EXPECT_EQ(formatting.at("result").size(), 1u);
+    }
+
+    TEST(LspTest, DeclarationAliasesDefinition) {
+        LanguageServer server;
+
+        nlohmann::ordered_json document;
+        document["uri"] = kUri;
+        document["languageId"] = "lcui";
+        document["version"] = 1;
+        document["text"] = kSource;
+
+        nlohmann::ordered_json didOpen;
+        didOpen["textDocument"] = document;
+
+        server.handle(encodeMessage(makeNotification("textDocument/didOpen", didOpen)));
+
+        nlohmann::ordered_json params;
+        params["textDocument"] = nlohmann::ordered_json{ { "uri", kUri } };
+        params["position"] = Position{ 0, 7 };
+
+        const auto declaration = singleMessage(server.handle(
+            encodeMessage(request(8, "textDocument/declaration", params))));
+
+        ASSERT_TRUE(declaration.at("result").is_object());
+        EXPECT_EQ(declaration.at("result").at("range").at("start").at("line"), 0u);
+    }
+
     TEST(LspTest, ServerRejectsUnknownMethod) {
         LanguageServer server;
 
