@@ -952,3 +952,103 @@ TEST(OptimizerTest, LICMDoesNotHoistFromConditionalArm) {
     VM vm(program.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "xtwox");
 }
+
+TEST(OptimizerTest, EliminatesDeadPureArithmeticValue) {
+    // Generalizes the value-dead elimination that previously only removed
+    // LOAD_CONST: any side-effect-free value producer (pure binary arithmetic
+    // here) whose destination is never read must be deleted. A discarded
+    // arithmetic expression like `i * 7 + 3;` yields a multiply that the
+    // original implementation left in the bytecode; this guards the
+    // generalization end-to-end (compile -> optimize -> run).
+    const std::string source =
+        "let s = 0;\n"
+        "let i = 0;\n"
+        "while (i < 5) [\n"
+        "    i * 7 + 3;\n"
+        "    s = s + i;\n"
+        "    i = i + 1;\n"
+        "]\n"
+        "s";
+
+    auto withDeadValue =
+        compileAndOptimize(source, Optimizer::allPasses);
+    auto withoutDeadValue = compileAndOptimize(
+        source,
+        Optimizer::allPasses & ~static_cast<unsigned>(Optimizer::Pass::DeadCode));
+
+    EXPECT_FALSE(withDeadValue.diagnostics.hasErrors());
+    EXPECT_FALSE(withoutDeadValue.diagnostics.hasErrors());
+
+    // With dead-value elimination enabled, the discarded multiply vanishes.
+    EXPECT_EQ(countOpEverywhere(*withDeadValue.chunk, MirOp::MUL), 0);
+
+    // With the DeadCode/DeadValue pass disabled, the multiply is retained.
+    EXPECT_GT(countOpEverywhere(*withoutDeadValue.chunk, MirOp::MUL), 0);
+
+    // Correctness is preserved: the live accumulator still sums 0..4 == 10,
+    // and the two binaries agree on the result.
+    VM vm(withDeadValue.diagnostics);
+    EXPECT_EQ(VM::valueToString(vm.run(withDeadValue.chunk, {})), "10");
+    EXPECT_EQ(
+        runChunk(withoutDeadValue.chunk, withoutDeadValue.diagnostics),
+        runChunk(withDeadValue.chunk, withDeadValue.diagnostics));
+}
+
+TEST(OptimizerTest, EliminatesDeadArithmeticValueInChunk) {
+    // Deterministic low-level check that DeadValuePass removes a pure-arithmetic
+    // instruction whose destination register is never read, while leaving a
+    // register that the HALT observes untouched. This isolates the
+    // generalization from the rest of the optimizer pipeline.
+    ir::MirChunk chunk;
+    chunk.slotCount = 4;
+    chunk.constants.push_back(7);
+    chunk.constants.push_back(3);
+
+    chunk.code = {
+        { MirOp::LOAD_SLOT, 0, 1, 0 },   // r1 = slot0
+        { MirOp::LOAD_CONST, 1, 2 },     // r2 = 7
+        { MirOp::MUL, 1, 3, 1, 2 },      // r3 = r1 * 7    (dead: never read)
+        { MirOp::LOAD_CONST, 2, 1 },     // r2 = 3
+        { MirOp::ADD, 1, 3, 3, 2 },      // r3 = r3 + 3   (dead: never read)
+        { MirOp::LOAD_SLOT, 0, 4, 0 },   // r4 = slot0    (live: consumed by HALT)
+        { MirOp::HALT, 0 }
+    };
+
+    Optimizer optimizer;
+    auto stats = optimizer.optimize(chunk);
+
+    EXPECT_GE(stats.removed, 2u);
+    EXPECT_FALSE(containsOpMir(chunk, MirOp::MUL));
+    EXPECT_FALSE(containsOpMir(chunk, MirOp::ADD));
+    EXPECT_TRUE(containsOpMir(chunk, MirOp::LOAD_SLOT));
+
+    DiagnosticEngine diag;
+    VM vm(diag);
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(OptimizerTest, KeepsLiveArithmeticValue) {
+    // Sanity counterpart: an arithmetic result that IS read must survive. This
+    // prevents an over-eager dead-value rule from stripping live computations.
+    ir::MirChunk chunk;
+    chunk.slotCount = 3;
+    chunk.constants.push_back(2);
+    chunk.constants.push_back(4);
+
+    chunk.code = {
+        { MirOp::LOAD_CONST, 0, 1 },     // r1 = 2
+        { MirOp::LOAD_CONST, 1, 2 },     // r2 = 4
+        { MirOp::MUL, 0, 3, 1, 2 },      // r3 = r1 * r2  (live: read by HALT)
+        { MirOp::HALT, 0 }
+    };
+
+    Optimizer optimizer;
+    optimizer.optimize(chunk);
+
+    EXPECT_TRUE(containsOpMir(chunk, MirOp::MUL));
+
+    DiagnosticEngine diag;
+    VM vm(diag);
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(std::move(chunk)), {})), "8");
+    EXPECT_FALSE(diag.hasErrors());
+}
