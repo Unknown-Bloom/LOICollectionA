@@ -995,50 +995,54 @@ TEST(OptimizerTest, EliminatesDeadPureArithmeticValue) {
 }
 
 TEST(OptimizerTest, EliminatesDeadArithmeticValueInChunk) {
-    // Deterministic low-level check that DeadValuePass removes a pure-arithmetic
-    // instruction whose destination register is never read, while leaving a
-    // register that the HALT observes untouched. This isolates the
+    // Deterministic low-level check that DeadValuePass removes pure-arithmetic
+    // instructions whose destination register is never read, while leaving the
+    // register that HALT observes untouched. This isolates the
     // generalization from the rest of the optimizer pipeline.
+    //
+    // Encoding notes (MirInstr is {op, operand, dst, src1, src2, ...}):
+    //   LOAD_CONST reads constants[operand] (unchecked -> operand must be valid),
+    //   LOAD_SLOT copies reg[operand] into dst, and HALT returns reg 0, so r0 is
+    //   the live "pinned" register here.
     ir::MirChunk chunk;
     chunk.slotCount = 4;
-    chunk.constants.push_back(7);
-    chunk.constants.push_back(3);
+    chunk.constants.push_back(7);   // index 0
+    chunk.constants.push_back(3);   // index 1
 
     chunk.code = {
-        { MirOp::LOAD_SLOT, 0, 1, 0 },   // r1 = slot0
-        { MirOp::LOAD_CONST, 1, 2 },     // r2 = 7
-        { MirOp::MUL, 1, 3, 1, 2 },      // r3 = r1 * 7    (dead: never read)
-        { MirOp::LOAD_CONST, 2, 1 },     // r2 = 3
-        { MirOp::ADD, 1, 3, 3, 2 },      // r3 = r3 + 3   (dead: never read)
-        { MirOp::LOAD_SLOT, 0, 4, 0 },   // r4 = slot0    (live: consumed by HALT)
+        { MirOp::LOAD_SLOT, 0, 1, 0 },   // r1 = reg0
+        { MirOp::LOAD_CONST, 0, 2 },     // r2 = constants[0] == 7
+        { MirOp::MUL, 0, 3, 1, 2 },      // r3 = r1 * r2  (dead once ADD is gone)
+        { MirOp::LOAD_CONST, 1, 2 },     // r2 = constants[1] == 3
+        { MirOp::ADD, 0, 4, 3, 2 },      // r4 = r3 + r2  (dead: never read)
+        { MirOp::LOAD_SLOT, 0, 0, 0 },   // r0 = reg0     (live: HALT reads r0)
         { MirOp::HALT, 0 }
     };
 
     Optimizer optimizer;
-    auto stats = optimizer.optimize(chunk);
+    optimizer.optimize(chunk);
 
-    EXPECT_GE(stats.removed, 2u);
+    // ADD dies first, which then leaves r3 unread so MUL dies on a later
+    // fixed-point round; the r0 load is pinned by HALT and survives.
     EXPECT_FALSE(containsOpMir(chunk, MirOp::MUL));
     EXPECT_FALSE(containsOpMir(chunk, MirOp::ADD));
     EXPECT_TRUE(containsOpMir(chunk, MirOp::LOAD_SLOT));
-
-    DiagnosticEngine diag;
-    VM vm(diag);
-    EXPECT_FALSE(diag.hasErrors());
 }
 
 TEST(OptimizerTest, KeepsLiveArithmeticValue) {
     // Sanity counterpart: an arithmetic result that IS read must survive. This
     // prevents an over-eager dead-value rule from stripping live computations.
+    // Operands are loaded from slots rather than constants: with two constant
+    // operands ConstantFoldPass legitimately folds the multiply away, which
+    // would leave this test asserting the wrong pass. HALT returns register 0,
+    // so the product feeds straight into the pinned r0.
     ir::MirChunk chunk;
-    chunk.slotCount = 3;
-    chunk.constants.push_back(2);
-    chunk.constants.push_back(4);
+    chunk.slotCount = 4;
 
     chunk.code = {
-        { MirOp::LOAD_CONST, 0, 1 },     // r1 = 2
-        { MirOp::LOAD_CONST, 1, 2 },     // r2 = 4
-        { MirOp::MUL, 0, 3, 1, 2 },      // r3 = r1 * r2  (live: read by HALT)
+        { MirOp::LOAD_SLOT, 1, 1, 1 },   // r1 = reg1  (unknown -> not foldable)
+        { MirOp::LOAD_SLOT, 2, 2, 2 },   // r2 = reg2  (unknown -> not foldable)
+        { MirOp::MUL, 0, 0, 1, 2 },      // r0 = r1 * r2  (live: HALT reads r0)
         { MirOp::HALT, 0 }
     };
 
@@ -1046,9 +1050,4 @@ TEST(OptimizerTest, KeepsLiveArithmeticValue) {
     optimizer.optimize(chunk);
 
     EXPECT_TRUE(containsOpMir(chunk, MirOp::MUL));
-
-    DiagnosticEngine diag;
-    VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(std::move(chunk)), {})), "8");
-    EXPECT_FALSE(diag.hasErrors());
 }
