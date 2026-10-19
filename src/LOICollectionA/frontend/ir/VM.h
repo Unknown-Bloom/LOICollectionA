@@ -253,6 +253,7 @@ namespace LOICollection::frontend::ir {
         void execArray(ExecArgs& s);
         void execClosure(ExecArgs& s);
         void execInstanceof(ExecArgs& s);
+        void execEnum(ExecArgs& s);
         void execObjectCreate(ExecArgs& s);
         void execMethodDispatch(ExecArgs& s);
         void execNativeCall(ExecArgs& s);

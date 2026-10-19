@@ -40,7 +40,9 @@ namespace LOICollection::frontend {
         Optional,
         Generic,
         Trait,
-        None
+        None,
+        Enum,
+        COUNT
     };
 
     struct TypeInfo {
@@ -149,8 +151,30 @@ namespace LOICollection::frontend {
         }
     };
 
+    /* Payload storage for enum (tagged-union) values.
+     *
+     * This is declared opaquely and completed after ValueNode because
+     * ValueNode::ValueType contains EnumValue while an enum payload can itself
+     * hold any value -- including another enum. The recursion is therefore
+     * broken through an indirection, which also keeps EnumValue small
+     * (<= sizeof(std::string)) so that growing the variant does not enlarge
+     * ValueType for every other value in the VM. */
+    struct EnumPayload;
+
+    struct EnumValue {
+        std::uint32_t enumId = 0;                 /* index into MirChunk::enums   */
+        std::uint32_t tag = 0;                    /* variant ordinal             */
+        std::shared_ptr<EnumPayload> payload{};   /* null when arity == 0        */
+
+        /* std::variant's operator== requires every alternative to be comparable.
+         * Payloads are immutable value lists, so identity is enough here. */
+        bool operator==(const EnumValue& other) const {
+            return enumId == other.enumId && tag == other.tag && payload == other.payload;
+        }
+    };
+
     struct ValueNode : ExprNode {
-        using ValueType = std::variant<int, float, std::string, bool, ObjectRef, FunctionRefPtr, ArrayRef, std::monostate>;
+        using ValueType = std::variant<int, float, std::string, bool, ObjectRef, FunctionRefPtr, ArrayRef, std::monostate, EnumValue>;
 
         SourceLocation loc;
         ValueType value;
@@ -173,6 +197,11 @@ namespace LOICollection::frontend {
         void accept(ASTVisitor& visitor) override {
             visitor.visit(*this);
         }
+    };
+
+    /* Completed here, now that ValueNode::ValueType is a complete type. */
+    struct EnumPayload {
+        std::vector<ValueNode::ValueType> items{};
     };
 
     struct VariableNode : ExprNode {

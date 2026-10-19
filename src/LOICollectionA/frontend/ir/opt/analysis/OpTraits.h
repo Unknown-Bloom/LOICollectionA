@@ -38,6 +38,8 @@ namespace LOICollection::frontend::ir::opt {
             case MirOp::NOT:
             case MirOp::INSTANCEOF:
             case MirOp::LOAD_LEN:
+            case MirOp::TAG_OF:
+            case MirOp::LOAD_ENUM_PAYLOAD:
                 return true;
             default:
                 return false;

@@ -141,7 +141,10 @@ namespace LOICollection::frontend::ir {
             using T = std::decay_t<decltype(l)>;
             using U = std::decay_t<decltype(r)>;
 
-            if constexpr (std::is_same_v<T, std::monostate> || std::is_same_v<U, std::monostate>) {
+            if constexpr (std::is_same_v<T, EnumValue> || std::is_same_v<U, EnumValue>) {
+                diagnostics.addError(loc, "Cannot perform arithmetic on an enum value");
+                return 0;
+            } else if constexpr (std::is_same_v<T, std::monostate> || std::is_same_v<U, std::monostate>) {
                 diagnostics.addError(loc,
                     "Cannot perform arithmetic on an empty optional value");
                 return 0;
@@ -303,7 +306,18 @@ namespace LOICollection::frontend::ir {
             using T = std::decay_t<decltype(l)>;
             using U = std::decay_t<decltype(r)>;
 
-            if constexpr (std::is_same_v<T, std::monostate> || std::is_same_v<U, std::monostate>) {
+            if constexpr (std::is_same_v<T, EnumValue> || std::is_same_v<U, EnumValue>) {
+                if constexpr (std::is_same_v<T, EnumValue> && std::is_same_v<U, EnumValue>) {
+                    const bool same = l.enumId == r.enumId && l.tag == r.tag &&
+                                      l.payload == r.payload;
+
+                    if (op == MirOp::CMP_EQ) return same;
+                    if (op == MirOp::CMP_NE) return !same;
+                }
+
+                diagnostics.addError(loc, "Cannot compare enum values");
+                return false;
+            } else if constexpr (std::is_same_v<T, std::monostate> || std::is_same_v<U, std::monostate>) {
                 if constexpr (std::is_same_v<T, std::monostate> && std::is_same_v<U, std::monostate>) {
                     if (op == MirOp::CMP_EQ) return true;
                     if (op == MirOp::CMP_NE) return false;

@@ -501,4 +501,82 @@ namespace LOICollection::frontend::ir {
         }
     }
 
+    void VM::execEnum(ExecArgs& s) {
+        const auto& instr = s.instr;
+        const MirChunk& chunk = s.chunk;
+        Frame& frame = s.frame;
+
+        switch (instr.op) {
+            case MirOp::MAKE_ENUM: {
+                if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= chunk.enums.size()) {
+                    this->diagnostics.addError(this->currentLoc, "Unknown enum id");
+                    break;
+                }
+
+                const auto& meta = chunk.enums[static_cast<size_t>(instr.operand)];
+                const auto tag = static_cast<std::uint32_t>(instr.imm);
+
+                if (tag >= meta.variantNames.size()) {
+                    this->diagnostics.addError(this->currentLoc, "Unknown enum variant");
+                    break;
+                }
+
+                int arity = tag < meta.variantArity.size()
+                    ? static_cast<int>(meta.variantArity[tag])
+                    : 0;
+
+                // The instruction carries at most three payload registers
+                // (src1/src2/src3); anything wider is rejected at compile time.
+                if (arity > 3)
+                    arity = 3;
+
+                EnumValue value{};
+                value.enumId = static_cast<std::uint32_t>(instr.operand);
+                value.tag = tag;
+
+                if (arity > 0) {
+                    const int sources[3] = { instr.src1, instr.src2, instr.src3 };
+                    auto payload = std::make_shared<EnumPayload>();
+                    payload->items.reserve(static_cast<size_t>(arity));
+
+                    for (int i = 0; i < arity; ++i) {
+                        if (sources[i] < 0) {
+                            this->diagnostics.addError(this->currentLoc, "Missing enum payload");
+                            break;
+                        }
+
+                        payload->items.push_back(this->regOf(frame, sources[i]));
+                    }
+
+                    value.payload = std::move(payload);
+                }
+
+                this->setReg(frame, instr.dst, std::move(value));
+            } break;
+            case MirOp::TAG_OF: {
+                const auto& value = this->regOf(frame, instr.src1);
+                int tag = -1;
+
+                if (const auto* ev = std::get_if<EnumValue>(&value))
+                    tag = static_cast<int>(ev->tag);
+
+                this->setReg(frame, instr.dst, tag);
+            } break;
+            case MirOp::LOAD_ENUM_PAYLOAD: {
+                const auto& value = this->regOf(frame, instr.src1);
+                const auto* ev = std::get_if<EnumValue>(&value);
+
+                if (!ev || !ev->payload || instr.operand < 0 ||
+                    static_cast<size_t>(instr.operand) >= ev->payload->items.size()) {
+                    this->setReg(frame, instr.dst, std::monostate{});
+                    break;
+                }
+
+                this->setReg(frame, instr.dst,
+                    ev->payload->items[static_cast<size_t>(instr.operand)]);
+            } break;
+            default: break;
+        }
+    }
+
 }

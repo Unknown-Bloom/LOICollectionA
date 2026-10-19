@@ -52,6 +52,22 @@ namespace LOICollection::frontend::ir {
             }
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, std::monostate>)
                 return "None";
+            else if constexpr (std::is_same_v<std::remove_cv_t<T>, EnumValue>) {
+                std::string result =
+                    "enum#" + std::to_string(arg.enumId) + "[" + std::to_string(arg.tag) + "]";
+
+                if (arg.payload && !arg.payload->items.empty()) {
+                    result += "(";
+                    for (size_t i = 0; i < arg.payload->items.size(); ++i) {
+                        if (i != 0)
+                            result += ", ";
+                        result += VM::valueToString(arg.payload->items[i]);
+                    }
+                    result += ")";
+                }
+
+                return result;
+            }
         }, val);
     }
 
@@ -75,6 +91,8 @@ namespace LOICollection::frontend::ir {
                 return "array";
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, std::monostate>)
                 return "none";
+            else if constexpr (std::is_same_v<std::remove_cv_t<T>, EnumValue>)
+                return "enum";
         }, val);
     }
 
@@ -118,6 +136,8 @@ namespace LOICollection::frontend::ir {
                 return !arg->elements.empty();
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, std::monostate>)
                 return false;
+            else if constexpr (std::is_same_v<std::remove_cv_t<T>, EnumValue>)
+                return true;
         }, val);
     }
 

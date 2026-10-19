@@ -270,6 +270,7 @@ namespace LOICollection::frontend::ir {
                 case MirOp::MAKE_ARRAY: case MirOp::LOAD_INDEX: case MirOp::STORE_INDEX: this->execArray(s); break;
                 case MirOp::MAKE_LAMBDA: case MirOp::LOAD_THIS: this->execClosure(s); break;
                 case MirOp::INSTANCEOF: this->execInstanceof(s); break;
+                case MirOp::MAKE_ENUM: case MirOp::TAG_OF: case MirOp::LOAD_ENUM_PAYLOAD: this->execEnum(s); break;
                 case MirOp::NEW: case MirOp::NEW_NATIVE: this->execObjectCreate(s); break;
                 case MirOp::CALL_METHOD: case MirOp::CALL_METHOD_VIRTUAL: case MirOp::CALL_METHOD_BY_NAME: case MirOp::CALL_SUPER_CTOR: this->execMethodDispatch(s); break;
                 case MirOp::CALL_NATIVE_METHOD: this->execNativeCall(s); break;

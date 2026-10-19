@@ -115,7 +115,7 @@ namespace LOICollection::frontend::ir::detail {
             return false;
 
         uint8_t kind = 0;
-        if (!reader.u8(kind) || kind > static_cast<uint8_t>(TypeKind::None))
+        if (!reader.u8(kind) || kind >= static_cast<uint8_t>(TypeKind::COUNT))
             return false;
 
         type.kind = static_cast<TypeKind>(kind);

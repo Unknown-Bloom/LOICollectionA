@@ -78,6 +78,15 @@ namespace LOICollection::frontend::ir {
         std::vector<LambdaCapture> captures;
     };
 
+    /* Layout of a language-level enum (tagged union). `variantArity[i]` is the
+     * number of payload slots carried by variant `i`; a zero means the variant
+     * is payload-free and needs no heap allocation at all. */
+    struct EnumMeta {
+        std::string name;
+        std::vector<std::string> variantNames;
+        std::vector<std::uint8_t> variantArity;
+    };
+
     struct NativeCallMeta {
         std::string className;
         std::string name;
@@ -134,6 +143,13 @@ namespace LOICollection::frontend::ir {
 
         JMP_IF_CMP_FALSE,
 
+        /* Tagged unions. MAKE_ENUM reads its payload from the register window
+         * src1 .. src1+imm (inclusive) and TAG_OF / LOAD_ENUM_PAYLOAD read a
+         * constructed value back out. */
+        MAKE_ENUM,
+        TAG_OF,
+        LOAD_ENUM_PAYLOAD,
+
         COUNT
     };
 
@@ -166,6 +182,7 @@ namespace LOICollection::frontend::ir {
         std::vector<ByNameCallMeta> byNameCalls;
         std::vector<SuperCallMeta> superCalls;
         std::vector<LambdaMeta> lambdas;
+        std::vector<EnumMeta> enums;
 
         std::deque<std::unique_ptr<MirChunk>> methodBodies;
 

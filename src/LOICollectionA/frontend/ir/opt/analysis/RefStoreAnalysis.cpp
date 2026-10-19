@@ -100,6 +100,20 @@ namespace LOICollection::frontend::ir::opt {
                 case MirOp::INSTANCEOF:
                     writes(instr.dst, true);
                     break;
+                case MirOp::MAKE_ENUM:
+                    // An enum value can carry reference payloads, so its result
+                    // is never a scalar, and every payload register is a read.
+                    reads(instr.src1);
+                    reads(instr.src2);
+                    reads(instr.src3);
+                    writes(instr.dst, false);
+                    break;
+                case MirOp::TAG_OF:
+                    writes(instr.dst, true);
+                    break;
+                case MirOp::LOAD_ENUM_PAYLOAD:
+                    writes(instr.dst, false);
+                    break;
                 case MirOp::STORE_FIELD:
                 case MirOp::STORE_FIELD_SLOT: {
                     if (reads(instr.src2))
