@@ -6,12 +6,43 @@
 #include "LOICollectionA/frontend/ir/opt/passes/LICMPass.h"
 
 namespace LOICollection::frontend::ir::opt::detail {
-    bool isInvariant(const MirInstr& instr, const std::unordered_set<int>& invariantRegs) {
+    // An instruction is loop-invariant when its value is identical on every
+    // iteration. We treat:
+    //   * LOAD_CONST   -> always invariant
+    //   * LOAD_SLOT    -> invariant iff the slot is never written inside the loop
+    //   * MOVE / pure unary / pure binary -> invariant iff every operand register
+    //                                       already holds an invariant value
+    // LOAD_VAR is deliberately NOT treated as memory-invariant: the MIR can
+    // assign different variable indices to the read and write of one logical
+    // variable (e.g. via closure capture), so a per-index "never written" check
+    // would be unsound. Side-effecting ops (CALL, STORE, NEW, field/index
+    // writes, ...) and DIV/MOD/POW (which can panic on zero) are also excluded so
+    // that hoisting never changes observable behaviour or the timing of a panic.
+    bool isInvariant(
+        const MirInstr& instr,
+        const std::unordered_set<int>& invariantRegs,
+        const std::unordered_set<int>& loopWritten
+    ) {
         if (instr.op == MirOp::LOAD_CONST)
             return true;
 
-        if (isPureBinary(instr.op))
+        // Only LOAD_SLOT may be treated as loop-invariant memory here: slot
+        // indices are stable across reads and writes of the same local. LOAD_VAR
+        // must be excluded -- the MIR can assign different variable indices to
+        // the read and write of one logical variable (e.g. via closure capture),
+        // so a per-index "never written" check is unsound and could hoist a load
+        // of an undefined variable out of its defining loop.
+        if (instr.op == MirOp::LOAD_SLOT)
+            return loopWritten.count(instr.operand) == 0;
+
+        if (instr.op == MirOp::MOVE)
+            return invariantRegs.count(instr.src1) > 0;
+
+        if (isPureBinary(instr.op)) {
+            if (instr.op == MirOp::DIV || instr.op == MirOp::MOD || instr.op == MirOp::POW)
+                return false;
             return invariantRegs.count(instr.src1) > 0 && invariantRegs.count(instr.src2) > 0;
+        }
 
         if (isPureUnary(instr.op))
             return invariantRegs.count(instr.src1) > 0;
@@ -43,6 +74,11 @@ namespace LOICollection::frontend::ir::opt {
     }
 
     size_t LICMPass::hoist(const ControlFlowGraph& cfg, const NaturalLoop& loop) {
+        // Only handle well-formed single-entry / single-exit loops whose every
+        // block is reached on every iteration (each non-header loop block has all
+        // of its predecessors inside the loop). This guarantees that moving the
+        // loop-invariant prefix into the preheader neither changes how often an
+        // instruction executes nor skips an iteration.
         if (loop.entries.size() != 1 || loop.exits.size() != 1)
             return 0;
 
@@ -68,31 +104,91 @@ namespace LOICollection::frontend::ir::opt {
                     return 0;
         }
 
-        const auto& header = cfg.blocks()[loop.header];
+        // Collect every memory location written inside the loop. A LOAD_SLOT /
+        // LOAD_VAR of a location that is never written in the loop is loop
+        // invariant and may be hoisted.
+        std::unordered_set<int> loopWritten;
+        for (const int block : loop.blocks) {
+            const auto& b = cfg.blocks()[block];
+            for (int i = b.begin; i < b.end; ++i) {
+                const MirInstr& instr = mChunk.code[i];
+                if (instr.op == MirOp::STORE_SLOT || instr.op == MirOp::STORE_VAR)
+                    loopWritten.insert(instr.operand);
+            }
+        }
 
+        // Only code that runs on *every* iteration may be hoisted out of a loop.
+        // A block is safe when it is reached unconditionally from the header and
+        // falls through unconditionally to the next safe block (or the back-edge),
+        // with no internal branches or merges. This deliberately excludes blocks
+        // behind a condition -- e.g. the arms of a match/if inside the loop --
+        // whose leading instructions are only conditionally executed. Hoisting
+        // those to the unconditional preheader would change which value a later
+        // selection observes and would silently corrupt the program.
+        std::unordered_set<int> safeBlocks;
+        {
+            int start = -1;
+            for (int s : cfg.blocks()[loop.header].successors)
+                if (loop.contains(s)) { start = s; break; }
+
+            int cur = start;
+            while (cur >= 0) {
+                const auto& cb = cfg.blocks()[cur];
+                if (cb.successors.size() != 1 || cb.predecessors.size() != 1)
+                    break;
+
+                const int pred = cb.predecessors[0];
+                const bool predOk = (cur == start) ? (pred == loop.header)
+                                                   : safeBlocks.count(pred) > 0;
+                if (!predOk)
+                    break;
+
+                safeBlocks.insert(cur);
+
+                const int next = cb.successors[0];
+                if (next == loop.header)
+                    break;
+                cur = next;
+            }
+        }
+
+        // Walk each safe block in program order and collect its leading
+        // loop-invariant prefix. Stopping at the first non-invariant instruction
+        // keeps the transformation safe: nothing after it can be moved without
+        // risking a dependence on a loop-varying value.
         std::vector<MirInstr> invariant;
+        std::vector<int> hoistOrigIdx;
         std::unordered_set<int> invariantRegs;
 
-        for (int i = header.begin; i < header.end; ++i) {
-            const MirInstr& instr = mChunk.code[i];
+        for (const int block : safeBlocks) {
+            const auto& b = cfg.blocks()[block];
+            for (int i = b.begin; i < b.end; ++i) {
+                const MirInstr& instr = mChunk.code[i];
 
-            if (!isInvariant(instr, invariantRegs))
-                break;
+                if (!isInvariant(instr, invariantRegs, loopWritten))
+                    break;
 
-            invariant.push_back(instr);
-            if (instr.dst >= 0)
-                invariantRegs.insert(instr.dst);
+                invariant.push_back(instr);
+                hoistOrigIdx.push_back(i);
+                if (instr.dst >= 0)
+                    invariantRegs.insert(instr.dst);
+            }
         }
 
         if (invariant.empty())
             return 0;
 
-        const int insertAt = mChunk.code[entry.end - 1].op == MirOp::JMP ? entry.end - 1 : entry.end;
+        // Insert the hoisted code at the end of the unique preheader (the loop's
+        // single entry block), just before it falls into the loop header. If the
+        // preheader ends with an unconditional jump, insert before it so the jump
+        // still transfers control into the loop.
+        const int insertAt = mChunk.code[entry.end - 1].op == MirOp::JMP
+            ? entry.end - 1 : entry.end;
 
         std::vector<Edit> edits;
         edits.push_back({ insertAt, false, invariant });
-        for (int k = 0; k < static_cast<int>(invariant.size()); ++k)
-            edits.push_back({ header.begin + k, true, {} });
+        for (const int idx : hoistOrigIdx)
+            edits.push_back({ idx, true, {} });
 
         apply(mChunk.code, edits);
 

@@ -896,3 +896,59 @@ TEST(OptimizerTest, CSEInsideLoopKeepsJumpOffsets) {
     EXPECT_FALSE(program.diagnostics.hasErrors());
     EXPECT_EQ(VM::valueToString(result), "150");
 }
+
+TEST(OptimizerTest, LICMHoistsInvariantAndMatchesBaseline) {
+    // A loop-invariant multiply must be safe to hoist: the optimized result
+    // must equal both the mathematically expected value and the result with
+    // LICM disabled. This guards the general correctness of hoisting, not just
+    // the microbenchmark speedup.
+    const std::string source =
+        "func f(a: int, b: int, n: int) -> int {\n"
+        "  let s = 0;\n"
+        "  let i = 0;\n"
+        "  while (i < n) {\n"
+        "    s = s + (a * b);\n"
+        "    i = i + 1;\n"
+        "  }\n"
+        "  return s;\n"
+        "}\n"
+        "f(3, 4, 20000)";
+
+    const unsigned licmOff =
+        Optimizer::allPasses & ~static_cast<unsigned>(Optimizer::Pass::LICM);
+
+    auto withLICM = compileAndOptimize(source, Optimizer::allPasses);
+    auto withoutLICM = compileAndOptimize(source, licmOff);
+
+    VM vmOn(withLICM.diagnostics);
+    VM vmOff(withoutLICM.diagnostics);
+
+    const std::string on = VM::valueToString(vmOn.run(withLICM.chunk, {}));
+    const std::string off = VM::valueToString(vmOff.run(withoutLICM.chunk, {}));
+
+    EXPECT_FALSE(withLICM.diagnostics.hasErrors());
+    EXPECT_FALSE(withoutLICM.diagnostics.hasErrors());
+    EXPECT_EQ(on, "240000");
+    EXPECT_EQ(off, "240000");
+    EXPECT_EQ(on, off);
+}
+
+TEST(OptimizerTest, LICMDoesNotHoistFromConditionalArm) {
+    // Reproduces the regression where LICM hoisted a match-arm constant load
+    // out of a conditionally-executed block inside a loop. With the safe-block
+    // restriction, only code that runs on every iteration may be hoisted, so
+    // the per-iteration selection (match on the loop variable) is preserved.
+    const std::string source =
+        "let out = \"\"; "
+        "for (n in [1, 2, 3]) [ "
+        "    out += match (n) [ 2 [ \"two\" ] _ [ \"x\" ] ]; "
+        "]; "
+        "out";
+
+    auto program = compileAndOptimize(source, Optimizer::allPasses);
+
+    EXPECT_FALSE(program.diagnostics.hasErrors());
+
+    VM vm(program.diagnostics);
+    EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "xtwox");
+}
