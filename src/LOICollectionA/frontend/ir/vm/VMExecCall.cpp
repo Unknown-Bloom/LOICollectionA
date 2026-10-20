@@ -31,6 +31,74 @@ namespace LOICollection::frontend::ir {
 
     using namespace detail;
 
+    bool VM::invokeClosureMethod(ExecArgs& s, const std::string& methodName, int argCount) {
+        const MirInstr& instr = s.instr;
+        Frame& frame = s.frame;
+
+        const ValueNode::ValueType& receiver = this->regOf(frame, instr.src1 + instr.imm);
+        const auto* closure = std::get_if<FunctionRefPtr>(&receiver);
+        if (!closure || !*closure)
+            return false;
+
+        /* A closure only ever provides `call`. When the call site's declared
+         * method name cannot be recovered (an unannotated receiver), fall back
+         * to `call` rather than rejecting the value. */
+        if (!methodName.empty() && methodName != "call")
+            return false;
+
+        /* Copy the handle: pushFrame() may resize the local pool, which would
+         * invalidate a reference into the receiver's register. */
+        const FunctionRefPtr func = *closure;
+
+        if (argCount != func->argCount) {
+            this->diagnostics.addError(this->currentLoc,
+                "Closure expects " + std::to_string(func->argCount) +
+                " argument(s), got " + std::to_string(argCount));
+            return true;
+        }
+
+        if (!func->owner ||
+            func->bodyIndex < 0 ||
+            func->bodyIndex >= static_cast<int>(func->owner->methodBodies.size())) {
+            this->diagnostics.addError(this->currentLoc, "Invalid function body index");
+            return true;
+        }
+
+        const size_t captureCount = func->captures.size();
+        if (captureCount + static_cast<size_t>(func->argCount) >
+            static_cast<size_t>(func->owner->methodBodies[func->bodyIndex]->slotCount)) {
+            this->diagnostics.addError(this->currentLoc,
+                "Lambda frame is too small for its parameters");
+            return true;
+        }
+
+        const size_t argsBase = frame.localsBase + static_cast<size_t>(instr.src1);
+
+        Frame callee(*func->owner->methodBodies[func->bodyIndex]);
+        callee.hasThis = func->hasThis;
+        callee.returnReg = instr.dst;
+
+        if (func->hasThis) {
+            auto self = func->thisObj.lock();
+            if (!self) {
+                this->diagnostics.addError(this->currentLoc, "Method receiver has been released");
+                return true;
+            }
+
+            callee.thisObj = self;
+        }
+
+        if (!this->pushFrame(std::move(callee)))
+            return true;
+
+        const size_t base = this->frames.back().localsBase;
+        for (size_t i = 0; i < captureCount; ++i)
+            this->localPool[base + static_cast<size_t>(func->captureSlots[i])] = func->captures[i];
+        this->placeArgs(argsBase, func->argCount, 0);
+
+        return true;
+    }
+
     void VM::execMethodDispatch(ExecArgs& s) {
         const auto& instr = s.instr;
         const MirChunk& cur = s.cur;
@@ -43,6 +111,9 @@ namespace LOICollection::frontend::ir {
 
                 const ValueNode::ValueType& receiver = this->regOf(frame, instr.src1 + instr.imm);
                 if (!std::holds_alternative<ObjectRef>(receiver)) {
+                    if (this->invokeClosureMethod(s, meta.name, meta.argCount))
+                        break;
+
                     this->diagnostics.addError(this->currentLoc, "Method call target is not an object");
                     break;
                 }
@@ -71,6 +142,20 @@ namespace LOICollection::frontend::ir {
 
                 const ValueNode::ValueType& receiver = this->regOf(frame, instr.src1 + instr.imm);
                 if (!std::holds_alternative<ObjectRef>(receiver)) {
+                    /* The declared method name is what the call site asked for;
+                     * a closure only stands in when that method is `call`. */
+                    std::string declaredName;
+                    if (meta.classIndex >= 0 &&
+                        meta.classIndex < static_cast<int>(chunk.classes.size())) {
+                        const auto& expected = chunk.classes[meta.classIndex];
+                        if (meta.ordinal >= 0 &&
+                            meta.ordinal < static_cast<int>(expected.methods.size()))
+                            declaredName = chunk.methods[expected.methods[meta.ordinal]].name;
+                    }
+
+                    if (this->invokeClosureMethod(s, declaredName, meta.argCount))
+                        break;
+
                     this->diagnostics.addError(this->currentLoc, "Method call target is not an object");
                     break;
                 }
@@ -117,6 +202,11 @@ namespace LOICollection::frontend::ir {
 
                 const ValueNode::ValueType& receiver = this->regOf(frame, instr.src1 + instr.imm);
                 if (!std::holds_alternative<ObjectRef>(receiver)) {
+                    /* P4: a closure standing in for a single-method interface
+                     * answers to `call(...)`; invoke it directly. */
+                    if (this->invokeClosureMethod(s, meta.methodName, meta.argCount))
+                        break;
+
                     this->diagnostics.addError(this->currentLoc, "Method call target is not an object");
                     break;
                 }

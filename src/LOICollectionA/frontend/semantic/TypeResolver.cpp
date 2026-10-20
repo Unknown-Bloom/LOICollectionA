@@ -42,6 +42,11 @@ namespace LOICollection::frontend {
         if (isNativeClass(name))
             return { TypeKind::Object, name };
 
+        /* An enum declares a type of its own, so `func f(r: Result)` and
+         * `let r: Result = Ok(1)` both resolve. */
+        if (this->enumByName.contains(name))
+            return { TypeKind::Enum, name };
+
         if (reportError)
             diagnostics.addError(loc, "Unknown type: " + name);
 
@@ -210,6 +215,46 @@ namespace LOICollection::frontend {
 
         if (target.kind == TypeKind::Object && from.kind == TypeKind::Object)
             return this->isDerived(from.className, target.className);
+
+        /* A closure satisfies a single-method interface: `map((x) => x * x)`
+         * works where a `Fn1` subclass used to be the only option. */
+        if (from.kind == TypeKind::Function)
+            return this->declaresCallableMethod(target);
+
+        return false;
+    }
+
+    bool SemanticAnalyzer::declaresCallableMethod(const TypeInfo& type) const {
+        if (type.kind == TypeKind::Object) {
+            std::unordered_set<std::string> seen;
+            std::string name = type.className;
+
+            while (!name.empty() && !seen.contains(name)) {
+                seen.insert(name);
+
+                auto cls = this->findClass(name);
+                if (!cls)
+                    return false;
+
+                for (const auto& method : cls->get().methods) {
+                    if (method.name == "call")
+                        return true;
+                }
+
+                name = cls->get().baseClassName;
+            }
+
+            return false;
+        }
+
+        if (type.kind == TypeKind::Trait) {
+            auto it = this->traits.find(type.className);
+            if (it == this->traits.end())
+                return false;
+
+            return std::ranges::any_of(it->second,
+                [](const TraitMethod& method) { return method.name == "call"; });
+        }
 
         return false;
     }

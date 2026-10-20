@@ -255,6 +255,12 @@ namespace LOICollection::frontend::ir {
         void execInstanceof(ExecArgs& s);
         void execEnum(ExecArgs& s);
         void execObjectCreate(ExecArgs& s);
+
+        /* P4: runs a closure that stands in for a single-method interface.
+         * Returns false when the receiver is not a closure (or the method is
+         * not `call`), so the caller can report the usual error. */
+        bool invokeClosureMethod(ExecArgs& s, const std::string& methodName, int argCount);
+
         void execMethodDispatch(ExecArgs& s);
         void execNativeCall(ExecArgs& s);
         void execFunctionCall(ExecArgs& s);

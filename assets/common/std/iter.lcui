@@ -10,8 +10,12 @@
  *
  *     let squares = range(1, 10).map(new Square()).filter(new Big()).collect();
  *
- * Mappers and predicates are Fn1/Fn2 subclasses (the script equivalent of
- * implementing an Fn trait):
+ * Mappers and predicates may be closures, which is the shortest form now that a
+ * closure satisfies a single-method interface:
+ *
+ *     range(1, 10).map(func (x) { return x * x; }).collect();
+ *
+ * Fn1/Fn2 subclasses still work and answer the same call(...) protocol:
  *
  *     class Square extends Fn1 {
  *         func call(x) { return x * x; }

@@ -165,6 +165,12 @@ namespace LOICollection::frontend {
         [[nodiscard]] std::unordered_map<std::string, TypeInfo> inferTypeParams(
             const MethodDecl& decl, const std::vector<TypeInfo>& argTypes) const;
         [[nodiscard]] bool satisfiesTrait(const TypeInfo& type, const std::string& traitName) const;
+
+        /* True when `type` declares a `call` method, either directly or
+         * through a base class or trait. Such a type is a single-method
+         * interface (the script stand-in for an Fn trait) and a closure can
+         * be used wherever it is expected. */
+        [[nodiscard]] bool declaresCallableMethod(const TypeInfo& type) const;
         [[nodiscard]] bool boundsSatisfied(
             const std::vector<TypeParam>& typeParams,
             const std::unordered_map<std::string, TypeInfo>& subst) const;

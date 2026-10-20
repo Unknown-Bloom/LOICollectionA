@@ -227,6 +227,20 @@ namespace LOICollection::frontend {
             }
         }
 
+        /* P4: a closure answers to `call(...)`, and an unannotated receiver
+         * cannot be checked statically — both are resolved when the call runs.
+         */
+        if (targetType.kind == TypeKind::Unknown)
+            return {};
+
+        if (targetType.kind == TypeKind::Function) {
+            if (node.methodName == "call")
+                return {};
+
+            diagnostics.addError(node.loc, "Method call target is not an object");
+            return {};
+        }
+
         if (targetType.kind != TypeKind::Object) {
             diagnostics.addError(node.loc, "Method call target is not an object");
             return {};

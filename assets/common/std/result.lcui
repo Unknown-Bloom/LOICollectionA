@@ -1,84 +1,76 @@
-/* Std: Result — a recoverable error type (Rust-inspired).
+/* Std: Result — a recoverable error type built on the language's native
+ * tagged unions instead of a class with a flag.
  *
- *     import "../std/result.lcui";
+ *     import "/result.lcui";
  *
- *     let r = divide(10, 2);
- *     if (r.isOk()) [ println("got " + r.unwrap()) : println("failed: " + r.errOr("unknown")) ]
+ *     let r = Ok(42);
+ *     match (r) [ Ok(v) [ println("got " + v) ] Err(e) [ println("failed: " + e) ] ]
  *
- * Ok wraps a success value, Err wraps an error payload. unwrap()/expect()
- * panic on an Err, unwrapOr() falls back, and()/map() chain like Rust.
+ * Ok(v) wraps a success payload and Err(e) an error message. The helpers below
+ * operate on either variant; resultMap and resultAndThen take a closure (or an
+ * Fn1 subclass) and forward the payload with f.call(...).
+ *
+ * Migration note: this module used to be `class Result` with an `ok` flag and
+ * `Result.Ok(v)` / `r.unwrap()` methods. The native enum encodes the same
+ * states in the tag, so the flag and the boxing object are both gone — use
+ * `Ok(v)` / `Err(e)` and the result* helpers, or destructure with
+ * `match` / `if let`.
  */
 
-import "iter.lcui" { Fn1 };
+enum Result {
+    Ok(int)
+    Err(string)
+}
 
-class Result {
-    public: ok: bool = true; value = 0; err = "";
+/* resultIsOk reports whether r is an Ok. */
+func resultIsOk(r: Result) -> bool {
+    if (let Ok(v) = r) [ return true; ]
+    return false;
+}
 
-    Result(isOk: bool, v, e) {
-        this.ok = isOk;
-        this.value = v;
-        this.err = e;
-    }
+/* resultIsErr reports whether r is an Err. */
+func resultIsErr(r: Result) -> bool {
+    return !resultIsOk(r);
+}
 
-    /* Ok wraps a success value. */
-    static func Ok(v) -> Result {
-        return new Result(true, v, "");
-    }
+/* resultUnwrap returns the Ok payload, panicking on an Err. */
+func resultUnwrap(r: Result) {
+    if (let Ok(v) = r) [ return v; ]
+    panic("unwrap on Err");
+}
 
-    /* Err wraps an error payload. */
-    static func Err(e) -> Result {
-        return new Result(false, 0, e);
-    }
+/* resultUnwrapOr returns the Ok payload, or fallback on an Err. */
+func resultUnwrapOr(r: Result, fallback) {
+    if (let Ok(v) = r) [ return v; ]
+    return fallback;
+}
 
-    /* isOk reports whether this is an Ok result. */
-    func isOk() -> bool {
-        return this.ok;
-    }
+/* resultExpect returns the Ok payload, panicking with msg on an Err. */
+func resultExpect(r: Result, msg) {
+    if (let Ok(v) = r) [ return v; ]
+    panic(msg);
+}
 
-    /* isErr reports whether this is an Err result. */
-    func isErr() -> bool {
-        return !this.ok;
-    }
+/* resultErrOr returns the Err message, or fallback on an Ok. */
+func resultErrOr(r: Result, fallback) {
+    if (let Err(e) = r) [ return e; ]
+    return fallback;
+}
 
-    /* unwrap returns the value, panicking on Err. */
-    func unwrap() {
-        if (this.ok) [ return this.value; ]
-        panic("unwrap on Err: " + this.err);
-    }
+/* resultMap applies f to an Ok payload, passing an Err through untouched. */
+func resultMap(r: Result, f) {
+    if (let Ok(v) = r) [ return Ok(f.call(v)); ]
+    return r;
+}
 
-    /* unwrapOr returns the value, or `fallback` on Err. */
-    func unwrapOr(fallback) {
-        if (this.ok) [ return this.value; ]
-        return fallback;
-    }
+/* resultMapErr applies f to an Err message, passing an Ok through untouched. */
+func resultMapErr(r: Result, f) {
+    if (let Err(e) = r) [ return Err(f.call(e)); ]
+    return r;
+}
 
-    /* expect returns the value, panicking with `msg` on Err. */
-    func expect(msg) {
-        if (this.ok) [ return this.value; ]
-        panic(msg + ": " + this.err);
-    }
-
-    /* errOr returns the error payload, or `fallback` on Ok. */
-    func errOr(fallback) {
-        if (this.ok) [ return fallback; ]
-        return this.err;
-    }
-
-    /* map transforms an Ok value via f, passing Err through. */
-    func map(f: Fn1) -> Result {
-        if (this.ok) [ return new Result(true, f.call(this.value), ""); ]
-        return this;
-    }
-
-    /* mapErr transforms an Err payload via f, passing Ok through. */
-    func mapErr(f: Fn1) -> Result {
-        if (this.ok) [ return this; ]
-        return new Result(false, 0, f.call(this.err));
-    }
-
-    /* andThen chains a follow-up operation that itself returns a Result. */
-    func andThen(f: Fn1) -> Result {
-        if (this.ok) [ return f.call(this.value); ]
-        return this;
-    }
+/* resultAndThen chains a follow-up operation that itself returns a Result. */
+func resultAndThen(r: Result, f) {
+    if (let Ok(v) = r) [ return f.call(v); ]
+    return r;
 }

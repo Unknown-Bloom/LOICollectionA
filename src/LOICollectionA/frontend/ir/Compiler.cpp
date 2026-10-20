@@ -1640,6 +1640,19 @@ namespace LOICollection::frontend::ir {
             return;
         }
 
+        /* P4: `x.call(...)` on a receiver whose class is not known statically
+         * is resolved by name when it runs — that is also how a closure
+         * answers to `call`, so no class needs to be resolved here. */
+        if (node.methodName == "call") {
+            const int metaIdx = this->addByNameCall(node.methodName, argCount);
+            const int dst = this->allocReg();
+
+            this->current.get().emitCall(
+                MirOp::CALL_METHOD_BY_NAME, metaIdx, dst, base, -1, argCount, node.loc);
+            this->lastResultReg = dst;
+            return;
+        }
+
         this->diagnostics.addError(node.loc, "Unresolved method call: " + node.methodName);
     }
 
