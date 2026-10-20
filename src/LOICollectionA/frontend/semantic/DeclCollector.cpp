@@ -188,6 +188,32 @@ namespace LOICollection::frontend {
         this->impls.push_back(std::ref(node));
     }
 
+    void SemanticAnalyzer::registerEnum(EnumDeclNode& node) {
+        if (enumByName.find(node.name) != enumByName.end()) {
+            diagnostics.addError(node.loc, "Duplicate enum: " + node.name);
+            return;
+        }
+
+        const int index = static_cast<int>(enumByName.size());
+        enumByName.emplace(node.name, index);
+
+        for (size_t tag = 0; tag < node.variants.size(); ++tag) {
+            const std::string& variantName = node.variants[tag].name;
+            if (enumVariant.find(variantName) != enumVariant.end()) {
+                diagnostics.addError(node.variants[tag].loc,
+                    "Duplicate enum variant name '" + variantName +
+                    "' (variant names must be unique across all enums)");
+                continue;
+            }
+            EnumVariantInfo info;
+            info.enumIndex = index;
+            info.tag = static_cast<int>(tag);
+            info.arity = static_cast<int>(node.variants[tag].fieldTypes.size());
+            info.enumName = node.name;
+            enumVariant.emplace(variantName, info);
+        }
+    }
+
     void SemanticAnalyzer::processImpls() {
         for (auto implRef : this->impls) {
             ImplNode& impl = implRef.get();

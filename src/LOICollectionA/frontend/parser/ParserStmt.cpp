@@ -577,6 +577,7 @@ namespace LOICollection::frontend {
             }
 
             if (currentToken.type == TokenType::TOKEN_CLASS ||
+                currentToken.type == TokenType::TOKEN_ENUM ||
                 (currentToken.type == TokenType::TOKEN_FUNC && peek() != TokenType::TOKEN_LPAREN)) {
                 diagnostics.addError(currentToken.loc,
                     "Class and function definitions are only allowed at top level");
@@ -730,6 +731,9 @@ namespace LOICollection::frontend {
 
         if (currentToken.type == TokenType::TOKEN_CLASS)
             return parseClass();
+
+        if (currentToken.type == TokenType::TOKEN_ENUM)
+            return parseEnum();
 
         if (currentToken.type == TokenType::TOKEN_TRAIT)
             return parseTrait();

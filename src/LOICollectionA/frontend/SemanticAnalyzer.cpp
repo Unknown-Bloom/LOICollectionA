@@ -36,6 +36,8 @@ namespace LOICollection::frontend {
         this->constructorAssignedMembers.clear();
         this->traits.clear();
         this->impls.clear();
+        this->enumByName.clear();
+        this->enumVariant.clear();
         this->activeTypeParams.clear();
         this->activeTypeParamBounds.clear();
         this->blockScopes.clear();
@@ -61,6 +63,9 @@ namespace LOICollection::frontend {
                     break;
                 case ASTNode::Type::Impl:
                     registerImpl(static_cast<ImplNode&>(*part));
+                    break;
+                case ASTNode::Type::Enum:
+                    registerEnum(static_cast<EnumDeclNode&>(*part));
                     break;
                 default:
                     break;

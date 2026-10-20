@@ -117,6 +117,8 @@ namespace LOICollection::frontend {
                 return type.typeVar.empty() ? "generic" : type.typeVar;
             case TypeKind::Trait:
                 return "dyn " + type.className;
+            case TypeKind::Enum:
+                return "enum " + type.className;
         }
 
         return "unknown";
@@ -132,7 +134,7 @@ namespace LOICollection::frontend {
             While, For, Break, Continue,
             CompoundAssign, ForIn, Range, Coalesce, Try,
             Import, Component,
-            Trait, Impl, Match, Panic
+            Trait, Impl, Match, Panic, Enum
         };
         [[nodiscard]] virtual Type getType() const = 0;
         
@@ -167,10 +169,12 @@ namespace LOICollection::frontend {
         std::shared_ptr<EnumPayload> payload{};   /* null when arity == 0        */
 
         /* std::variant's operator== requires every alternative to be comparable.
-         * Payloads are immutable value lists, so identity is enough here. */
-        bool operator==(const EnumValue& other) const {
-            return enumId == other.enumId && tag == other.tag && payload == other.payload;
-        }
+         * Two enum values are equal when they share the same enum id and variant
+         * tag and carry identical payloads. Defined out-of-line below, after
+         * EnumPayload is complete, so we can compare payload contents rather than
+         * the shared_ptr identity (otherwise two separately constructed Ok(1)
+         * values would compare unequal). */
+        bool operator==(const EnumValue& other) const;
     };
 
     struct ValueNode : ExprNode {
@@ -203,6 +207,16 @@ namespace LOICollection::frontend {
     struct EnumPayload {
         std::vector<ValueNode::ValueType> items{};
     };
+
+    inline bool EnumValue::operator==(const EnumValue& other) const {
+        if (enumId != other.enumId || tag != other.tag)
+            return false;
+        if (!payload && !other.payload)
+            return true;
+        if (!payload || !other.payload)
+            return false;
+        return payload->items == other.payload->items;
+    }
 
     struct VariableNode : ExprNode {
         SourceLocation loc;
@@ -1030,6 +1044,27 @@ namespace LOICollection::frontend {
             : loc(location), name(std::move(n)) {}
 
         [[nodiscard]] Type getType() const override { return Type::Component; }
+
+        void accept(ASTVisitor& visitor) override {
+            visitor.visit(*this);
+        }
+    };
+
+    struct EnumVariant {
+        SourceLocation loc;
+        std::string name;
+        std::vector<TypeExpr> fieldTypes;
+    };
+
+    struct EnumDeclNode : ASTNode {
+        SourceLocation loc;
+        std::string name;
+        std::vector<EnumVariant> variants;
+
+        EnumDeclNode(SourceLocation location, std::string n)
+            : loc(location), name(std::move(n)) {}
+
+        [[nodiscard]] Type getType() const override { return Type::Enum; }
 
         void accept(ASTVisitor& visitor) override {
             visitor.visit(*this);

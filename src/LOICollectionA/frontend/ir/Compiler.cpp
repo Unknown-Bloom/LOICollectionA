@@ -50,6 +50,9 @@ namespace LOICollection::frontend::ir {
                     case ASTNode::Type::Class:
                         this->registerClassMeta(static_cast<ClassNode&>(*part));
                         break;
+                    case ASTNode::Type::Enum:
+                        this->registerEnumMeta(static_cast<EnumDeclNode&>(*part));
+                        break;
                     case ASTNode::Type::FunctionDef:
                         this->registerFunctionMeta(static_cast<FunctionDefNode&>(*part));
                         break;
@@ -75,6 +78,7 @@ namespace LOICollection::frontend::ir {
             for (auto& part : program.parts) {
                 auto type = part->getType();
                 if (type == ASTNode::Type::Class ||
+                    type == ASTNode::Type::Enum ||
                     type == ASTNode::Type::FunctionDef ||
                     type == ASTNode::Type::Using ||
                     type == ASTNode::Type::Trait ||
@@ -1566,6 +1570,36 @@ namespace LOICollection::frontend::ir {
 
     void Compiler::visit(FuncCallNode& node) {
         const int argCount = static_cast<int>(node.args.size());
+
+        // Enum variant construction: `VariantName(args...)`.
+        auto variantIt = this->enumVariantInfo.find(node.name);
+        if (variantIt != this->enumVariantInfo.end()) {
+            const int enumId = std::get<0>(variantIt->second);
+            const int tag = std::get<1>(variantIt->second);
+            const int arity = std::get<2>(variantIt->second);
+
+            if (argCount != arity) {
+                this->diagnostics.addError(node.loc,
+                    "Enum variant '" + node.name + "' expects " +
+                    std::to_string(arity) + " argument(s), got " +
+                    std::to_string(argCount));
+            }
+
+            const int base = this->reserveRegs(argCount);
+            for (int i = 0; i < argCount; ++i)
+                this->compileArg(base + i, *node.args[i], node.loc);
+
+            const int dst = this->allocReg();
+            const size_t ip = this->current.get().emit(
+                MirOp::MAKE_ENUM, enumId, dst,
+                arity >= 1 ? base : -1,
+                arity >= 2 ? base + 1 : -1,
+                arity >= 3 ? base + 2 : -1, node.loc);
+            this->current.get().code[ip].imm = tag;
+
+            this->lastResultReg = dst;
+            return;
+        }
 
         if (node.isStaticCall) {
             const int base = this->reserveRegs(argCount);

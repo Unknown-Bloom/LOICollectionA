@@ -75,6 +75,14 @@ namespace LOICollection::frontend {
         std::unordered_map<std::string, std::unordered_map<std::string, int>> classStaticMethodOrdinals;
         std::vector<std::reference_wrapper<ImplNode>> impls;
         std::vector<std::reference_wrapper<FunctionDefNode>> functions;
+        struct EnumVariantInfo {
+            int enumIndex = -1;
+            int tag = -1;
+            int arity = 0;
+            std::string enumName;
+        };
+        std::unordered_map<std::string, int> enumByName;
+        std::unordered_map<std::string, EnumVariantInfo> enumVariant;
         std::unordered_map<std::string, std::vector<std::reference_wrapper<FunctionDefNode>>> functionsByName;
         std::unordered_map<std::string, TypeInfo> globalTypes;
         std::unordered_map<std::string, TypeInfo> declaredGlobals;
@@ -111,6 +119,7 @@ namespace LOICollection::frontend {
         void requireLet(AssignmentNode& node, const VariableNode& var);
 
         void registerClass(ClassNode& node);
+        void registerEnum(EnumDeclNode& node);
         void collectTypeAliases(ProgramNode& root);
         void seedOperatorTraits();
         void resolveDeclaredTypes();

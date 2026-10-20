@@ -48,6 +48,7 @@ namespace LOICollection::frontend {
         std::unique_ptr<ExprNode> parseFunction();
         std::unique_ptr<MacroNode> parseMacro();
         std::unique_ptr<ClassNode> parseClass();
+        std::unique_ptr<EnumDeclNode> parseEnum();
         std::unique_ptr<FunctionDefNode> parseFunctionDefinition();
         std::unique_ptr<TraitNode> parseTrait();
         std::unique_ptr<ImplNode> parseImpl();

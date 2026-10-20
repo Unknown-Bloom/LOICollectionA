@@ -79,7 +79,8 @@ TEST(OpTraitsTest, IsPureUnaryCoversNegationAndReflection) {
         const auto op = static_cast<MirOp>(value);
 
         EXPECT_EQ(isPureUnary(op), op_traits_test_support::isOneOf(op, {
-            MirOp::NEG, MirOp::NOT, MirOp::INSTANCEOF, MirOp::LOAD_LEN
+            MirOp::NEG, MirOp::NOT, MirOp::INSTANCEOF, MirOp::LOAD_LEN,
+            MirOp::TAG_OF, MirOp::LOAD_ENUM_PAYLOAD
         })) << "op " << value;
     }
 

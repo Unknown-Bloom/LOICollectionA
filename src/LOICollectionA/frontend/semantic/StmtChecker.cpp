@@ -24,6 +24,7 @@ namespace LOICollection::frontend {
                 case ASTNode::Type::FunctionDef:
                 case ASTNode::Type::Trait:
                 case ASTNode::Type::Impl:
+                case ASTNode::Type::Enum:
                 case ASTNode::Type::Using:
                 case ASTNode::Type::Import:
                 case ASTNode::Type::Component:
@@ -89,6 +90,7 @@ namespace LOICollection::frontend {
         switch (node.getType()) {
             case ASTNode::Type::Class:
             case ASTNode::Type::FunctionDef:
+            case ASTNode::Type::Enum:
             case ASTNode::Type::Using:
             case ASTNode::Type::Import:
                 return;

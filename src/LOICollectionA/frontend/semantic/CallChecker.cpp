@@ -369,6 +369,24 @@ namespace LOICollection::frontend {
         for (auto& arg : node.args)
             argTypes.push_back(checkExpr(*arg, scope));
 
+        // Enum variant construction: `VariantName(args...)`. This takes priority
+        // over a same-named function so that variant constructors read naturally.
+        auto variantIt = this->enumVariant.find(node.name);
+        if (variantIt != this->enumVariant.end()) {
+            const EnumVariantInfo& info = variantIt->second;
+            if (static_cast<int>(argCount) != info.arity) {
+                diagnostics.addError(node.loc,
+                    "Enum variant '" + node.name + "' expects " +
+                    std::to_string(info.arity) + " argument(s), got " +
+                    std::to_string(argCount));
+            }
+
+            TypeInfo result;
+            result.kind = TypeKind::Enum;
+            result.className = info.enumName;
+            return result;
+        }
+
         if (node.isFormReceiverCall && !this->formReceivers.empty()) {
             const std::string& receiverClass = this->formReceivers.back();
             std::vector<CallbackTypeArgs> signatures =

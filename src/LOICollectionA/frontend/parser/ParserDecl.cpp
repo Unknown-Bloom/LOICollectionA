@@ -989,4 +989,100 @@ namespace LOICollection::frontend {
         return node;
     }
 
+    std::unique_ptr<EnumDeclNode> Parser::parseEnum() {
+        SourceLocation loc = currentToken.loc;
+
+        if (!eat(TokenType::TOKEN_ENUM)) return nullptr;
+        if (currentToken.type != TokenType::TOKEN_IDENT) {
+            diagnostics.addError(currentToken.loc, "Expected enum name");
+            synchronize({ TokenType::TOKEN_LBRACE, TokenType::TOKEN_RBRACE });
+            skipBalancedBraces();
+            return nullptr;
+        }
+
+        auto node = std::make_unique<EnumDeclNode>(loc, currentToken.value);
+        if (!eat(TokenType::TOKEN_IDENT)) return nullptr;
+
+        if (!eat(TokenType::TOKEN_LBRACE)) {
+            synchronize({ TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        while (currentToken.type != TokenType::TOKEN_RBRACE &&
+               currentToken.type != TokenType::TOKEN_EOF) {
+            if (currentToken.type != TokenType::TOKEN_IDENT) {
+                diagnostics.addError(currentToken.loc, "Expected variant name in enum");
+                synchronize({ TokenType::TOKEN_COMMA, TokenType::TOKEN_RBRACE });
+                if (currentToken.type == TokenType::TOKEN_COMMA)
+                    eat(TokenType::TOKEN_COMMA);
+                continue;
+            }
+
+            EnumVariant variant;
+            variant.loc = currentToken.loc;
+            variant.name = currentToken.value;
+            if (!eat(TokenType::TOKEN_IDENT)) {
+                synchronize({ TokenType::TOKEN_COMMA, TokenType::TOKEN_RBRACE });
+                continue;
+            }
+
+            if (currentToken.type == TokenType::TOKEN_LPAREN) {
+                if (!eat(TokenType::TOKEN_LPAREN)) {
+                    synchronize({ TokenType::TOKEN_COMMA, TokenType::TOKEN_RBRACE });
+                    continue;
+                }
+                while (currentToken.type != TokenType::TOKEN_RPAREN &&
+                       currentToken.type != TokenType::TOKEN_EOF) {
+                    auto type = parseTypeExpr();
+                    if (!type) {
+                        synchronize({ TokenType::TOKEN_COMMA, TokenType::TOKEN_RPAREN, TokenType::TOKEN_RBRACE });
+                        break;
+                    }
+                    variant.fieldTypes.push_back(std::move(*type));
+                    if (currentToken.type == TokenType::TOKEN_COMMA) {
+                        if (!eat(TokenType::TOKEN_COMMA)) break;
+                        continue;
+                    }
+                    break;
+                }
+                if (currentToken.type == TokenType::TOKEN_RPAREN) {
+                    if (!eat(TokenType::TOKEN_RPAREN)) {
+                        synchronize({ TokenType::TOKEN_COMMA, TokenType::TOKEN_RBRACE });
+                        continue;
+                    }
+                } else {
+                    diagnostics.addError(currentToken.loc,
+                        "Expected ')' to close enum variant '" + variant.name + "'");
+                    synchronize({ TokenType::TOKEN_COMMA, TokenType::TOKEN_RBRACE });
+                    continue;
+                }
+            }
+
+            node->variants.push_back(std::move(variant));
+
+            if (currentToken.type == TokenType::TOKEN_COMMA) {
+                if (!eat(TokenType::TOKEN_COMMA))
+                    break;
+                continue;
+            }
+
+            /* No trailing comma: variants may also be separated by whitespace /
+             * newlines (or the enum body may simply end). Let the outer loop
+             * re-enter and pick up the next variant, stopping at '}' or EOF. */
+            if (currentToken.type == TokenType::TOKEN_RBRACE ||
+                currentToken.type == TokenType::TOKEN_EOF)
+                break;
+        }
+
+        if (currentToken.type == TokenType::TOKEN_RBRACE)
+            eat(TokenType::TOKEN_RBRACE);
+        else {
+            synchronize({ TokenType::TOKEN_RBRACE });
+            if (currentToken.type == TokenType::TOKEN_RBRACE)
+                eat(TokenType::TOKEN_RBRACE);
+        }
+
+        return node;
+    }
+
 }

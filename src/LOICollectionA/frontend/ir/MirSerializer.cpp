@@ -513,6 +513,33 @@ namespace LOICollection::frontend::ir::detail {
             && readInts(reader, meta.ancestorIndices);
     }
 
+    bool writeEnumMeta(Writer& writer, const EnumMeta& meta) {
+        writer.str(meta.name);
+        writeStrings(writer, meta.variantNames);
+        writer.u32(static_cast<uint32_t>(meta.variantArity.size()));
+        for (const auto& a : meta.variantArity)
+            writer.u8(a);
+        return true;
+    }
+
+    bool readEnumMeta(Reader& reader, EnumMeta& meta) {
+        uint32_t arityCount = 0;
+        if (!reader.str(meta.name)
+            || !readStrings(reader, meta.variantNames)
+            || !reader.u32(arityCount)
+            || arityCount > reader.remaining())
+            return false;
+
+        meta.variantArity.resize(arityCount);
+        for (uint32_t i = 0; i < arityCount; ++i) {
+            uint8_t a = 0;
+            if (!reader.u8(a))
+                return false;
+            meta.variantArity[i] = a;
+        }
+        return true;
+    }
+
     void writeMethodMeta(Writer& writer, const MethodMeta& meta) {
         writer.str(meta.name);
         writer.i32(meta.argCount);
@@ -609,6 +636,11 @@ namespace LOICollection::frontend::ir::detail {
             if (!writeClassMeta(writer, cls))
                 return false;
 
+        writer.u32(static_cast<uint32_t>(chunk.enums.size()));
+        for (const auto& enm : chunk.enums)
+            if (!writeEnumMeta(writer, enm))
+                return false;
+
         writeVector<MethodMeta>(writer, chunk.methods, [](Writer& w, const MethodMeta& meta) {
             writeMethodMeta(w, meta);
         });
@@ -685,6 +717,9 @@ namespace LOICollection::frontend::ir::detail {
             })
             && readVector<ClassMeta>(reader, chunk.classes, [](Reader& r, ClassMeta& meta) -> bool {
                 return readClassMeta(r, meta);
+            })
+            && readVector<EnumMeta>(reader, chunk.enums, [](Reader& r, EnumMeta& meta) -> bool {
+                return readEnumMeta(r, meta);
             })
             && readVector<MethodMeta>(reader, chunk.methods, [](Reader& r, MethodMeta& meta) -> bool {
                 return readMethodMeta(r, meta);

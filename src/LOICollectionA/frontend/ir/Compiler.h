@@ -6,6 +6,7 @@
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
+#include <tuple>
 #include <utility>
 
 #include "LOICollectionA/base/Macro.h"
@@ -38,6 +39,8 @@ namespace LOICollection::frontend::ir {
         std::unordered_map<std::string, std::vector<int>> classMethodIndices;
         std::unordered_map<std::string, std::vector<int>> classStaticMethodIndices;
         std::unordered_map<std::string, std::vector<int>> functionIndices;
+        std::unordered_map<std::string, int> enumIndexByName;
+        std::unordered_map<std::string, std::tuple<int, int, int>> enumVariantInfo;
         std::vector<std::reference_wrapper<ASTNode>> bodyOrder;
 
         struct LoopContext {
@@ -97,6 +100,7 @@ namespace LOICollection::frontend::ir {
         void visit(ProgramNode& node) override;
         void visit(BlockNode& node) override;
         void visit(ClassNode& node) override;
+        void visit(EnumDeclNode& node) override;
         void visit(ReturnNode& node) override;
         void visit(PanicNode& node) override;
         void visit(NewNode& node) override;
@@ -116,6 +120,7 @@ namespace LOICollection::frontend::ir {
         void visit(ComponentNode& node) override;
 
         void registerClassMeta(ClassNode& node);
+        void registerEnumMeta(EnumDeclNode& node);
         void compileClassBodies(ClassNode& node);
         void registerFunctionMeta(FunctionDefNode& node);
         void compileFunctionBody(FunctionDefNode& node);

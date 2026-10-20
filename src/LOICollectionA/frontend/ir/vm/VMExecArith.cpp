@@ -308,8 +308,7 @@ namespace LOICollection::frontend::ir {
 
             if constexpr (std::is_same_v<T, EnumValue> || std::is_same_v<U, EnumValue>) {
                 if constexpr (std::is_same_v<T, EnumValue> && std::is_same_v<U, EnumValue>) {
-                    const bool same = l.enumId == r.enumId && l.tag == r.tag &&
-                                      l.payload == r.payload;
+                    const bool same = (l == r);
 
                     if (op == MirOp::CMP_EQ) return same;
                     if (op == MirOp::CMP_NE) return !same;

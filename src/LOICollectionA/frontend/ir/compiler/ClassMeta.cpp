@@ -152,6 +152,34 @@ namespace LOICollection::frontend::ir {
         this->bodyOrder.emplace_back(std::ref(node));
     }
 
+    void Compiler::registerEnumMeta(EnumDeclNode& node) {
+        if (this->enumIndexByName.contains(node.name))
+            return;
+
+        const int enumId = static_cast<int>(this->chunk.enums.size());
+
+        ir::EnumMeta meta;
+        meta.name = node.name;
+
+        for (const auto& variant : node.variants) {
+            const int tag = static_cast<int>(meta.variantNames.size());
+            const int arity = static_cast<int>(variant.fieldTypes.size());
+
+            meta.variantNames.push_back(variant.name);
+            meta.variantArity.push_back(static_cast<std::uint8_t>(arity));
+
+            this->enumVariantInfo.emplace(
+                variant.name, std::make_tuple(enumId, tag, arity));
+        }
+
+        this->chunk.enums.push_back(std::move(meta));
+        this->enumIndexByName.emplace(node.name, enumId);
+    }
+
+    void Compiler::visit(EnumDeclNode& node) {
+        this->registerEnumMeta(node);
+    }
+
     void Compiler::compileClassBodies(ClassNode& node) {
         auto classIt = this->classIndices.find(node.name);
         if (classIt == this->classIndices.end() || !this->registeredClasses.contains(classIt->second))
