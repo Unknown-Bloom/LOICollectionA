@@ -21,7 +21,12 @@ namespace LOICollection::frontend {
             return nullptr;
         }
 
-        auto cond = parseBoolExpression();
+        std::unique_ptr<ExprNode> cond;
+        if (currentToken.type == TokenType::TOKEN_LET)
+            cond = parseLetPattern();
+        else
+            cond = parseBoolExpression();
+
         if (!cond || !eat(TokenType::TOKEN_RPAREN)) {
             synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_COLON, TokenType::TOKEN_RBRACE });
             return nullptr;
@@ -200,6 +205,41 @@ namespace LOICollection::frontend {
 
                 if (first == "_") {
                     arm->pattern = MatchArm::Pattern::Wildcard;
+                } else if (currentToken.type == TokenType::TOKEN_LPAREN) {
+                    /* Enum variant destructuring: `Some(x)`, `Point(x, y)` or a
+                     * payload-free `Nothing()`. */
+                    arm->pattern = MatchArm::Pattern::EnumVariant;
+                    arm->variantName = std::move(first);
+
+                    if (!eat(TokenType::TOKEN_LPAREN))
+                        return nullptr;
+
+                    if (currentToken.type != TokenType::TOKEN_RPAREN) {
+                        while (true) {
+                            if (currentToken.type != TokenType::TOKEN_IDENT) {
+                                this->diagnostics.addError(currentToken.loc,
+                                    "Expected a binding name in the '" + arm->variantName + "' pattern");
+                                synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
+                                return nullptr;
+                            }
+
+                            arm->binders.push_back(currentToken.value);
+                            if (!eat(TokenType::TOKEN_IDENT))
+                                return nullptr;
+
+                            if (currentToken.type == TokenType::TOKEN_COMMA) {
+                                if (!eat(TokenType::TOKEN_COMMA))
+                                    return nullptr;
+                                continue;
+                            }
+                            break;
+                        }
+                    }
+
+                    if (!eat(TokenType::TOKEN_RPAREN)) {
+                        synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
+                        return nullptr;
+                    }
                 } else if (currentToken.type == TokenType::TOKEN_IDENT) {
                     arm->pattern = MatchArm::Pattern::Type;
                     arm->className = std::move(first);
@@ -293,7 +333,12 @@ namespace LOICollection::frontend {
             return nullptr;
         }
 
-        auto cond = parseBoolExpression();
+        std::unique_ptr<ExprNode> cond;
+        if (currentToken.type == TokenType::TOKEN_LET)
+            cond = parseLetPattern();
+        else
+            cond = parseBoolExpression();
+
         if (!cond || !eat(TokenType::TOKEN_RPAREN)) {
             synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
             return nullptr;
@@ -304,6 +349,84 @@ namespace LOICollection::frontend {
             return nullptr;
 
         return std::make_unique<WhileNode>(loc, std::move(cond), std::move(body));
+    }
+
+    std::unique_ptr<LetPatternNode> Parser::parseLetPattern() {
+        SourceLocation loc = currentToken.loc;
+
+        if (!eat(TokenType::TOKEN_LET))
+            return nullptr;
+
+        auto node = std::make_unique<LetPatternNode>(loc);
+
+        if (currentToken.type != TokenType::TOKEN_IDENT) {
+            this->diagnostics.addError(currentToken.loc, "Expected a pattern after 'let'");
+            synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        std::string first = currentToken.value;
+        if (!eat(TokenType::TOKEN_IDENT))
+            return nullptr;
+
+        if (first == "_") {
+            node->isEnumPattern = false;
+        } else if (currentToken.type == TokenType::TOKEN_LPAREN) {
+            /* Enum variant destructuring: `Some(x)` or a payload-free `Nothing()`. */
+            node->isEnumPattern = true;
+            node->variantName = std::move(first);
+
+            if (!eat(TokenType::TOKEN_LPAREN))
+                return nullptr;
+
+            if (currentToken.type != TokenType::TOKEN_RPAREN) {
+                while (true) {
+                    if (currentToken.type != TokenType::TOKEN_IDENT) {
+                        this->diagnostics.addError(currentToken.loc,
+                            "Expected a binding name in the '" + node->variantName + "' pattern");
+                        synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
+                        return nullptr;
+                    }
+
+                    node->binders.push_back(currentToken.value);
+                    if (!eat(TokenType::TOKEN_IDENT))
+                        return nullptr;
+
+                    if (currentToken.type == TokenType::TOKEN_COMMA) {
+                        if (!eat(TokenType::TOKEN_COMMA))
+                            return nullptr;
+                        continue;
+                    }
+                    break;
+                }
+            }
+
+            if (!eat(TokenType::TOKEN_RPAREN)) {
+                synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
+                return nullptr;
+            }
+        } else {
+            /* Plain binding: the whole value is bound to this name and the
+             * condition is always true. */
+            node->isEnumPattern = false;
+            node->binders.push_back(std::move(first));
+        }
+
+        if (currentToken.type != TokenType::TOKEN_OP || currentToken.value != "=") {
+            this->diagnostics.addError(currentToken.loc, "Expected '=' after a let pattern");
+            synchronize({ TokenType::TOKEN_RBRCKET, TokenType::TOKEN_RBRACE });
+            return nullptr;
+        }
+
+        if (!eat(TokenType::TOKEN_OP))
+            return nullptr;
+
+        node->value = parseBoolExpression();
+        if (!node->value)
+            return nullptr;
+
+        node->loc = loc;
+        return node;
     }
 
     std::unique_ptr<ASTNode> Parser::parseForStatement() {

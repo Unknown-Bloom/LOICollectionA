@@ -20,6 +20,7 @@ namespace LOICollection::frontend::ir::opt::detail {
             case MirOp::JMP:
             case MirOp::JMP_IF_FALSE:
             case MirOp::JMP_IF_TRUE:
+            case MirOp::JMP_IF_TAG_NE:
                 return true;
             default:
                 return false;
@@ -27,7 +28,8 @@ namespace LOICollection::frontend::ir::opt::detail {
     }
 
     bool isBranch(MirOp op) {
-        return op == MirOp::JMP || op == MirOp::JMP_IF_FALSE || op == MirOp::JMP_IF_TRUE;
+        return op == MirOp::JMP || op == MirOp::JMP_IF_FALSE || op == MirOp::JMP_IF_TRUE
+            || op == MirOp::JMP_IF_TAG_NE;
     }
 
     bool usesConstantPool(MirOp op) {

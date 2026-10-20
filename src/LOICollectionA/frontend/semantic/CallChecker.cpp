@@ -757,9 +757,14 @@ namespace LOICollection::frontend {
         bool covered = false;
         bool coversTrue = false;
         bool coversFalse = false;
+        std::unordered_set<std::string> enumVariantsCovered;
+
         for (auto& arm : node.arms) {
             if (arm->isCatchAll())
                 covered = true;
+
+            if (arm->pattern == MatchArm::Pattern::EnumVariant && !arm->guard)
+                enumVariantsCovered.insert(arm->variantName);
 
             if (arm->pattern == MatchArm::Pattern::Literal && !arm->guard) {
                 if (auto* flag = std::get_if<bool>(&arm->literal))
@@ -769,6 +774,19 @@ namespace LOICollection::frontend {
 
         if (target.kind == TypeKind::Bool && coversTrue && coversFalse)
             covered = true;
+
+        /* An enum whose every variant is named by its own arm is exhaustive
+         * even though no arm is a catch-all. */
+        if (target.kind == TypeKind::Enum && !covered && !enumVariantsCovered.empty()) {
+            std::unordered_set<std::string> declaredVariants;
+            for (const auto& [name, info] : this->enumVariant) {
+                if (info.enumName == target.className)
+                    declaredVariants.insert(name);
+            }
+
+            if (declaredVariants.size() == enumVariantsCovered.size())
+                covered = true;
+        }
 
         if (!covered)
             diagnostics.addError(node.loc,
@@ -809,6 +827,39 @@ namespace LOICollection::frontend {
                     if (!this->findClass(arm->className) && !isNativeClass(arm->className))
                         diagnostics.addError(arm->loc, "Unknown class: " + arm->className);
                     break;
+                case MatchArm::Pattern::EnumVariant: {
+                    if (target.kind == TypeKind::Unknown)
+                        break;
+
+                    if (target.kind != TypeKind::Enum) {
+                        diagnostics.addError(arm->loc,
+                            "Enum variant pattern '" + arm->variantName +
+                            "' can only match an enum value, got " + typeInfoToString(target));
+                        break;
+                    }
+
+                    auto it = this->enumVariant.find(arm->variantName);
+                    if (it == this->enumVariant.end()) {
+                        diagnostics.addError(arm->loc, "Unknown enum variant: " + arm->variantName);
+                        break;
+                    }
+
+                    const EnumVariantInfo& info = it->second;
+                    if (info.enumName != target.className) {
+                        diagnostics.addError(arm->loc,
+                            "Enum variant '" + arm->variantName +
+                            "' does not belong to enum '" + target.className + "'");
+                        break;
+                    }
+
+                    if (static_cast<int>(arm->binders.size()) != info.arity) {
+                        diagnostics.addError(arm->loc,
+                            "Enum variant '" + arm->variantName + "' has " +
+                            std::to_string(info.arity) + " payload slot(s), but the pattern binds " +
+                            std::to_string(arm->binders.size()));
+                    }
+                    break;
+                }
                 case MatchArm::Pattern::Bind:
                 case MatchArm::Pattern::Wildcard:
                     break;
@@ -822,6 +873,9 @@ namespace LOICollection::frontend {
                     ? TypeInfo{ TypeKind::Object, arm->className }
                     : target;
 
+            for (const auto& binder : arm->binders)
+                this->blockScopes.back()[binder] = TypeInfo{ TypeKind::Unknown };
+
             if (arm->guard)
                 this->checkExpr(*arm->guard, scope);
 
@@ -830,6 +884,53 @@ namespace LOICollection::frontend {
         }
 
         return {};
+    }
+
+    TypeInfo SemanticAnalyzer::checkLetPattern(LetPatternNode& node, MethodScope& scope) {
+        if (!node.value)
+            return { TypeKind::Bool };
+
+        TypeInfo value = this->checkExpr(*node.value, scope);
+
+        /* `let x = expr` / `let _ = expr` binds the whole value and is always
+         * taken, so there is nothing to validate beyond the initializer. */
+        if (!node.isEnumPattern)
+            return { TypeKind::Bool };
+
+        /* An unannotated function return stays Unknown; there is nothing to
+         * check against, so stay quiet instead of rejecting a valid pattern. */
+        if (value.kind != TypeKind::Enum && value.kind != TypeKind::Unknown) {
+            this->diagnostics.addError(node.loc,
+                "Enum variant pattern '" + node.variantName +
+                "' can only match an enum value, got " + typeInfoToString(value));
+            return { TypeKind::Bool };
+        }
+
+        if (value.kind == TypeKind::Unknown)
+            return { TypeKind::Bool };
+
+        auto it = this->enumVariant.find(node.variantName);
+        if (it == this->enumVariant.end()) {
+            this->diagnostics.addError(node.loc, "Unknown enum variant: " + node.variantName);
+            return { TypeKind::Bool };
+        }
+
+        const EnumVariantInfo& info = it->second;
+        if (info.enumName != value.className) {
+            this->diagnostics.addError(node.loc,
+                "Enum variant '" + node.variantName + "' does not belong to enum '" +
+                value.className + "'");
+            return { TypeKind::Bool };
+        }
+
+        if (static_cast<int>(node.binders.size()) != info.arity) {
+            this->diagnostics.addError(node.loc,
+                "Enum variant '" + node.variantName + "' has " +
+                std::to_string(info.arity) + " payload slot(s), but the pattern binds " +
+                std::to_string(node.binders.size()));
+        }
+
+        return { TypeKind::Bool };
     }
 
     std::optional<OperatorOverload> SemanticAnalyzer::resolveOperatorOverload(

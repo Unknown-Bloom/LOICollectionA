@@ -255,6 +255,17 @@ namespace LOICollection::frontend::detail {
                 copy->body = cloneStmt(*forIn.body, bound, prefix);
                 return copy;
             }
+            case ASTNode::Type::LetPattern: {
+                auto& letPat = static_cast<const LetPatternNode&>(node);
+                auto copy = std::make_unique<LetPatternNode>(letPat.loc);
+                copy->variantName = letPat.variantName;
+                copy->isEnumPattern = letPat.isEnumPattern;
+                if (letPat.value)
+                    copy->value = cloneExpr(*letPat.value, bound, prefix);
+                for (const auto& binder : letPat.binders)
+                    copy->binders.push_back(renamed(binder, bound, prefix));
+                return copy;
+            }
             case ASTNode::Type::Match: {
                 auto& match = static_cast<const MatchNode&>(node);
                 auto copy = std::make_unique<MatchNode>(match.loc, cloneExpr(*match.target, bound, prefix));
@@ -265,6 +276,9 @@ namespace LOICollection::frontend::detail {
                     armCopy->literal = arm->literal;
                     armCopy->className = arm->className;
                     armCopy->binder = renamed(arm->binder, bound, prefix);
+                    armCopy->variantName = arm->variantName;
+                    for (const auto& binder : arm->binders)
+                        armCopy->binders.push_back(renamed(binder, bound, prefix));
                     if (arm->guard)
                         armCopy->guard = cloneExpr(*arm->guard, bound, prefix);
                     if (arm->body)
@@ -593,6 +607,12 @@ namespace LOICollection::frontend::detail {
                 expandExpr(*forIn.iterable, ctx);
                 if (forIn.body)
                     expandStatement(forIn.body, ctx);
+                return;
+            }
+            case ASTNode::Type::LetPattern: {
+                auto& letPat = static_cast<LetPatternNode&>(node);
+                if (letPat.value)
+                    expandExpr(*letPat.value, ctx);
                 return;
             }
             case ASTNode::Type::Match: {

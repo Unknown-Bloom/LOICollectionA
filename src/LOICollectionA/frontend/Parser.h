@@ -68,6 +68,7 @@ namespace LOICollection::frontend {
 
         std::unique_ptr<MatchNode> parseMatchStatement();
         std::unique_ptr<MatchArm> parseMatchArm();
+        std::unique_ptr<LetPatternNode> parseLetPattern();
 
         std::unique_ptr<BlockNode> parseBlock(TokenType stopToken, bool stopOnColon = false);
         std::unique_ptr<BlockNode> parseControlBody();

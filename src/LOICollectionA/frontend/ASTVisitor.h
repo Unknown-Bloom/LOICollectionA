@@ -44,6 +44,7 @@ namespace LOICollection::frontend {
     struct ComponentNode;
     struct PanicNode;
     struct EnumDeclNode;
+    struct LetPatternNode;
 
     class ASTVisitor {
     public:
@@ -90,5 +91,6 @@ namespace LOICollection::frontend {
         virtual void visit(ComponentNode& node) = 0;
         virtual void visit(PanicNode& node) = 0;
         virtual void visit(EnumDeclNode& node) = 0;
+        virtual void visit(LetPatternNode& node) = 0;
     };
 }

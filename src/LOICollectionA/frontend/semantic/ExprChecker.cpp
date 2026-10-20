@@ -173,6 +173,9 @@ namespace LOICollection::frontend {
             case ASTNode::Type::Match:
                 return checkMatch(static_cast<MatchNode&>(node), scope);
 
+            case ASTNode::Type::LetPattern:
+                return checkLetPattern(static_cast<LetPatternNode&>(node), scope);
+
             case ASTNode::Type::New:
                 return checkNew(static_cast<NewNode&>(node), scope);
 
@@ -220,8 +223,27 @@ namespace LOICollection::frontend {
                 auto& ifNode = static_cast<IfNode&>(node);
                 if (ifNode.condition)
                     checkExpr(*ifNode.condition, scope);
-                if (ifNode.trueBranch)
+
+                /* `if let` introduces the destructured bindings for the true
+                 * branch only; the false branch must not see them. */
+                const bool bindsPattern = ifNode.condition &&
+                    ifNode.condition->getType() == ASTNode::Type::LetPattern;
+
+                if (bindsPattern) {
+                    auto& letPat = static_cast<LetPatternNode&>(*ifNode.condition);
+
+                    this->blockScopes.emplace_back();
+                    auto popLetScope = make_scope_guard([this] { this->blockScopes.pop_back(); });
+
+                    for (const auto& binder : letPat.binders)
+                        this->blockScopes.back()[binder] = TypeInfo{ TypeKind::Unknown };
+
+                    if (ifNode.trueBranch)
+                        checkStatement(*ifNode.trueBranch, scope);
+                } else if (ifNode.trueBranch) {
                     checkStatement(*ifNode.trueBranch, scope);
+                }
+
                 if (ifNode.falseBranch)
                     checkStatement(*ifNode.falseBranch, scope);
 

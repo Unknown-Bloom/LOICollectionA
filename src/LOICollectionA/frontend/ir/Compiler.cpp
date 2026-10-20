@@ -657,6 +657,8 @@ namespace LOICollection::frontend::ir {
             MatchArm& arm = *node.arms[i];
 
             int cond = -1;
+            size_t patternFailIdx = static_cast<size_t>(-1);
+
             switch (arm.pattern) {
                 case MatchArm::Pattern::Literal: {
                     if (std::holds_alternative<std::monostate>(arm.literal)) {
@@ -676,12 +678,29 @@ namespace LOICollection::frontend::ir {
                         MirOp::INSTANCEOF, this->addConstant(arm.className), cond, target, -1, arm.loc);
                     break;
                 }
+                case MatchArm::Pattern::EnumVariant: {
+                    auto it = this->enumVariantInfo.find(arm.variantName);
+                    if (it == this->enumVariantInfo.end()) {
+                        this->diagnostics.addError(arm.loc,
+                            "Unknown enum variant: " + arm.variantName);
+                        break;
+                    }
+
+                    const int enumId = std::get<0>(it->second);
+                    const int tag = std::get<1>(it->second);
+
+                    /* Skip the arm unless the value carries this variant's
+                     * identity. The instruction reads the enum value itself,
+                     * so no separate TAG_OF is needed. */
+                    patternFailIdx = this->current.get().emitCall(
+                        MirOp::JMP_IF_TAG_NE, 0, -1, target, enumId, tag, arm.loc);
+                    break;
+                }
                 case MatchArm::Pattern::Bind:
                 case MatchArm::Pattern::Wildcard:
                     break;
             }
 
-            size_t patternFailIdx = static_cast<size_t>(-1);
             if (cond >= 0)
                 patternFailIdx = this->current.get().emit(
                     MirOp::JMP_IF_FALSE, 0, -1, cond, -1, arm.loc);
@@ -690,6 +709,16 @@ namespace LOICollection::frontend::ir {
             if (!arm.binder.empty()) {
                 this->declareSlot(arm.binder);
                 this->emitStore(arm.binder, target, arm.loc);
+            }
+
+            /* Enum variant destructuring: one payload load per bound name. */
+            for (size_t slot = 0; slot < arm.binders.size(); ++slot) {
+                const int payloadReg = this->allocReg();
+                this->current.get().emit(MirOp::LOAD_ENUM_PAYLOAD,
+                    static_cast<int>(slot), payloadReg, target, -1, arm.loc);
+
+                this->declareSlot(arm.binders[slot]);
+                this->emitStore(arm.binders[slot], payloadReg, arm.loc);
             }
 
             int guardCond = -1;
@@ -789,7 +818,102 @@ namespace LOICollection::frontend::ir {
         return this->allocReg();
     }
 
+    int Compiler::compileLetPatternValue(LetPatternNode& node, size_t& failIdx) {
+        failIdx = static_cast<size_t>(-1);
+
+        if (!node.value)
+            return -1;
+
+        const int valueReg = this->compileValue(*node.value, node.loc);
+
+        if (!node.isEnumPattern)
+            return valueReg;
+
+        auto it = this->enumVariantInfo.find(node.variantName);
+        if (it == this->enumVariantInfo.end()) {
+            this->diagnostics.addError(node.loc, "Unknown enum variant: " + node.variantName);
+            return valueReg;
+        }
+
+        const int enumId = std::get<0>(it->second);
+        const int tag = std::get<1>(it->second);
+
+        /* The instruction compares the value's enum id and tag directly. */
+        failIdx = this->current.get().emitCall(
+            MirOp::JMP_IF_TAG_NE, 0, -1, valueReg, enumId, tag, node.loc);
+
+        return valueReg;
+    }
+
+    void Compiler::bindLetPatternPayload(LetPatternNode& node, int valueReg) {
+        if (valueReg < 0)
+            return;
+
+        if (!node.isEnumPattern) {
+            for (const auto& binder : node.binders) {
+                this->declareSlot(binder);
+                this->emitStore(binder, valueReg, node.loc);
+            }
+            return;
+        }
+
+        for (size_t slot = 0; slot < node.binders.size(); ++slot) {
+            const int payloadReg = this->allocReg();
+            this->current.get().emit(MirOp::LOAD_ENUM_PAYLOAD,
+                static_cast<int>(slot), payloadReg, valueReg, -1, node.loc);
+
+            this->declareSlot(node.binders[slot]);
+            this->emitStore(node.binders[slot], payloadReg, node.loc);
+        }
+    }
+
+    void Compiler::visit(LetPatternNode& node) {
+        /* Only meaningful as an if/while condition; the enclosing control-flow
+         * visitor compiles it inline. */
+        this->diagnostics.addError(node.loc,
+            "A 'let' pattern is only allowed as an if or while condition");
+        this->lastResultReg = this->finishHint(-1, -1, node.loc);
+    }
+
     void Compiler::visit(IfNode& node) {
+        const bool bindsPattern = node.condition &&
+            node.condition->getType() == ASTNode::Type::LetPattern;
+
+        if (bindsPattern) {
+            auto& letPat = static_cast<LetPatternNode&>(*node.condition);
+
+            size_t failIdx = static_cast<size_t>(-1);
+            const int valueReg = this->compileLetPatternValue(letPat, failIdx);
+
+            const int dst = this->allocReg();
+
+            this->pushScope(false, this->scopes.back().next, true);
+            this->bindLetPatternPayload(letPat, valueReg);
+
+            this->compileInto(dst, *node.trueBranch, node.loc);
+
+            const int trueSlotCount = this->closeScope();
+            if (trueSlotCount > this->scopes.back().next)
+                this->scopes.back().next = trueSlotCount;
+
+            const size_t jmpEndIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
+
+            const int falseStart = static_cast<int>(this->current.get().currentIP());
+            if (failIdx != static_cast<size_t>(-1))
+                this->current.get().patchJump(failIdx, falseStart - static_cast<int>(failIdx) - 1);
+
+            if (node.falseBranch)
+                this->compileInto(dst, *node.falseBranch, node.loc);
+            else
+                this->finishHint(dst, -1, node.loc);
+
+            const int endPos = static_cast<int>(this->current.get().currentIP());
+            this->current.get().patchJump(jmpEndIdx, endPos - static_cast<int>(jmpEndIdx) - 1);
+
+            this->lastResultReg = dst;
+            return;
+        }
+
         const int cond = this->compileValue(*node.condition, node.loc);
 
         const size_t jmpFalseIdx = this->current.get().emit(
@@ -815,6 +939,49 @@ namespace LOICollection::frontend::ir {
     }
 
     void Compiler::visit(WhileNode& node) {
+        const bool bindsPattern = node.condition &&
+            node.condition->getType() == ASTNode::Type::LetPattern;
+
+        if (bindsPattern) {
+            auto& letPat = static_cast<LetPatternNode&>(*node.condition);
+
+            const size_t loopStart = this->current.get().currentIP();
+
+            size_t failIdx = static_cast<size_t>(-1);
+            const int valueReg = this->compileLetPatternValue(letPat, failIdx);
+
+            this->loopStack.push_back(LoopContext{});
+            this->loopStack.back().continueTarget = loopStart;
+
+            this->pushScope(false, this->scopes.back().next, true);
+            this->bindLetPatternPayload(letPat, valueReg);
+
+            node.body->accept(*this);
+
+            const int bodySlotCount = this->closeScope();
+            if (bodySlotCount > this->scopes.back().next)
+                this->scopes.back().next = bodySlotCount;
+
+            const size_t jmpBackIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
+            this->current.get().patchJump(jmpBackIdx,
+                static_cast<int>(loopStart) - static_cast<int>(jmpBackIdx) - 1);
+
+            const size_t exitPos = this->current.get().currentIP();
+            if (failIdx != static_cast<size_t>(-1))
+                this->current.get().patchJump(failIdx,
+                    static_cast<int>(exitPos) - static_cast<int>(failIdx) - 1);
+
+            for (size_t idx : this->loopStack.back().breakJumps)
+                this->current.get().patchJump(idx, static_cast<int>(exitPos) - static_cast<int>(idx) - 1);
+            for (size_t idx : this->loopStack.back().continueJumps)
+                this->current.get().patchJump(idx, static_cast<int>(loopStart) - static_cast<int>(idx) - 1);
+
+            this->loopStack.pop_back();
+
+            this->lastResultReg = this->finishHint(-1, -1, node.loc);
+            return;
+        }
+
         const size_t loopStart = this->current.get().currentIP();
 
         const int cond = this->compileValue(*node.condition, node.loc);

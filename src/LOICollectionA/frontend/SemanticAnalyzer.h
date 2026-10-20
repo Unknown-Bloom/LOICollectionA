@@ -150,6 +150,7 @@ namespace LOICollection::frontend {
         TypeInfo checkSuperCall(SuperCallNode& node, MethodScope& scope);
         TypeInfo checkInstanceOf(InstanceOfNode& node, MethodScope& scope);
         TypeInfo checkMatch(MatchNode& node, MethodScope& scope);
+        TypeInfo checkLetPattern(LetPatternNode& node, MethodScope& scope);
         TypeInfo checkReturn(ReturnNode& node, MethodScope& scope);
         TypeInfo checkLambda(LambdaNode& node, MethodScope& scope);
 

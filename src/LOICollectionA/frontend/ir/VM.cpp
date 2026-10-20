@@ -281,7 +281,7 @@ namespace LOICollection::frontend::ir {
                     this->execComparison(s); break;
                 case MirOp::LOGIC_AND: case MirOp::LOGIC_OR: case MirOp::NEG: case MirOp::NOT: this->execLogic(s); break;
                 case MirOp::CALL: case MirOp::CALL_MACRO: this->execHostCall(s); break;
-                case MirOp::JMP_IF_FALSE: case MirOp::JMP_IF_TRUE: case MirOp::JMP: case MirOp::JMP_IF_CMP_FALSE: this->execBranch(s); break;
+                case MirOp::JMP_IF_FALSE: case MirOp::JMP_IF_TRUE: case MirOp::JMP: case MirOp::JMP_IF_CMP_FALSE: case MirOp::JMP_IF_TAG_NE: this->execBranch(s); break;
                 case MirOp::RETURN: {
                     auto result = instr.src1 >= 0
                         ? this->regOf(frame, instr.src1)
@@ -440,6 +440,17 @@ namespace LOICollection::frontend::ir {
                 if (!VM::applyComparison(
                         this->regOf(frame, instr.src1), this->regOf(frame, instr.src2),
                         static_cast<MirOp>(instr.imm), this->diagnostics, this->currentLoc))
+                    frame.ip += instr.operand;
+            } break;
+            case MirOp::JMP_IF_TAG_NE: {
+                const auto& value = this->regOf(frame, instr.src1);
+                const auto* ev = std::get_if<EnumValue>(&value);
+
+                const bool matches = ev != nullptr &&
+                    ev->enumId == static_cast<std::uint32_t>(instr.src2) &&
+                    ev->tag == static_cast<std::uint32_t>(instr.imm);
+
+                if (!matches)
                     frame.ip += instr.operand;
             } break;
             default: break;

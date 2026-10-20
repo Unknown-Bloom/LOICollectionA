@@ -110,8 +110,26 @@ namespace LOICollection::frontend {
 
                 if (whileNode.condition)
                     checkExpr(*whileNode.condition, scope);
-                if (whileNode.body)
+
+                /* `while let` introduces the destructured bindings for the
+                 * loop body only. */
+                const bool bindsPattern = whileNode.condition &&
+                    whileNode.condition->getType() == ASTNode::Type::LetPattern;
+
+                if (bindsPattern) {
+                    auto& letPat = static_cast<LetPatternNode&>(*whileNode.condition);
+
+                    this->blockScopes.emplace_back();
+                    auto popLetScope = make_scope_guard([this] { this->blockScopes.pop_back(); });
+
+                    for (const auto& binder : letPat.binders)
+                        this->blockScopes.back()[binder] = TypeInfo{ TypeKind::Unknown };
+
+                    if (whileNode.body)
+                        checkStatement(*whileNode.body, scope);
+                } else if (whileNode.body) {
                     checkStatement(*whileNode.body, scope);
+                }
                 return;
             }
             case ASTNode::Type::For: {

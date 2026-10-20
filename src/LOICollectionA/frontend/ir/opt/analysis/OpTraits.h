@@ -7,7 +7,7 @@
 namespace LOICollection::frontend::ir::opt {
     inline bool isJump(MirOp op) {
         return op == MirOp::JMP || op == MirOp::JMP_IF_FALSE || op == MirOp::JMP_IF_TRUE
-            || op == MirOp::JMP_IF_CMP_FALSE;
+            || op == MirOp::JMP_IF_CMP_FALSE || op == MirOp::JMP_IF_TAG_NE;
     }
 
     inline bool isTerminator(MirOp op) {

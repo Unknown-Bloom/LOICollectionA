@@ -134,7 +134,7 @@ namespace LOICollection::frontend {
             While, For, Break, Continue,
             CompoundAssign, ForIn, Range, Coalesce, Try,
             Import, Component,
-            Trait, Impl, Match, Panic, Enum
+            Trait, Impl, Match, Panic, Enum, LetPattern
         };
         [[nodiscard]] virtual Type getType() const = 0;
         
@@ -403,18 +403,23 @@ namespace LOICollection::frontend {
     };
 
     struct MatchArm {
-        enum class Pattern { Literal, Type, Bind, Wildcard };
+        enum class Pattern { Literal, Type, Bind, Wildcard, EnumVariant };
 
         SourceLocation loc;
         Pattern pattern = Pattern::Wildcard;
         ValueNode::ValueType literal{};
         std::string className;
         std::string binder;
+        /* For Pattern::EnumVariant: the variant name and one binding per
+         * payload slot, in declaration order. */
+        std::string variantName;
+        std::vector<std::string> binders;
         std::unique_ptr<ExprNode> guard;
         std::unique_ptr<ASTNode> body;
 
         [[nodiscard]] bool isCatchAll() const {
-            return pattern != Pattern::Literal && pattern != Pattern::Type && !guard;
+            return pattern != Pattern::Literal && pattern != Pattern::Type &&
+                   pattern != Pattern::EnumVariant && !guard;
         }
     };
 
@@ -431,6 +436,24 @@ namespace LOICollection::frontend {
         void accept(ASTVisitor& visitor) override {
             visitor.visit(*this);
         }
+    };
+
+    /* `let <pattern> = <expr>` used as an if/while condition. The value is
+     * evaluated, then tested against the pattern; on a match the bound names
+     * are introduced for the guarded branch and the condition is true.
+     * Compiled as TAG_OF + JMP_IF_TAG_NE + LOAD_ENUM_PAYLOAD. */
+    struct LetPatternNode : ExprNode {
+        SourceLocation loc;
+        std::unique_ptr<ExprNode> value;
+        std::string variantName;
+        std::vector<std::string> binders;
+        bool isEnumPattern = false;
+
+        explicit LetPatternNode(SourceLocation location) : loc(location) {}
+
+        [[nodiscard]] Type getType() const override { return Type::LetPattern; }
+
+        void accept(ASTVisitor& visitor) override { visitor.visit(*this); }
     };
 
     struct BreakNode : ASTNode {

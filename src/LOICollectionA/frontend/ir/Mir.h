@@ -149,6 +149,9 @@ namespace LOICollection::frontend::ir {
         MAKE_ENUM,
         TAG_OF,
         LOAD_ENUM_PAYLOAD,
+        /* Jumps when src1 is not the enum `src2` carrying tag `imm`.
+         * operand holds the relative jump offset, like the other branches. */
+        JMP_IF_TAG_NE,
 
         COUNT
     };
