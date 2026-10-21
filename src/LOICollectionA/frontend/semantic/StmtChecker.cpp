@@ -111,8 +111,7 @@ namespace LOICollection::frontend {
                 if (whileNode.condition)
                     checkExpr(*whileNode.condition, scope);
 
-                /* `while let` introduces the destructured bindings for the
-                 * loop body only. */
+                
                 const bool bindsPattern = whileNode.condition &&
                     whileNode.condition->getType() == ASTNode::Type::LetPattern;
 

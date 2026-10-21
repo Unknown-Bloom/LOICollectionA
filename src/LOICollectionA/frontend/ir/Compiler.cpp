@@ -689,9 +689,7 @@ namespace LOICollection::frontend::ir {
                     const int enumId = std::get<0>(it->second);
                     const int tag = std::get<1>(it->second);
 
-                    /* Skip the arm unless the value carries this variant's
-                     * identity. The instruction reads the enum value itself,
-                     * so no separate TAG_OF is needed. */
+                    
                     patternFailIdx = this->current.get().emitCall(
                         MirOp::JMP_IF_TAG_NE, 0, -1, target, enumId, tag, arm.loc);
                     break;
@@ -711,7 +709,7 @@ namespace LOICollection::frontend::ir {
                 this->emitStore(arm.binder, target, arm.loc);
             }
 
-            /* Enum variant destructuring: one payload load per bound name. */
+            
             for (size_t slot = 0; slot < arm.binders.size(); ++slot) {
                 const int payloadReg = this->allocReg();
                 this->current.get().emit(MirOp::LOAD_ENUM_PAYLOAD,
@@ -838,7 +836,7 @@ namespace LOICollection::frontend::ir {
         const int enumId = std::get<0>(it->second);
         const int tag = std::get<1>(it->second);
 
-        /* The instruction compares the value's enum id and tag directly. */
+        
         failIdx = this->current.get().emitCall(
             MirOp::JMP_IF_TAG_NE, 0, -1, valueReg, enumId, tag, node.loc);
 
@@ -868,8 +866,7 @@ namespace LOICollection::frontend::ir {
     }
 
     void Compiler::visit(LetPatternNode& node) {
-        /* Only meaningful as an if/while condition; the enclosing control-flow
-         * visitor compiles it inline. */
+        
         this->diagnostics.addError(node.loc,
             "A 'let' pattern is only allowed as an if or while condition");
         this->lastResultReg = this->finishHint(-1, -1, node.loc);
@@ -1640,9 +1637,6 @@ namespace LOICollection::frontend::ir {
             return;
         }
 
-        /* P4: `x.call(...)` on a receiver whose class is not known statically
-         * is resolved by name when it runs — that is also how a closure
-         * answers to `call`, so no class needs to be resolved here. */
         if (node.methodName == "call") {
             const int metaIdx = this->addByNameCall(node.methodName, argCount);
             const int dst = this->allocReg();
@@ -1751,7 +1745,7 @@ namespace LOICollection::frontend::ir {
     void Compiler::visit(FuncCallNode& node) {
         const int argCount = static_cast<int>(node.args.size());
 
-        // Enum variant construction: `VariantName(args...)`.
+        
         auto variantIt = this->enumVariantInfo.find(node.name);
         if (variantIt != this->enumVariantInfo.end()) {
             const int enumId = std::get<0>(variantIt->second);

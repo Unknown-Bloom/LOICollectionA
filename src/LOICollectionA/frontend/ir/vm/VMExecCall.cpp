@@ -40,14 +40,9 @@ namespace LOICollection::frontend::ir {
         if (!closure || !*closure)
             return false;
 
-        /* A closure only ever provides `call`. When the call site's declared
-         * method name cannot be recovered (an unannotated receiver), fall back
-         * to `call` rather than rejecting the value. */
         if (!methodName.empty() && methodName != "call")
             return false;
 
-        /* Copy the handle: pushFrame() may resize the local pool, which would
-         * invalidate a reference into the receiver's register. */
         const FunctionRefPtr func = *closure;
 
         if (argCount != func->argCount) {
@@ -142,8 +137,6 @@ namespace LOICollection::frontend::ir {
 
                 const ValueNode::ValueType& receiver = this->regOf(frame, instr.src1 + instr.imm);
                 if (!std::holds_alternative<ObjectRef>(receiver)) {
-                    /* The declared method name is what the call site asked for;
-                     * a closure only stands in when that method is `call`. */
                     std::string declaredName;
                     if (meta.classIndex >= 0 &&
                         meta.classIndex < static_cast<int>(chunk.classes.size())) {
@@ -202,8 +195,6 @@ namespace LOICollection::frontend::ir {
 
                 const ValueNode::ValueType& receiver = this->regOf(frame, instr.src1 + instr.imm);
                 if (!std::holds_alternative<ObjectRef>(receiver)) {
-                    /* P4: a closure standing in for a single-method interface
-                     * answers to `call(...)`; invoke it directly. */
                     if (this->invokeClosureMethod(s, meta.methodName, meta.argCount))
                         break;
 

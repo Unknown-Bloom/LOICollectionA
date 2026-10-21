@@ -78,9 +78,7 @@ namespace LOICollection::frontend::ir {
         std::vector<LambdaCapture> captures;
     };
 
-    /* Layout of a language-level enum (tagged union). `variantArity[i]` is the
-     * number of payload slots carried by variant `i`; a zero means the variant
-     * is payload-free and needs no heap allocation at all. */
+    
     struct EnumMeta {
         std::string name;
         std::vector<std::string> variantNames;
@@ -143,14 +141,11 @@ namespace LOICollection::frontend::ir {
 
         JMP_IF_CMP_FALSE,
 
-        /* Tagged unions. MAKE_ENUM reads its payload from the register window
-         * src1 .. src1+imm (inclusive) and TAG_OF / LOAD_ENUM_PAYLOAD read a
-         * constructed value back out. */
+        
         MAKE_ENUM,
         TAG_OF,
         LOAD_ENUM_PAYLOAD,
-        /* Jumps when src1 is not the enum `src2` carrying tag `imm`.
-         * operand holds the relative jump offset, like the other branches. */
+        
         JMP_IF_TAG_NE,
 
         COUNT

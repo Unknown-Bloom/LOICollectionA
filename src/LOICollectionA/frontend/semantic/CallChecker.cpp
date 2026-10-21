@@ -227,9 +227,6 @@ namespace LOICollection::frontend {
             }
         }
 
-        /* P4: a closure answers to `call(...)`, and an unannotated receiver
-         * cannot be checked statically — both are resolved when the call runs.
-         */
         if (targetType.kind == TypeKind::Unknown)
             return {};
 
@@ -383,8 +380,8 @@ namespace LOICollection::frontend {
         for (auto& arg : node.args)
             argTypes.push_back(checkExpr(*arg, scope));
 
-        // Enum variant construction: `VariantName(args...)`. This takes priority
-        // over a same-named function so that variant constructors read naturally.
+        
+        
         auto variantIt = this->enumVariant.find(node.name);
         if (variantIt != this->enumVariant.end()) {
             const EnumVariantInfo& info = variantIt->second;
@@ -789,8 +786,7 @@ namespace LOICollection::frontend {
         if (target.kind == TypeKind::Bool && coversTrue && coversFalse)
             covered = true;
 
-        /* An enum whose every variant is named by its own arm is exhaustive
-         * even though no arm is a catch-all. */
+        
         if (target.kind == TypeKind::Enum && !covered && !enumVariantsCovered.empty()) {
             std::unordered_set<std::string> declaredVariants;
             for (const auto& [name, info] : this->enumVariant) {
@@ -906,13 +902,11 @@ namespace LOICollection::frontend {
 
         TypeInfo value = this->checkExpr(*node.value, scope);
 
-        /* `let x = expr` / `let _ = expr` binds the whole value and is always
-         * taken, so there is nothing to validate beyond the initializer. */
+        
         if (!node.isEnumPattern)
             return { TypeKind::Bool };
 
-        /* An unannotated function return stays Unknown; there is nothing to
-         * check against, so stay quiet instead of rejecting a valid pattern. */
+        
         if (value.kind != TypeKind::Enum && value.kind != TypeKind::Unknown) {
             this->diagnostics.addError(node.loc,
                 "Enum variant pattern '" + node.variantName +

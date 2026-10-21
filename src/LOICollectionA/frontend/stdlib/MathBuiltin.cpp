@@ -14,8 +14,7 @@
 using namespace LOICollection::frontend;
 
 namespace MathBuiltin {
-    /* abs/min/max/clamp/lerp moved to assets/common/std/math.lcui (pure
-     * script); this file keeps only what scripts cannot compute. */
+    
 
     TypedValue sqrt(const CallbackTypeValues& args) {
         return std::visit([](auto&& arg) -> TypedValue {

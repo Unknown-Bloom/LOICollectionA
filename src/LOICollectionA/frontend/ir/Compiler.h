@@ -123,14 +123,10 @@ namespace LOICollection::frontend::ir {
         void registerClassMeta(ClassNode& node);
         void registerEnumMeta(EnumDeclNode& node);
 
-        /* `let <pattern> = <expr>`: evaluates the value and, for an enum
-         * variant pattern, emits the tag test jumping on a mismatch. Returns
-         * the register holding the value; failIdx stays -1 when the pattern
-         * always matches. */
+        
         int compileLetPatternValue(LetPatternNode& node, size_t& failIdx);
 
-        /* Binds the pattern's names into the scope that is current when this
-         * is called (the guarded branch), loading one payload slot per name. */
+        
         void bindLetPatternPayload(LetPatternNode& node, int valueReg);
         void compileClassBodies(ClassNode& node);
         void registerFunctionMeta(FunctionDefNode& node);

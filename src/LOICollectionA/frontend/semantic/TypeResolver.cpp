@@ -42,8 +42,6 @@ namespace LOICollection::frontend {
         if (isNativeClass(name))
             return { TypeKind::Object, name };
 
-        /* An enum declares a type of its own, so `func f(r: Result)` and
-         * `let r: Result = Ok(1)` both resolve. */
         if (this->enumByName.contains(name))
             return { TypeKind::Enum, name };
 
@@ -216,8 +214,6 @@ namespace LOICollection::frontend {
         if (target.kind == TypeKind::Object && from.kind == TypeKind::Object)
             return this->isDerived(from.className, target.className);
 
-        /* A closure satisfies a single-method interface: `map((x) => x * x)`
-         * works where a `Fn1` subclass used to be the only option. */
         if (from.kind == TypeKind::Function)
             return this->declaresCallableMethod(target);
 

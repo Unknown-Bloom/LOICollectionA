@@ -491,10 +491,10 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
-                // Native objects are owned by host-side code (ClassCall), not by the VM's
-                // heap, so their lifetime is not something the sandbox budget can track via
-                // a per-instance release hook without aliasing an external shared_ptr. They
-                // are therefore not counted against the object budget.
+                
+                
+                
+                
                 this->setReg(frame, instr.dst, result.value());
             } break;
             default: break;
@@ -525,8 +525,8 @@ namespace LOICollection::frontend::ir {
                     ? static_cast<int>(meta.variantArity[tag])
                     : 0;
 
-                // The instruction carries at most three payload registers
-                // (src1/src2/src3); anything wider is rejected at compile time.
+                
+                
                 if (arity > 3)
                     arity = 3;
 

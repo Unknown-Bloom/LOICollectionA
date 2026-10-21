@@ -1,7 +1,5 @@
 #include <gtest/gtest.h>
 
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #include "common/frontend/CommonTest.h"
@@ -9,22 +7,11 @@
 using namespace LOICollection::frontend;
 
 namespace {
-    /* Imported std modules are merged into the importing script as AST nodes,
-     * so evaluating a module's contents followed by a body exercises the same
-     * code path the loader produces. */
-    std::string readStdModule(const std::string& name) {
-        std::ifstream in(std::string(LOICOLLECTION_A_STD_DIR) + "/" + name);
-        std::ostringstream out;
-        out << in.rdbuf();
-        return out.str();
-    }
-
     std::string withResult(const std::string& body) {
-        return readStdModule("result.lcui") + "\n" + body;
+        return "import \"/result.lcui\";\n" + body;
     }
 }
 
-/* P5: the std Result is a native tagged union, not a class with a flag. */
 TEST(StdMigrationTest, ResultIsNativeEnum) {
     EXPECT_EQ(eval(withResult("let r = Ok(42)\n r")), "enum#0[0](42)");
     EXPECT_EQ(eval(withResult("let r = Err(\"boom\")\n r")), "enum#0[1](boom)");
@@ -40,7 +27,6 @@ TEST(StdMigrationTest, ResultHelpers) {
     EXPECT_EQ(eval(withResult("resultErrOr(Err(\"boom\"), \"none\")")), "boom");
 }
 
-/* P4 + P5: combinators take a closure directly, no Fn1 subclass needed. */
 TEST(StdMigrationTest, ResultMapTakesClosure) {
     EXPECT_EQ(eval(withResult(
         "resultUnwrap(resultMap(Ok(21), func (x) { return x * 2; }))")), "42");
@@ -53,7 +39,6 @@ TEST(StdMigrationTest, ResultMapErrAndAndThenTakeClosures) {
         "resultUnwrap(resultAndThen(Ok(20), func (x) { return Ok(x + 2); }))")), "22");
 }
 
-/* P2 + P5: `match` destructures the std Result. */
 TEST(StdMigrationTest, ResultDestructuresWithMatch) {
     EXPECT_EQ(eval(withResult(
         "let r = Ok(5)\n"

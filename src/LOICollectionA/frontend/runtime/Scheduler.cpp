@@ -88,7 +88,7 @@ namespace LOICollection::frontend::runtime {
     }
 
     TaskId ProcScheduler::spawn(const FunctionRefPtr& fn, const CallbackTypeValues& args,
-                               const std::string& scriptId, const std::string& /*ownerId*/) {
+                               const std::string& scriptId, const std::string& ) {
         if (!fn || !fn->owner)
             return 0;
         if (fn->bodyIndex < 0 ||

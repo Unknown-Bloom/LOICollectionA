@@ -130,7 +130,7 @@ namespace LOICollection::frontend {
             );
         }
 
-        // `ns::name` without parentheses: static field access.
+        
         auto target = std::make_unique<VariableNode>(loc, std::move(namespaces));
         auto access = std::make_unique<MemberAccessNode>(loc, std::move(target), std::move(name));
         access->isColonColon = true;
@@ -1066,9 +1066,7 @@ namespace LOICollection::frontend {
                 continue;
             }
 
-            /* No trailing comma: variants may also be separated by whitespace /
-             * newlines (or the enum body may simply end). Let the outer loop
-             * re-enter and pick up the next variant, stopping at '}' or EOF. */
+            
             if (currentToken.type == TokenType::TOKEN_RBRACE ||
                 currentToken.type == TokenType::TOKEN_EOF)
                 break;

@@ -182,17 +182,17 @@ TEST(StdlibScriptTest, ArrayHelpersPullFn1ThroughSelectiveImport) {
 
 TEST(StdlibScriptTest, ResultType) {
     EXPECT_EQ(evalStd(
-        "import \"/result.lcui\"; Result::Ok(42).unwrap()"), "42");
+        "import \"/result.lcui\"; resultUnwrap(Ok(42))"), "42");
     EXPECT_EQ(evalStd(
-        "import \"/result.lcui\"; Result::Err(\"boom\").unwrapOr(-1)"), "-1");
+        "import \"/result.lcui\"; resultUnwrapOr(Err(\"boom\"), -1)"), "-1");
     EXPECT_EQ(evalStd(
-        "import \"/result.lcui\"; Result::Err(\"boom\").errOr(\"none\")"), "boom");
+        "import \"/result.lcui\"; resultErrOr(Err(\"boom\"), \"none\")"), "boom");
     EXPECT_EQ(evalStd(
         "import \"/result.lcui\";"
         "class Inc extends Fn1 { func call(x) { return x + 1; } }"
-        "Result::Ok(1).map(new Inc()).unwrap()"), "2");
+        "resultUnwrap(resultMap(Ok(1), new Inc()))"), "2");
     EXPECT_ANY_THROW(evalStd(
-        "import \"/result.lcui\"; Result::Err(\"boom\").unwrap()"));
+        "import \"/result.lcui\"; resultUnwrap(Err(\"boom\"))"));
 }
 
 TEST(StdlibScriptTest, MathRoundingAndNumberTheory) {

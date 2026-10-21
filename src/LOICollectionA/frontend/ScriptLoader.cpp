@@ -18,6 +18,7 @@ namespace LOICollection::frontend::detail {
             case ASTNode::Type::Using:
             case ASTNode::Type::Import:
             case ASTNode::Type::Component:
+            case ASTNode::Type::Enum:
                 return true;
             default:
                 return false;
@@ -155,10 +156,10 @@ namespace LOICollection::frontend {
 
                     auto& import = static_cast<ImportNode&>(*part);
 
-                    // Imports resolve against the importing file's directory so
-                    // library files (std modules) can reach their siblings
-                    // regardless of where the entry script lives. For the entry
-                    // file this is exactly the previous rootDir behavior.
+                    
+                    
+                    
+                    
                     auto resolved = (std::filesystem::path(path).parent_path() / import.path)
                                         .lexically_normal().generic_string();
 
@@ -196,8 +197,8 @@ namespace LOICollection::frontend {
         std::unordered_set<std::string> merged;
         std::unordered_map<std::string, std::pair<std::string, size_t>> definedAt;
 
-        // Collect, per imported file, the union of every symbol requested across
-        // all import sites. "*" marks an unqualified (whole-file) import.
+        
+        
         std::unordered_map<std::string, std::unordered_set<std::string>> requested;
         for (auto& path : order) {
             for (auto& part : modules.at(path)->parts) {

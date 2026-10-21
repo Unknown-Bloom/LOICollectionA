@@ -101,8 +101,8 @@ namespace LOICollection::frontend::ir::opt {
                     writes(instr.dst, true);
                     break;
                 case MirOp::MAKE_ENUM:
-                    // An enum value can carry reference payloads, so its result
-                    // is never a scalar, and every payload register is a read.
+                    
+                    
                     reads(instr.src1);
                     reads(instr.src2);
                     reads(instr.src3);

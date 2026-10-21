@@ -29,8 +29,8 @@ namespace LOICollection::frontend::ir {
             drain(owned.get());
         }
 
-        // Drop the per-chunk execution cache so a later chunk that happens to be
-        // allocated at this same address cannot inherit a stale layout/field cache.
+        
+        
         ChunkCacheRegistry::getInstance().release(this);
         generation.fetch_add(1, std::memory_order_release);
     }

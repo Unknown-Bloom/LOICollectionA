@@ -10,16 +10,16 @@ namespace LOICollection::frontend::ir::opt {
         if (mChunk.code.empty())
             return 0;
 
-        // An instruction is safe to delete as dead code when (a) it has no
-        // observable side effect and (b) its destination register is never read.
-        // We restrict (a) to value-producing ops that cannot panic or mutate
-        // state: LOAD_CONST / LOAD_SLOT / MOVE plus the pure arithmetic,
-        // comparison and logic families (DIV/MOD/POW excluded -- they can panic
-        // on zero and deleting them would change a panic's timing). LOAD_VAR is
-        // deliberately excluded: reading an uninitialised captured variable can
-        // panic, and removing a reachable-but-dead load would mask that panic.
-        // Stores, calls, array/field access and allocation all have effects or
-        // can panic, so they are never removed here.
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         auto isDeadValueSafe = [](MirOp op) {
             switch (op) {
                 case MirOp::LOAD_CONST:
@@ -47,14 +47,14 @@ namespace LOICollection::frontend::ir::opt {
             if (instr.src3 >= 0)
                 read.insert(instr.src3);
 
-            // The imm field is a register window count rooted at src1. The call
-            // conventions read registers src1 .. src1+imm INCLUSIVE: call args
-            // occupy src1 .. src1+imm-1 and the receiver/callee lives at
-            // src1+imm (CALL_METHOD-family and CALL_NATIVE_METHOD read the
-            // receiver from src1+imm; CALL_FUNC/CALL_LAMBDA read the function
-            // from src2). Marking the window inclusive is required so the
-            // receiver register is recognised as live and never deleted, and is a
-            // safe over-approximation for any other op that uses imm as a count.
+            
+            
+            
+            
+            
+            
+            
+            
             if (instr.imm > 0 && instr.src1 >= 0) {
                 for (int i = 0; i <= instr.imm; ++i)
                     read.insert(instr.src1 + i);
@@ -69,11 +69,11 @@ namespace LOICollection::frontend::ir::opt {
             if (instr.op == MirOp::PANIC && instr.src1 >= 0)
                 read.insert(instr.src1);
 
-            // MAKE_LAMBDA captures values from registers (capture.sourceSlot, a
-            // register index into the frame's localPool) recorded in chunk
-            // metadata rather than in the instruction's src fields. Those source
-            // registers are live -- failing to treat them as read would let a
-            // dead-value deletion discard the very value a closure captures.
+            
+            
+            
+            
+            
             if (instr.op == MirOp::MAKE_LAMBDA) {
                 const auto& meta = mChunk.lambdas[instr.operand];
                 for (const auto& capture : meta.captures)

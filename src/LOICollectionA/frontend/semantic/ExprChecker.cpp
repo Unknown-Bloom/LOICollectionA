@@ -224,8 +224,7 @@ namespace LOICollection::frontend {
                 if (ifNode.condition)
                     checkExpr(*ifNode.condition, scope);
 
-                /* `if let` introduces the destructured bindings for the true
-                 * branch only; the false branch must not see them. */
+                
                 const bool bindsPattern = ifNode.condition &&
                     ifNode.condition->getType() == ASTNode::Type::LetPattern;
 
@@ -305,9 +304,9 @@ namespace LOICollection::frontend {
                 for (auto& arg : fn.args)
                     argTypes.push_back(checkExpr(*arg, scope));
 
-                // `ClassName::method(args)` resolves to a class static method when
-                // the namespace names a known class; native classes keep the
-                // existing global function lookup and other names fall through.
+                
+                
+                
                 if (auto clsOpt = this->findClass(fn.namespaces)) {
                     auto staticMethod = this->findStaticMethod(
                         clsOpt->get(), fn.name, argTypes, scope);
@@ -387,10 +386,10 @@ namespace LOICollection::frontend {
         if (node.value)
             rhs = checkExpr(*node.value, scope);
 
-        // Dynamic (untyped) targets keep the optional on the right-hand side:
-        // `let v = it.next()` stores the raw value or None so `if (v)` /
-        // `v.has_value` / `v.value` behave consistently instead of eagerly
-        // unwrapping (which turns a terminating None into a runtime error).
+        
+        
+        
+        
         const auto keepOptionalRhs = [&node, &rhs]() {
             if (node.value && rhs.kind == TypeKind::Optional)
                 node.value->preserveOptional = true;

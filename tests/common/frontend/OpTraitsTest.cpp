@@ -22,7 +22,8 @@ TEST(OpTraitsTest, IsJumpCoversEveryConditionalAndUnconditionalForm) {
         const auto op = static_cast<MirOp>(value);
 
         EXPECT_EQ(isJump(op), op_traits_test_support::isOneOf(op, {
-            MirOp::JMP, MirOp::JMP_IF_FALSE, MirOp::JMP_IF_TRUE, MirOp::JMP_IF_CMP_FALSE
+            MirOp::JMP, MirOp::JMP_IF_FALSE, MirOp::JMP_IF_TRUE, MirOp::JMP_IF_CMP_FALSE,
+            MirOp::JMP_IF_TAG_NE
         })) << "op " << value;
     }
 }

@@ -53,9 +53,7 @@ namespace LOICollection::frontend::ir::detail {
         }
     };
 
-    /* Pins tlsCurrentVM to the VM executing on this thread for the duration of
-     * one execute() call, restoring the previous value on exit so nested
-     * (host-driven) VM entry within a task does not clobber it. */
+    
     struct CurrentVMScope {
         VM* previous;
 

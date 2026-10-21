@@ -206,8 +206,7 @@ namespace LOICollection::frontend {
                 if (first == "_") {
                     arm->pattern = MatchArm::Pattern::Wildcard;
                 } else if (currentToken.type == TokenType::TOKEN_LPAREN) {
-                    /* Enum variant destructuring: `Some(x)`, `Point(x, y)` or a
-                     * payload-free `Nothing()`. */
+                    
                     arm->pattern = MatchArm::Pattern::EnumVariant;
                     arm->variantName = std::move(first);
 
@@ -372,7 +371,7 @@ namespace LOICollection::frontend {
         if (first == "_") {
             node->isEnumPattern = false;
         } else if (currentToken.type == TokenType::TOKEN_LPAREN) {
-            /* Enum variant destructuring: `Some(x)` or a payload-free `Nothing()`. */
+            
             node->isEnumPattern = true;
             node->variantName = std::move(first);
 
@@ -406,8 +405,7 @@ namespace LOICollection::frontend {
                 return nullptr;
             }
         } else {
-            /* Plain binding: the whole value is bound to this name and the
-             * condition is always true. */
+            
             node->isEnumPattern = false;
             node->binders.push_back(std::move(first));
         }

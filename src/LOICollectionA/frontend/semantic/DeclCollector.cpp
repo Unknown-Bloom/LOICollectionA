@@ -228,14 +228,14 @@ namespace LOICollection::frontend {
             }
             ClassNode& cls = clsOpt->get();
 
-            // impl type parameters map onto the class parameters by position; rename
-            // them so method signatures line up with the class vocabulary.
+            
+            
             std::unordered_map<std::string, std::string> renameMap;
             for (size_t i = 0; i < impl.typeParams.size() && i < cls.typeParams.size(); ++i)
                 renameMap[impl.typeParams[i].name] = cls.typeParams[i].name;
 
-            // Parameters with no class counterpart (e.g. on a non-generic class) stay
-            // available as method-scoped generic variables instead.
+            
+            
             std::vector<TypeParam> methodScopedParams;
             for (size_t i = std::min(impl.typeParams.size(), cls.typeParams.size());
                  i < impl.typeParams.size(); ++i)

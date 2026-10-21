@@ -6,18 +6,18 @@
 #include "LOICollectionA/frontend/ir/opt/passes/LICMPass.h"
 
 namespace LOICollection::frontend::ir::opt::detail {
-    // An instruction is loop-invariant when its value is identical on every
-    // iteration. We treat:
-    //   * LOAD_CONST   -> always invariant
-    //   * LOAD_SLOT    -> invariant iff the slot is never written inside the loop
-    //   * MOVE / pure unary / pure binary -> invariant iff every operand register
-    //                                       already holds an invariant value
-    // LOAD_VAR is deliberately NOT treated as memory-invariant: the MIR can
-    // assign different variable indices to the read and write of one logical
-    // variable (e.g. via closure capture), so a per-index "never written" check
-    // would be unsound. Side-effecting ops (CALL, STORE, NEW, field/index
-    // writes, ...) and DIV/MOD/POW (which can panic on zero) are also excluded so
-    // that hoisting never changes observable behaviour or the timing of a panic.
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     bool isInvariant(
         const MirInstr& instr,
         const std::unordered_set<int>& invariantRegs,
@@ -26,12 +26,12 @@ namespace LOICollection::frontend::ir::opt::detail {
         if (instr.op == MirOp::LOAD_CONST)
             return true;
 
-        // Only LOAD_SLOT may be treated as loop-invariant memory here: slot
-        // indices are stable across reads and writes of the same local. LOAD_VAR
-        // must be excluded -- the MIR can assign different variable indices to
-        // the read and write of one logical variable (e.g. via closure capture),
-        // so a per-index "never written" check is unsound and could hoist a load
-        // of an undefined variable out of its defining loop.
+        
+        
+        
+        
+        
+        
         if (instr.op == MirOp::LOAD_SLOT)
             return loopWritten.count(instr.operand) == 0;
 
@@ -74,11 +74,11 @@ namespace LOICollection::frontend::ir::opt {
     }
 
     size_t LICMPass::hoist(const ControlFlowGraph& cfg, const NaturalLoop& loop) {
-        // Only handle well-formed single-entry / single-exit loops whose every
-        // block is reached on every iteration (each non-header loop block has all
-        // of its predecessors inside the loop). This guarantees that moving the
-        // loop-invariant prefix into the preheader neither changes how often an
-        // instruction executes nor skips an iteration.
+        
+        
+        
+        
+        
         if (loop.entries.size() != 1 || loop.exits.size() != 1)
             return 0;
 
@@ -104,9 +104,9 @@ namespace LOICollection::frontend::ir::opt {
                     return 0;
         }
 
-        // Collect every memory location written inside the loop. A LOAD_SLOT /
-        // LOAD_VAR of a location that is never written in the loop is loop
-        // invariant and may be hoisted.
+        
+        
+        
         std::unordered_set<int> loopWritten;
         for (const int block : loop.blocks) {
             const auto& b = cfg.blocks()[block];
@@ -117,14 +117,14 @@ namespace LOICollection::frontend::ir::opt {
             }
         }
 
-        // Only code that runs on *every* iteration may be hoisted out of a loop.
-        // A block is safe when it is reached unconditionally from the header and
-        // falls through unconditionally to the next safe block (or the back-edge),
-        // with no internal branches or merges. This deliberately excludes blocks
-        // behind a condition -- e.g. the arms of a match/if inside the loop --
-        // whose leading instructions are only conditionally executed. Hoisting
-        // those to the unconditional preheader would change which value a later
-        // selection observes and would silently corrupt the program.
+        
+        
+        
+        
+        
+        
+        
+        
         std::unordered_set<int> safeBlocks;
         {
             int start = -1;
@@ -152,10 +152,10 @@ namespace LOICollection::frontend::ir::opt {
             }
         }
 
-        // Walk each safe block in program order and collect its leading
-        // loop-invariant prefix. Stopping at the first non-invariant instruction
-        // keeps the transformation safe: nothing after it can be moved without
-        // risking a dependence on a loop-varying value.
+        
+        
+        
+        
         std::vector<MirInstr> invariant;
         std::vector<int> hoistOrigIdx;
         std::unordered_set<int> invariantRegs;
@@ -178,10 +178,10 @@ namespace LOICollection::frontend::ir::opt {
         if (invariant.empty())
             return 0;
 
-        // Insert the hoisted code at the end of the unique preheader (the loop's
-        // single entry block), just before it falls into the loop header. If the
-        // preheader ends with an unconditional jump, insert before it so the jump
-        // still transfers control into the loop.
+        
+        
+        
+        
         const int insertAt = mChunk.code[entry.end - 1].op == MirOp::JMP
             ? entry.end - 1 : entry.end;
 

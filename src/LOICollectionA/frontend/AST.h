@@ -153,27 +153,15 @@ namespace LOICollection::frontend {
         }
     };
 
-    /* Payload storage for enum (tagged-union) values.
-     *
-     * This is declared opaquely and completed after ValueNode because
-     * ValueNode::ValueType contains EnumValue while an enum payload can itself
-     * hold any value -- including another enum. The recursion is therefore
-     * broken through an indirection, which also keeps EnumValue small
-     * (<= sizeof(std::string)) so that growing the variant does not enlarge
-     * ValueType for every other value in the VM. */
+    
     struct EnumPayload;
 
     struct EnumValue {
-        std::uint32_t enumId = 0;                 /* index into MirChunk::enums   */
-        std::uint32_t tag = 0;                    /* variant ordinal             */
-        std::shared_ptr<EnumPayload> payload{};   /* null when arity == 0        */
+        std::uint32_t enumId = 0;                 
+        std::uint32_t tag = 0;                    
+        std::shared_ptr<EnumPayload> payload{};   
 
-        /* std::variant's operator== requires every alternative to be comparable.
-         * Two enum values are equal when they share the same enum id and variant
-         * tag and carry identical payloads. Defined out-of-line below, after
-         * EnumPayload is complete, so we can compare payload contents rather than
-         * the shared_ptr identity (otherwise two separately constructed Ok(1)
-         * values would compare unequal). */
+        
         bool operator==(const EnumValue& other) const;
     };
 
@@ -203,7 +191,7 @@ namespace LOICollection::frontend {
         }
     };
 
-    /* Completed here, now that ValueNode::ValueType is a complete type. */
+    
     struct EnumPayload {
         std::vector<ValueNode::ValueType> items{};
     };
@@ -410,8 +398,7 @@ namespace LOICollection::frontend {
         ValueNode::ValueType literal{};
         std::string className;
         std::string binder;
-        /* For Pattern::EnumVariant: the variant name and one binding per
-         * payload slot, in declaration order. */
+        
         std::string variantName;
         std::vector<std::string> binders;
         std::unique_ptr<ExprNode> guard;
@@ -438,10 +425,7 @@ namespace LOICollection::frontend {
         }
     };
 
-    /* `let <pattern> = <expr>` used as an if/while condition. The value is
-     * evaluated, then tested against the pattern; on a match the bound names
-     * are introduced for the guarded branch and the condition is true.
-     * Compiled as TAG_OF + JMP_IF_TAG_NE + LOAD_ENUM_PAYLOAD. */
+    
     struct LetPatternNode : ExprNode {
         SourceLocation loc;
         std::unique_ptr<ExprNode> value;
