@@ -10,7 +10,7 @@
 using namespace LOICollection::frontend;
 
 namespace {
-    const std::string kOptionSource = R"(
+    const std::string kPatternSource = R"(
         enum Option {
             Some(int)
             Nothing
@@ -27,20 +27,20 @@ namespace {
 /* P2: destructuring a payload-carrying variant binds the payload to the
  * name written inside the pattern. */
 TEST(EnumPatternTest, MatchBindsPayload) {
-    EXPECT_EQ(eval(kOptionSource + "\n let v = Some(42)\n"
+    EXPECT_EQ(eval(kPatternSource + "\n let v = Some(42)\n"
                    " match (v) [ Some(x) [ x ] Nothing() [ 0 ] ]"), "42");
 }
 
 /* A payload-free variant is written with empty parentheses in the pattern. */
 TEST(EnumPatternTest, MatchPayloadFreeVariant) {
-    EXPECT_EQ(eval(kOptionSource + "\n let v = Nothing()\n"
+    EXPECT_EQ(eval(kPatternSource + "\n let v = Nothing()\n"
                    " match (v) [ Some(x) [ x ] Nothing() [ -1 ] ]"), "-1");
 }
 
 /* An arm whose tag does not match must be skipped entirely; this is what
  * JMP_IF_TAG_NE is emitted for. */
 TEST(EnumPatternTest, MatchSkipsMismatchedArm) {
-    EXPECT_EQ(eval(kOptionSource + "\n let v = Some(7)\n"
+    EXPECT_EQ(eval(kPatternSource + "\n let v = Some(7)\n"
                    " match (v) [ Nothing() [ \"nothing\" ] Some(x) [ \"some\" ] ]"),
               "some");
 }
@@ -53,7 +53,7 @@ TEST(EnumPatternTest, MatchBindsMultiplePayloads) {
 
 /* P3: `if let` binds for the true branch. */
 TEST(EnumPatternTest, IfLetBindsPayload) {
-    EXPECT_EQ(eval(kOptionSource + "\n let v = Some(7)\n"
+    EXPECT_EQ(eval(kPatternSource + "\n let v = Some(7)\n"
                    " if (let Some(x) = v) [ x ]"), "7");
 }
 
@@ -61,22 +61,22 @@ TEST(EnumPatternTest, IfLetBindsPayload) {
  * is written as `[ true : false ]`, but a leading identifier there would be
  * read as a type annotation, so assert through a variable instead.) */
 TEST(EnumPatternTest, IfLetSkipsBranchOnMismatch) {
-    EXPECT_EQ(eval(kOptionSource + "\n let v = Nothing()\n let r = -1\n"
+    EXPECT_EQ(eval(kPatternSource + "\n let v = Nothing()\n let r = -1\n"
                    " if (let Some(x) = v) [ r = x ]\n r"), "-1");
-    EXPECT_EQ(eval(kOptionSource + "\n let v = Some(5)\n let r = -1\n"
+    EXPECT_EQ(eval(kPatternSource + "\n let v = Some(5)\n let r = -1\n"
                    " if (let Some(x) = v) [ r = x ]\n r"), "5");
 }
 
 /* The destructured name belongs to the guarded branch only. */
 TEST(EnumPatternTest, IfLetBindingDoesNotLeak) {
-    EXPECT_THROW(eval(kOptionSource + "\n let v = Some(1)\n"
+    EXPECT_THROW(eval(kPatternSource + "\n let v = Some(1)\n"
                       " if (let Some(x) = v) [ x ]\n x"), std::runtime_error);
 }
 
 /* P3: `while let` re-evaluates the value every iteration and stops at the
  * first mismatch. */
 TEST(EnumPatternTest, WhileLetIteratesUntilMismatch) {
-    EXPECT_EQ(eval(kOptionSource + R"(
+    EXPECT_EQ(eval(kPatternSource + R"(
         func pick(i) {
             if (i < 3) [ return Some(i); ]
             return Nothing();
@@ -105,7 +105,7 @@ TEST(EnumPatternTest, ForeignVariantIsRejected) {
 TEST(EnumPatternTest, ArityMismatchIsRejected) {
     DiagnosticEngine diagnostics;
     auto mir = compile(
-        kOptionSource + "\n let v = Some(1)\n"
+        kPatternSource + "\n let v = Some(1)\n"
         " match (v) [ Some(x, y) [ x ] Nothing() [ 0 ] ]", diagnostics);
 
     EXPECT_EQ(mir, nullptr);
