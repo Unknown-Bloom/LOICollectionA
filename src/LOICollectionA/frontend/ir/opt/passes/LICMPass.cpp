@@ -125,6 +125,51 @@ namespace LOICollection::frontend::ir::opt {
         
         
         
+        int latch = -1;
+        for (const int block : loop.blocks) {
+            for (const int s : cfg.blocks()[block].successors)
+                if (s == loop.header) { latch = block; break; }
+            if (latch >= 0) break;
+        }
+        if (latch < 0 || latch == loop.header)
+            return 0;
+
+        std::vector<int> loopBlockIndex(cfg.size(), -1);
+        std::vector<int> loopBlockList;
+        for (const int block : loop.blocks) {
+            loopBlockIndex[block] = static_cast<int>(loopBlockList.size());
+            loopBlockList.push_back(block);
+        }
+        const int lc = static_cast<int>(loopBlockList.size());
+        std::vector<std::vector<bool>> dom(lc, std::vector<bool>(lc, true));
+        for (int j = 0; j < lc; ++j)
+            dom[loopBlockIndex[loop.header]][j] = (j == loopBlockIndex[loop.header]);
+
+        bool domChanged = true;
+        while (domChanged) {
+            domChanged = false;
+            for (const int block : loop.blocks) {
+                if (block == loop.header) continue;
+                const int bi = loopBlockIndex[block];
+                std::vector<bool> inter(lc, true);
+                bool firstPred = true;
+                for (const int p : cfg.blocks()[block].predecessors) {
+                    if (loopBlockIndex[p] < 0) continue;
+                    const int pi = loopBlockIndex[p];
+                    if (firstPred) { inter = dom[pi]; firstPred = false; }
+                    else { for (int j = 0; j < lc; ++j) inter[j] = inter[j] && dom[pi][j]; }
+                }
+                inter[bi] = true;
+                if (inter != dom[bi]) { dom[bi] = inter; domChanged = true; }
+            }
+        }
+
+        auto dominates = [&](int a, int b) {
+            const int ai = loopBlockIndex[a], bi = loopBlockIndex[b];
+            if (ai < 0 || bi < 0) return false;
+            return static_cast<bool>(dom[bi][ai]);
+        };
+
         std::unordered_set<int> safeBlocks;
         {
             int start = -1;
@@ -141,6 +186,9 @@ namespace LOICollection::frontend::ir::opt {
                 const bool predOk = (cur == start) ? (pred == loop.header)
                                                    : safeBlocks.count(pred) > 0;
                 if (!predOk)
+                    break;
+
+                if (!dominates(cur, latch))
                     break;
 
                 safeBlocks.insert(cur);
