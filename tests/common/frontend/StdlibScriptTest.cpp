@@ -189,8 +189,7 @@ TEST(StdlibScriptTest, ResultType) {
         "import \"/result.lcui\"; resultErrOr(Err(\"boom\"), \"none\")"), "boom");
     EXPECT_EQ(evalStd(
         "import \"/result.lcui\";"
-        "class Inc extends Fn1 { func call(x) { return x + 1; } }"
-        "resultUnwrap(resultMap(Ok(1), new Inc()))"), "2");
+        "resultUnwrap(resultMap(Ok(1), func (x) { return x + 1; }))"), "2");
     EXPECT_ANY_THROW(evalStd(
         "import \"/result.lcui\"; resultUnwrap(Err(\"boom\"))"));
 }
