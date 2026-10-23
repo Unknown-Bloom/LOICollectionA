@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="theme-color" content="#15171c">
+    <meta name="description" content="LCUI Studio - LOICollectionA .lcui 表单可视化编辑器，手机与电脑均可使用">
+    <title>LCUI Studio · .lcui 可视化编辑器</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='6' y='10' width='52' height='44' rx='6' fill='%2327a17a'/%3E%3Crect x='14' y='22' width='20' height='6' rx='3' fill='%23e8f4ef'/%3E%3Crect x='14' y='34' width='36' height='6' rx='3' fill='%23e8f4ef' opacity='.8'/%3E%3Crect x='14' y='46' width='28' height='6' rx='3' fill='%23ffd166'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header id="appbar">
+        <div class="appbar-brand">
+            <span class="appbar-logo" aria-hidden="true"></span>
+            <div class="appbar-title">
+                <strong>LCUI Studio</strong>
+                <small id="formKindBadge">CustomForm</small>
+            </div>
+        </div>
+        <div class="appbar-actions">
+            <button id="btnUndo" class="tool" title="撤销 (Ctrl+Z)" disabled>↶</button>
+            <button id="btnRedo" class="tool" title="重做 (Ctrl+Y)" disabled>↷</button>
+            <span class="appbar-sep"></span>
+            <button id="btnNew" class="tool wide">新建</button>
+            <button id="btnImport" class="tool wide">导入</button>
+            <button id="btnSave" class="tool wide primary">保存</button>
+        </div>
+    </header>
+
+    <main id="workspace">
+        <aside id="palettePanel" class="panel">
+            <div class="panel-head">组件库</div>
+            <div id="palette" class="palette"></div>
+            <div class="panel-head outline-head">结构</div>
+            <div id="outline" class="outline"></div>
+        </aside>
+
+        <section id="canvasPanel" class="panel">
+            <div class="panel-head canvas-head">
+                <span>画布预览</span>
+                <span id="canvasTitle" class="canvas-title"></span>
+            </div>
+            <div id="canvasScroll">
+                <div id="canvas">
+                    <div id="formMock" class="form-mock"></div>
+                </div>
+            </div>
+            <div id="issuesBar" class="issues-bar" hidden></div>
+        </section>
+
+        <aside id="inspectorPanel" class="panel">
+            <div class="panel-head" id="inspectorHead">表单设置</div>
+            <div id="inspector" class="inspector"></div>
+        </aside>
+
+        <section id="codePanel" class="panel">
+            <div class="panel-head code-head">
+                <span>.lcui 源码</span>
+                <div class="code-actions">
+                    <button id="btnCopy" class="tool wide">复制</button>
+                    <button id="btnDownload" class="tool wide">下载</button>
+                    <button id="btnToggleCode" class="tool">⌃</button>
+                </div>
+            </div>
+            <pre id="codeView" class="code-view"><code></code></pre>
+        </section>
+    </main>
+
+    <nav id="tabbar">
+        <button class="tab active" data-tab="canvasPanel"><i>▦</i>画布</button>
+        <button class="tab" data-tab="palettePanel"><i>◫</i>组件</button>
+        <button class="tab" data-tab="inspectorPanel"><i>☰</i>属性</button>
+        <button class="tab" data-tab="codePanel"><i>⟨⟩</i>代码</button>
+    </nav>
+
+    <dialog id="importDialog">
+        <form method="dialog" class="dialog-form">
+            <h3>导入 .lcui 脚本</h3>
+            <p class="dialog-hint">仅支持由本编辑器生成的脚本结构（单一声明式表单 + 辅助变量）。</p>
+            <input type="file" id="importFile" accept=".lcui,text/plain">
+            <textarea id="importText" rows="12" spellcheck="false" placeholder="将 .lcui 文件内容粘贴到此处，或选择文件…"></textarea>
+            <div id="importErrors" class="import-errors" hidden></div>
+            <div class="dialog-actions">
+                <button value="cancel" class="tool wide">取消</button>
+                <button id="importConfirm" value="ok" class="tool wide primary">导入</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="newDialog">
+        <form method="dialog" class="dialog-form">
+            <h3>新建表单</h3>
+            <div id="newKindList" class="kind-list"></div>
+            <label class="field-row"><span>表单标识</span><input id="newFormId" type="text" placeholder="example.main" autocomplete="off"></label>
+            <label class="field-row"><span>表单标题</span><input id="newFormTitle" type="text" placeholder="我的表单" autocomplete="off"></label>
+            <label class="check-row"><input id="newFormSample" type="checkbox" checked><span>填入示例组件</span></label>
+            <div class="dialog-actions">
+                <button value="cancel" class="tool wide">取消</button>
+                <button id="newConfirm" value="ok" class="tool wide primary">创建</button>
+            </div>
+        </form>
+    </dialog>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script src="js/schema.js"></script>
+    <script src="js/model.js"></script>
+    <script src="js/codegen.js"></script>
+    <script src="js/ui.js"></script>
+</body>
+</html>
