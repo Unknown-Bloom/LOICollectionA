@@ -214,6 +214,11 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<std::optional<QuoteInfo>> MarketQuote::getQuote(const std::string& itemName) const {
+        if (this->mImpl->stats.empty()) {
+            auto r = const_cast<MarketQuote*>(this)->rebuild();
+            (void)r;
+        }
+
         auto it = this->mImpl->stats.find(itemName);
         if (it == this->mImpl->stats.end())
             return std::nullopt;
@@ -231,6 +236,11 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<std::vector<std::pair<std::string, long long>>> MarketQuote::getTopVolume(int limit, int days) const {
+        if (this->mImpl->stats.empty()) {
+            auto r = const_cast<MarketQuote*>(this)->rebuild();
+            (void)r;
+        }
+
         int window = normalizeDays(days);
 
         std::vector<std::pair<std::string, long long>> items;
@@ -273,6 +283,11 @@ namespace LOICollection::server::Plugins {
     }
 
     ll::Expected<QuoteReport> MarketQuote::getReport(int days) const {
+        if (this->mImpl->stats.empty()) {
+            auto r = const_cast<MarketQuote*>(this)->rebuild();
+            (void)r;
+        }
+
         int window = normalizeDays(days);
 
         QuoteReport report;
