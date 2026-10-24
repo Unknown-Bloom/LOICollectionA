@@ -7,7 +7,7 @@ LCUI.Model = (function () {
         return LCUI.Schema;
     }
 
-    var Limits = { maxControls: 512, maxHistory: 256, maxTextLength: 4096, maxDropdownItems: 64, maxPages: 256 };
+    var Limits = { maxControls: 512, maxHistory: 256, maxTextLength: 4096, maxDropdownItems: 64, maxPages: 256, maxScores: 32 };
 
     function isIdentifier(value) {
         return /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(value);
@@ -19,6 +19,16 @@ LCUI.Model = (function () {
 
     function splitLines(value) {
         return String(value || '').split('\n').map(function (line) { return line.trim(); }).filter(function (line) { return line.length > 0; });
+    }
+
+    function scoreEntries(value) {
+        return splitLines(value).map(function (line) {
+            var separator = line.lastIndexOf(':');
+            if (separator <= 0) return { objective: '', value: 0, valid: false };
+            var objective = line.slice(0, separator).trim();
+            var amount = Number(line.slice(separator + 1).trim());
+            return { objective: objective, value: amount, valid: objective.length > 0 && isFinite(amount) && Math.floor(amount) === amount };
+        });
     }
 
     function materialize(descriptors) {
@@ -99,6 +109,14 @@ LCUI.Model = (function () {
                     issues.push({ target: 'control:' + index + ':' + descriptorProperty.key, message: descriptor.label + ' 的 ' + descriptorProperty.label + ' 超过长度上限' });
                 if (descriptorProperty.required && descriptorProperty.type === 'text' && String(value).trim() === '')
                     issues.push({ target: 'control:' + index + ':' + descriptorProperty.key, message: descriptor.label + ' 的 ' + descriptorProperty.label + ' 不能为空' });
+
+                if (descriptorProperty.type === 'scores') {
+                    var entries = scoreEntries(value);
+                    if (entries.length > Limits.maxScores)
+                        issues.push({ target: 'control:' + index + ':' + descriptorProperty.key, message: descriptor.label + ' 的 Score 需求超过上限 ' + Limits.maxScores });
+                    if (entries.some(function (entry) { return !entry.valid; }))
+                        issues.push({ target: 'control:' + index + ':' + descriptorProperty.key, message: descriptor.label + ' 的 Score 需求格式应为 计分板:分数' });
+                }
             });
 
             if (control.kind === 'Dropdown') {
@@ -337,6 +355,7 @@ LCUI.Model = (function () {
         isIdentifier: isIdentifier,
         isFormId: isFormId,
         splitLines: splitLines,
+        scoreEntries: scoreEntries,
         makeControl: makeControl,
         makeDocument: makeDocument,
         validate: validate,

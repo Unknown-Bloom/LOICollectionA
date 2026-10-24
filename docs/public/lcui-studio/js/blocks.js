@@ -200,7 +200,27 @@ LCUI.Blocks = (function () {
 
         { id: 'resultIndex', cat: 'data', kind: 'expression', shape: 'reporter',
             label: ['选择序号'],
-            expr: function () { return 'result.selectionIndex'; } }
+            expr: function () { return 'result.selectionIndex'; } },
+
+        { id: 'resultCloseReason', cat: 'data', kind: 'expression', shape: 'reporter',
+            label: ['关闭原因'],
+            expr: function () { return 'result.closeReason'; } },
+
+        { id: 'resultActionIndex', cat: 'data', kind: 'expression', shape: 'reporter',
+            label: ['动作序号'],
+            expr: function () { return 'result.actionIndex'; } },
+
+        { id: 'resultCode', cat: 'data', kind: 'expression', shape: 'reporter',
+            label: ['结果码'],
+            expr: function () { return 'result.resultCode'; } },
+
+        { id: 'resultItemIndex', cat: 'data', kind: 'expression', shape: 'reporter',
+            label: ['商品序号'],
+            expr: function () { return 'result.itemIndex'; } },
+
+        { id: 'resultFromId', cat: 'data', kind: 'expression', shape: 'reporter',
+            label: ['跳转商店'],
+            expr: function () { return 'result.fromId'; } }
     ];
 
     var DEFS = {};
@@ -213,7 +233,9 @@ LCUI.Blocks = (function () {
         panic: '终止脚本', text: '文本', number: '数字', 'bool': '布尔', compare: '比较',
         and: '与', or: '或', not: '非', concat: '拼接', list2: '列表(2)', emptyList: '空列表',
         request: '请求', valueOf: '取值', obsValue: '可观察值', obsData: '可观察数据',
-        varRef: '变量', resultSelection: '选择项', resultIndex: '选择序号'
+        varRef: '变量', resultSelection: '选择项', resultIndex: '选择序号',
+        resultCloseReason: '关闭原因', resultActionIndex: '动作序号', resultCode: '结果码',
+        resultItemIndex: '商品序号', resultFromId: '跳转商店'
     };
     LIST.forEach(function (def) { if (!def.name) def.name = NAMES[def.id] || def.id; });
 

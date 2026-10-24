@@ -92,7 +92,7 @@
 
     function documentSummary(control) {
         var properties = control.properties;
-        var source = properties.text || properties.label || properties.prompt || '';
+        var source = properties.text || properties.label || properties.title || properties.prompt || '';
         var value = String(source || '').trim();
         return value.length ? value : Schema.findControl(control.kind).label;
     }
@@ -135,6 +135,49 @@
             choose.properties.text = '跳转';
             choose.properties.prompt = '页码';
             document.controls = [previous, next, choose, Model.makeControl('CloseButton')];
+            return document;
+        }
+
+        if (kind === 'Menu') {
+            document.properties.id = 'menu.main';
+            document.properties.title = '主菜单';
+
+            var intro = Model.makeControl('Label');
+            intro.properties.text = '请选择一项操作。';
+            var reward = Model.makeControl('MenuButton');
+            reward.properties.text = '领取奖励';
+            reward.properties.actionId = 'claim';
+            reward.properties.run = 'say 已领取奖励';
+            reward.properties.scores = 'money:100';
+            var back = Model.makeControl('Button');
+            back.properties.text = '返回';
+            document.controls = [intro, reward, back];
+            return document;
+        }
+
+        if (kind === 'Shop') {
+            document.properties.id = 'shop.main';
+            document.properties.title = '商品商店';
+            document.properties.type = 'buy';
+            document.properties.content = '欢迎选购，点击条目即可购买。';
+            document.properties.exitCommand = 'say 已退出商店';
+            document.properties.scoreCommand = 'say 积分不足';
+            document.properties.titleCommand = 'say 购买称号';
+
+            var apple = Model.makeControl('ShopItem');
+            apple.properties.title = '苹果';
+            apple.properties.id = 'minecraft:apple';
+            apple.properties.introduce = '脆甜的苹果。';
+            apple.properties.number = '购买数量';
+            apple.properties.scores = 'money:100';
+            var titleItem = Model.makeControl('ShopItem');
+            titleItem.properties.type = 'title';
+            titleItem.properties.title = '勇士称号';
+            titleItem.properties.introduce = '显示在头顶的称号。';
+            titleItem.properties.confirmButton = '确认';
+            titleItem.properties.cancelButton = '取消';
+            titleItem.properties.scores = 'money:500';
+            document.controls = [apple, titleItem];
             return document;
         }
 
@@ -181,6 +224,23 @@
             document.controls[0].properties.text = '上一页';
             document.controls[1].properties.text = '下一页';
             document.controls[2].properties.text = '跳转';
+        } else if (formKind === 'Menu') {
+            document.properties.id = 'menu.main';
+            document.properties.title = '主菜单';
+            var menuAction = Model.makeControl('MenuButton');
+            menuAction.properties.text = '开始';
+            var menuLabel = Model.makeControl('Label');
+            menuLabel.properties.text = '请选择一项操作。';
+            document.controls = [menuLabel, menuAction];
+        } else if (formKind === 'Shop') {
+            document.properties.id = 'shop.main';
+            document.properties.title = '商品商店';
+            document.properties.type = 'buy';
+            var shopItem = Model.makeControl('ShopItem');
+            shopItem.properties.title = '苹果';
+            shopItem.properties.id = 'minecraft:apple';
+            shopItem.properties.introduce = '脆甜的苹果。';
+            document.controls = [shopItem];
         } else {
             document.properties.id = 'example.main';
             document.properties.title = '示例表单';
@@ -230,9 +290,9 @@
     function renderPalette() {
         var host = byId('palette');
         host.textContent = '';
-        var kinds = ['Label', 'Header', 'TextField', 'Dropdown', 'Toggle', 'Slider', 'Button', 'Divider', 'Spacer', 'Body', 'Button1', 'Button2', 'PreviousButton', 'NextButton', 'ChooseButton', 'CloseButton'];
+        var kinds = ['Label', 'Header', 'TextField', 'Dropdown', 'Toggle', 'Slider', 'Button', 'MenuButton', 'ShopItem', 'Divider', 'Spacer', 'Body', 'Button1', 'Button2', 'PreviousButton', 'NextButton', 'ChooseButton', 'CloseButton'];
         var document = Store.session.document;
-        var groups = { '基础': [], '输入': [], '操作': [], '分页': [], '消息框': [] };
+        var groups = { '基础': [], '输入': [], '操作': [], '分页': [], '消息框': [], '菜单': [], '商店': [] };
 
         kinds.forEach(function (kind) {
             var descriptor = Schema.findControl(kind);
@@ -262,7 +322,7 @@
     }
 
     function glyphOf(kind) {
-        var glyphs = { Label: 'T', Header: 'H', TextField: '⌨', Dropdown: '▾', Toggle: '◑', Slider: '⇿', Button: '▭', Divider: '—', Spacer: '␣', Body: '¶', Button1: '1', Button2: '2', PreviousButton: '◀', NextButton: '▶', ChooseButton: '↷', CloseButton: '✕' };
+        var glyphs = { Label: 'T', Header: 'H', TextField: '⌨', Dropdown: '▾', Toggle: '◑', Slider: '⇿', Button: '▭', MenuButton: '⚑', ShopItem: '▤', Divider: '—', Spacer: '␣', Body: '¶', Button1: '1', Button2: '2', PreviousButton: '◀', NextButton: '▶', ChooseButton: '↷', CloseButton: '✕' };
         return glyphs[kind] || '▪';
     }
 
@@ -331,6 +391,10 @@
                 body.appendChild(row);
             });
             if (pages.length > size) body.appendChild(el('div', 'mock-more', '… 共 ' + pages.length + ' 条 / ' + Math.ceil(pages.length / size) + ' 页'));
+        } else if (document.kind === 'Shop') {
+            body.appendChild(el('div', 'mc-shop-page', '1 / ' + Math.max(1, Math.ceil(document.controls.length / 10))));
+            if (properties.content) body.appendChild(richEl('div', 'mc-shop-content', properties.content));
+            document.controls.forEach(function (control, index) { body.appendChild(renderWidget(control, index, invalid)); });
         } else {
             document.controls.forEach(function (control, index) { body.appendChild(renderWidget(control, index, invalid)); });
         }
@@ -352,6 +416,11 @@
             pager.appendChild(choose);
             pager.appendChild(next);
             mock.appendChild(pager);
+        } else if (document.kind === 'Shop') {
+            var shopPager = el('div', 'mock-actions pager');
+            shopPager.appendChild(richEl('div', 'mc-button small', '◀ 上一页'));
+            shopPager.appendChild(richEl('div', 'mc-button small', '下一页 ▶'));
+            mock.appendChild(shopPager);
         }
 
         renderSelectionBar(mock);
@@ -390,8 +459,14 @@
         else if (kind === 'Body') node.appendChild(richEl('div', 'mc-body', properties.text || ''));
         else if (kind === 'Divider') node.appendChild(el('div', 'mc-divider'));
         else if (kind === 'Spacer') node.appendChild(el('div', 'mc-spacer'));
-        else if (kind === 'Button') node.appendChild(richEl('div', 'mc-button', properties.text || '按钮'));
-        else if (kind === 'Button1' || kind === 'Button2') node.appendChild(richEl('div', 'mc-button half', properties.text || '按钮'));
+        else if (kind === 'Button' || kind === 'MenuButton') node.appendChild(richEl('div', 'mc-button', properties.text || '按钮'));
+        else if (kind === 'ShopItem') {
+            var card = el('div', 'mc-shop-item');
+            card.appendChild(richEl('div', 'mc-shop-title', properties.title || '未命名条目'));
+            card.appendChild(el('div', 'mc-shop-meta', (properties.type || 'commodity') + (properties.id ? ' · ' + properties.id : '')));
+            if (properties.introduce) card.appendChild(richEl('div', 'mc-shop-desc', properties.introduce));
+            node.appendChild(card);
+        } else if (kind === 'Button1' || kind === 'Button2') node.appendChild(richEl('div', 'mc-button half', properties.text || '按钮'));
         else if (kind === 'PreviousButton' || kind === 'NextButton' || kind === 'ChooseButton') node.appendChild(richEl('div', 'mc-button small', properties.text || '按钮'));
         else if (kind === 'CloseButton') node.appendChild(el('div', 'mc-close-chip', '✕ 关闭按钮'));
         else if (kind === 'TextField') {
@@ -685,12 +760,12 @@
             input.setAttribute('step', String(descriptor.step || 1));
             if (descriptor.min !== undefined) input.setAttribute('min', String(descriptor.min));
             if (descriptor.max !== undefined) input.setAttribute('max', String(descriptor.max));
-        } else if (descriptor.type === 'items') {
+        } else if (descriptor.type === 'items' || descriptor.type === 'scores') {
             input = el('textarea', 'field-input area');
             input.rows = 4;
             input.spellcheck = false;
             input.value = value || '';
-            input.placeholder = '每行一个条目';
+            input.placeholder = descriptor.type === 'scores' ? '每行一个：计分板:分数' : '每行一个条目';
         } else {
             input = el('input', 'field-input');
             input.type = 'text';
@@ -783,7 +858,8 @@
             switchTab('canvasPanel');
             return;
         }
-        var name = (Store.session.document.properties.id || 'form').replace(/[^A-Za-z0-9._-]/g, '_') + '.lcui';
+        var form = Schema.findForm(Store.session.document.kind);
+        var name = form.file || (Store.session.document.properties.id || 'form').replace(/[^A-Za-z0-9._-]/g, '_') + '.lcui';
         var blob = new Blob([result.source], { type: 'text/plain;charset=utf-8' });
         var link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
@@ -847,10 +923,6 @@
             if (scope === 'form') Store.session.setFormProperty(key, value);
             else if (Store.selection !== null) Store.session.setControlProperty(Store.selection, key, value);
             renderLight();
-        });
-
-        byId('inspector').addEventListener('change', function (event) {
-            if (event.target.getAttribute('data-scope')) renderAll();
         });
 
         document.addEventListener('keydown', function (event) {

@@ -4,7 +4,8 @@ LCUI Studio 是随文档站点一同发布的 `.lcui` 表单可视化编辑器�
 
 ## 能力范围
 
-- 三类表单（`CustomForm` / `MessageBox` / `PaginatedForm`）与全部原生控件（`label` / `header` / `textField` / `dropdown` / `toggle` / `slider` / `button` / `divider` / `spacer` / 分页按钮 / 消息框按钮）
+- 五类表单（`CustomForm` / `MessageBox` / `PaginatedForm` / `MenuForm` / `ShopForm`）与全部原生控件（`label` / `header` / `textField` / `dropdown` / `toggle` / `slider` / `button` / `divider` / `spacer` / 分页按钮 / 消息框按钮 / 菜单按钮 / 商品条目）
+- 菜单表单为动作按钮生成 `MenuItemData`（权限、执行命令、`ScoreRequirement`），商店表单由 `ShopData` 字段与 `ShopItemData` 条目生成，画布按每页 10 条预览
 - 所见即所得画布按基岩版表单观感预览，属性检查器区分「直接参数」与 `*Options` 选项字段
 - 值类控件自动生成 `ObservableString` / `ObservableBoolean` / `ObservableNumber` 辅助变量，下拉选项生成 `DropdownItem` 序列，与手写脚本的惯用法一致
 - 撤销 / 重做、实时校验、自动保存、一键导出 `.lcui`
@@ -25,4 +26,4 @@ LCUI Studio 是随文档站点一同发布的 `.lcui` 表单可视化编辑器�
 
 ## 产物部署
 
-导出的 `.lcui` 文件放入服务端 `plugins/LOICollectionA/gui/` 即可被 `GUIManager` 加载；执行 `/xxx reload` 后生效。
+导出的 `.lcui` 文件放入服务端 `plugins/LOICollectionA/gui/` 即可被 `GUIManager` 加载；`menu.lcui` 与 `shop.lcui` 需要放入 `plugins/LOICollectionA/config/`。执行 `/xxx reload` 后生效。

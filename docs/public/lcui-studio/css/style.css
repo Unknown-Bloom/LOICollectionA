@@ -658,6 +658,23 @@ button {
 
 .mock-more { color: #7d8794; font-size: 12px; text-align: center; padding: 8px 0 2px; }
 
+.mc-shop-page { color: #8e99a8; font-size: 12px; letter-spacing: .04em; padding: 2px 2px 6px; }
+
+.mc-shop-content { color: #c9d2de; font-size: 13.5px; line-height: 1.6; padding: 0 2px 8px; }
+
+.mc-shop-item {
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .04);
+    border: 1px solid rgba(255, 255, 255, .06);
+}
+
+.mc-shop-title { color: #eef2f7; font-size: 13.5px; font-weight: 600; }
+
+.mc-shop-meta { color: #7f8b9a; font-size: 11px; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+.mc-shop-desc { color: #aeb9c7; font-size: 12.5px; line-height: 1.55; margin-top: 6px; }
+
 .selection-bar {
     display: flex;
     align-items: center;
@@ -944,7 +961,8 @@ dialog::backdrop { animation: backdrop-in .24s ease both; }
 
 .mc-label, .mc-header, .mc-body, .mc-input, .mc-select-text,
 .mc-toggle-label, .mc-field-label, .mock-page-text,
-.mc-button, .mc-close-chip {
+.mc-button, .mc-close-chip, .mc-shop-content, .mc-shop-title,
+.mc-shop-desc {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }

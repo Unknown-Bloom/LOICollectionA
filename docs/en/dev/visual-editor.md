@@ -4,7 +4,8 @@ LCUI Studio is a `.lcui` visual form editor shipped with the documentation site 
 
 ## Scope
 
-- All three form kinds (`CustomForm` / `MessageBox` / `PaginatedForm`) and every native control (`label` / `header` / `textField` / `dropdown` / `toggle` / `slider` / `button` / `divider` / `spacer` / pagination buttons / message box buttons)
+- All five form kinds (`CustomForm` / `MessageBox` / `PaginatedForm` / `MenuForm` / `ShopForm`) and every native control (`label` / `header` / `textField` / `dropdown` / `toggle` / `slider` / `button` / `divider` / `spacer` / pagination buttons / message box buttons / menu buttons / shop items)
+- Menu forms generate `MenuItemData` actions (permission, commands, `ScoreRequirement`); shop forms are driven by `ShopData` fields and `ShopItemData` entries, previewed at 10 items per page
 - A WYSIWYG canvas previewing the form in the bedrock look, with an inspector that separates direct arguments from `*Options` fields
 - Value-bearing controls automatically emit `ObservableString` / `ObservableBoolean` / `ObservableNumber` helper variables and dropdown options emit a `DropdownItem` sequence, matching hand-written script conventions
 - Undo/redo, live validation, autosave and one-click `.lcui` export
@@ -25,4 +26,4 @@ The editor re-opens scripts it generated itself: top-level `let` helper declarat
 
 ## Deployment
 
-Drop the exported `.lcui` file into `plugins/LOICollectionA/gui/` on the server and reload via `/xxx reload`.
+Drop the exported `.lcui` file into `plugins/LOICollectionA/gui/` on the server and reload via `/xxx reload`; `menu.lcui` and `shop.lcui` belong in `plugins/LOICollectionA/config/`.
