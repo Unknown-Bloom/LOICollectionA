@@ -35,6 +35,7 @@ namespace LOICollection::frontend {
     using ArrayRef = std::shared_ptr<ArrayValue>;
 
     struct GlobalsTable;
+    struct Context;
 }
 
 namespace LOICollection::form {
@@ -107,6 +108,13 @@ namespace LOICollection::form {
         ll::Expected<void> writeFile(const std::string& path, const std::string& content);
 
         LOICOLLECTION_A_NDAPI std::shared_ptr<frontend::GlobalsTable> scriptGlobals(const std::string& id, Player& player);
+
+        LOICOLLECTION_A_NDAPI ll::Expected<void> runFormScript(
+            const std::shared_ptr<const frontend::ir::MirChunk>& cached,
+            const frontend::Context& context,
+            const std::string& id,
+            std::shared_ptr<frontend::GlobalsTable> globals
+        );
 
         LOICOLLECTION_A_API void releasePlayerGlobals(Player& player);
 
