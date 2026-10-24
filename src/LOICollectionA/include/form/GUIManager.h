@@ -38,6 +38,10 @@ namespace LOICollection::frontend {
     struct Context;
 }
 
+namespace LOICollection::frontend::ir {
+    struct MirChunk;
+}
+
 namespace LOICollection::form {
     enum class GUIManagerType : int {
         CustomForm = 1,
