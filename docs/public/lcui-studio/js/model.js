@@ -258,7 +258,7 @@ LCUI.Model = (function () {
         this.changed();
     };
 
-    Session.prototype.recordCallback = function (index, kind, workspace) {
+    Session.prototype.recordCallback = function (index, kind, workspace, baseline) {
         var holder;
         if (index === null || index === undefined) {
             holder = this.document.callbacks = this.document.callbacks || {};
@@ -267,17 +267,18 @@ LCUI.Model = (function () {
             if (!control) return false;
             holder = control.callbacks = control.callbacks || {};
         }
+        if (!workspace) return false;
 
-        var previous = holder[kind] ? this.clone(holder[kind]) : { blocks: [] };
+        var before = baseline ? this.clone(baseline) : (holder[kind] ? this.clone(holder[kind]) : { blocks: [] });
         var next = this.clone(workspace);
-        if (JSON.stringify(previous) === JSON.stringify(next)) return false;
+        if (JSON.stringify(before) === JSON.stringify(next)) return false;
 
         var top = this.undoStack[this.undoStack.length - 1];
         if (top && top.type === 'callback' && top.index === index && top.kind === kind && top.stamp && Date.now() - top.stamp < 800) {
             top.stamp = Date.now();
             top.next = next;
         } else {
-            this.record({ type: 'callback', index: index, kind: kind, previous: previous, next: next, stamp: Date.now() });
+            this.record({ type: 'callback', index: index, kind: kind, previous: before, next: next, stamp: Date.now() });
         }
         holder[kind] = workspace;
         this.changed();

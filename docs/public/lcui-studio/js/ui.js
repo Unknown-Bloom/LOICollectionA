@@ -613,9 +613,10 @@
         }
         byId('logicTitle').textContent = titleText;
         byId('logicSubtitle').textContent = subText;
+        getLogicWorkspace(target.scope, target.index, target.kind, true);
 
-        var commit = function () {
-            Store.session.recordCallback(target.scope === 'document' ? null : target.index, target.kind, getLogicWorkspace(target.scope, target.index, target.kind, false));
+        var commit = function (previous) {
+            Store.session.recordCallback(target.scope === 'document' ? null : target.index, target.kind, getLogicWorkspace(target.scope, target.index, target.kind, false), previous);
             renderCode();
             renderIssues();
         };
@@ -647,8 +648,8 @@
         var target = Store.logicTarget;
         var workspace = getLogicWorkspace(target.scope, target.index, target.kind, false);
         if (!workspace) { closeLogic(); return; }
-        var commit = function () {
-            Store.session.recordCallback(target.scope === 'document' ? null : target.index, target.kind, getLogicWorkspace(target.scope, target.index, target.kind, false));
+        var commit = function (previous) {
+            Store.session.recordCallback(target.scope === 'document' ? null : target.index, target.kind, getLogicWorkspace(target.scope, target.index, target.kind, false), previous);
             renderCode();
             renderIssues();
         };

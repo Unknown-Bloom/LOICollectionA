@@ -1032,6 +1032,9 @@ dialog::backdrop { animation: backdrop-in .22s ease both; }
     font-size: 12.5px;
     cursor: grab;
     user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: none;
     transition: border-color .15s, background .15s, transform .05s;
 }
 
@@ -1045,16 +1048,47 @@ dialog::backdrop { animation: backdrop-in .22s ease both; }
 
 .block {
     position: relative;
-    margin: 3px 0;
+    margin: 0;
     border-radius: 8px;
     padding: 6px 9px;
     color: #fff;
     font-size: 13px;
     cursor: grab;
     user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: none;
     border: 1px solid rgba(255, 255, 255, .12);
     box-shadow: 0 1px 0 rgba(0, 0, 0, .28);
 }
+
+.block-stack { display: flex; flex-direction: column; align-items: stretch; }
+
+.block-reporter {
+    display: inline-flex;
+    align-items: center;
+    margin: 0;
+    padding: 4px 10px;
+    min-height: 28px;
+    border-radius: 999px;
+}
+
+.block-reporter .block-head { gap: 4px; flex-wrap: nowrap; }
+
+.block.dragging { opacity: .32; }
+
+.block-ghost {
+    position: fixed;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: .94;
+    max-width: 72vw;
+    transform: rotate(-1.2deg);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, .55);
+}
+
+.block-dragging, .block-dragging * { cursor: grabbing !important; }
+.block-dragging { user-select: none; }
 
 .block-cat-nav { background: #27a17a; }
 .block-cat-data { background: #3b82f6; }
@@ -1081,6 +1115,8 @@ dialog::backdrop { animation: backdrop-in .22s ease both; }
     max-width: 180px;
 }
 .block-select { min-width: 40px; }
+.block-input-text .block-field, .block-input-number .block-field { min-width: 64px; }
+.block-reporter .block-field, .block-reporter .block-select { min-height: 24px; font-size: 12px; }
 
 .block-body {
     margin: 5px 0 2px 12px;
@@ -1102,11 +1138,35 @@ dialog::backdrop { animation: backdrop-in .22s ease both; }
 }
 .block-socket.hot { box-shadow: inset 0 0 0 2px #fff; background: rgba(255, 255, 255, .28); }
 .block-socket .block { display: inline-block; vertical-align: middle; margin: 0; }
+.block-socket-empty { border: 1px dashed rgba(255, 255, 255, .22); }
 
 .socket-ph { color: rgba(255, 255, 255, .85); font-size: 11px; padding: 0 8px; font-style: italic; }
 
-.block-gap { height: 14px; margin: 1px 0; border-radius: 5px; transition: background .12s, box-shadow .12s; }
-.block-gap.hot { background: rgba(56, 189, 248, .4); box-shadow: inset 0 0 0 2px var(--focus); }
+.block-gap {
+    position: relative;
+    flex: none;
+    height: 7px;
+    margin: 0;
+    border-radius: 5px;
+    transition: background .12s, box-shadow .12s;
+}
+
+.block-gap::before { content: ''; position: absolute; left: 0; right: 0; top: -4px; bottom: -4px; }
+
+.block-gap.hot { background: rgba(56, 189, 248, .5); box-shadow: inset 0 0 0 2px var(--focus); }
+
+.block-gap-empty {
+    height: 32px;
+    margin: 3px 0;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    border: 1px dashed rgba(255, 255, 255, .22);
+    border-radius: 6px;
+}
+
+.block-gap-empty::after { content: '拖入语句'; color: rgba(255, 255, 255, .45); font-size: 11px; }
+.block-gap-empty.hot::after { color: #fff; }
 
 .block-dropzone {
     margin: 6px 0;

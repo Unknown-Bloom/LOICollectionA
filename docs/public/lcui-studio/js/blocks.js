@@ -120,69 +120,86 @@ LCUI.Blocks = (function () {
 
         { id: 'text', cat: 'ops', kind: 'expression', shape: 'reporter',
             fields: [{ key: 'value', type: 'text', default: '' }],
+            label: ['文本', { f: 'value' }],
             expr: function (b, api) { return quote(api.field(b, 'value')); } },
 
         { id: 'number', cat: 'ops', kind: 'expression', shape: 'reporter',
             fields: [{ key: 'value', type: 'number', default: 0 }],
+            label: [{ f: 'value' }],
             expr: function (b, api) { return numberLiteral(api.field(b, 'value')); } },
 
         { id: 'bool', cat: 'ops', kind: 'expression', shape: 'reporter',
             fields: [{ key: 'value', type: 'bool', default: false }],
+            label: ['布尔', { f: 'value' }],
             expr: function (b, api) { return api.field(b, 'value') ? 'true' : 'false'; } },
 
         { id: 'compare', cat: 'ops', kind: 'expression', shape: 'reporter',
             fields: [{ key: 'op', type: 'select', default: '==', options: COMPARE_OPS }],
             inputs: [{ key: 'a', kind: 'expr', defaultExpr: '""' }, { key: 'b', kind: 'expr', defaultExpr: '""' }],
+            label: [{ i: 'a' }, { f: 'op' }, { i: 'b' }],
             expr: function (b, api) { return '(' + api.input(b, 'a') + ' ' + api.field(b, 'op') + ' ' + api.input(b, 'b') + ')'; } },
 
         { id: 'and', cat: 'ops', kind: 'expression', shape: 'reporter',
             inputs: [{ key: 'a', kind: 'expr', defaultExpr: 'true' }, { key: 'b', kind: 'expr', defaultExpr: 'true' }],
+            label: [{ i: 'a' }, '且', { i: 'b' }],
             expr: function (b, api) { return '(' + api.input(b, 'a') + ' && ' + api.input(b, 'b') + ')'; } },
 
         { id: 'or', cat: 'ops', kind: 'expression', shape: 'reporter',
             inputs: [{ key: 'a', kind: 'expr', defaultExpr: 'true' }, { key: 'b', kind: 'expr', defaultExpr: 'true' }],
+            label: [{ i: 'a' }, '或', { i: 'b' }],
             expr: function (b, api) { return '(' + api.input(b, 'a') + ' || ' + api.input(b, 'b') + ')'; } },
 
         { id: 'not', cat: 'ops', kind: 'expression', shape: 'reporter',
             inputs: [{ key: 'a', kind: 'expr', defaultExpr: 'true' }],
+            label: ['非', { i: 'a' }],
             expr: function (b, api) { return '(!' + api.input(b, 'a') + ')'; } },
 
         { id: 'concat', cat: 'ops', kind: 'expression', shape: 'reporter',
             inputs: [{ key: 'a', kind: 'expr', defaultExpr: '""' }, { key: 'b', kind: 'expr', defaultExpr: '""' }],
+            label: ['连接', { i: 'a' }, { i: 'b' }],
             expr: function (b, api) { return '(' + api.input(b, 'a') + ' + ' + api.input(b, 'b') + ')'; } },
 
         { id: 'list2', cat: 'ops', kind: 'expression', shape: 'reporter',
             inputs: [{ key: 'a', kind: 'expr', defaultExpr: '""' }, { key: 'b', kind: 'expr', defaultExpr: '""' }],
+            label: ['列表', { i: 'a' }, { i: 'b' }],
             expr: function (b, api) { return '[' + api.input(b, 'a') + ', ' + api.input(b, 'b') + ']'; } },
 
         { id: 'emptyList', cat: 'ops', kind: 'expression', shape: 'reporter',
+            label: ['空列表'],
             expr: function () { return '[]'; } },
 
         { id: 'request', cat: 'data', kind: 'expression', shape: 'reporter',
             fields: [{ key: 'action', type: 'text', default: 'module.query' }],
             inputs: [{ key: 'args', kind: 'expr', defaultExpr: '[]' }],
+            label: ['请求', { f: 'action' }, { i: 'args' }],
             expr: function (b, api) { return 'GUIManager::request(' + quote(api.field(b, 'action')) + ', ' + api.input(b, 'args') + ')'; } },
 
         { id: 'valueOf', cat: 'data', kind: 'expression', shape: 'reporter',
             fields: [{ key: 'key', type: 'text', default: 'module.key' }],
+            label: ['取值', { f: 'key' }],
             expr: function (b, api) { return 'GUIManager::value(' + quote(api.field(b, 'key')) + ')'; } },
 
         { id: 'obsValue', cat: 'data', kind: 'expression', shape: 'reporter',
             fields: [{ key: 'obs', type: 'obs', default: '' }],
+            label: [{ f: 'obs' }, '.value'],
             expr: function (b, api) { return api.field(b, 'obs') + '.value'; } },
 
         { id: 'obsData', cat: 'data', kind: 'expression', shape: 'reporter',
             fields: [{ key: 'obs', type: 'obs', default: '' }],
+            label: [{ f: 'obs' }, '.getData()'],
             expr: function (b, api) { return api.field(b, 'obs') + '.getData()'; } },
 
         { id: 'varRef', cat: 'var', kind: 'expression', shape: 'reporter',
             fields: [{ key: 'name', type: 'varname', default: 'x' }],
+            label: ['变量', { f: 'name' }],
             expr: function (b, api) { return api.field(b, 'name'); } },
 
         { id: 'resultSelection', cat: 'data', kind: 'expression', shape: 'reporter',
+            label: ['选择项'],
             expr: function () { return 'result.selection'; } },
 
         { id: 'resultIndex', cat: 'data', kind: 'expression', shape: 'reporter',
+            label: ['选择序号'],
             expr: function () { return 'result.selectionIndex'; } }
     ];
 
@@ -203,11 +220,11 @@ LCUI.Blocks = (function () {
     function defOf(id) { return DEFS[id] || null; }
 
     function findField(def, key) {
-        return (def.fields || []).filter(function (f) { return f.key === key; })[0] || null;
+        return def ? ((def.fields || []).filter(function (f) { return f.key === key; })[0] || null) : null;
     }
 
     function findInput(def, key) {
-        return (def.inputs || []).filter(function (i) { return i.key === key; })[0] || null;
+        return def ? ((def.inputs || []).filter(function (i) { return i.key === key; })[0] || null) : null;
     }
 
     function defaultField(defId, key) {
@@ -228,7 +245,11 @@ LCUI.Blocks = (function () {
         return block;
     }
 
-    function clone(tree) { return JSON.parse(JSON.stringify(tree)); }
+    function clone(tree) {
+        var copy = JSON.parse(JSON.stringify(tree));
+        eachBlock(copy, function (block) { block.uid = uid(); });
+        return copy;
+    }
 
     function workspace() { return { blocks: [] }; }
 
@@ -266,13 +287,6 @@ LCUI.Blocks = (function () {
         return hit;
     }
 
-    function detach(ws, id) {
-        var loc = locate(ws, id);
-        if (!loc) return null;
-        return loc.array.splice(loc.index, 1)[0];
-    }
-
-    // 从任意位置（语句数组或表达式槽，支持任意嵌套）移除并返回该块。
     function remove(ws, id) {
         var result = null;
 
@@ -312,31 +326,108 @@ LCUI.Blocks = (function () {
         return result;
     }
 
-    function insert(ws, target, position, block) {
+    function contains(block, id) {
+        var hit = false;
+        eachBlock(block, function (node) { if (node.uid === id) hit = true; });
+        return hit;
+    }
+
+    function socketOf(ws, ownerId, key) {
+        var owner = find(ws, ownerId);
+        return owner && owner.inner && Object.prototype.hasOwnProperty.call(owner.inner, key) ? owner.inner[key] : null;
+    }
+
+    function indexOf(value, length) {
+        var n = /^\d+$/.test(value) ? parseInt(value, 10) : length;
+        return Math.min(n, length);
+    }
+
+    function insert(ws, position, block) {
+        if (!ws || !ws.blocks || !block || typeof position !== 'string') return false;
         if (position === 'root') { ws.blocks.push(block); return true; }
+        if (position.indexOf('root:') === 0) {
+            ws.blocks.splice(indexOf(position.slice(5), ws.blocks.length), 0, block);
+            return true;
+        }
         if (position.indexOf('after:') === 0) {
-            var id = position.slice(6);
-            var loc = locate(ws, id);
+            var loc = locate(ws, position.slice(6));
             if (!loc) return false;
             loc.array.splice(loc.index + 1, 0, block);
             return true;
         }
         if (position.indexOf('inner:') === 0) {
             var rest = position.slice(6).split(':');
-            var owner = find(ws, rest[0]);
-            if (!owner || !owner.inner[rest[1]]) return false;
-            owner.inner[rest[1]].push(block);
+            var list = socketOf(ws, rest[0], rest[1]);
+            if (!list) return false;
+            list.splice(indexOf(rest[2], list.length), 0, block);
             return true;
         }
         return false;
     }
 
+    function placeable(ws, position, block) {
+        if (typeof position !== 'string') return false;
+        if (position === 'root' || position.indexOf('root:') === 0) return true;
+        if (position.indexOf('after:') === 0) {
+            var id = position.slice(6);
+            return !contains(block, id) && !!locate(ws, id);
+        }
+        if (position.indexOf('inner:') === 0) {
+            var rest = position.slice(6).split(':');
+            return !contains(block, rest[0]) && !!socketOf(ws, rest[0], rest[1]);
+        }
+        return false;
+    }
+
+    function targetAt(ws, position) {
+        if (position === 'root') return { array: ws.blocks, index: ws.blocks.length };
+        if (position.indexOf('root:') === 0) {
+            return { array: ws.blocks, index: indexOf(position.slice(5), ws.blocks.length) };
+        }
+        if (position.indexOf('after:') === 0) {
+            var loc = locate(ws, position.slice(6));
+            return loc ? { array: loc.array, index: loc.index + 1 } : null;
+        }
+        if (position.indexOf('inner:') === 0) {
+            var rest = position.slice(6).split(':');
+            var list = socketOf(ws, rest[0], rest[1]);
+            return list ? { array: list, index: indexOf(rest[2], list.length) } : null;
+        }
+        return null;
+    }
+
+    function move(ws, id, position) {
+        var loc = locate(ws, id);
+        if (!loc) return false;
+        var block = loc.array[loc.index];
+        if (!placeable(ws, position, block)) return false;
+        var dest = targetAt(ws, position);
+        if (!dest) return false;
+        loc.array.splice(loc.index, 1);
+        if (dest.array === loc.array && dest.index > loc.index) dest.index -= 1;
+        dest.array.splice(dest.index, 0, block);
+        return true;
+    }
+
+    function attach(ws, ownerId, key, block) {
+        var owner = find(ws, ownerId);
+        if (!owner || !findInput(defOf(owner.def), key)) return false;
+        owner.inputs[key] = block;
+        return true;
+    }
+
+    function moveInput(ws, id, ownerId, key) {
+        var owner = find(ws, ownerId);
+        var block = find(ws, id);
+        if (!owner || !block || !findInput(defOf(owner.def), key) || contains(block, ownerId)) return false;
+        remove(ws, id);
+        owner.inputs[key] = block;
+        return true;
+    }
+
     function isDescendant(ws, ancestorId, maybeChildId) {
         var node = find(ws, ancestorId);
-        if (!node) return false;
-        var yes = false;
-        eachBlock(node, function (x) { if (x.uid === maybeChildId) yes = true; });
-        return yes;
+        return !!node && contains(node, maybeChildId);
     }
 
     function apiFor(level, ctx) {
@@ -442,9 +533,11 @@ LCUI.Blocks = (function () {
         workspace: workspace,
         find: find,
         locate: locate,
-        detach: detach,
         remove: remove,
         insert: insert,
+        move: move,
+        attach: attach,
+        moveInput: moveInput,
         isDescendant: isDescendant,
         generate: generate,
         serialize: serialize,
