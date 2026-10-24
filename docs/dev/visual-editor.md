@@ -1,6 +1,6 @@
 # 表单可视化编辑器
 
-LCUI Studio 是随文档站点一同发布的 `.lcui` 表单可视化编辑器，纯静态实现，手机与电脑浏览器均可直接使用：[打开编辑器](/LOICollectionA/lcui-studio/index.html)。
+LCUI Studio 是随文档站点一同发布的 `.lcui` 表单可视化编辑器，纯静态实现，手机与电脑浏览器均可直接使用：[打开编辑器](https://loitietu.github.io/LOICollectionA/lcui-studio/)。
 
 ## 能力范围
 

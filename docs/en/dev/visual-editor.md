@@ -1,6 +1,6 @@
 # Visual Form Editor
 
-LCUI Studio is a `.lcui` visual form editor shipped with the documentation site as static assets. It runs directly in any phone or desktop browser: [Open the editor](/LOICollectionA/lcui-studio/index.html).
+LCUI Studio is a `.lcui` visual form editor shipped with the documentation site as static assets. It runs directly in any phone or desktop browser: [Open the editor](https://loitietu.github.io/LOICollectionA/lcui-studio/).
 
 ## Scope
 
