@@ -10,8 +10,62 @@
         session: null,
         selection: null,
         activeTab: 'canvasPanel',
-        lastSource: ''
+        lastSource: '',
+        justAdded: null
     };
+
+    var MC_COLORS = {
+        '0': '#000000', '1': '#0000aa', '2': '#00aa00', '3': '#00aaaa',
+        '4': '#aa0000', '5': '#aa00aa', '6': '#ffaa00', '7': '#aaaaaa',
+        '8': '#555555', '9': '#5555ff', 'a': '#55ff55', 'b': '#55ffff',
+        'c': '#ff5555', 'd': '#ff55ff', 'e': '#ffff55', 'f': '#ffffff'
+    };
+
+    function richText(text) {
+        var container = el('span', 'mc-rich');
+        var value = text == null ? '' : String(text);
+        if (!value) return container;
+        var state = { color: null, weight: '', italic: false, line: false, under: false, magic: false };
+        var buffer = '';
+
+        function flush() {
+            if (!buffer) return;
+            var span = document.createElement('span');
+            if (state.color) span.style.color = state.color;
+            if (state.weight) span.style.fontWeight = state.weight;
+            if (state.italic) span.style.fontStyle = 'italic';
+            if (state.line && state.under) span.style.textDecoration = 'line-through underline';
+            else if (state.line) span.style.textDecoration = 'line-through';
+            else if (state.under) span.style.textDecoration = 'underline';
+            if (state.magic) span.className = 'mc-magic';
+            span.textContent = buffer;
+            container.appendChild(span);
+            buffer = '';
+        }
+
+        for (var i = 0; i < value.length; i++) {
+            var ch = value[i];
+            if (ch === '§' && i + 1 < value.length) {
+                var code = value[i + 1].toLowerCase();
+                if (MC_COLORS[code] !== undefined) { flush(); state.color = MC_COLORS[code]; i++; continue; }
+                if (code === 'r') { flush(); state = { color: null, weight: '', italic: false, line: false, under: false, magic: false }; i++; continue; }
+                if (code === 'l') { flush(); state.weight = '700'; i++; continue; }
+                if (code === 'o') { flush(); state.italic = true; i++; continue; }
+                if (code === 'm') { flush(); state.line = true; i++; continue; }
+                if (code === 'n') { flush(); state.under = true; i++; continue; }
+                if (code === 'k') { flush(); state.magic = true; i++; continue; }
+            }
+            buffer += ch;
+        }
+        flush();
+        return container;
+    }
+
+    function richEl(tag, className, text) {
+        var node = el(tag, className);
+        if (text) node.appendChild(richText(text));
+        return node;
+    }
 
     function byId(id) {
         return document.getElementById(id);
@@ -212,6 +266,7 @@
         var index = Store.selection === null ? Store.session.document.controls.length : Store.selection + 1;
         if (!Store.session.insertControl(index, kind)) return;
         Store.selection = index;
+        Store.justAdded = index;
         renderAll();
         switchTab('canvasPanel');
     }
@@ -251,7 +306,7 @@
         });
 
         var head = el('div', 'mock-head');
-        head.appendChild(el('span', 'mock-title', properties.title || '未命名'));
+        head.appendChild(richEl('span', 'mock-title', properties.title || '未命名'));
         head.appendChild(el('span', 'mock-close', '✕'));
         mock.appendChild(head);
 
@@ -268,7 +323,7 @@
             pages.slice(0, size).forEach(function (page, position) {
                 var row = el('div', 'mock-page-row');
                 row.appendChild(el('span', 'mock-page-bullet', String(position + 1)));
-                row.appendChild(el('span', 'mock-page-text', page));
+                row.appendChild(richEl('span', 'mock-page-text', page));
                 body.appendChild(row);
             });
             if (pages.length > size) body.appendChild(el('div', 'mock-more', '… 共 ' + pages.length + ' 条 / ' + Math.ceil(pages.length / size) + ' 页'));
@@ -279,16 +334,16 @@
 
         if (document.kind === 'MessageBox') {
             var actions = el('div', 'mock-actions');
-            var first = el('div', 'mc-button half', button1Text(document));
-            var second = el('div', 'mc-button half', button2Text(document));
+            var first = richEl('div', 'mc-button half', button1Text(document));
+            var second = richEl('div', 'mc-button half', button2Text(document));
             actions.appendChild(first);
             actions.appendChild(second);
             mock.appendChild(actions);
         } else if (document.kind === 'Paginated') {
             var pager = el('div', 'mock-actions pager');
-            var previous = el('div', 'mc-button small', footerText(document, 'PreviousButton', '◀ 上一页'));
-            var choose = el('div', 'mc-button small', footerText(document, 'ChooseButton', '跳转'));
-            var next = el('div', 'mc-button small', footerText(document, 'NextButton', '下一页 ▶'));
+            var previous = richEl('div', 'mc-button small', footerText(document, 'PreviousButton', '◀ 上一页'));
+            var choose = richEl('div', 'mc-button small', footerText(document, 'ChooseButton', '跳转'));
+            var next = richEl('div', 'mc-button small', footerText(document, 'NextButton', '下一页 ▶'));
             pager.appendChild(previous);
             pager.appendChild(choose);
             pager.appendChild(next);
@@ -318,37 +373,42 @@
         node.setAttribute('data-index', String(index));
         node.setAttribute('draggable', 'true');
 
+        if (Store.justAdded === index) {
+            node.classList.add('widget-enter');
+            Store.justAdded = null;
+        }
+
         var properties = control.properties;
         var kind = control.kind;
 
-        if (kind === 'Label') node.appendChild(el('div', 'mc-label', properties.text || ''));
-        else if (kind === 'Header') node.appendChild(el('div', 'mc-header', properties.text || ''));
-        else if (kind === 'Body') node.appendChild(el('div', 'mc-body', properties.text || ''));
+        if (kind === 'Label') node.appendChild(richEl('div', 'mc-label', properties.text || ''));
+        else if (kind === 'Header') node.appendChild(richEl('div', 'mc-header', properties.text || ''));
+        else if (kind === 'Body') node.appendChild(richEl('div', 'mc-body', properties.text || ''));
         else if (kind === 'Divider') node.appendChild(el('div', 'mc-divider'));
         else if (kind === 'Spacer') node.appendChild(el('div', 'mc-spacer'));
-        else if (kind === 'Button') node.appendChild(el('div', 'mc-button', properties.text || '按钮'));
-        else if (kind === 'Button1' || kind === 'Button2') node.appendChild(el('div', 'mc-button half', properties.text || '按钮'));
-        else if (kind === 'PreviousButton' || kind === 'NextButton' || kind === 'ChooseButton') node.appendChild(el('div', 'mc-button small', properties.text || '按钮'));
+        else if (kind === 'Button') node.appendChild(richEl('div', 'mc-button', properties.text || '按钮'));
+        else if (kind === 'Button1' || kind === 'Button2') node.appendChild(richEl('div', 'mc-button half', properties.text || '按钮'));
+        else if (kind === 'PreviousButton' || kind === 'NextButton' || kind === 'ChooseButton') node.appendChild(richEl('div', 'mc-button small', properties.text || '按钮'));
         else if (kind === 'CloseButton') node.appendChild(el('div', 'mc-close-chip', '✕ 关闭按钮'));
         else if (kind === 'TextField') {
-            node.appendChild(el('div', 'mc-field-label', properties.label || ''));
-            node.appendChild(el('div', 'mc-input', properties.text || ''));
+            node.appendChild(richEl('div', 'mc-field-label', properties.label || ''));
+            node.appendChild(richEl('div', 'mc-input', properties.text || ''));
         } else if (kind === 'Dropdown') {
-            node.appendChild(el('div', 'mc-field-label', properties.label || ''));
+            node.appendChild(richEl('div', 'mc-field-label', properties.label || ''));
             var pick = el('div', 'mc-select');
             var lines = Model.splitLines(properties.items);
-            pick.appendChild(el('span', 'mc-select-text', lines[Number(properties.value) || 0] || '（无选项）'));
+            pick.appendChild(richEl('span', 'mc-select-text', lines[Number(properties.value) || 0] || '（无选项）'));
             pick.appendChild(el('span', 'mc-select-caret', '▾'));
             node.appendChild(pick);
         } else if (kind === 'Toggle') {
             var row = el('div', 'mc-toggle');
-            row.appendChild(el('span', 'mc-toggle-label', properties.label || ''));
+            row.appendChild(richEl('span', 'mc-toggle-label', properties.label || ''));
             var track = el('span', 'mc-switch' + (properties.toggled ? ' on' : ''));
             track.appendChild(el('span', 'mc-knob'));
             row.appendChild(track);
             node.appendChild(row);
         } else if (kind === 'Slider') {
-            node.appendChild(el('div', 'mc-field-label', (properties.label || '') + '：' + (properties.value || 0)));
+            node.appendChild(richEl('div', 'mc-field-label', (properties.label || '') + '：' + (properties.value || 0)));
             var slider = el('div', 'mc-slider');
             var min = Number(properties.min) || 0;
             var max = Number(properties.max) || 100;
@@ -432,8 +492,10 @@
             renderAll();
         });
         copy.addEventListener('click', function () {
-            if (Store.session.duplicateControl(index))
+            if (Store.session.duplicateControl(index)) {
                 Store.selection = index + 1;
+                Store.justAdded = index + 1;
+            }
             renderAll();
         });
         remove.addEventListener('click', function () {
