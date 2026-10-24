@@ -30,13 +30,13 @@ LCUI.Model = (function () {
     function makeControl(kind) {
         var descriptor = schema().findControl(kind);
         if (!descriptor) return null;
-        return { kind: kind, properties: materialize(descriptor.properties) };
+        return { kind: kind, properties: materialize(descriptor.properties), callbacks: {} };
     }
 
     function makeDocument(formKind) {
         var descriptor = schema().findForm(formKind);
         if (!descriptor) return null;
-        return { kind: formKind, properties: materialize(descriptor.properties), controls: [] };
+        return { kind: formKind, properties: materialize(descriptor.properties), controls: [], callbacks: {} };
     }
 
     function sameValue(left, right) {
@@ -258,6 +258,32 @@ LCUI.Model = (function () {
         this.changed();
     };
 
+    Session.prototype.recordCallback = function (index, kind, workspace) {
+        var holder;
+        if (index === null || index === undefined) {
+            holder = this.document.callbacks = this.document.callbacks || {};
+        } else {
+            var control = this.document.controls[index];
+            if (!control) return false;
+            holder = control.callbacks = control.callbacks || {};
+        }
+
+        var previous = holder[kind] ? this.clone(holder[kind]) : { blocks: [] };
+        var next = this.clone(workspace);
+        if (JSON.stringify(previous) === JSON.stringify(next)) return false;
+
+        var top = this.undoStack[this.undoStack.length - 1];
+        if (top && top.type === 'callback' && top.index === index && top.kind === kind && top.stamp && Date.now() - top.stamp < 800) {
+            top.stamp = Date.now();
+            top.next = next;
+        } else {
+            this.record({ type: 'callback', index: index, kind: kind, previous: previous, next: next, stamp: Date.now() });
+        }
+        holder[kind] = workspace;
+        this.changed();
+        return true;
+    };
+
     Session.prototype.apply = function (entry, forward) {
         var document = this.document;
         if (entry.type === 'formProperty') {
@@ -277,6 +303,13 @@ LCUI.Model = (function () {
             this.document.kind = document.kind;
             this.document.properties = document.properties;
             this.document.controls = document.controls;
+        } else if (entry.type === 'callback') {
+            var cbHolder = entry.index === null || entry.index === undefined
+                ? (this.document.callbacks = this.document.callbacks || {})
+                : (this.document.controls[entry.index]
+                    ? (this.document.controls[entry.index].callbacks = this.document.controls[entry.index].callbacks || {})
+                    : null);
+            if (cbHolder) cbHolder[entry.kind] = this.clone(forward ? entry.next : entry.previous);
         }
     };
 

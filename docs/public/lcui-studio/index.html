@@ -65,12 +65,30 @@
             </div>
             <pre id="codeView" class="code-view"><code></code></pre>
         </section>
+
+        <section id="logicPanel" class="panel logic-panel" hidden>
+            <div class="panel-head logic-head">
+                <div class="logic-title">
+                    <strong id="logicTitle">回调逻辑</strong>
+                    <small id="logicSubtitle"></small>
+                </div>
+                <button id="logicClose" class="tool" title="关闭">✕</button>
+            </div>
+            <div class="logic-body">
+                <aside id="blockPalette" class="block-palette"></aside>
+                <div class="block-main">
+                    <div id="logicBar" class="logic-bar" hidden></div>
+                    <div id="blockWorkspace" class="block-workspace"></div>
+                </div>
+            </div>
+        </section>
     </main>
 
     <nav id="tabbar">
         <button class="tab active" data-tab="canvasPanel"><i>▦</i>画布</button>
         <button class="tab" data-tab="palettePanel"><i>◫</i>组件</button>
         <button class="tab" data-tab="inspectorPanel"><i>☰</i>属性</button>
+        <button class="tab" data-tab="logicTab"><i>🧩</i>逻辑</button>
         <button class="tab" data-tab="codePanel"><i>⟨⟩</i>代码</button>
     </nav>
 
@@ -107,6 +125,8 @@
     <script src="js/schema.js"></script>
     <script src="js/model.js"></script>
     <script src="js/codegen.js"></script>
+    <script src="js/blocks.js"></script>
+    <script src="js/blockview.js"></script>
     <script src="js/ui.js"></script>
 </body>
 </html>

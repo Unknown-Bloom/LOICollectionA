@@ -72,6 +72,12 @@ export default withMermaid(
 
         sidebar: [
           {
+            text: 'LCUI Studio',
+            items: [
+              { text: '可视化编辑器', link: 'https://loitietu.github.io/LOICollectionA/lcui-studio/' },
+            ],
+          },
+          {
             text: '用户文档',
             items: [
               { text: '快速开始', link: '/md/start' },
@@ -156,6 +162,12 @@ export default withMermaid(
         socialLinks: [{ icon: 'github', link: 'https://github.com/loitietu/LOICollectionA' }],
 
         sidebar: [
+          {
+            text: 'LCUI Studio',
+            items: [
+              { text: 'Visual Editor', link: 'https://loitietu.github.io/LOICollectionA/lcui-studio/' },
+            ],
+          },
           {
             text: 'User Docs',
             items: [

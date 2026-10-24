@@ -11,8 +11,12 @@
         selection: null,
         activeTab: 'canvasPanel',
         lastSource: '',
-        justAdded: null
+        justAdded: null,
+        logicTarget: null,
+        logicOpen: false
     };
+
+    var BlockView = LCUI.BlockView;
 
     var MC_COLORS = {
         '0': '#000000', '1': '#0000aa', '2': '#00aa00', '3': '#00aaaa',
@@ -523,6 +527,9 @@
         form.properties.forEach(function (descriptor) {
             host.appendChild(renderField('form', descriptor, document.properties[descriptor.key]));
         });
+        var showBtn = el('button', 'tool wide accent', '编辑 show 回调 ▸');
+        showBtn.addEventListener('click', function () { openLogic({ scope: 'document', kind: 'shown' }); });
+        host.appendChild(showBtn);
 
         if (Store.selection === null) {
             host.appendChild(el('div', 'inspector-hint', '在画布中选择一个组件以编辑其属性'));
@@ -534,13 +541,128 @@
         var descriptor = Schema.findControl(control.kind);
 
         host.appendChild(el('div', 'inspector-section-title control-title', '组件属性 · ' + descriptor.label));
-        if (descriptor.hasCallback)
-            host.appendChild(el('div', 'inspector-hint accent', '按钮回调体请在导出后的脚本中补充'));
-        if (!descriptor.properties.length)
+        if (descriptor.hasCallback) {
+            var onBtn = el('button', 'tool wide accent', '编辑 on 回调 ▸');
+            onBtn.addEventListener('click', function () { openLogic({ scope: 'control', index: Store.selection, kind: 'on' }); });
+            host.appendChild(onBtn);
+            host.appendChild(el('div', 'inspector-hint', '在拼图编辑器中为回调编写逻辑。'));
+        }
+        if (!descriptor.properties.length && !descriptor.hasCallback)
             host.appendChild(el('div', 'inspector-hint', '该组件没有可编辑属性'));
 
         descriptor.properties.forEach(function (property) {
             host.appendChild(renderField('control', property, control.properties[property.key]));
+        });
+    }
+
+    function getLogicWorkspace(scope, index, kind, ensure) {
+        var document = Store.session.document;
+        if (scope === 'document') {
+            if (ensure) document.callbacks = document.callbacks || {};
+            return document.callbacks ? (document.callbacks[kind] || (ensure ? (document.callbacks[kind] = LCUI.Blocks.workspace()) : null)) : null;
+        }
+        var control = document.controls[index];
+        if (!control) return null;
+        if (ensure) control.callbacks = control.callbacks || {};
+        return control.callbacks ? (control.callbacks[kind] || (ensure ? (control.callbacks[kind] = LCUI.Blocks.workspace()) : null)) : null;
+    }
+
+    function logicContext() {
+        var document = Store.session.document;
+        var observables = LCUI.Blocks.observableNames(document);
+        var variables = [];
+        if (Store.logicTarget) {
+            var w = getLogicWorkspace(Store.logicTarget.scope, Store.logicTarget.index, Store.logicTarget.kind, false);
+            if (w) variables = LCUI.Blocks.declaredVars(w);
+        }
+        var formVariable = Model.isIdentifier(document.properties.variable) ? document.properties.variable : 'form';
+        return {
+            observables: observables,
+            variables: variables,
+            formVariable: formVariable,
+            hint: '回调逻辑将生成 on: func () -> void { … }（按钮）或 show(func (result) -> void { … })（表单显示）。'
+        };
+    }
+
+    function currentLogicTarget() {
+        var document = Store.session.document;
+        if (Store.selection !== null && document.controls[Store.selection]) {
+            var control = document.controls[Store.selection];
+            var descriptor = Schema.findControl(control.kind);
+            if (descriptor && descriptor.hasCallback) return { scope: 'control', index: Store.selection, kind: 'on' };
+        }
+        return { scope: 'document', kind: 'shown' };
+    }
+
+    function openLogic(target) {
+        if (!target) target = currentLogicTarget();
+        if (!target) return;
+        Store.logicTarget = target;
+        Store.logicOpen = true;
+        byId('logicPanel').hidden = false;
+
+        var titleText, subText;
+        if (target.scope === 'document') {
+            titleText = '表单 show 回调';
+            subText = '在表单显示后执行';
+        } else {
+            var control = Store.session.document.controls[target.index];
+            var descriptor = Schema.findControl(control.kind);
+            titleText = descriptor.label + ' on 回调';
+            subText = '在点击「' + (control.properties.text || control.properties.label || descriptor.label) + '」时执行';
+        }
+        byId('logicTitle').textContent = titleText;
+        byId('logicSubtitle').textContent = subText;
+
+        var commit = function () {
+            Store.session.recordCallback(target.scope === 'document' ? null : target.index, target.kind, getLogicWorkspace(target.scope, target.index, target.kind, false));
+            renderCode();
+            renderIssues();
+        };
+        var getWs = function () { return getLogicWorkspace(target.scope, target.index, target.kind, false); };
+
+        BlockView.show({
+            panel: byId('logicPanel'),
+            palette: byId('blockPalette'),
+            workspace: byId('blockWorkspace'),
+            titleEl: byId('logicTitle'),
+            subEl: byId('logicSubtitle'),
+            bar: byId('logicBar'),
+            getWorkspace: getWs,
+            getContext: logicContext,
+            onCommit: commit
+        });
+    }
+
+    function closeLogic() {
+        BlockView.hide();
+        byId('logicPanel').hidden = true;
+        Store.logicOpen = false;
+        Store.logicTarget = null;
+        switchTab('canvasPanel');
+    }
+
+    function renderLogic() {
+        if (!Store.logicOpen || !Store.logicTarget) return;
+        var target = Store.logicTarget;
+        var workspace = getLogicWorkspace(target.scope, target.index, target.kind, false);
+        if (!workspace) { closeLogic(); return; }
+        var commit = function () {
+            Store.session.recordCallback(target.scope === 'document' ? null : target.index, target.kind, getLogicWorkspace(target.scope, target.index, target.kind, false));
+            renderCode();
+            renderIssues();
+        };
+        var getWs = function () { return getLogicWorkspace(target.scope, target.index, target.kind, false); };
+        BlockView.show({
+            panel: byId('logicPanel'),
+            palette: byId('blockPalette'),
+            workspace: byId('blockWorkspace'),
+            titleEl: byId('logicTitle'),
+            subEl: byId('logicSubtitle'),
+            bar: byId('logicBar'),
+            getWorkspace: getWs,
+            getContext: logicContext,
+            onCommit: commit
         });
     }
 
@@ -627,6 +749,7 @@
         renderInspector();
         renderCode();
         renderIssues();
+        renderLogic();
         saveStore();
     }
 
@@ -699,8 +822,18 @@
         });
 
         document.querySelectorAll('#tabbar .tab').forEach(function (tab) {
-            tab.addEventListener('click', function () { switchTab(tab.getAttribute('data-tab')); });
+            tab.addEventListener('click', function () {
+                var id = tab.getAttribute('data-tab');
+                if (id === 'logicTab') {
+                    openLogic(currentLogicTarget());
+                    document.querySelectorAll('#tabbar .tab').forEach(function (t) { t.classList.toggle('active', t === tab); });
+                    return;
+                }
+                switchTab(id);
+            });
         });
+
+        byId('logicClose').addEventListener('click', function () { closeLogic(); });
 
         byId('inspector').addEventListener('input', function (event) {
             var target = event.target;
@@ -728,6 +861,7 @@
                 return;
             }
             if ((event.key === 'Delete' || event.key === 'Backspace') && Store.selection !== null) {
+                if (Store.logicOpen) return;
                 var active = document.activeElement;
                 if (active && /INPUT|TEXTAREA/.test(active.tagName)) return;
                 event.preventDefault();

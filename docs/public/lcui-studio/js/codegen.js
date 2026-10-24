@@ -127,7 +127,14 @@ LCUI.Codegen = (function () {
                 else args.push(numberLiteral(control.properties[propertyDescriptor.key]));
             });
 
-            if (descriptor.hasCallback) args.push('on: func () -> void {\n    }');
+            if (descriptor.hasCallback) {
+                var bcb = control.callbacks && control.callbacks.on;
+                if (bcb && bcb.blocks && bcb.blocks.length) {
+                    args.push('on: func () -> void {\n' + LCUI.Blocks.generate(bcb, { indent: 2 }) + '\n    }');
+                } else {
+                    args.push('on: func () -> void {\n    }');
+                }
+            }
 
             if (descriptor.optionsClass) {
                 if (hasCustomOptions(control, descriptor)) args.push(base + '_options');
@@ -137,7 +144,12 @@ LCUI.Codegen = (function () {
             source += '    ' + descriptor.name + '(' + args.join(', ') + ');\n';
         });
 
-        source += '    show();\n};\n';
+        var shownWs = document.callbacks && document.callbacks.shown;
+        if (shownWs && shownWs.blocks && shownWs.blocks.length) {
+            source += '    show(func (result) -> void {\n' + LCUI.Blocks.generate(shownWs, { indent: 2 }) + '\n    });\n};\n';
+        } else {
+            source += '    show();\n};\n';
+        }
 
         return { ok: true, source: source };
     }
@@ -169,7 +181,14 @@ LCUI.Codegen = (function () {
                 continue;
             }
 
-            if ('(){}[];,.:='.indexOf(entry) !== -1) {
+            if (entry === '=' && text.charAt(position + 1) === '=') { tokens.push({ type: 'punct', value: '==', line: startLine }); position += 2; continue; }
+            if (entry === '!' && text.charAt(position + 1) === '=') { tokens.push({ type: 'punct', value: '!=', line: startLine }); position += 2; continue; }
+            if (entry === '>' && text.charAt(position + 1) === '=') { tokens.push({ type: 'punct', value: '>=', line: startLine }); position += 2; continue; }
+            if (entry === '<' && text.charAt(position + 1) === '=') { tokens.push({ type: 'punct', value: '<=', line: startLine }); position += 2; continue; }
+            if (entry === '&' && text.charAt(position + 1) === '&') { tokens.push({ type: 'punct', value: '&&', line: startLine }); position += 2; continue; }
+            if (entry === '|' && text.charAt(position + 1) === '|') { tokens.push({ type: 'punct', value: '||', line: startLine }); position += 2; continue; }
+
+            if ('(){}[];,.:=!+'.indexOf(entry) !== -1) {
                 tokens.push({ type: 'punct', value: entry, line: startLine });
                 position++;
                 continue;
@@ -265,15 +284,12 @@ LCUI.Codegen = (function () {
                     if (isIdent(token)) {
                         if (token.value === 'on' && peek(1).value === ':') {
                             state.index += 2;
-                            eat('func');
-                            eat('(');
-                            eat(')');
-                            eat('->');
-                            eat('void');
-                            eat('{');
-                            if (!at('}')) fail('按钮回调必须保留为空函数体（由编辑器生成）', peek());
-                            eat('}');
-                            args.push({ kind: 'callback' });
+                            args.push(parseFuncLiteral());
+                            continue;
+                        }
+
+                        if (token.value === 'func') {
+                            args.push(parseFuncLiteral());
                             continue;
                         }
 
@@ -310,6 +326,165 @@ LCUI.Codegen = (function () {
                 }
                 eat(')');
                 return args;
+            }
+
+            function mk(defId) { return LCUI.Blocks.make(defId); }
+            function setI(block, key, child) { if (child) block.inputs[key] = child; }
+            function parseFuncLiteral() {
+                eat('func');
+                eat('(');
+                if (!at(')')) { var p = next(); if (!isIdent(p)) fail('func 参数应为标识符', p); }
+                eat(')');
+                eat('->');
+                eat('void');
+                eat('{');
+                var body = parseStatements('}');
+                return { kind: 'callback', body: body };
+            }
+            function parseStatements(term) {
+                var list = [];
+                while (!at(term) && !at('eof')) {
+                    var st = parseStatement();
+                    if (st) list.push(st);
+                }
+                if (!at(term)) fail('回调体缺少 ' + term, peek());
+                next();
+                return list;
+            }
+            function bin(op, l, r, extra) {
+                var b = mk(op);
+                setI(b, 'a', l); setI(b, 'b', r);
+                if (extra != null) b.fields.op = extra;
+                return b;
+            }
+            function un(op, e) { var b = mk(op); setI(b, 'a', e); return b; }
+            function parseExpression() { return parseOr(); }
+            function parseOr() { var l = parseAnd(); while (at('||')) { next(); l = bin('or', l, parseAnd()); } return l; }
+            function parseAnd() { var l = parseCmp(); while (at('&&')) { next(); l = bin('and', l, parseCmp()); } return l; }
+            function parseCmp() {
+                var l = parseAdd();
+                while (peek().type === 'punct' && ['==', '!=', '>', '<', '>=', '<='].indexOf(peek().value) >= 0) {
+                    var op = next().value;
+                    l = bin('compare', l, parseAdd(), op);
+                }
+                return l;
+            }
+            function parseAdd() { var l = parseUnary(); while (at('+')) { next(); l = bin('concat', l, parseUnary()); } return l; }
+            function parseUnary() { if (at('!')) { next(); return un('not', parseUnary()); } return parsePrimary(); }
+            function parsePrimary() {
+                var t = peek();
+                if (at('(')) { next(); var e = parseExpression(); eat(')'); return e; }
+                if (at('[')) {
+                    next();
+                    if (at(']')) { next(); return mk('emptyList'); }
+                    var a = parseExpression();
+                    if (at(',')) { next(); var b = parseExpression(); eat(']'); var bl = mk('list2'); setI(bl, 'a', a); setI(bl, 'b', b); return bl; }
+                    eat(']'); var bl2 = mk('list2'); setI(bl2, 'a', a); setI(bl2, 'b', mk('emptyList')); return bl2;
+                }
+                if (isString(t)) { next(); var b = mk('text'); b.fields.value = t.value; return b; }
+                if (isNumber(t)) { next(); var b = mk('number'); b.fields.value = t.value; return b; }
+                if (isBool(t)) { next(); var b = mk('bool'); b.fields.value = boolValue(t); return b; }
+                if (isIdent(t)) {
+                    var w = next().value;
+                    if (w === 'GUIManager' && peek().value === ':') {
+                        next(); eat(':'); var m = next(); eat('(');
+                        if (m.value === 'request') { var act = next(); eat(','); var ar = parseExpression(); eat(')'); var b = mk('request'); b.fields.action = act.value; setI(b, 'args', ar); return b; }
+                        if (m.value === 'value') { var k = next(); eat(')'); var b = mk('valueOf'); b.fields.key = k.value; return b; }
+                        fail('不支持的表达式 GUIManager.' + m.value, m);
+                    }
+                    if (peek().value === '.') {
+                        next(); var mem = next();
+                        if (mem.value === 'value') { var b = mk('obsValue'); b.fields.obs = w; return b; }
+                        if (mem.value === 'getData') { eat('('); eat(')'); var b = mk('obsData'); b.fields.obs = w; return b; }
+                        if (mem.value === 'selection') return mk('resultSelection');
+                        if (mem.value === 'selectionIndex') return mk('resultIndex');
+                        fail('无法识别的成员 .' + mem.value, mem);
+                    }
+                    var b = mk('varRef'); b.fields.name = w; return b;
+                }
+                fail('无法识别的表达式', t);
+            }
+            function parseStatement() {
+                var token = peek();
+                if (!isIdent(token)) fail('无法识别的语句', token);
+                var w = token.value;
+                if (peek(1).type === 'punct' && peek(1).value === '.' && peek(2).value === 'close') {
+                    next(); eat('.'); eat('close'); eat('('); eat(')'); expectSemicolon(); return mk('closeForm');
+                }
+                if (w === 'this') {
+                    next(); eat('.'); eat('close'); eat('('); eat(')'); expectSemicolon(); return mk('closeForm');
+                }
+                if (w === 'break') { next(); expectSemicolon(); return mk('break'); }
+                if (w === 'continue') { next(); expectSemicolon(); return mk('continue'); }
+                if (w === 'panic') { next(); eat('('); var e = parseExpression(); eat(')'); expectSemicolon(); var b = mk('panic'); setI(b, 'msg', e); return b; }
+                if (w === 'let') {
+                    next(); var name = next(); if (!isIdent(name)) fail('let 后应为变量名', name);
+                    eat('='); var e = parseExpression(); expectSemicolon();
+                    var b = mk('setVar'); b.fields.name = name.value; setI(b, 'value', e); return b;
+                }
+                if (w === 'if') {
+                    next(); var c = parseExpression(); eat('[');
+                    var body = parseStatements(']');
+                    var els = [];
+                    if (at(':')) { next(); eat('['); els = parseStatements(']'); }
+                    var b = mk('if'); setI(b, 'cond', c); b.inner.body = body; b.inner.else = els; return b;
+                }
+                if (w === 'while') {
+                    next(); var c = parseExpression(); eat('[');
+                    var body = parseStatements(']'); var b = mk('while'); setI(b, 'cond', c); b.inner.body = body; return b;
+                }
+                if (w === 'for') {
+                    next(); eat('(');
+                    if (at('let')) {
+                        next(); var v = next(); eat('='); eat('0'); eat(';'); var vn = v.value; eat(';');
+                        var cnt = parseExpression(); eat('++'); eat(')'); eat('[');
+                        var body = parseStatements(']'); var b = mk('forCount'); b.fields.name = vn; setI(b, 'count', cnt); b.inner.body = body; return b;
+                    }
+                    var v2 = next(); eat('in'); var lst = parseExpression(); eat(')'); eat('[');
+                    var body = parseStatements(']'); var b = mk('forIn'); b.fields.name = v2.value; setI(b, 'list', lst); b.inner.body = body; return b;
+                }
+                if (w === 'GUIManager') {
+                    next(); eat(':'); eat(':'); var method = next();
+                    if (!isIdent(method)) fail('GUIManager 方法调用', method);
+                    eat('(');
+                    if (method.value === 'switchTo') {
+                        var id = next(); eat(','); var ty = next(); eat(')'); expectSemicolon();
+                        var b = mk('switchTo'); b.fields.formId = id.value; b.fields.formType = ty.value; return b;
+                    }
+                    if (method.value === 'open') {
+                        var owner = next(); eat(','); var fid = next(); eat(','); var ty = next(); eat(','); var params = parseExpression(); eat(')'); expectSemicolon();
+                        var b = mk('openForm'); b.fields.owner = owner.value; b.fields.formId = fid.value; b.fields.formType = ty.value; setI(b, 'params', params); return b;
+                    }
+                    if (method.value === 'callback') {
+                        var act = next(); eat(','); var ar = parseExpression(); eat(')'); expectSemicolon();
+                        var b = mk('callback'); b.fields.action = act.value; setI(b, 'args', ar); return b;
+                    }
+                    if (method.value === 'request') {
+                        var act = next(); eat(','); var ar = parseExpression(); eat(')');
+                        var b = mk('request'); b.fields.action = act.value; setI(b, 'args', ar); return b;
+                    }
+                    if (method.value === 'value') {
+                        var k = next(); eat(')');
+                        var b = mk('valueOf'); b.fields.key = k.value; return b;
+                    }
+                    fail('不支持的 GUIManager 方法 ' + method.value, method);
+                }
+                if (peek(1).type === 'punct' && peek(1).value === '.') {
+                    next(); eat('.'); var mem = next();
+                    if (mem.value === 'value' && peek().value === '=') {
+                        next(); var e = parseExpression(); expectSemicolon();
+                        var b = mk('assignObs'); b.fields.obs = w; setI(b, 'value', e); return b;
+                    }
+                    if (mem.value === 'getData' && peek().value === '(') { next(); eat(')'); var b = mk('obsData'); b.fields.obs = w; return b; }
+                    if (mem.value === 'selection') return mk('resultSelection');
+                    if (mem.value === 'selectionIndex') return mk('resultIndex');
+                    fail('无法识别的成员 .' + mem.value, mem);
+                }
+                if (peek().value === '=') {
+                    next(); var e = parseExpression(); expectSemicolon();
+                    var b = mk('assignObs'); b.fields.obs = w; setI(b, 'value', e); return b;
+                }
+                fail('无法识别的语句 ' + w, token);
             }
 
             function expectSemicolon() {
@@ -450,7 +625,11 @@ LCUI.Codegen = (function () {
 
         binding.calls.forEach(function (call) {
             if (call.name === 'show') {
-                if (call.args.length) errors.push({ line: call.line, message: 'show() 不能携带参数' });
+                if (call.args.length === 1 && call.args[0].kind === 'callback') {
+                    binding.shownBody = call.args[0].body;
+                } else if (call.args.length) {
+                    errors.push({ line: call.line, message: 'show() 仅支持 show(func (result) -> void { … }) 形式' });
+                }
                 showSeen = true;
                 return;
             }
@@ -542,7 +721,25 @@ LCUI.Codegen = (function () {
                 errors.push({ line: call.line, message: descriptor.label + ' 参数数量不符（期望 ' + minimumCount + ' 到 ' + maximumCount + ' 个，实际 ' + call.args.length + ' 个）' });
 
             document.controls.push(control);
+
+            if (descriptor.hasCallback) {
+                var cbArg = null;
+                for (var ci = 0; ci < call.args.length; ci++) {
+                    if (call.args[ci] && call.args[ci].kind === 'callback') { cbArg = call.args[ci]; break; }
+                }
+                if (cbArg && cbArg.body && cbArg.body.length) {
+                    control.callbacks = control.callbacks || {};
+                    control.callbacks.on = LCUI.Blocks.workspace();
+                    control.callbacks.on.blocks = cbArg.body;
+                }
+            }
         });
+
+        if (binding.shownBody && binding.shownBody.length) {
+            document.callbacks = document.callbacks || {};
+            document.callbacks.shown = LCUI.Blocks.workspace();
+            document.callbacks.shown.blocks = binding.shownBody;
+        }
 
         if (!showSeen) errors.push({ line: binding.line, message: '声明式块末尾必须调用 show();' });
 
