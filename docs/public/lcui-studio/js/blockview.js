@@ -46,11 +46,16 @@ LCUI.BlockView = (function () {
 
     function stop(e) { e.stopPropagation(); }
 
+    function blockTouchMove(e) {
+        if (s.drag) e.preventDefault();
+    }
+
     function show(opts) {
         var keep = s.panel === opts.panel && s.workspace === opts.workspace ? s.selected : null;
         cancelPress();
         cleanupDrag();
         detachPointer();
+        document.body.classList.add('logic-open');
         s.panel = opts.panel;
         s.palette = opts.palette;
         s.workspace = opts.workspace;
@@ -72,6 +77,7 @@ LCUI.BlockView = (function () {
         cancelPress();
         cleanupDrag();
         detachPointer();
+        document.body.classList.remove('logic-open');
         if (s.keyHandler) { document.removeEventListener('keydown', s.keyHandler); s.keyHandler = null; }
         if (s.contextHandler) { document.removeEventListener('contextmenu', s.contextHandler); s.contextHandler = null; }
         s.panel = null;
@@ -407,6 +413,7 @@ LCUI.BlockView = (function () {
         document.body.appendChild(ghost);
         press.node.classList.add('dragging');
         document.body.classList.add('block-dragging');
+        document.addEventListener('touchmove', blockTouchMove, { passive: false });
         s.drag = {
             payload: press.payload, node: press.node, pointerId: press.pointerId,
             ghost: ghost, offsetX: offsetX, offsetY: offsetY,
@@ -547,6 +554,7 @@ LCUI.BlockView = (function () {
 
     function cleanupDrag() {
         if (s.scrollFrame) { cancelAnimationFrame(s.scrollFrame); s.scrollFrame = null; }
+        document.removeEventListener('touchmove', blockTouchMove);
         if (s.drag) {
             var drag = s.drag;
             if (drag.ghost.parentNode) drag.ghost.parentNode.removeChild(drag.ghost);
