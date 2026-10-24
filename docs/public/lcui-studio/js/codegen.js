@@ -109,6 +109,7 @@ LCUI.Codegen = (function () {
             descriptor.properties.forEach(function (propertyDescriptor) {
                 if (!propertyDescriptor.argument) return;
                 if (!propertyDescriptor.required && propertyDescriptor.type === 'text' &&
+                    propertyDescriptor.key !== descriptor.observableKey &&
                     String(control.properties[propertyDescriptor.key]) === String(propertyDescriptor.initial))
                     return;
 
