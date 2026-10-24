@@ -86,9 +86,10 @@ LOICollectionA 是运行在 [LeviLamina](https://github.com/LiteLDev/LeviLamina)
 <details>
 <summary><strong>开发者文档</strong></summary>
 
-`.lcui` 是插件的原生 UI 层。它封装了 LeviLamina 的表单与界面能力，包括 `CustomForm`、`MessageBox`、`PaginatedForm` 等，开发者无需重新编译即可用脚本构建游戏内界面。
+`.lcui` 是插件的原生 UI 层。它封装了 LeviLamina 的表单与界面能力，包括 `CustomForm`、`MessageBox`、`PaginatedForm`、`MenuForm` 与 `ShopForm` 等，开发者无需重新编译即可用脚本构建游戏内界面。这五类表单同样可以在 [LCUI Studio](https://loitietu.github.io/LOICollectionA/lcui-studio/) 中可视化编辑。
 
 - [LCUI 脚本语法](docs/md/lcui.md)
+- [LCUI Studio 可视化编辑器](https://loitietu.github.io/LOICollectionA/lcui-studio/)
 - [LOICollectionAPI 参考](docs/md/api.md)
 - [开发环境配置](docs/dev/config.md)
 

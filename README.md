@@ -86,9 +86,10 @@ Need more? Read the [quick start guide](docs/en/md/start.md) (manual installatio
 <details>
 <summary><strong>Developer docs</strong></summary>
 
-`.lcui` is the plugin's native UI layer. It wraps LeviLamina's form and UI capabilities — including `CustomForm`, `MessageBox`, and `PaginatedForm` — so you can build in-game interfaces with scripts instead of recompiling the plugin.
+`.lcui` is the plugin's native UI layer. It wraps LeviLamina's form and UI capabilities — including `CustomForm`, `MessageBox`, `PaginatedForm`, `MenuForm`, and `ShopForm` — so you can build in-game interfaces with scripts instead of recompiling the plugin. All five form kinds can also be edited visually in [LCUI Studio](https://loitietu.github.io/LOICollectionA/lcui-studio/).
 
 - [LCUI scripting guide](docs/en/md/lcui.md)
+- [LCUI Studio visual editor](https://loitietu.github.io/LOICollectionA/lcui-studio/)
 - [LOICollectionAPI reference](docs/en/md/api.md)
 - [Development environment setup](docs/en/dev/config.md)
 
