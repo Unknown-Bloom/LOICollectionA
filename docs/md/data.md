@@ -135,13 +135,7 @@
                 "StoreReviewEnabled": true, // 是否启用商店评价功能
                 "StoreMaximumItems": 20, // 单个商店最大上架物品数量
                 "StoreCreationCost": 0, // 创建商店所需 Score 费用（从 TargetScoreboard 扣除，为 0 时免费）
-                "StoreSalesWeight": 0.5, // 商店排名权重 - 近 30 天交易次数
-                "StoreVolumeWeight": 0.3, // 商店排名权重 - 近 30 天成交数量
-                "StoreRatingWeight": 0.35, // 商店排名权重 - 玩家评分
-                "StoreBadReviewPenalty": 3.0, // 商店排名惩罚 - 近 30 天差评比例
-                "StoreColdStartWeight": 0.5, // 商店排名加成 - 新店冷启动权重
-                "StoreRatingSmoothing": 15.0, // 商店评分贝叶斯平滑参数
-                "StoreColdStartDays": 7, // 新店冷启动加成天数（单位为天）
+                "StoreRankExpression": "0.5 * log1p(transactions30) * clamp(ageDays / 30.0, 0.0, 1.0) + 0.3 * log1p(volume30) * clamp(ageDays / 30.0, 0.0, 1.0) + 0.35 * (smooth(approvedAverage, approvedReviews, globalApprovedAverage, 15.0) - 3.0) * log1p(approved180) + 0.5 * max(0.0, 1.0 - max(ageDays, 0.0) / 7.0) - 3.0 * ratio(badReviews30, reviews30)", // 商店排名表达式（LCUI），可用变量：ageDays、transactions30、volume30、approvedReviews、approvedAverage、approved180、badReviews30、reviews30、globalApprovedAverage；辅助函数：log1p、clamp、min、max、abs、coalesce、ratio、smooth；表达式无效时回退到内置默认值
                 "StoreTransactionWindowDays": 30, // 商店交易数据统计窗口（单位为天）
                 "StoreRatingWindowDays": 180, // 商店评价数据统计窗口（单位为天）
                 "StoreRiskWindowDays": 30, // 商店风险数据统计窗口（单位为天）

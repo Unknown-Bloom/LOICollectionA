@@ -135,13 +135,7 @@ When you upgrade the plugin version, newly added configuration items are automat
                 "StoreReviewEnabled": true, // Whether to enable store review functionality
                 "StoreMaximumItems": 20, // Maximum number of items a single store can list
                 "StoreCreationCost": 0, // Score cost required to create a store (deducted from TargetScoreboard; free when 0)
-                "StoreSalesWeight": 0.5, // Store ranking weight - number of transactions in the last 30 days
-                "StoreVolumeWeight": 0.3, // Store ranking weight - transaction volume in the last 30 days
-                "StoreRatingWeight": 0.35, // Store ranking weight - player rating
-                "StoreBadReviewPenalty": 3.0, // Store ranking penalty - bad review ratio in the last 30 days
-                "StoreColdStartWeight": 0.5, // Store ranking bonus - cold start weight for new stores
-                "StoreRatingSmoothing": 15.0, // Bayesian smoothing parameter for store ratings
-                "StoreColdStartDays": 7, // Cold start bonus days for new stores (in days)
+                "StoreRankExpression": "0.5 * log1p(transactions30) * clamp(ageDays / 30.0, 0.0, 1.0) + 0.3 * log1p(volume30) * clamp(ageDays / 30.0, 0.0, 1.0) + 0.35 * (smooth(approvedAverage, approvedReviews, globalApprovedAverage, 15.0) - 3.0) * log1p(approved180) + 0.5 * max(0.0, 1.0 - max(ageDays, 0.0) / 7.0) - 3.0 * ratio(badReviews30, reviews30)", // Store ranking expression (LCUI); variables: ageDays, transactions30, volume30, approvedReviews, approvedAverage, approved180, badReviews30, reviews30, globalApprovedAverage; helpers: log1p, clamp, min, max, abs, coalesce, ratio, smooth; invalid expressions fall back to the built-in default
                 "StoreTransactionWindowDays": 30, // Store transaction data statistics window (in days)
                 "StoreRatingWindowDays": 180, // Store review data statistics window (in days)
                 "StoreRiskWindowDays": 30, // Store risk data statistics window (in days)
