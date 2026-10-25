@@ -81,7 +81,8 @@ TEST(BlockStoreTest, SchemaCreatesCoveringPropIndexes) {
     }
     EXPECT_EQ(indexColumns(path, "idx_prop_key_ival"), kIntCovering);
     EXPECT_EQ(indexColumns(path, "idx_prop_key_tval"), kTextCovering);
-    EXPECT_EQ(indexColumns(path, "idx_block_parent_kind"), (std::vector<std::string>{"parent", "kind"}));
+    EXPECT_EQ(indexRootPage(path, "idx_block_parent"), -1);
+    EXPECT_EQ(indexRootPage(path, "idx_block_parent_kind"), -1);
     dropBlockStoreTestDb(path);
 }
 

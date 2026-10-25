@@ -417,8 +417,34 @@ namespace LOICollection::data {
             return sql;
         }
 
-        std::string rowUpsertKey(std::span<const BlockProp> cells) const {
-            std::string key = "sideRow:" + mSide + ":";
+        std::string rowUpsertAtSql(std::span<const BlockProp> cells) const {
+            std::string sql = "INSERT INTO \"" + mSide + "\"(id";
+            std::string updates;
+
+            for (auto const& cell : cells) {
+                auto const& q = quoted(static_cast<std::size_t>(cell.key));
+                sql += "," + q;
+                if (!updates.empty())
+                    updates.push_back(',');
+                updates += q + "=excluded." + q;
+            }
+
+            sql += ") SELECT id";
+
+            for (std::size_t i = 0; i < cells.size(); ++i)
+                sql += ",?";
+
+            sql += " FROM block WHERE parent=? AND name=? AND state<8 LIMIT 1"
+                   " ON CONFLICT(id) DO UPDATE SET ";
+            sql += updates;
+
+            return sql;
+        }
+
+        std::string rowUpsertKey(std::string_view prefix, std::span<const BlockProp> cells) const {
+            std::string key(prefix);
+            key += mSide;
+            key.push_back(':');
             for (auto const& cell : cells)
                 key += std::to_string(cell.key) + ",";
 
@@ -526,7 +552,7 @@ namespace LOICollection::data {
 
         ll::Expected<void> writeRow(BlockId id, std::span<const BlockProp> cells) {
             std::string sql = rowUpsertSql(cells);
-            std::string key = rowUpsertKey(cells);
+            std::string key = rowUpsertKey("sideRow:", cells);
 
             std::vector<BlockProp> params;
             params.reserve(cells.size() + 1);
@@ -542,6 +568,32 @@ namespace LOICollection::data {
                 return ll::makeStringError(r.error().message());
 
             return {};
+        }
+
+        ll::Expected<bool> writeRowAt(
+            BlockId parent, std::string_view name, std::span<const BlockProp> cells) {
+            std::string sql = rowUpsertAtSql(cells);
+            std::string key = rowUpsertKey("sideRowAt:", cells);
+
+            std::vector<BlockProp> params;
+            params.reserve(cells.size() + 2);
+            params.insert(params.end(), cells.begin(), cells.end());
+
+            BlockProp parentParam;
+            parentParam.type = PayloadType::Int;
+            parentParam.intValue = parent;
+            params.push_back(std::move(parentParam));
+
+            BlockProp nameParam;
+            nameParam.type = PayloadType::Text;
+            nameParam.textValue = std::string(name);
+            params.push_back(std::move(nameParam));
+
+            auto r = mRepo.store().execCells(key, sql, params);
+            if (!r.has_value())
+                return ll::makeStringError(r.error().message());
+
+            return r.value() > 0;
         }
 
         [[nodiscard]] ll::Expected<RowCells> readSideCells(BlockId id) {
@@ -594,6 +646,64 @@ namespace LOICollection::data {
                 return ll::makeStringError(rec.error().message());
 
             return cellsOf(rec.value());
+        }
+
+        struct SideRow {
+            BlockId id = 0;
+            bool side = false;
+            bool payload = false;
+            RowCells cells;
+        };
+
+        [[nodiscard]] ll::Expected<std::optional<SideRow>> readSideAt(
+            BlockId parent, std::string_view name) {
+            std::string sql = "SELECT b.id,s.id";
+            for (std::size_t i = 0; i < N; ++i)
+                sql += ",s." + quoted(i);
+
+            sql += ",b.payload FROM block b"
+                   " LEFT JOIN \"" + mSide + "\" s ON s.id=b.id"
+                   " WHERE b.parent=? AND b.name=? AND b.state<8 LIMIT 1";
+
+            BlockProp parentParam;
+            parentParam.type = PayloadType::Int;
+            parentParam.intValue = parent;
+
+            BlockProp nameParam;
+            nameParam.type = PayloadType::Text;
+            nameParam.textValue = std::string(name);
+
+            BlockProp params[] = {parentParam, nameParam};
+
+            std::optional<SideRow> out;
+            auto r = mRepo.store().withQuery(
+                "sideAt:" + mSide, sql, params,
+                [&](SQLite::Statement& stmt) {
+                    SideRow row;
+                    row.id = static_cast<BlockId>(stmt.getColumn(0).getInt64());
+                    if (!stmt.getColumn(1).isNull()) {
+                        row.side = true;
+                        for (std::size_t i = 0; i < N; ++i) {
+                            auto p = readColumn(stmt, static_cast<int>(i + 2), static_cast<PropKey>(i), kAffinity[i]);
+                            if (p.has_value())
+                                row.cells[static_cast<PropKey>(i)] = std::move(*p);
+                        }
+                    } else {
+                        auto payloadColumn = stmt.getColumn(static_cast<int>(N + 2));
+                        if (!payloadColumn.isNull() && payloadColumn.getBytes() > 0) {
+                            row.payload = true;
+                            row.cells = decodeRow(std::string_view(
+                                static_cast<char const*>(payloadColumn.getBlob()),
+                                static_cast<std::size_t>(payloadColumn.getBytes())));
+                        }
+                    }
+                    out = std::move(row);
+                });
+
+            if (!r.has_value())
+                return ll::makeStringError(r.error().message());
+
+            return out;
         }
 
         BlockProp condProp(std::size_t slot, std::string const& val) const {
@@ -943,12 +1053,12 @@ namespace LOICollection::data {
             BlockProp value = serializeCell(cell.value(), kAffinity[slot]);
             std::span<const BlockProp> cells(&value, 1);
 
-            auto found = mRepo.store().idOf(rid.value(), rowKey);
-            if (!found.has_value())
-                return ll::makeStringError(found.error().message());
+            auto written = writeRowAt(rid.value(), rowKey, cells);
+            if (!written.has_value())
+                return ll::makeStringError(written.error().message());
 
-            if (found.value().has_value())
-                return writeRow(*found.value(), cells);
+            if (written.value())
+                return {};
 
             auto b = WriteBatch::begin(mRepo.store());
             if (!b.has_value())
@@ -1219,20 +1329,27 @@ namespace LOICollection::data {
             if (!rid.has_value())
                 return ll::makeStringError(rid.error().message());
 
-            auto id = mRepo.store().idOf(rid.value(), rowKey);
-            if (!id.has_value())
-                return ll::makeStringError(id.error().message());
+            auto found = readSideAt(rid.value(), rowKey);
+            if (!found.has_value())
+                return ll::makeStringError(found.error().message());
 
             std::unordered_map<std::string, std::string> out;
-            if (!id.value().has_value())
+            if (!found.value().has_value())
                 return out;
 
-            auto cells = readSideCells(*id.value());
-            if (!cells.has_value())
-                return ll::makeStringError(cells.error().message());
+            SideRow& row = **found;
+            RowCells cells = std::move(row.cells);
+
+            if (!row.side && !row.payload) {
+                auto rec = mRepo.store().load(row.id);
+                if (!rec.has_value())
+                    return ll::makeStringError(rec.error().message());
+
+                cells = cellsOf(rec.value());
+            }
 
             auto names = magic_enum::enum_names<E>();
-            for (auto const& [k, p] : cells.value()) {
+            for (auto const& [k, p] : cells) {
                 if (static_cast<std::size_t>(k) >= names.size())
                     continue;
 
@@ -1285,12 +1402,12 @@ namespace LOICollection::data {
             if (!rid.has_value())
                 return ll::makeStringError(rid.error().message());
 
-            auto found = mRepo.store().idOf(rid.value(), rowKey);
-            if (!found.has_value())
-                return ll::makeStringError(found.error().message());
+            auto written = writeRowAt(rid.value(), rowKey, values);
+            if (!written.has_value())
+                return ll::makeStringError(written.error().message());
 
-            if (found.value().has_value())
-                return writeRow(*found.value(), values);
+            if (written.value())
+                return {};
 
             auto b = WriteBatch::begin(mRepo.store());
             if (!b.has_value())

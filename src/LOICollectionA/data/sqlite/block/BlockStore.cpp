@@ -289,12 +289,6 @@ ll::Expected<void> BlockStore::ensureSchema(SQLiteConnection& conn) {
     };
 
     constexpr IndexSpec kIndexes[] = {
-        { "idx_block_parent",
-            "CREATE INDEX IF NOT EXISTS idx_block_parent ON block(parent)",
-            "parent" },
-        { "idx_block_parent_kind",
-            "CREATE INDEX IF NOT EXISTS idx_block_parent_kind ON block(parent, kind)",
-            "parent,kind" },
         { "idx_block_parent_name",
             "CREATE INDEX IF NOT EXISTS idx_block_parent_name ON block(parent, name)",
             "parent,name" },
@@ -325,7 +319,13 @@ ll::Expected<void> BlockStore::ensureSchema(SQLiteConnection& conn) {
             return sqlError(conn);
     }
 
-    constexpr int kSchemaVersion = 1;
+    constexpr int kSchemaVersion = 2;
+
+    constexpr std::string_view kRetiredIndexes[] = {
+        "idx_block_parent",
+        "idx_block_parent_kind",
+    };
+
     int current = 0;
     {
         auto ver = conn.statements().ensure("userVersionGet", "PRAGMA user_version");
@@ -344,6 +344,12 @@ ll::Expected<void> BlockStore::ensureSchema(SQLiteConnection& conn) {
 
     for (auto const& spec : kIndexes) {
         int rc = conn.database().tryExec(("DROP INDEX IF EXISTS " + std::string(spec.name)).c_str());
+        if (rc != SQLITE_OK)
+            return sqlError(conn);
+    }
+
+    for (auto const& name : kRetiredIndexes) {
+        int rc = conn.database().tryExec(("DROP INDEX IF EXISTS " + std::string(name)).c_str());
         if (rc != SQLITE_OK)
             return sqlError(conn);
     }
