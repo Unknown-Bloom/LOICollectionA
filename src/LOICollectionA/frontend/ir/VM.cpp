@@ -664,7 +664,7 @@ namespace LOICollection::frontend::ir {
 
         if (mOutcome == RunOutcome::Completed || mOutcome == RunOutcome::Failed
             || this->mBudget->objectCount >= this->mBudget->maxObjectCount / 4)
-            (void)this->heap().collect();
+            static_cast<void>(this->heap().collect());
 
         return mOutcome;
     }

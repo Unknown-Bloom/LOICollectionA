@@ -621,7 +621,7 @@ namespace LOICollection::client::Plugins::loading {
     }
 
     void LoadingScreenDetector::onProgressScreenVars(::ProgressScreenController& controller, ::Json::Value& globalVars) {
-        (void)controller;
+        static_cast<void>(controller);
         this->mImpl->onProgressScreenVars(globalVars);
     }
 }
