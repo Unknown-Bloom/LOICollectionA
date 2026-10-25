@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <functional>
 #include <unordered_map>
 
 #include "LOICollectionA/base/Macro.h"
@@ -32,6 +33,19 @@ public:
     LOICOLLECTION_A_API void resetAll();
 
 private:
+    struct StringHash {
+        using is_transparent = void;
+
+        std::size_t operator()(std::string_view value) const noexcept {
+            return std::hash<std::string_view>{}(value);
+        }
+
+        std::size_t operator()(std::string const& value) const noexcept {
+            return std::hash<std::string_view>{}(value);
+        }
+    };
+
     SQLite::Database& mDb;
-    std::unordered_map<std::string, Entry> mStatements;
+    std::unordered_map<std::string, Entry, StringHash, std::equal_to<>> mStatements;
+    std::unordered_map<std::string_view, Entry> mCatalog;
 };

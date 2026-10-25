@@ -2,6 +2,7 @@
 #include <utility>
 #include <optional>
 #include <algorithm>
+#include <charconv>
 #include <cstring>
 #include <unordered_map>
 
@@ -11,6 +12,7 @@
 
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
+#include "LOICollectionA/base/ScopeGuard.h"
 #include "LOICollectionA/data/sqlite/block/BlockError.h"
 #include "LOICollectionA/data/sqlite/block/ColumnText.h"
 #include "LOICollectionA/data/sqlite/connection/ConnectionPool.h"
@@ -37,6 +39,37 @@ namespace LOICollection::data::detail {
 
     ll::Unexpected prepareError(std::string name) {
         return ll::makeStringError("prepare statement '" + name + "' failed");
+    }
+
+    ll::Expected<size_t> execPrepared(
+        SQLiteConnection& conn, std::string_view key, std::string_view sql, std::span<const BlockProp> params) {
+        auto stmt = conn.statements().ensure(key, sql);
+        if (!stmt)
+            return prepareError(std::string(key));
+
+        stmt->reset();
+        stmt->clearBindings();
+
+        int idx = 1;
+        for (auto const& p : params) {
+            if (p.type == PayloadType::Int)
+                stmt->bind(idx++, static_cast<std::int64_t>(p.intValue));
+            else if (p.type == PayloadType::Double)
+                stmt->bind(idx++, static_cast<double>(p.realValue));
+            else
+                stmt->bind(idx++, p.textValue);
+        }
+
+        int rc = stmt->tryExecuteStep();
+        if (rc != SQLITE_DONE) {
+            stmt->reset();
+            return sqlError(conn);
+        }
+
+        size_t changes = static_cast<size_t>(stmt->getChanges());
+        stmt->reset();
+
+        return changes;
     }
 
     struct IndexSpec {
@@ -170,7 +203,16 @@ namespace LOICollection::data::detail {
     }
 
     std::string nameKey(BlockId parent, std::string_view name) {
-        return std::to_string(parent) + '\x1f' + std::string(name);
+        char buffer[24];
+        auto result = std::to_chars(buffer, buffer + sizeof(buffer), parent);
+
+        std::string key;
+        key.reserve(static_cast<std::size_t>(result.ptr - buffer) + 1 + name.size());
+        key.append(buffer, result.ptr);
+        key.push_back('\x1f');
+        key.append(name);
+
+        return key;
     }
 }
 
@@ -425,9 +467,7 @@ ll::Expected<BlockId> BlockStore::implUpsertRow(
     BlockId id = static_cast<BlockId>(stmt->getColumn(0).getInt64());
     stmt->reset();
 
-    auto key = nameKey(parent, name);
-    if (auto cached = mNameCache.get(key); cached.has_value())
-        mBlockCache.erase(*cached.value());
+    mBlockCache.erase(id);
 
     return id;
 }
@@ -444,9 +484,11 @@ ll::Expected<BlockRecord> BlockStore::load(BlockId id) {
     if (!record.has_value())
         return ll::forwardError(record.error());
 
+    if (!this->mayCache())
+        return std::move(*record);
+
     auto shared = std::make_shared<BlockRecord>(std::move(*record));
-    if (this->mayCache())
-        mBlockCache.put(id, shared);
+    mBlockCache.put(id, shared);
 
     return *shared;
 }
@@ -456,7 +498,7 @@ ll::Expected<BlockRecord> BlockStore::load(BlockId parent, std::string_view name
     if (auto cached = mNameCache.get(key); cached.has_value()) {
         auto rec = this->load(*cached.value());
         if (rec.has_value()) {
-            if (rec.value().state != BlockLifecycle::Deleted)
+            if (static_cast<std::uint32_t>(rec.value().state) < 8u)
                 return rec.value();
             mNameCache.erase(key);
         } else {
@@ -488,16 +530,32 @@ ll::Expected<BlockRecord> BlockStore::load(BlockId parent, std::string_view name
         return ll::forwardError(r.error());
 
     stmt->reset();
-    if (this->mayCache()) {
-        mBlockCache.put(record.id, std::make_shared<BlockRecord>(record));
-        if (record.state != BlockLifecycle::Deleted)
-            mNameCache.put(key, record.id);
-    }
+    if (!this->mayCache())
+        return record;
 
-    return record;
+    auto shared = std::make_shared<BlockRecord>(std::move(record));
+    mBlockCache.put(shared->id, shared);
+    if (shared->state != BlockLifecycle::Deleted)
+        mNameCache.put(key, shared->id);
+
+    return *shared;
 }
 
 ll::Expected<std::optional<BlockId>> BlockStore::idOf(BlockId parent, std::string_view name) {
+    std::string key = nameKey(parent, name);
+    if (this->mayCache()) {
+        if (auto cached = mNameCache.get(key); cached.has_value()) {
+            BlockId cachedId = **cached;
+            if (auto record = mBlockCache.get(cachedId); record.has_value()) {
+                if (record.value()->parent == parent
+                    && static_cast<std::uint32_t>(record.value()->state) < 8u)
+                    return cachedId;
+            }
+
+            mNameCache.erase(key);
+        }
+    }
+
     auto guard = acquireConnection(this->mPool);
     if (!guard.has_value())
         return ll::forwardError(guard.error());
@@ -513,6 +571,7 @@ ll::Expected<std::optional<BlockId>> BlockStore::idOf(BlockId parent, std::strin
     int rc = stmt->tryExecuteStep();
     if (rc == SQLITE_DONE) {
         stmt->reset();
+        mNameCache.erase(key);
         return std::optional<BlockId>{};
     }
 
@@ -523,7 +582,7 @@ ll::Expected<std::optional<BlockId>> BlockStore::idOf(BlockId parent, std::strin
 
     stmt->reset();
     if (this->mayCache())
-        mNameCache.put(nameKey(parent, name), id);
+        mNameCache.put(key, id);
 
     return id;
 }
@@ -1124,6 +1183,42 @@ ll::Expected<void> BlockStore::exec(std::string_view sql) {
     int rc = (*guard).database().tryExec(std::string(sql).c_str());
     if (rc != SQLITE_OK)
         return sqlError(*guard);
+
+    return {};
+}
+
+ll::Expected<size_t> BlockStore::execCells(
+    std::string_view key, std::string_view sql, std::span<const BlockProp> params
+) {
+    if (SQLiteConnection* active = this->mPool->activeTransaction())
+        return execPrepared(*active, key, sql, params);
+
+    if (!this->mPool->tryAcquireWrite(5000))
+        return ll::makeStringError("timed out waiting for the database write lock");
+
+    auto release = make_scope_guard([this] { this->mPool->releaseWrite(); });
+
+    auto guard = acquireConnection(this->mPool);
+    if (!guard.has_value())
+        return ll::forwardError(guard.error());
+
+    return execPrepared(*guard, key, sql, params);
+}
+
+ll::Expected<void> BlockStore::controlChildren(BlockId parent, BlockLifecycle to) {
+    BlockProp params[] = {
+        { 0, PayloadType::Int, static_cast<std::int64_t>(to), 0.0, {} },
+        { 0, PayloadType::Int, SystemUtils::getEpochMilliseconds(), 0.0, {} },
+        { 0, PayloadType::Int, parent, 0.0, {} },
+    };
+
+    auto changed = this->execCells(
+        "controlChildren", "UPDATE block SET state=?,updated=? WHERE parent=? AND state<8", params);
+    if (!changed.has_value())
+        return ll::forwardError(changed.error());
+
+    mBlockCache.clear();
+    mNameCache.clear();
 
     return {};
 }

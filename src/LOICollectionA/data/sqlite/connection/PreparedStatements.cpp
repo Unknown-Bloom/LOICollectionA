@@ -86,8 +86,7 @@ PreparedStatements::PreparedStatements(SQLite::Database& db) : mDb(db) {}
 PreparedStatements::~PreparedStatements() = default;
 
 observer<SQLite::Statement> PreparedStatements::ensure(std::string_view name, std::string_view sql) noexcept {
-    auto key = std::string(name);
-    auto it = mStatements.find(key);
+    auto it = mStatements.find(name);
     if (it != mStatements.end()) {
         if (it->second.sql == sql)
             return it->second.statement.get();
@@ -102,7 +101,7 @@ observer<SQLite::Statement> PreparedStatements::ensure(std::string_view name, st
 
         auto* ref = stmt.get();
         it->second.statement = std::move(stmt);
-        it->second.sql = std::string(sql);
+        it->second.sql.assign(sql);
 
         return ref;
     }
@@ -115,20 +114,39 @@ observer<SQLite::Statement> PreparedStatements::ensure(std::string_view name, st
     }
 
     auto* ref = stmt.get();
-    mStatements.emplace(std::move(key), Entry{std::move(stmt), std::string(sql)});
+    mStatements.emplace(std::string(name), Entry{std::move(stmt), std::string(sql)});
     return ref;
 }
 
 observer<SQLite::Statement> PreparedStatements::get(std::string_view name) noexcept {
-    for (const auto& [n, sql] : kCatalog)
-        if (n == name)
-            return this->ensure(n, sql);
-    
+    if (auto it = mCatalog.find(name); it != mCatalog.end())
+        return it->second.statement.get();
+
+    for (const auto& [n, sql] : kCatalog) {
+        if (n != name)
+            continue;
+
+        std::unique_ptr<SQLite::Statement> stmt;
+        try {
+            stmt = std::make_unique<SQLite::Statement>(mDb, std::string(sql));
+        } catch (...) {
+            return nullptr;
+        }
+
+        auto* ref = stmt.get();
+        mCatalog.emplace(n, Entry{std::move(stmt), std::string(sql)});
+        return ref;
+    }
+
     return nullptr;
 }
 
 void PreparedStatements::resetAll() {
     for (auto& [name, entry] : mStatements)
+        if (entry.statement)
+            entry.statement->reset();
+
+    for (auto& [name, entry] : mCatalog)
         if (entry.statement)
             entry.statement->reset();
 }

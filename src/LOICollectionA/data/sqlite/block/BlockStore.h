@@ -150,6 +150,12 @@ public:
 
     LOICOLLECTION_A_NDAPI ll::Expected<void> exec(std::string_view sql);
 
+    LOICOLLECTION_A_NDAPI ll::Expected<size_t> execCells(
+        std::string_view key, std::string_view sql, std::span<const BlockProp> params
+    );
+
+    LOICOLLECTION_A_NDAPI ll::Expected<void> controlChildren(BlockId parent, BlockLifecycle to);
+
     LOICOLLECTION_A_NDAPI ll::Expected<void> withQuery(
         std::string_view key,
         std::string_view sql,

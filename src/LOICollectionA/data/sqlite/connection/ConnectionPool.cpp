@@ -6,6 +6,8 @@
 #include <exception>
 #include <string_view>
 
+#include <sqlite3.h>
+
 #include <SQLiteCpp/SQLiteCpp.h>
 
 #include "LOICollectionA/data/sqlite/block/BlockError.h"
@@ -109,6 +111,8 @@ ll::Expected<std::shared_ptr<SQLiteConnection>> ConnectionPool::acquire(int time
             if (!conn) {
                 std::unique_lock relock(this->mMutex);
                 this->mOpen--;
+                relock.unlock();
+                this->mCond.notify_one();
                 return ll::makeStringError(conn.error().message());
             }
 
@@ -139,8 +143,9 @@ void ConnectionPool::release(std::shared_ptr<SQLiteConnection> conn) {
             return;
     }
 
-    conn->database().tryExec("ROLLBACK");
-    
+    if (!sqlite3_get_autocommit(conn->database().getHandle()))
+        conn->database().tryExec("ROLLBACK");
+
     {
         std::unique_lock lock(this->mMutex);
         this->mAvailable.push(std::move(conn));
