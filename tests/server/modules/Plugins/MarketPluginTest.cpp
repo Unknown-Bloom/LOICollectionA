@@ -670,13 +670,6 @@ TEST_F(MarketPluginTest, CancelTrade) {
 Config::C_Market MakeStoreScoreConfig() {
     Config::C_Market config;
 
-    config.StoreSalesWeight = 0.5;
-    config.StoreVolumeWeight = 0.3;
-    config.StoreRatingWeight = 0.35;
-    config.StoreBadReviewPenalty = 3.0;
-    config.StoreColdStartWeight = 0.5;
-    config.StoreRatingSmoothing = 15.0;
-    config.StoreColdStartDays = 7;
     config.StoreTransactionWindowDays = 30;
     config.StoreRatingWindowDays = 180;
     config.StoreRiskWindowDays = 30;
@@ -726,7 +719,7 @@ TEST(MarketStoreScoreTest, BayesianShrink) {
     double largeScore = MarketPlugin::computeStoreScore(large, config);
 
     EXPECT_LT(smallScore, largeScore);
-    EXPECT_NEAR(smallScore, 0.35 * ((5.0 * 1 + 3.0 * 15.0) / 16.0 - 3.0) * std::log1p(1.0), 1e-9);
+    EXPECT_NEAR(smallScore, 0.35 * ((5.0 * 1 + 3.0 * 15.0) / 16.0 - 3.0) * std::log1p(1.0), 1e-6);
 }
 
 TEST(MarketStoreScoreTest, NoReviewsRatingZero) {
@@ -741,7 +734,7 @@ TEST(MarketStoreScoreTest, NoReviewsRatingZero) {
 
     double expected = (0.5 * std::log1p(10.0) + 0.3 * std::log1p(100.0)) * 1.0;
 
-    EXPECT_NEAR(MarketPlugin::computeStoreScore(input, config), expected, 1e-9);
+    EXPECT_NEAR(MarketPlugin::computeStoreScore(input, config), expected, 1e-6);
 }
 
 TEST(MarketStoreScoreTest, ColdStartLinear) {
@@ -754,10 +747,10 @@ TEST(MarketStoreScoreTest, ColdStartLinear) {
         return MarketPlugin::computeStoreScore(input, config);
     };
 
-    EXPECT_NEAR(score(0.0), 0.5, 1e-9);
-    EXPECT_NEAR(score(3.5), 0.25, 1e-9);
-    EXPECT_NEAR(score(7.0), 0.0, 1e-9);
-    EXPECT_NEAR(score(14.0), 0.0, 1e-9);
+    EXPECT_NEAR(score(0.0), 0.5, 1e-6);
+    EXPECT_NEAR(score(3.5), 0.25, 1e-6);
+    EXPECT_NEAR(score(7.0), 0.0, 1e-6);
+    EXPECT_NEAR(score(14.0), 0.0, 1e-6);
 }
 
 TEST(MarketStoreScoreTest, BadReviewPenaltyAndNegative) {
@@ -770,8 +763,44 @@ TEST(MarketStoreScoreTest, BadReviewPenaltyAndNegative) {
 
     double score = MarketPlugin::computeStoreScore(input, config);
 
-    EXPECT_NEAR(score, -3.0, 1e-9);
+    EXPECT_NEAR(score, -3.0, 1e-6);
     EXPECT_LT(score, 0.0);
+
+    StoreScoreInput noReviews;
+    noReviews.ageDays = 30.0;
+    noReviews.badReviews30 = 5;
+
+    EXPECT_NEAR(MarketPlugin::computeStoreScore(noReviews, config), 0.0, 1e-6);
+}
+
+TEST(MarketStoreScoreTest, ConfigExpressionOverridesDefault) {
+    Config::C_Market config = MakeStoreScoreConfig();
+    config.StoreRankExpression = "transactions30 * 2.0 + approved180";
+
+    StoreScoreInput input;
+    input.transactions30 = 3;
+    input.approved180 = 4;
+
+    EXPECT_NEAR(MarketPlugin::computeStoreScore(input, config), 10.0, 1e-6);
+}
+
+TEST(MarketStoreScoreTest, InvalidExpressionFallsBackToDefault) {
+    Config::C_Market config = MakeStoreScoreConfig();
+    config.StoreRankExpression = "0.5 * (";
+
+    Config::C_Market fallback = MakeStoreScoreConfig();
+    fallback.StoreRankExpression = std::string(Config::DefaultStoreRankExpression);
+
+    StoreScoreInput input;
+    input.ageDays = 30.0;
+    input.transactions30 = 10;
+    input.volume30 = 100;
+
+    EXPECT_NEAR(
+        MarketPlugin::computeStoreScore(input, config),
+        MarketPlugin::computeStoreScore(input, fallback),
+        1e-6
+    );
 }
 
 TEST_F(MarketPluginTest, StoreCreateDuplicateAndCost) {

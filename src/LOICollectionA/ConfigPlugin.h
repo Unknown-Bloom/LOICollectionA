@@ -2,11 +2,19 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <ll/api/Expected.h>
 
 namespace Config {
+    inline constexpr std::string_view DefaultStoreRankExpression =
+        "0.5 * log1p(transactions30) * clamp(ageDays / 30.0, 0.0, 1.0) + "
+        "0.3 * log1p(volume30) * clamp(ageDays / 30.0, 0.0, 1.0) + "
+        "0.35 * (smooth(approvedAverage, approvedReviews, globalApprovedAverage, 15.0) - 3.0) * log1p(approved180) + "
+        "0.5 * max(0.0, 1.0 - max(ageDays, 0.0) / 7.0) - "
+        "3.0 * ratio(badReviews30, reviews30)";
+
     struct C_Blacklist {
         bool ModuleEnabled = false;
         bool BroadcastMessage = true;
@@ -131,13 +139,7 @@ namespace Config {
         bool StoreReviewEnabled = true;
         int StoreMaximumItems = 20;
         int StoreCreationCost = 0;
-        double StoreSalesWeight = 0.5;
-        double StoreVolumeWeight = 0.3;
-        double StoreRatingWeight = 0.35;
-        double StoreBadReviewPenalty = 3.0;
-        double StoreColdStartWeight = 0.5;
-        double StoreRatingSmoothing = 15.0;
-        int StoreColdStartDays = 7;
+        std::string StoreRankExpression{DefaultStoreRankExpression};
         int StoreTransactionWindowDays = 30;
         int StoreRatingWindowDays = 180;
         int StoreRiskWindowDays = 30;

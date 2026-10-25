@@ -4,12 +4,17 @@
 #include <string>
 #include <vector>
 #include <utility>
+#include <variant>
 #include <algorithm>
+#include <string_view>
+#include <type_traits>
 #include <unordered_map>
 
 #include <fmt/core.h>
 
 #include <ll/api/Expected.h>
+#include <ll/api/io/Logger.h>
+#include <ll/api/io/LoggerRegistry.h>
 #include <ll/api/event/EventBus.h>
 #include <ll/api/service/Bedrock.h>
 
@@ -40,6 +45,14 @@
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 
 #include "LOICollectionA/base/Cache.h"
+
+#include "LOICollectionA/frontend/Lexer.h"
+#include "LOICollectionA/frontend/Parser.h"
+#include "LOICollectionA/frontend/SemanticAnalyzer.h"
+#include "LOICollectionA/frontend/ir/Compiler.h"
+#include "LOICollectionA/frontend/ir/Optimizer.h"
+#include "LOICollectionA/frontend/ir/VM.h"
+#include "LOICollectionA/frontend/sandbox/SandboxBudget.h"
 
 #include "LOICollectionA/ConfigPlugin.h"
 
@@ -96,6 +109,146 @@ namespace LOICollection::server::Plugins {
             return taxRateProvider ? taxRateProvider() : options.StoreTransactionTaxRate;
         }
     };
+
+    static constexpr std::string_view MarketRankPrelude = R"LCUI(
+func abs(x) { if (x < 0) [ return -x; ]; return x; }
+func min(a, b) { if (a < b) [ return a; ]; return b; }
+func max(a, b) { if (a > b) [ return a; ]; return b; }
+func clamp(x, lo, hi) { if (x < lo) [ return lo; ]; if (x > hi) [ return hi; ]; return x; }
+func coalesce(value, fallback) { if (value > 0.0) [ return value; ]; return fallback; }
+func ratio(part, whole) { if (whole > 0.0) [ return part / whole; ]; return 0.0; }
+func log1p(value) { return math::log(1.0 + value); }
+func smooth(average, reviews, globalAverage, prior) {
+    if (reviews > 0.0) [ return (average * reviews + coalesce(globalAverage, 3.0) * prior) / (reviews + prior); ]
+    return coalesce(globalAverage, 3.0);
+}
+)LCUI";
+
+    struct MarketRankExpression {
+        std::shared_ptr<frontend::GlobalsTable> globals;
+        frontend::FunctionRefPtr function;
+        std::string error;
+
+        [[nodiscard]] double evaluate(const StoreScoreInput& input) const {
+            if (!this->function)
+                return 0.0;
+
+            frontend::DiagnosticEngine diagnostics;
+            frontend::sandbox::SandboxBudget budget;
+            budget.maxInstructions = 16'384;
+            budget.maxWallTime = std::chrono::milliseconds(5);
+            budget.maxFrames = 16;
+            budget.maxNativeCalls = 256;
+
+            auto result = frontend::ir::VM::callFunctionRef(this->function, {
+                static_cast<float>(input.ageDays),
+                static_cast<float>(input.transactions30),
+                static_cast<float>(input.volume30),
+                static_cast<float>(input.approvedReviews),
+                static_cast<float>(input.approvedAverage),
+                static_cast<float>(input.approved180),
+                static_cast<float>(input.badReviews30),
+                static_cast<float>(input.reviews30),
+                static_cast<float>(input.globalApprovedAverage)
+            }, {}, diagnostics, &budget);
+
+            if (diagnostics.hasErrors())
+                return 0.0;
+
+            double score = std::visit([](const auto& value) -> double {
+                using T = std::decay_t<decltype(value)>;
+
+                if constexpr (std::is_same_v<T, int> || std::is_same_v<T, float>)
+                    return static_cast<double>(value);
+
+                return 0.0;
+            }, result);
+
+            return std::isfinite(score) ? score : 0.0;
+        }
+    };
+
+    static std::shared_ptr<MarketRankExpression> buildMarketRankExpression(const std::string& expression) {
+        auto compiled = std::make_shared<MarketRankExpression>();
+        std::string source = fmt::format(
+            "{}\nlet __market_rank = func ("
+            "ageDays: float, transactions30: float, volume30: float, "
+            "approvedReviews: float, approvedAverage: float, approved180: float, "
+            "badReviews30: float, reviews30: float, globalApprovedAverage: float"
+            ") -> float {{ return {}; }};",
+            MarketRankPrelude, expression
+        );
+
+        frontend::DiagnosticEngine diagnostics;
+
+        frontend::Lexer lexer(source, diagnostics);
+        frontend::Parser parser(lexer, diagnostics);
+        auto ast = parser.parse();
+        if (diagnostics.hasErrors()) {
+            compiled->error = diagnostics.getErrorMessage();
+            return compiled;
+        }
+
+        if (ast && ast->getType() == frontend::ASTNode::Type::Program) {
+            frontend::SemanticAnalyzer analyzer(diagnostics);
+            analyzer.analyze(static_cast<frontend::ProgramNode&>(*ast));
+        }
+
+        if (diagnostics.hasErrors()) {
+            compiled->error = diagnostics.getErrorMessage();
+            return compiled;
+        }
+
+        frontend::ir::Compiler compiler(diagnostics);
+        auto chunk = std::make_shared<frontend::ir::MirChunk>(compiler.compile(*ast));
+        if (diagnostics.hasErrors()) {
+            compiled->error = diagnostics.getErrorMessage();
+            return compiled;
+        }
+
+        frontend::ir::Optimizer optimizer;
+        optimizer.optimize(*chunk);
+
+        auto globals = std::make_shared<frontend::GlobalsTable>();
+        frontend::ir::VM builder(diagnostics, globals);
+        [[maybe_unused]] auto buildResult = builder.run(chunk, frontend::Context{});
+        if (diagnostics.hasErrors()) {
+            compiled->error = diagnostics.getErrorMessage();
+            return compiled;
+        }
+
+        auto it = globals->find("__market_rank");
+        if (it == globals->end() || !std::holds_alternative<frontend::FunctionRefPtr>(it->second)) {
+            compiled->error = "The expression did not compile into a callable function";
+            return compiled;
+        }
+
+        compiled->function = std::get<frontend::FunctionRefPtr>(it->second);
+        compiled->globals = std::move(globals);
+
+        return compiled;
+    }
+
+    static std::shared_ptr<MarketRankExpression> getMarketRankExpression(const std::string& expression) {
+        static LRUCache<std::string, MarketRankExpression> cache(4);
+
+        if (auto cached = cache.get(expression); cached.has_value())
+            return cached.value();
+
+        auto compiled = buildMarketRankExpression(expression);
+        if (!compiled->error.empty() || !compiled->function) {
+            auto logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
+            logger->warn("Market: invalid StoreRankExpression ({}), using the default expression", compiled->error);
+
+            compiled = buildMarketRankExpression(std::string(Config::DefaultStoreRankExpression));
+            if (!compiled->error.empty() || !compiled->function)
+                logger->error("Market: invalid default StoreRankExpression ({})", compiled->error);
+        }
+
+        cache.put(expression, compiled);
+
+        return compiled;
+    }
 
     ll::Expected<void> MarketStore::createTables() {
         return StoreTable::open(*this->mImpl->db, "Store")
@@ -171,6 +324,8 @@ namespace LOICollection::server::Plugins {
             .transform([this](RankData data) -> std::vector<std::string> {
                 const Config::C_Market& options = this->mImpl->options;
                 static constexpr long long DAY_SECONDS = 86'400LL;
+
+                auto rankExpression = getMarketRankExpression(options.StoreRankExpression);
 
                 std::string nowTime = SystemUtils::getNowTime();
                 long long txWindow = static_cast<long long>(std::max(0, options.StoreTransactionWindowDays)) * DAY_SECONDS;
@@ -267,7 +422,7 @@ namespace LOICollection::server::Plugins {
                     input.reviews30 = riskCount[storeId];
                     input.globalApprovedAverage = globalAverage;
 
-                    ranked.emplace_back(this->computeStoreScore(input, options), storeId);
+                    ranked.emplace_back(rankExpression->evaluate(input), storeId);
                 }
 
                 std::sort(ranked.begin(), ranked.end(), [&data](const auto& left, const auto& right) -> bool {
@@ -294,33 +449,7 @@ namespace LOICollection::server::Plugins {
     }
 
     double MarketStore::computeStoreScore(const StoreScoreInput& input, const Config::C_Market& options) {
-        auto log1p = [](double value) -> double {
-            return std::log1p(value);
-        };
-
-        double age = std::max(0.0, input.ageDays);
-        double heatFactor = std::min(1.0, age / 30.0);
-
-        double transactionHeat = (
-            options.StoreSalesWeight * log1p(static_cast<double>(input.transactions30)) +
-            options.StoreVolumeWeight * log1p(static_cast<double>(input.volume30))
-        ) * heatFactor;
-
-        double globalAverage = input.globalApprovedAverage > 0.0 ? input.globalApprovedAverage : 3.0;
-        double bayesianRating = input.approvedReviews > 0
-            ? (input.approvedAverage * input.approvedReviews + globalAverage * options.StoreRatingSmoothing) /
-              (input.approvedReviews + options.StoreRatingSmoothing)
-            : globalAverage;
-        double ratingQuality = options.StoreRatingWeight * (bayesianRating - 3.0) * log1p(static_cast<double>(input.approved180));
-
-        double coldStart = options.StoreColdStartDays > 0
-            ? options.StoreColdStartWeight * std::max(0.0, 1.0 - age / options.StoreColdStartDays)
-            : 0.0;
-
-        double riskPenalty = options.StoreBadReviewPenalty *
-            (input.reviews30 > 0 ? static_cast<double>(input.badReviews30) / input.reviews30 : 0.0);
-
-        return transactionHeat + ratingQuality + coldStart - riskPenalty;
+        return getMarketRankExpression(options.StoreRankExpression)->evaluate(input);
     }
 
     ll::Expected<std::unordered_map<std::string, std::string>> MarketStore::getStore(const std::string& id) {
