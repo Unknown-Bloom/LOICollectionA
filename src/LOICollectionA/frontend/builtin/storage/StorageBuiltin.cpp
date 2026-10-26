@@ -163,10 +163,10 @@ namespace ScriptDataBuiltin::detail {
 
         if (player) {
             if (auto cleared = storage->playerClear(ownerId, scriptId); !cleared)
-                return cleared.error();
+                return ll::Unexpected(cleared.error());
         } else {
             if (auto cleared = storage->clear(scriptId); !cleared)
-                return cleared.error();
+                return ll::Unexpected(cleared.error());
         }
 
         return TypedValue{ std::monostate{} };

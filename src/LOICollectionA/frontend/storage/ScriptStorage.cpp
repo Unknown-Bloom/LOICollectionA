@@ -329,7 +329,7 @@ namespace LOICollection::frontend::storage {
     ll::Expected<TypedValue> ScriptStorage::read(const std::string& relative, const std::string& key) {
         auto storage = this->store(relative);
         if (!storage)
-            return storage.error();
+            return ll::Unexpected(storage.error());
 
         auto json = storage.value()->get<nlohmann::ordered_json>(key);
         if (!json)
@@ -350,7 +350,7 @@ namespace LOICollection::frontend::storage {
 
         auto storage = this->store(relative);
         if (!storage)
-            return storage.error();
+            return ll::Unexpected(storage.error());
 
         storage.value()->set(key, std::move(*json));
         if (auto saved = storage.value()->save(); !saved)
@@ -362,7 +362,7 @@ namespace LOICollection::frontend::storage {
     ll::Expected<bool> ScriptStorage::contains(const std::string& relative, const std::string& key) {
         auto storage = this->store(relative);
         if (!storage)
-            return storage.error();
+            return ll::Unexpected(storage.error());
 
         return storage.value()->has(key);
     }
@@ -370,7 +370,7 @@ namespace LOICollection::frontend::storage {
     ll::Expected<bool> ScriptStorage::erase(const std::string& relative, const std::string& key) {
         auto storage = this->store(relative);
         if (!storage)
-            return storage.error();
+            return ll::Unexpected(storage.error());
 
         if (!storage.value()->has(key))
             return false;
@@ -385,7 +385,7 @@ namespace LOICollection::frontend::storage {
     ll::Expected<ArrayRef> ScriptStorage::names(const std::string& relative) {
         auto storage = this->store(relative);
         if (!storage)
-            return storage.error();
+            return ll::Unexpected(storage.error());
 
         auto result = std::make_shared<ArrayValue>();
         for (auto& key : storage.value()->keys())
@@ -397,7 +397,7 @@ namespace LOICollection::frontend::storage {
     ll::Expected<void> ScriptStorage::eraseAll(const std::string& relative) {
         auto storage = this->store(relative);
         if (!storage)
-            return storage.error();
+            return ll::Unexpected(storage.error());
 
         storage.value()->write(nlohmann::ordered_json::object());
         if (auto saved = storage.value()->save(); !saved)
