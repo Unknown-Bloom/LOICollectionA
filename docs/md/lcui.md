@@ -1,7 +1,7 @@
 # LCUI 脚本语法
 
 > [!NOTE]
-> 以下内容取自 LOICollectionA 1.17.1 的 `.lcui` 脚本语言实现，对于后续版本可能会有所不同。
+> 以下内容取自 LOICollectionA 1.17.3 的 `.lcui` 脚本语言实现，对于后续版本可能会有所不同。
 
 ## 概述
 
@@ -143,7 +143,7 @@ import "generic.lcui" { PageControls, closeButton };
 
 | 规则 | 说明 |
 | --- | --- |
-| 路径解析 | `import` 路径相对于入口脚本所在目录解析 |
+| 路径解析 | `import` 路径相对于**发起导入的文件**所在目录解析；`std/` 模块之间互相引用同样遵循此规则 |
 | 合并顺序 | 导入图按依赖优先（拓扑序）展开，每个文件的定义只合并一次；菱形导入（A、B 都导入 C）合法，C 只出现一次 |
 | 选择性导入 | `import "path" { a, b };` 只合并列出的定义；同一文件被多处导入时按所有导入点的**符号并集**合并；不带列表仍为全量导入（完全向后兼容） |
 | 定义冲突 | 不同文件中同名 `class` / `func` / `using` / `component` / `enum` 会报错，错误信息包含两处定义的文件与行号 |
@@ -844,7 +844,7 @@ while (let Some(x) = next()) [
 
 ## 标准库（std）
 
-`assets/common/std/` 下的 `.lcui` 脚本即标准库：能拆出 C++ 的都拆成了脚本，原生层只保留 VM 值原语、超越函数与 ll/ui 相关类。入口脚本相对自己所在目录引用：
+`assets/common/std/` 下的 13 个 `.lcui` 模块即标准库：能拆出 C++ 的都拆成了脚本，原生层只保留 VM 值原语、超越函数与 ll/ui 相关类。入口脚本相对自己所在目录引用：
 
 ```lcui
 import "std/iter.lcui";        // 整个模块
@@ -855,11 +855,19 @@ import "std/array.lcui" { arrSum, arrZip };   // 只取需要的定义
 
 | 模块 | 内容 |
 | --- | --- |
-| `iter.lcui` | 惰性迭代器：`range(a, b)` / `repeat(v)` 种子，`Iter` 上的 `map` / `filter` / `take` / `skip` / `takeWhile` / `stepBy` / `zip` / `chain` 组合子，以及 `collect` / `fold` / `sum` / `count` / `any` / `all` / `find` / `position` / `max` / `min` / `last` 终结操作。映射与谓词是 `Fn1` / `Fn2` 的子类（脚本世界的 Fn trait）：`class Square extends Fn1 { func call(x) { return x * x; } }`。 |
-| `array.lcui` | 急切数组函数：`arrMap` / `arrFilter` / `arrReverse` / `arrSum` / `arrProduct` / `arrAny` / `arrAll` / `arrFind` / `arrFindIndex` / `arrDedup` / `arrZip` / `arrLast` / `arrChunk`。 |
-| `string.lcui` | `upper` / `lower` / `capitalize` / `trim` / `trimStart` / `trimEnd` / `substr` / `slice` / `charAt` / `repeat` / `replace` / `padLeft` / `padRight` / `reverse`（按 Unicode 字符；大小写映射 ASCII）。 |
-| `math.lcui` | `abs` / `min` / `max` / `clamp` / `lerp`（超越函数仍在原生 `math::` 命名空间）。 |
-| `result.lcui` | `Result` 可恢复错误类型：`Result::Ok(v)` / `Result::Err(e)`、`unwrap` / `unwrapOr` / `expect` / `errOr` / `map` / `mapErr` / `andThen`。 |
+| `iter.lcui` | 惰性迭代器。`Fn1` / `Fn2` 是单方法接口（`call`），lambda 与子类都可以作为映射器 / 谓词。构造：`range(a, b)`（半开区间）、`repeat(v)`。`Iter` 组合子：`map`、`filter`、`take`、`takeWhile`、`skip`、`zip`、`chain`、`stepBy`、`enumerate`、`chunk`、`dedup`、`cycle`、`inspect`；终结操作：`collect`、`fold`、`sum`、`count`、`forEach`、`any`、`all`、`find`、`position`、`last`、`max`、`min`。`next()` 返回 `optional`，因此也可直接 `for-in`。 |
+| `array.lcui` | 急切数组函数：`arrMap`、`arrFilter`、`arrReverse`、`arrSum`、`arrProduct`、`arrAny`、`arrAll`、`arrFind`、`arrFindIndex`、`arrFirst`、`arrLast`、`arrDedup`、`arrZip`、`arrChunk`、`arrFlatten`、`arrFlatMap`、`arrTake`、`arrSkip`、`arrConcat`、`arrCount`、`arrReduce`、`arrMin`、`arrMax`、`arrMean`、`arrSortBy`、`arrGroupBy`、`arrPartition`、`arrWindow`、`arrUnion`、`arrIntersect`、`arrDifference`、`arrFill`、`arrRange`、`arrEqual`、`arrIsEmpty`、`arrIndexOfValue`、`arrRotate`、`arrShuffle`、`arrInterleave`、`arrIntersperse`、`arrUniqueBy`、`arrZipWith`、`arrScan`、`arrRemoveAt`、`arrInsertAt`、`arrSwap`、`arrFrequencies`、`arrMode`、`arrVariance`、`arrStdDev`、`arrCartesian`、`arrSymmetricDifference`、`arrSorted`、`arrCompact`、`arrPad`；同文件还提供 `mapMapValues`、`mapMapKeys`、`mapFilter`、`mapFromArray`、`mapKeysWhere`、`mapForEach`、`mapUpdate` 与 `setMap`、`setFilter`、`setCount`。 |
+| `string.lcui` | 查询：`length`、`charAt`、`slice`、`substr`、`startsWith`、`endsWith`、`startsWithAt`、`contains`、`indexOf`、`lastIndexOf`、`count`、`isEmpty`、`isBlank`、`isSpace`、`isUpper`、`isLower`、`isDigit`、`isAlpha`、`isAlphaNum`、`isAlnum`、`isLowerChar`、`wordCount`；变换：`upper`、`lower`、`capitalize`、`swapCase`、`titleCase`、`trim`、`trimStart`、`trimEnd`、`reverse`、`reverseWords`、`snakeCase`、`kebabCase`、`normalizeSpaces`、`expandTabs`、`rotateStr`、`center`、`padLeft`、`padRight`、`truncate`、`truncateMiddle`、`mask`、`stripPrefix`、`stripSuffix`、`removeAt`、`insert`、`replace`、`repeat`、`repeatStr`；拆分与比较：`split`、`join`、`words`、`lines`、`initials`、`toCharArray`、`fromChars`、`commonPrefix`、`commonSuffix`、`equalsIgnoreCase`、`compare`、`levenshtein`、`hamming`、`isPalindrome`、`isTitle`。 |
+| `math.lcui` | 通用数学：`abs`、`min`、`max`、`clamp`、`lerp`、`sign`、`pi`、`tau`、`euler`、`sqrt`、`hypot`、`dist`、`trunc`、`floor`、`ceil`、`round`、`roundTo`、`roundHalfUp`、`mod`、`divmod`、`wrap`、`gcd`、`lcm`、`factorial`、`fib`、`isPrime`、`isEven`、`isOdd`、`isInteger`、`isPowerOfTwo`、`nextPow2`、`log10`、`log2`、`logn`、`exp`、`degToRad`、`radToDeg`、`mapRange`、`clamp01`、`approxEq`、`sum`、`product`、`mean`、`geometricMean`、`minOf`、`maxOf`、`median`、`lerpAngle`、`clampMagnitude`、`smoothstep`、`normalizeAngle`；超越函数仍在原生 `math::` 命名空间。 |
+| `num.lcui` | 整数工具（不依赖 `iter` / `string`）：取舍与基础 `numClamp`、`numSign`、`numAbs`、`numMin`、`numMax`、`numIntDiv`、`numPow`、`numLerp`、`numIsBetween`；数论 `numGcd`、`numGcd3`、`numLcm`、`numIsCoprime`、`numIsPrime`、`numPrimesUpTo`、`numFactorize`、`numDivisors`、`numCountDivisors`、`numSumOfDivisors`、`numSumOfProperDivisors`、`numTotient`、`numNextPrime`、`numPrevPrime`、`numIsPerfect`、`numIsAbundant`、`numIsDeficient`、`numIsEmirp`、`numIsMersenne`、`numIsHappy`；数字性质 `numIsEven`、`numIsOdd`、`numIsPowerOfTwo`、`numGreatestPowerOfTwoLe`、`numIsSquare`、`numIsTriangular`、`numTriangular`、`numIsArmstrong`、`numIsHarshad`、`numIsPalindromeNum`、`numDigitCount`、`numDigits`、`numSumDigits`、`numReverse`、`numDigitalRoot`；序列与进制 `numFactorial`、`numFib`、`numSumRange`、`numProductRange`、`numToBin`、`numToHex`、`numToRoman`、`numFromDigits`、`numManhattan`。 |
+| `map.lcui` | `Map` 与「Map 即集合」约定上的辅助函数：`mapNew`、`mapSet`、`mapGet`、`mapGetOr`、`mapHas`、`mapSize`、`mapIsEmpty`、`mapRemove`、`mapKeys`、`mapValues`、`mapEntries`、`mapMerge`、`mapFromEntries`、`mapInvert`、`mapToArray`、`mapHasAny`、`mapHasAll`、`mapPick`、`mapOmit`、`mapEquals`、`mapIsSubmap`；集合核心：`setNew`、`setAdd`、`setHas`、`setRemove`、`setSize`、`setToArray`、`setFromArray`、`setUnion`、`setIntersect`、`setDifference`。 |
+| `set.lcui` | 集合关系与变换：`setIsSubset`、`setIsSuperset`、`setContainsAll`、`setIsDisjoint`、`setEquals`、`setSymmetricDifference`、`setToggle`、`setClear`、`setIsEmpty`、`setCopy`、`setMin`、`setMax`、`setPop`。 |
+| `json.lcui` | 只读 JSON 解析与转义：`jsonParse(text)` 把对象转为 `Map`、数组转为数组、数字转为 `int` / `float`、布尔转为 `bool`；JSON `null` 转为空字符串（语言无法把空 `optional` 放进原生容器）。`jsonEscape(s)` 转义字符串内容，`jsonQuote(s)` 返回带引号的 JSON 字符串。 |
+| `random.lcui` | 可复现的 16 位 LCG（周期 65536），状态由 `Rng(seed)` 显式携带：`nextU16()`、`nextUnit()`、`randInt`、`randFloat`、`randBool`、`randSign`、`randChoice`、`randShuffle`、`randSample`、`randWeighted`、`randDice`、`randInts`、`randGaussian`、`randId`。不触碰原生随机数，因此相同种子在不同构建上结果一致。 |
+| `time.lcui` | 以整数秒为输入的纯函数：`secondsToHms`、`formatClock`、`formatClockShort`、`formatDuration`、`formatDurationShort`、`formatCountdown`、`parseClock`、`parseDuration`、`dateParts`、`formatDate`、`formatDateTime`、`weekday`、`startOfDay`、`addDays`，以及日历辅助 `isLeapYear`、`daysInYear`、`daysInMonth`。 |
+| `vec.lcui` | 二维向量，元素就是普通 `[x, y]` 数组：`vAdd`、`vSub`、`vScale`、`vNeg`、`vPerp`、`vDot`、`vDotSelf`、`vLen`、`vDist`、`vNorm`、`vCross`、`vLerp`、`vMidpoint`、`vDistanceSq`、`vManhattan`、`vComponentSum`、`vIsZero`、`vEq`、`vAbs`、`vProject`、`vReflect`、`vClampLen`、`vResize`、`vFromAngle`、`vScaleAdd`。 |
+| `result.lcui` | 基于原生枚举的可恢复错误类型：`enum Result { Ok(int) Err(string) }`，配合 `resultIsOk`、`resultIsErr`、`resultUnwrap`、`resultUnwrapOr`、`resultExpect`、`resultErrOr`、`resultMap`、`resultMapErr`、`resultAndThen`。`Ok` 的载荷是 `int`，`Err` 的载荷是 `string`；用 `Ok(v)` / `Err(e)` 构造，用 `match` 或 `if let` 解构。 |
+| `proc.lcui` | 协作式任务包装：`spawn`、`yield`、`sleep`、`send`、`recv`、`cancel`、`join`，分别转发到原生类 `Proc` 的静态方法（见下文「Proc（协作式任务）」）。`spawn` 包装仅接收函数本身；需要传参时用闭包，或直接调用 `Proc::spawn(fn, ...)`。 |
 
 示例——惰性流水线：
 
@@ -871,6 +879,43 @@ class Big extends Fn1 { func call(x) { return x > 4; } }
 
 let out = range(1, 10).map(new Square()).filter(new Big()).collect().join(",");
 // "25,36,49,64,81"
+```
+
+也可以直接用 lambda，无需先定义 `Fn1` 子类：
+
+```lcui
+let squares = range(1, 6).map(func (x) { return x * x; }).collect();
+```
+
+示例——`Result`：
+
+```lcui
+import "std/result.lcui";
+
+func parsePositive(text) -> Result {
+    let value = text.toInt();
+    if (value <= 0) [ return Err("not positive"); ]
+    return Ok(value);
+}
+
+match (parsePositive("7")) [
+    Ok(v) [ println("ok: " + v); ]
+    Err(e) [ println("err: " + e); ]
+]
+```
+
+示例——`Proc`：
+
+```lcui
+import "std/proc.lcui";
+
+let worker = spawn(func () {
+    let msg = recv();
+    println("worker got " + msg);
+});
+
+send(worker, "hello");
+join(worker);
 ```
 
 > **可选值语义**：`let v = it.next();` 把原始值或 `None` 存进变量（动态目标不自动解包），`if (v)`、`v.has_value`、`v.value` 与 `??`/`?.` 因此行为一致；类型标注为 `T` 的目标才会在赋值时立即解包。
@@ -1127,6 +1172,7 @@ for (i, card in deck) [
 | `GUIManager` | `value(id)`、`request(id, args)`、`callback(id, args)`、`open(id, formId, type[, ctx])`、`switchTo(id, type)` | 与 GUI 数据交互 |
 | `storage` | `get(key)`、`set(key, value)`、`has(key)`、`remove(key)`、`keys()`、`clear()` | 按脚本隔离的持久化存储 |
 | `playerdata` | `get(key)`、`set(key, value)`、`has(key)`、`remove(key)`、`keys()`、`clear()` | 按玩家 + 脚本隔离的持久化存储 |
+| `Proc` | `spawn(fn[, ...])`、`yield()`、`sleep(ms)`、`send(taskId, message)`、`recv()`、`cancel(taskId)`、`join(taskId)` | 协作式任务调度（原生静态类，见「原生类」） |
 
 调用格式为 `命名空间::函数(参数)`，例如：
 
@@ -1162,13 +1208,14 @@ let raw = $custom content};
 
 ## 原生类
 
-脚本中可直接 `new` 以下原生类（概览）：
+脚本中可直接使用的原生类（概览；除 `Proc` 外均可 `new`）：
 
 | 类 | 用途 | 详细文档 |
 | --- | --- | --- |
 | `GlobalValue` | 全局值容器，字段 `value` | [api.md](./api.md) |
 | `CtxValue` | 读取 `GUIManager::open` 传入的 `ctx` 数组，字段 `value` | 见下文 |
 | `Map` | 保持插入序的键值容器 | 见上文「Map」 |
+| `Proc` | 协作式任务调度：`spawn` / `yield` / `sleep` / `send` / `recv` / `cancel` / `join` | 见下文 |
 | `ObservableString` / `ObservableNumber` / `ObservableBoolean` / `ObservableUIRawMessage` | 可观察数据，用于控件双向绑定 | [native-ui.md](./native-ui.md) |
 | `UIRawMessage` | 构造富文本 / 翻译文本 | [native-ui.md](./native-ui.md) |
 | `CustomForm` / `MessageBox` / `PaginatedForm` | 原生表单 | [native-ui.md](./native-ui.md) |
@@ -1176,6 +1223,33 @@ let raw = $custom content};
 | `MenuData` / `MenuItemData` / `MenuControlData` / `MenuForm` / `MenuMessageBox` | 菜单数据与表单 | [api.md](./api.md) |
 | `ShopData` / `ShopItemData` / `ShopForm` | 商店数据与表单 | [api.md](./api.md) |
 | `ScoreRequirement` | Score 需求，字段 `objective`、`value` | [api.md](./api.md) |
+
+### Proc（协作式任务）
+
+`Proc` 是原生静态类，不需要 `new`。每次 `Proc::spawn` 都会创建一个**独立任务**：拥有自己的 VM、全局表与执行预算；任务之间只能通过 mailbox（`send` / `recv`）通信。调度器按时间片自动切换任务，`yield` 与 `sleep` 用于主动让出。`std/proc.lcui` 在顶层函数中转发了这些方法。
+
+| 静态方法 | 说明 |
+| --- | --- |
+| `Proc::spawn(fn[, ...args])` | 创建任务并返回任务 ID（`int`）；`args` 个数必须与 `fn` 的参数个数一致 |
+| `Proc::yield()` | 让出当前时间片；只能在任务内调用 |
+| `Proc::sleep(ms)` | 休眠指定毫秒；只能在任务内调用 |
+| `Proc::send(taskId, message)` | 向目标任务投递消息；目标任务不存在时静默忽略 |
+| `Proc::recv()` | 从当前任务的 mailbox 取一条消息；为空时阻塞等待，只能在任务内调用 |
+| `Proc::cancel(taskId)` | 请求取消任务；未知或已结束的任务不会报错 |
+| `Proc::join(taskId)` | 等待目标任务结束。任务内调用只等待并返回空值；宿主侧调用会推进调度器并返回任务结果，任务不存在时返回错误字符串 |
+
+```lcui
+let worker = Proc::spawn(func (name) {
+    let msg = Proc::recv();
+    println(name + " <- " + msg);
+}, "worker");
+
+Proc::send(worker, "ping");
+Proc::join(worker);
+```
+
+> [!WARNING]
+> `yield` / `sleep` / `recv` 在普通脚本（非 `spawn` 任务）中调用会返回错误。`join` 在任务内不会把目标任务的结果带回，需要结果时请通过 `send` / `recv` 传递。
 
 ### CtxValue
 

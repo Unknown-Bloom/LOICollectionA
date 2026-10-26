@@ -91,14 +91,18 @@ Portable tools are lower-level hooks and behaviour changes, configured under `Se
 
 ## Client modules
 
-Only one module is built for the client target (`--target_type=client`): the now-playing notification.
+Two modules are built for the client target (`--target_type=client`):
 
 | Module | Purpose | Config key | Default state |
 | --- | --- | --- | --- |
 | Music | Detects the system media session (matching NetEase Cloud Music by default) and shows a "now playing" card in game, optionally with an audio visualiser | `ClientConfig.Music.ModuleEnabled` | Enabled |
+| LoadingScreen | Detects the OreUI loading screen and replaces it with a custom title, tips, cube animation and progress bar | `ClientConfig.LoadingScreen.ModuleEnabled` | Enabled |
 
 > [!WARNING]
-> Music is a **client-only** module. Its source lives in `src/LOICollectionA/modules/client/Plugins/music/` and it is not compiled at all for the server target (the `is_server` branch in `xmake.lua` excludes `modules/client/**.cpp`). It depends on `imgui` and the Windows media session APIs, so it cannot be enabled on a server. Its appearance parameters (card size, font sizes, animation durations, and so on) are documented in [Data Files](./data.md#configuration-file).
+> Music and LoadingScreen are **client-only** modules. Their sources live in `src/LOICollectionA/modules/client/Plugins/` and they are not compiled at all for the server target (the `is_server` branch in `xmake.lua` excludes `modules/client/**.cpp`). Music depends on `imgui` and the Windows media session APIs; LoadingScreen depends on client UI hooks, so neither can be enabled on a server. Their appearance parameters (card size, font sizes, animation durations, title, tips, cube size, bar width, and so on) are documented in [Data Files](./data.md#configuration-file).
+
+> [!NOTE]
+> LoadingScreen matches loading-screen route names through `RouteKeywords` (default `loading` and `preloading`). When the scene hook is unavailable the module degrades to playing the animation on level transition events only and logs a warning.
 
 ## Related documentation
 

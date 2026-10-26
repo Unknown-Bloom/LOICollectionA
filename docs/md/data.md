@@ -13,7 +13,7 @@
 
 ```json
 {
-    "version": 90052239, // 配置文件版本号，由插件版本号自动生成，用于配置同步，不建议修改
+    "version": 90052239, // 配置文件版本号示例值，实际由插件版本号自动生成，用于配置同步，不建议修改
     "ConsoleLanguage": "system", // 控制台语言，其中 system 为跟随系统语言，zh_CN 为中文，en_US 为英文
     "ServerConfig": { // 服务端配置
         "Plugins": { // 内置插件配置
@@ -158,7 +158,7 @@
             },
             "BehaviorEvent": { // 行为事件配置
                 "ModuleEnabled": false, // 是否启用行为事件
-                "OrganizeDatabaseInterval": 144, // 行为事件数据库清理阈值（单位为小时）
+                "OrganizeRetentionHours": 144, // 行为事件数据保留时长（单位为小时）
                 "CleanThresholdEvent": 10000, // 行为事件清理阈值
                 "CleanDatabaseInterval": 1, // 数据库自动清理间隔（单位为小时）
                 "RefreshIntervalInMinutes": 5, // 行为事件记录间隔（单位为分钟）
@@ -282,20 +282,33 @@
             "VisualizerBarGap": 2.0, // 可视化条间距（像素）
             "EnterDuration": 0.5, // 滑入动画时长（单位为秒）
             "ExitDuration": 0.4 // 滑出动画时长（单位为秒）
+        },
+        "LoadingScreen": { // 客户端加载界面模块配置
+            "ModuleEnabled": true, // 是否启用该模块
+            "RouteKeywords": [ // 加载界面路由关键词，命中任意一项即视为加载中
+                "loading",
+                "preloading"
+            ],
+            "Title": "LOADING", // 加载界面标题
+            "Tips": [ // 循环展示的提示文本
+                "Loading terrain..."
+            ],
+            "CubeSize": 19.0, // 立方体边长（像素）
+            "BarWidth": 440.0 // 进度条宽度（像素）
         }
     },
     "ScriptPermission": { // LCUI 沙箱权限
         "PermissionFilePath": "gui/permission.json" // 权限文件位置
     },
     "LanguageServer": { // LCUI 语言服务
-        "enabled": true, // 是否启用
+        "enabled": false, // 是否启用
         "port": 9257 // 本地端口
     }
 }
 ```
 
 > [!NOTE]
-> 以上内容取自 LOICollectionA 1.17.1 的配置文件结构，对于后续版本的配置文件结构可能会有所不同。
+> 以上内容取自 LOICollectionA 1.17.3 的配置文件结构，对于后续版本的配置文件结构可能会有所不同。
 
 ## 模块数据文件
 
@@ -350,6 +363,8 @@
 | `defaultTrust` | string | 未显式声明 `trust` 的脚本使用的信任级，默认 `"user"`；取值须为 `trustLevels` 中已定义的键 |
 | `trustLevels` | object | 信任级 → 能力名数组的映射，例如 `{"user": ["GuiRead","GuiWrite"], "builtin": ["GuiRead","GuiWrite","ServerCommand"]}` |
 | `scripts.<id>.trust` | string | 该脚本的信任级，省略时沿用 `defaultTrust`；决定其拥有的能力集合 |
+| `budget` | object | 全局执行预算覆盖，可写 `maxInstructions`、`maxWallTimeMs`、`maxFrames` 等键；未写的字段沿用内置默认值 |
+| `scripts.<id>.budget` | object | 该脚本的执行预算覆盖，未写的字段沿用根节点 `budget`；键名与取值范围见 [执行预算与调用深度](./lcui.md#执行预算与调用深度) |
 
 每种敏感调用的前置能力如下，缺失则直接拒绝（即使 id 白名单命中）：
 
@@ -441,7 +456,7 @@ if (playerdata::has("points")) [
 能力与限制：
 
 - 读取 `get` / `has` / `keys` 需要 `StorageRead` 或 `PlayerDataRead`，写入 `set` / `remove` / `clear` 需要 `StorageWrite` 或 `PlayerDataWrite`
-- 键长上限 512 字符；单个值序列化后上限 1 MiB；单个文件上限 16 MiB（超限拒绝加载）
+- 键长上限 512 字节；单个值序列化后上限 1 MiB；单个文件上限 16 MiB（超限拒绝加载）
 - 对象 / 数组嵌套深度上限 64；非有限浮点数、原生对象、函数与枚举值不可存储
 - 每个值文件在首次访问时加载并缓存，之后读写都作用于内存；`set` / `remove` / `clear` 立即写回磁盘
 - 大批量写入会逐次触发整文件保存；需要批量初始化时，优先在脚本外部预置 JSON 文件

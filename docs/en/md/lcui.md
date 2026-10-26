@@ -1,7 +1,7 @@
 # LCUI Script Syntax
 
 > [!NOTE]
-> The following content is taken from the `.lcui` script language implementation of LOICollectionA 1.17.1 and may differ in later versions.
+> The following content is taken from the `.lcui` script language implementation of LOICollectionA 1.17.3 and may differ in later versions.
 
 ## Overview
 
@@ -118,6 +118,8 @@ The shared control combinations of the built-in scripts are defined in `generic.
 
 ## Multi-file Imports
 
+`import` paths are resolved relative to the file that contains the `import` statement (for an entry script, that is its own directory); this also keeps `std/` modules stable when they reference each other.
+
 The top of a script may use `import` to pull in the top-level definitions (`class` / `func` / `using` / `component` / `enum`) of other `.lcui` files for cross-file reuse. The shared GUI vocabulary of the built-in scripts (pagination buttons, save/cancel labels, etc.) is extracted into `generic.lcui`:
 
 ```lcui
@@ -141,7 +143,7 @@ Rules:
 
 | Rule | Description |
 | --- | --- |
-| Path resolution | `import` paths are resolved relative to the directory of the entry script |
+| Path resolution | `import` paths are resolved relative to the directory of the **importing file**; `std/` modules follow the same rule when they reference each other |
 | Merge order | The import graph is expanded dependencies-first (topological order); each file's definitions are merged exactly once. Diamond imports (A and B both import C) are legal, and C appears once |
 | Selective imports | `import "path" { a, b };` merges only the listed definitions; multiple import sites union their symbols; omitting the list still imports everything |
 | Definition conflicts | Same-named `class` / `func` / `using` / `component` / `enum` in different files raise an error listing the file and line of both definitions |
@@ -172,7 +174,7 @@ Line comments `//` and block comments `/* ... */` are supported:
 | Null | `None` | Only usable in an `optional` context |
 | Array | `[1, "a", true]` | Element types may be mixed |
 
-Strings have no escape characters; the content inside the quotes is preserved as-is. If a string needs to contain a certain kind of quote, wrap it with the other kind of quote, e.g. `'say "hi"'`; strings may also span multiple lines.
+Strings support the escape sequences `\n` (newline), `\t` (tab), `\r` (carriage return), `\\` (backslash), `\"` (double quote), and `\'` (single quote). Unknown escapes such as `\x` keep their literal form and produce a compile-time warning. If a string needs to contain a certain kind of quote, wrap it with the other kind of quote, e.g. `'say "hi"'`; strings may also span multiple lines.
 
 ### Statement Separation
 
@@ -448,6 +450,74 @@ for (k in m.keys) [
 
 When `+` is used with strings and numeric, boolean, and other types, everything is converted to string concatenation. `%` can only be used with integers; division by zero, integer overflow, and modulo on non-integer types all raise errors.
 
+### Compound Assignment and Increment / Decrement
+
+`=` can be combined with the arithmetic operators; the left-hand side is evaluated only once (important for `arr[i] += 1` and `obj.field += 1`):
+
+```lcui
+let a = 10;
+a += 5;    // 15
+a -= 3;    // 12
+a *= 2;    // 24
+a /= 4;    // 6
+a %= 4;    // 2
+
+let arr = [1, 2, 3];
+arr[1] += 10;   // arr = [1, 12, 3]
+```
+
+`++` / `--` increment / decrement and behave the same in prefix and postfix position, equivalent to `+= 1` / `-= 1`:
+
+```lcui
+let i = 0;
+i++;      // i = 1
+++i;      // i = 2
+i--;      // i = 1
+```
+
+> [!WARNING]
+> When `++` / `--` is used as an expression, it returns the **new, updated value** (prefix semantics), unlike C/C++ postfix `i++`, which returns the old value: `let i = 5; let j = i++;` gives `j == 6`, not `5`. Save the old value before incrementing if you need it.
+
+> In older versions `++i` was parsed as two unary plus operators (leaving the value unchanged); introducing prefix increment changed that. It is a known breaking change, though the form is almost never written in real scripts.
+
+### Null-Safe Operators
+
+`??` (null coalescing) yields the right-hand side when the left side is `None` or an empty `optional`, otherwise the left side. `0`, `""`, and `false` do **not** trigger coalescing (this is unrelated to truthiness):
+
+```lcui
+let name = value ?? "default";
+let count = 0 ?? 10;    // 0: 0 is not None, so no coalescing
+```
+
+`?.` (safe access) short-circuits the whole access chain and yields `None` when the left side is `None` or an empty `optional`; both field and index forms are supported:
+
+```lcui
+let len = maybeArr?.length ?? 0;
+let item = obj?.data?.[0];
+```
+
+`??` binds tighter than assignment but looser than comparison, and cannot be mixed with `&&` / `||` without parentheses (that is an error, to avoid ambiguity). The result of `x?.y` may be `None`, so assigning it to a variable annotated `T` is an error; combine it with `??` or use `optional<T>`.
+
+### Error Propagation with `?`
+
+Appending `?` to an `optional` value means "take the value if present, otherwise return `None` from the current function early". It flattens a chain of null checks into one line; the scope is the **nearest function boundary** (inside a closure, it returns to the closure's caller):
+
+```lcui
+func head(a) -> optional<int> {
+    if (a.length() == 0) [ return None; ]
+    return a[0];
+}
+
+func firstPlus(a) -> optional<int> {
+    return head(a)? + 1;      // if head(a) is empty, firstPlus returns None directly
+}
+
+firstPlus([]) ?? -1;          // -1
+firstPlus([5]) ?? -1;         // 6
+```
+
+Both sides are checked at compile time: the expression decorated with `?` must be `optional<T>`, and the enclosing function's return type must also be `optional<...>`. If either condition fails, compilation raises an error, so an empty value can never silently continue as an ordinary value. `?` only handles `None`, not `false` / `0` / `""`.
+
 ### Comparison Operators
 
 `==`, `!=`, `>`, `<`, `>=`, `<=` can be used for numeric, string, and boolean comparisons; numeric `int`/`float` values can be compared directly. String comparison rules roughly follow C++. `==`/`!=` on mismatched types raises an error (e.g. `1 == "1"`).
@@ -463,6 +533,71 @@ a == c;   // true
 ```
 
 `None == None` is `true`.
+
+### Operator Overloading
+
+Script classes can overload operators by implementing the built-in operator `trait`s, letting custom objects support `+`, `-`, `==`, unary minus, and so on (Rust style: each operator maps to a trait with an `op_xxx` method). The built-in operator traits are:
+
+| Operator | Trait | Method | Parameters |
+| --- | --- | --- | --- |
+| `+` | `Add` | `op_add(rhs)` | 1 |
+| `-` | `Sub` | `op_sub(rhs)` | 1 |
+| `*` | `Mul` | `op_mul(rhs)` | 1 |
+| `/` | `Div` | `op_div(rhs)` | 1 |
+| `%` | `Mod` | `op_mod(rhs)` | 1 |
+| `^` | `Pow` | `op_pow(rhs)` | 1 |
+| `-` (unary) | `Neg` | `op_neg()` | 0 |
+| `==` | `Eq` | `op_eq(rhs)` | 1 |
+| `!=` | `Ne` | `op_ne(rhs)` | 1 |
+| `<` | `Lt` | `op_lt(rhs)` | 1 |
+| `<=` | `Le` | `op_le(rhs)` | 1 |
+| `>` | `Gt` | `op_gt(rhs)` | 1 |
+| `>=` | `Ge` | `op_ge(rhs)` | 1 |
+
+Implement the trait for the class with `impl` and provide the `op_xxx` method; operator expressions then call it:
+
+```lcui
+class Vec2 {
+    public:
+    x = 0;
+    y = 0;
+}
+
+impl Add for Vec2 {
+    func op_add(rhs: Vec2) -> Vec2 {
+        let r = new Vec2();
+        r.x = this.x + rhs.x;
+        r.y = this.y + rhs.y;
+        return r;
+    }
+}
+
+let a = new Vec2();
+a.x = 3;
+let b = new Vec2();
+b.x = 4;
+let c = a + b;      // calls Vec2.op_add, c.x == 7
+```
+
+Comparison operators return `bool` and can be used for equality tests:
+
+```lcui
+impl Eq for Money {
+    func op_eq(rhs: Money) -> bool {
+        return this.cents == rhs.cents;
+    }
+}
+
+a == b;   // calls Money.op_eq
+```
+
+#### Operator Overloading Rules
+
+- A binary operator uses the **left-hand operand** as the receiver (`this`) and calls the `op_xxx` implemented by the left class; overloading only triggers when the left side is a script class implementing the corresponding trait.
+- `Neg` (unary minus) takes no parameters and uses the operand as the receiver.
+- The **return type** of the overload is the result type of the operator expression and participates in type inference and later calls.
+- With inheritance, the corresponding `op_xxx` is looked up along the base-class chain.
+- Classes that do not implement the relevant trait keep the built-in behavior; native operations on `int`, `float`, `string`, and other primitives (including native `+` concatenation for `String`) are unaffected.
 
 ### Logical Operators
 
@@ -528,9 +663,127 @@ for (let i = 0; i < 10; i++) [
 
 `for (;;)` allows all three clauses to be omitted, and is used together with `break`.
 
+### for-in Loops
+
+`for-in` iterates over an iterable and can yield both the index and the element:
+
+```lcui
+let items = ["a", "b", "c"];
+for (item in items) [
+    println(item);
+]
+
+for (i, item in items) [
+    println(i + ": " + item);
+]
+
+for (c in "abc") [
+    println(c);
+]
+
+let m = new Map();
+m.set("a", 1);
+for (k in m) [
+    println(k + " = " + m.get(k));
+]
+```
+
+Whether a value is iterable is decided by the **iteration protocol**, not by per-type special cases in the compiler:
+
+| Iterable | Element | Index |
+| --- | --- | --- |
+| Array | Element value | Position (`int`) |
+| String | One character, of type `string` | Position (`int`) |
+| A class providing `length()` and `element(int)` | The return value of `element(i)` | Position (`int`) |
+| A class providing `next()` returning `optional` (lazy iterator) | The inner type of `next()` | Round counter (`int`) |
+| A `a..b` range | The `int` values in the range | Position (`int`) |
+
+`Map` provides this protocol natively; `for (k in m)` iterates its keys (`m.keys` remains available). Any class — host-registered or script-defined — becomes iterable by providing `length()` and `element(int)`, with no compiler changes:
+
+```lcui
+class Squares {
+    public:
+    limit = 0;
+    func length() -> int { return this.limit; }
+    func element(i: int) -> int { return i * i; }
+}
+
+let s = new Squares();
+s.limit = 4;
+for (v in s) [
+    println(v);            // 0 1 4 9
+]
+```
+
+Protocol methods are looked up along the inheritance chain, so subclasses created with `extends` automatically inherit iterability. The element variable's type comes from the return type of `element(int)`, so a type mismatch is a compile-time error.
+
+Besides the "known-length" indexing protocol, a class can implement a **lazy iterator**: provide a zero-argument `next()` method returning `optional<T>`. It is called once per round, and returning `None` ends the loop:
+
+```lcui
+class Nats {
+    public:
+    i = 0;
+    func next() -> optional<int> {
+        this.i = this.i + 1;
+        return this.i;
+    }
+}
+
+let total = 0;
+for (v in new Nats()) [          // infinite sequence
+    if (v > 5) [ break; ]        // break is the usual companion of lazy iterators
+    total += v;
+]
+```
+
+- The lazy protocol **pulls on demand**: it does not know the element count in advance and stops when `next()` returns `None`, so it can express infinite sequences, paged data, and other streams of unknown length.
+- The element variable's type is the inner type `T` of `optional<T>` returned by `next()`; in `for (i, v in ...)`, `i` is the round counter (starting at 0), not internal state of the target object.
+- When a class provides both protocols (`length()/element(int)` and `next()`), the indexing protocol wins.
+- `next()` is also looked up along the inheritance chain. `continue` proceeds normally to the next pull.
+
+- `for (item in arr)` iterates elements; `for (i, item in arr)` gives the index in `i` and the element in `item`.
+- Strings are iterated by Unicode character, not by byte: `"你好".length()` returns `2`, and `for (c in "你好")` also runs twice. `indexOf` returns a character index, and the standard library `substr(s, start, count)` slices by character, consistent with `length()`.
+- `continue` in the loop body does not skip the step; the length is re-read on every round, so elements appended during iteration are also visited.
+- The element variable is an independent copy on each round: a lambda created inside the iteration captures that round's value.
+- Ranges are a syntax-level construct and do not allocate an intermediate sequence when iterated.
+- `in` is recognized as a keyword only after `for (`; elsewhere it remains an ordinary identifier.
+
+### Ranges
+
+`a..b` creates an integer range (only `int`), used with for-in. The range is half-open `[a, b)`, and both endpoints are evaluated once before the loop starts:
+
+```lcui
+for (i in 0..5) [
+    println(i);      // 0, 1, 2, 3, 4
+]
+
+for (i in 5..0) [    // descending: 5, 4, 3, 2, 1
+    println(i);
+]
+```
+
+`5..5` is an empty range (the body never runs).
+
 ### break / continue
 
 `break` exits the current loop, and `continue` skips the remainder of the current iteration; both can only appear inside a loop, and with nested loops they only affect the innermost one.
+
+### panic (Abort)
+
+`panic` immediately aborts execution of the entire script and carries an error message. It is a statement, not a function call, and the message is optional:
+
+```lcui
+let config = GUIManager::value("shop.items");
+if (config.length() == 0) [
+    panic("shop config is empty");     // abort: subsequent statements do not run
+]
+
+panic;                                 // also valid without a message
+```
+
+- `panic "msg";`, `panic("msg");`, and `panic;` are all valid; the message is an arbitrary expression evaluated at runtime.
+- The abort behaves like a runtime error: the message carries a script-level location and the VM unwinds its stack frames; no later statement in the same run (including the rest of an outer function) executes.
+- It suits "missing configuration / unsatisfied precondition, continuing is meaningless" cases; use `if` / `match` for recoverable branches.
 
 ### match (Pattern Matching)
 
@@ -584,6 +837,84 @@ while (let Some(x) = next()) [
 ```
 
 `if let` binds the payload and runs its body when the tag matches, otherwise it skips the body; `while let` re-evaluates the right-hand side on every iteration and stops at the first mismatch. Binders are visible only inside the corresponding branch and never leak to the outer scope. Variant names and payload arity are checked at compile time.
+
+## Standard Library (std)
+
+The 13 `.lcui` modules under `assets/common/std/` form the standard library: everything that can be written in script is, leaving only VM value primitives, transcendental functions, and ll/ui classes in native code. An entry script imports relative to its own directory:
+
+```lcui
+import "std/iter.lcui";        // the whole module
+import "std/array.lcui" { arrSum, arrZip };   // only the listed definitions
+```
+
+> Host scripts loaded from `assets/common/gui/` and similar directories use paths such as `import "../std/iter.lcui";`.
+
+| Module | Contents |
+| --- | --- |
+| `iter.lcui` | Lazy iterators. `Fn1` / `Fn2` are single-method interfaces (`call`); lambdas and subclasses both work as mappers / predicates. Constructors: `range(a, b)` (half-open), `repeat(v)`. `Iter` combinators: `map`, `filter`, `take`, `takeWhile`, `skip`, `zip`, `chain`, `stepBy`, `enumerate`, `chunk`, `dedup`, `cycle`, `inspect`; terminals: `collect`, `fold`, `sum`, `count`, `forEach`, `any`, `all`, `find`, `position`, `last`, `max`, `min`. `next()` returns `optional`, so iterators also work directly with `for-in`. |
+| `array.lcui` | Eager array functions: `arrMap`, `arrFilter`, `arrReverse`, `arrSum`, `arrProduct`, `arrAny`, `arrAll`, `arrFind`, `arrFindIndex`, `arrFirst`, `arrLast`, `arrDedup`, `arrZip`, `arrChunk`, `arrFlatten`, `arrFlatMap`, `arrTake`, `arrSkip`, `arrConcat`, `arrCount`, `arrReduce`, `arrMin`, `arrMax`, `arrMean`, `arrSortBy`, `arrGroupBy`, `arrPartition`, `arrWindow`, `arrUnion`, `arrIntersect`, `arrDifference`, `arrFill`, `arrRange`, `arrEqual`, `arrIsEmpty`, `arrIndexOfValue`, `arrRotate`, `arrShuffle`, `arrInterleave`, `arrIntersperse`, `arrUniqueBy`, `arrZipWith`, `arrScan`, `arrRemoveAt`, `arrInsertAt`, `arrSwap`, `arrFrequencies`, `arrMode`, `arrVariance`, `arrStdDev`, `arrCartesian`, `arrSymmetricDifference`, `arrSorted`, `arrCompact`, `arrPad`; the same file also provides `mapMapValues`, `mapMapKeys`, `mapFilter`, `mapFromArray`, `mapKeysWhere`, `mapForEach`, `mapUpdate`, and `setMap`, `setFilter`, `setCount`. |
+| `string.lcui` | Queries: `length`, `charAt`, `slice`, `substr`, `startsWith`, `endsWith`, `startsWithAt`, `contains`, `indexOf`, `lastIndexOf`, `count`, `isEmpty`, `isBlank`, `isSpace`, `isUpper`, `isLower`, `isDigit`, `isAlpha`, `isAlphaNum`, `isAlnum`, `isLowerChar`, `wordCount`; transforms: `upper`, `lower`, `capitalize`, `swapCase`, `titleCase`, `trim`, `trimStart`, `trimEnd`, `reverse`, `reverseWords`, `snakeCase`, `kebabCase`, `normalizeSpaces`, `expandTabs`, `rotateStr`, `center`, `padLeft`, `padRight`, `truncate`, `truncateMiddle`, `mask`, `stripPrefix`, `stripSuffix`, `removeAt`, `insert`, `replace`, `repeat`, `repeatStr`; splitting and comparison: `split`, `join`, `words`, `lines`, `initials`, `toCharArray`, `fromChars`, `commonPrefix`, `commonSuffix`, `equalsIgnoreCase`, `compare`, `levenshtein`, `hamming`, `isPalindrome`, `isTitle`. |
+| `math.lcui` | General math: `abs`, `min`, `max`, `clamp`, `lerp`, `sign`, `pi`, `tau`, `euler`, `sqrt`, `hypot`, `dist`, `trunc`, `floor`, `ceil`, `round`, `roundTo`, `roundHalfUp`, `mod`, `divmod`, `wrap`, `gcd`, `lcm`, `factorial`, `fib`, `isPrime`, `isEven`, `isOdd`, `isInteger`, `isPowerOfTwo`, `nextPow2`, `log10`, `log2`, `logn`, `exp`, `degToRad`, `radToDeg`, `mapRange`, `clamp01`, `approxEq`, `sum`, `product`, `mean`, `geometricMean`, `minOf`, `maxOf`, `median`, `lerpAngle`, `clampMagnitude`, `smoothstep`, `normalizeAngle`; transcendental functions remain in the native `math::` namespace. |
+| `num.lcui` | Integer utilities (independent of `iter` / `string`): basics `numClamp`, `numSign`, `numAbs`, `numMin`, `numMax`, `numIntDiv`, `numPow`, `numLerp`, `numIsBetween`; number theory `numGcd`, `numGcd3`, `numLcm`, `numIsCoprime`, `numIsPrime`, `numPrimesUpTo`, `numFactorize`, `numDivisors`, `numCountDivisors`, `numSumOfDivisors`, `numSumOfProperDivisors`, `numTotient`, `numNextPrime`, `numPrevPrime`, `numIsPerfect`, `numIsAbundant`, `numIsDeficient`, `numIsEmirp`, `numIsMersenne`, `numIsHappy`; digit properties `numIsEven`, `numIsOdd`, `numIsPowerOfTwo`, `numGreatestPowerOfTwoLe`, `numIsSquare`, `numIsTriangular`, `numTriangular`, `numIsArmstrong`, `numIsHarshad`, `numIsPalindromeNum`, `numDigitCount`, `numDigits`, `numSumDigits`, `numReverse`, `numDigitalRoot`; sequences and radix conversion `numFactorial`, `numFib`, `numSumRange`, `numProductRange`, `numToBin`, `numToHex`, `numToRoman`, `numFromDigits`, `numManhattan`. |
+| `map.lcui` | Helpers for `Map` and the "map as set" convention: `mapNew`, `mapSet`, `mapGet`, `mapGetOr`, `mapHas`, `mapSize`, `mapIsEmpty`, `mapRemove`, `mapKeys`, `mapValues`, `mapEntries`, `mapMerge`, `mapFromEntries`, `mapInvert`, `mapToArray`, `mapHasAny`, `mapHasAll`, `mapPick`, `mapOmit`, `mapEquals`, `mapIsSubmap`; set core: `setNew`, `setAdd`, `setHas`, `setRemove`, `setSize`, `setToArray`, `setFromArray`, `setUnion`, `setIntersect`, `setDifference`. |
+| `set.lcui` | Set relations and transforms: `setIsSubset`, `setIsSuperset`, `setContainsAll`, `setIsDisjoint`, `setEquals`, `setSymmetricDifference`, `setToggle`, `setClear`, `setIsEmpty`, `setCopy`, `setMin`, `setMax`, `setPop`. |
+| `json.lcui` | Read-only JSON parsing and escaping: `jsonParse(text)` turns objects into `Map`, arrays into arrays, numbers into `int` / `float`, and booleans into `bool`; JSON `null` becomes an empty string (the language cannot put an empty `optional` inside a native container). `jsonEscape(s)` escapes string content and `jsonQuote(s)` returns a quoted JSON string. |
+| `random.lcui` | Reproducible 16-bit LCG (period 65536) whose state is carried explicitly by `Rng(seed)`: `nextU16()`, `nextUnit()`, `randInt`, `randFloat`, `randBool`, `randSign`, `randChoice`, `randShuffle`, `randSample`, `randWeighted`, `randDice`, `randInts`, `randGaussian`, `randId`. It never touches the native RNG, so the same seed produces identical results across builds. |
+| `time.lcui` | Pure functions over integer seconds: `secondsToHms`, `formatClock`, `formatClockShort`, `formatDuration`, `formatDurationShort`, `formatCountdown`, `parseClock`, `parseDuration`, `dateParts`, `formatDate`, `formatDateTime`, `weekday`, `startOfDay`, `addDays`, plus calendar helpers `isLeapYear`, `daysInYear`, `daysInMonth`. |
+| `vec.lcui` | 2D vectors represented as ordinary `[x, y]` arrays: `vAdd`, `vSub`, `vScale`, `vNeg`, `vPerp`, `vDot`, `vDotSelf`, `vLen`, `vDist`, `vNorm`, `vCross`, `vLerp`, `vMidpoint`, `vDistanceSq`, `vManhattan`, `vComponentSum`, `vIsZero`, `vEq`, `vAbs`, `vProject`, `vReflect`, `vClampLen`, `vResize`, `vFromAngle`, `vScaleAdd`. |
+| `result.lcui` | Recoverable errors built on a native enum: `enum Result { Ok(int) Err(string) }` with `resultIsOk`, `resultIsErr`, `resultUnwrap`, `resultUnwrapOr`, `resultExpect`, `resultErrOr`, `resultMap`, `resultMapErr`, `resultAndThen`. The `Ok` payload is an `int` and the `Err` payload is a `string`; construct with `Ok(v)` / `Err(e)` and destructure with `match` or `if let`. |
+| `proc.lcui` | Cooperative task wrappers: `spawn`, `yield`, `sleep`, `send`, `recv`, `cancel`, `join`, forwarding to the static methods of the native `Proc` class (see "Proc (Cooperative Tasks)" below). The `spawn` wrapper takes the function only; use a closure for arguments, or call `Proc::spawn(fn, ...)` directly. |
+
+Example — a lazy pipeline:
+
+```lcui
+import "std/iter.lcui";
+
+class Square extends Fn1 { func call(x) { return x * x; } }
+class Big extends Fn1 { func call(x) { return x > 4; } }
+
+let out = range(1, 10).map(new Square()).filter(new Big()).collect().join(",");
+// "25,36,49,64,81"
+```
+
+Lambdas work directly, without defining an `Fn1` subclass first:
+
+```lcui
+let squares = range(1, 6).map(func (x) { return x * x; }).collect();
+```
+
+Example — `Result`:
+
+```lcui
+import "std/result.lcui";
+
+func parsePositive(text) -> Result {
+    let value = text.toInt();
+    if (value <= 0) [ return Err("not positive"); ]
+    return Ok(value);
+}
+
+match (parsePositive("7")) [
+    Ok(v) [ println("ok: " + v); ]
+    Err(e) [ println("err: " + e); ]
+]
+```
+
+Example — `Proc`:
+
+```lcui
+import "std/proc.lcui";
+
+let worker = spawn(func () {
+    let msg = recv();
+    println("worker got " + msg);
+});
+
+send(worker, "hello");
+join(worker);
+```
+
+> **Optional value semantics**: `let v = it.next();` stores the raw value or `None` in the variable (a dynamic target does not unwrap automatically), so `if (v)`, `v.has_value`, `v.value`, and `??`/`?.` all behave consistently; only a target annotated `T` unwraps immediately on assignment.
 
 ## Functions
 
@@ -775,7 +1106,11 @@ impl Printable for Card {
 
 - The methods and constants of an `impl` are **merged into the target class**; they are called exactly like the class's own methods (`card.describe()`), with no extra dynamic dispatch.
 - Colliding with a method of the same name and arity already defined in the class, or a duplicate associated constant, raises an error.
-- Generic `impl` blocks (such as `impl<T> ...`) are not supported yet.
+- Generic `impl` blocks support the `impl<T>` form. Type parameters are split into two positional groups:
+    - The first `min(impl parameter count, class parameter count)` parameters **map positionally to the class type parameters**; the names need not match — `U` in `impl<U> ... for Box<T>` is rewritten to `T` during merging, and `U` in method signatures is the same variable as `T` in the class vocabulary.
+    - Extra parameters (including `impl<T>` on a non-generic class) are injected into every merged method as **method-level generic variables**, expressing placeholders related to the method but not to the class.
+    - Omitting the parameter list (`impl Box`) is also legal (`<T>` is optional).
+- Blanket impls (`impl<T> Trait for T`, implementing a trait for every type) are **not supported** and raise an error.
 - A typical use is the iteration protocol: giving a class `length()` and `element(int)` (either in the class body or in an `impl`) makes it usable with `for-in`; see "for-in Loops".
 
 #### Example: Making a Custom Class Iterable
@@ -833,6 +1168,7 @@ for (i, card in deck) [
 | `GUIManager` | `value(id)`, `request(id, args)`, `callback(id, args)`, `open(id, formId, type[, ctx])`, `switchTo(id, type)` | Interacts with GUI data |
 | `storage` | `get(key)`, `set(key, value)`, `has(key)`, `remove(key)`, `keys()`, `clear()` | Persistent storage isolated per script |
 | `playerdata` | `get(key)`, `set(key, value)`, `has(key)`, `remove(key)`, `keys()`, `clear()` | Persistent storage isolated per player and script |
+| `Proc` | `spawn(fn[, ...])`, `yield()`, `sleep(ms)`, `send(taskId, message)`, `recv()`, `cancel(taskId)`, `join(taskId)` | Cooperative task scheduling (native static class; see "Native Classes") |
 
 The call format is `Namespace::function(parameters)`, for example:
 
@@ -871,13 +1207,14 @@ The `${variable}` form can block variable/macro replacement, keeping the content
 
 ## Native Classes
 
-The following native classes can be directly `new`ed in a script (overview):
+The following native classes are directly usable in scripts (overview; all except `Proc` are created with `new`):
 
 | Class | Purpose | Detailed docs |
 | --- | --- | --- |
 | `GlobalValue` | Global value container, field `value` | [api.md](./api.md) |
 | `CtxValue` | Reads the `ctx` array passed to `GUIManager::open`, field `value` | See below |
 | `Map` | Insertion-ordered key-value container | See "Map" above |
+| `Proc` | Cooperative task scheduling: `spawn` / `yield` / `sleep` / `send` / `recv` / `cancel` / `join` | See below |
 | `ObservableString` / `ObservableNumber` / `ObservableBoolean` / `ObservableUIRawMessage` | Observable data for two-way binding of controls | [native-ui.md](./native-ui.md) |
 | `UIRawMessage` | Constructs rich text / translated text | [native-ui.md](./native-ui.md) |
 | `CustomForm` / `MessageBox` / `PaginatedForm` | Native forms | [native-ui.md](./native-ui.md) |
@@ -885,6 +1222,33 @@ The following native classes can be directly `new`ed in a script (overview):
 | `MenuData` / `MenuItemData` / `MenuControlData` / `MenuForm` / `MenuMessageBox` | Menu data and forms | [api.md](./api.md) |
 | `ShopData` / `ShopItemData` / `ShopForm` | Shop data and forms | [api.md](./api.md) |
 | `ScoreRequirement` | Score requirement, fields `objective`, `value` | [api.md](./api.md) |
+
+### Proc (Cooperative Tasks)
+
+`Proc` is a native static class and is not instantiated with `new`. Every `Proc::spawn` creates an **isolated task** with its own VM, globals table, and execution budget; tasks can only communicate through mailboxes (`send` / `recv`). The scheduler time-slices tasks automatically, while `yield` and `sleep` voluntarily give up the remainder of a slice. `std/proc.lcui` forwards these methods through top-level functions.
+
+| Static method | Description |
+| --- | --- |
+| `Proc::spawn(fn[, ...args])` | Creates a task and returns its task ID (`int`); the number of `args` must match the parameters of `fn` |
+| `Proc::yield()` | Gives up the rest of the current time slice; only valid inside a task |
+| `Proc::sleep(ms)` | Sleeps for the given number of milliseconds; only valid inside a task |
+| `Proc::send(taskId, message)` | Posts a message to the target task; silently ignored when the task does not exist |
+| `Proc::recv()` | Takes one message from the current task's mailbox; blocks while empty; only valid inside a task |
+| `Proc::cancel(taskId)` | Requests cancellation; an unknown or finished task raises no error |
+| `Proc::join(taskId)` | Waits for the target task to finish. Inside a task it only waits and returns an empty value; from the host it pumps the scheduler and returns the task result, or an error string when the task does not exist |
+
+```lcui
+let worker = Proc::spawn(func (name) {
+    let msg = Proc::recv();
+    println(name + " <- " + msg);
+}, "worker");
+
+Proc::send(worker, "ping");
+Proc::join(worker);
+```
+
+> [!WARNING]
+> Calling `yield` / `sleep` / `recv` from an ordinary script (not a `spawn` task) raises an error. `join` inside a task does not bring back the target task's result; pass results through `send` / `recv` instead.
 
 ### CtxValue
 

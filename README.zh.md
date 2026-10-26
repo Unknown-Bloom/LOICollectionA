@@ -66,9 +66,18 @@ LOICollectionA 是运行在 [LeviLamina](https://github.com/LiteLDev/LeviLamina)
 | RedStone | 红石相关事件 Hook | ✅ |
 | OrderedUI | 让多个 UI 表单按顺序弹出，避免界面冲突 | ✅ |
 
+### 客户端模块
+
+客户端目标额外提供两个纯客户端模块，统一配置在 `ClientConfig` 下：
+
+| 模块 | 作用 | 可配置开关 |
+| --- | --- | --- |
+| Music | 显示系统媒体会话的「正在播放」卡片 | ✅ |
+| LoadingScreen | 用自定义标题、提示、立方体动画与进度条覆盖 OreUI 加载界面 | ✅ |
+
 ## 快速开始
 
-> 前置要求：已安装 [lip](https://github.com/LiteLDev/lip) 的 LeviLamina 服务端（26.50.x）。
+> 前置要求：已安装 [lip](https://github.com/LiteLDev/lip) 的 LeviLamina 服务端（26.51.x）。
 
 1. 在服务端根目录执行以下命令：
 

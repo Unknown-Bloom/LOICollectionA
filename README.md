@@ -66,9 +66,18 @@ All modules below can be enabled or disabled in the configuration file.
 | RedStone | Redstone-related event hooks | ✅ |
 | OrderedUI | Queue multiple UI forms so they open one by one without conflicts | ✅ |
 
+### Client Modules
+
+The client target also ships two client-only modules, configured under `ClientConfig`:
+
+| Module | What it does | Config |
+| --- | --- | --- |
+| Music | Show a now-playing card for the system media session | ✅ |
+| LoadingScreen | Cover OreUI loading screens with a custom title, tips, cube animation, and progress bar | ✅ |
+
 ## Quick Start
 
-> Requirements: a LeviLamina server (26.50.x) with [lip](https://github.com/LiteLDev/lip) installed.
+> Requirements: a LeviLamina server (26.51.x) with [lip](https://github.com/LiteLDev/lip) installed.
 
 1. Run the following command in your server directory:
 

@@ -3,7 +3,7 @@
 LOICollectionA 的每个内置插件都会导出一组 C++ API，供其他插件或扩展直接调用。本文列出这些接口的**调用约定**，并以 Chat、Wallet、Market 与 BehaviorEvent 四个插件为例说明其用法。
 
 > [!NOTE]
-> 以下内容取自 LOICollectionA 1.17.1 的代码结构，对于后续版本可能会有所不同。
+> 以下内容取自 LOICollectionA 1.17.3 的代码结构，对于后续版本可能会有所不同。
 
 > [!TIP]
 > 若您想扩展的是 LCUI 脚本可用的变量与函数，请阅读 [LOICollectionAPI 扩展指南](./api-extension.md)；本文介绍的是**模块之间的 C++ 接口**。

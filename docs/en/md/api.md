@@ -1,7 +1,7 @@
 # LOICollectionAPI
 
 > [!NOTE]
-> The following content is taken from the `LOICollectionAPI` structure of LOICollectionA 1.17.1; the `LOICollectionAPI` structure may differ in later versions.
+> The following content is taken from the `LOICollectionAPI` structure of LOICollectionA 1.17.3; the `LOICollectionAPI` structure may differ in later versions.
 
 ## Default Variables
 
@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | {version_mc} | Current server Minecraft version | string |
 | {version_ll} | Current server LeviLamina version | string |
-| {version_protocol} | Current server protocol version | string |
+| {version_protocol} | Current server protocol version (network protocol number) | int |
 | {player} | Current player name | string |
 | {player_language} | Gets the language ID used by the player | string |
 | {player_language_name} | Gets the name of the language used by the player | string |
@@ -30,9 +30,9 @@
 | {player_pos_y} | Y coordinate of the player | int |
 | {player_pos_z} | Z coordinate of the player | int |
 | {player_pos_respawn} | Respawn coordinates of the player | string |
-| {player_pos_respawn_x} | Respawn X coordinate of the player | int / string(None) |
-| {player_pos_respawn_y} | Respawn Y coordinate of the player | int / string(None) |
-| {player_pos_respawn_z} | Respawn Z coordinate of the player | int / string(None) |
+| {player_pos_respawn_x} | Respawn X coordinate of the player | int |
+| {player_pos_respawn_y} | Respawn Y coordinate of the player | int |
+| {player_pos_respawn_z} | Respawn Z coordinate of the player | int |
 | {player_pos_block} | Block coordinates of the player | string |
 | {player_pos_lastdeath} | Coordinates of the player's last death | string |
 | {player_realname} | Real name of the player | string |
@@ -56,10 +56,10 @@
 | {player_handitem} | Name of the item held by the player | string |
 | {player_offhand} | Name of the item in the player's offhand | string |
 | {player_os} | Device name of the player | string |
-| {player_ms} | Network latency of the player (ms) | int |
-| {player_ms_avg} | Average network latency of the player (ms) | int |
-| {player_packet} | Network packet loss rate of the player (%) | int |
-| {player_packet_avg} | Average network packet loss rate of the player (%) | int |
+| {player_ms} | Player network latency, from `mAveragePing` (ms) | int |
+| {player_ms_avg} | Player network latency, from `mCurrentPing` (ms) | int |
+| {player_packet} | Player packet loss, from `mAveragePacketLoss` (%) | float |
+| {player_packet_avg} | Player packet loss, from `mCurrentPacketLoss` (%) | float |
 | {server_tps} | Gets the current server TPS | float |
 | {server_mspt} | Gets the current server MSPT | float |
 | {server_time} | Current time | string |
@@ -225,6 +225,8 @@ if (a > b) [ a ] : [ b ]
 
 Since 1.15.0, the UI data of Menu and Shop has been changed to `.lcui` script files (see [Data Files](./data.md)), and the built-in UIs of other modules are also written in the same scripting language. The script supports variables, arrays, strings, numbers, booleans, and `none`, as well as flow control such as `if`, `while`, `for`, `break`, `continue`, and `return`.
 
+The current implementation also supports `enum` and pattern matching, `optional` / `variant`, `trait` / `impl`, operator overloading, `for-in` and ranges, `Result`, the 13 standard-library modules, script storage, and `Proc` cooperative tasks; see [LCUI Scripting Guide](./lcui.md) for the complete syntax and API.
+
 ### Function Definition and Anonymous Functions
 
 Use `func` to define named functions; parameter and return value types can be specified (dynamic when unspecified):
@@ -311,6 +313,7 @@ Class-related keywords and operators:
 | `GUIManager` | `switchTo(id, type)` | Switches the current GUI to the specified type |
 | `storage` | `get`, `set`, `has`, `remove`, `keys`, `clear` | Persistent storage isolated per script |
 | `playerdata` | `get`, `set`, `has`, `remove`, `keys`, `clear` | Persistent storage isolated per player and script |
+| `Proc` | `spawn`, `yield`, `sleep`, `send`, `recv`, `cancel`, `join` | Cooperative task scheduling (static class) |
 
 > [!NOTE]
 > The `string::length` / `string::upper` namespace functions mentioned in early docs do not exist. Strings and arrays are value types; use member methods such as `s.length()` and `arr.push(v)`. See the full method tables in [LCUI Script Syntax](./lcui.md#string-methods) and [array methods](./lcui.md#array-methods). Scope, paths, and limits of `storage` / `playerdata` are documented in [Data Files](./data.md#script-storage).
@@ -337,6 +340,7 @@ Class-related keywords and operators:
 | `ObservableString` / `ObservableNumber` / `ObservableBoolean` | Observable data, constructor parameters are (initial value, whether the client can write); methods: `getData`, `setData`, `subscribe`, `unsubscribe`, `isClientWritable` |
 | `TextOptions` / `ButtonOptions` / `TextFieldOptions` / `DropdownOptions` / `DropdownItem` / `SliderOptions` / `ToggleOptions` / `DividerOptions` / `SpacingOptions` | Option classes for form controls |
 | `GlobalValue` | Global value container, containing a `value` field |
+| `Proc` | Cooperative task scheduling static class: `spawn`, `yield`, `sleep`, `send`, `recv`, `cancel`, `join` |
 
 ---
 

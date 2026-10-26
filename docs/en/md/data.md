@@ -13,7 +13,7 @@ When you upgrade the plugin version, newly added configuration items are automat
 
 ```json
 {
-    "version": 90052239, // Configuration file version number, automatically generated from the plugin version number, used for configuration synchronization; modification is not recommended
+    "version": 90052239, // Example config version; the real value is generated from the plugin version and used for config sync. Modification is not recommended
     "ConsoleLanguage": "system", // Console language, where system follows the system language, zh_CN is Chinese, en_US is English
     "ServerConfig": { // Server configuration
         "Plugins": { // Built-in plugin configuration
@@ -158,7 +158,7 @@ When you upgrade the plugin version, newly added configuration items are automat
             },
             "BehaviorEvent": { // Behavior event configuration
                 "ModuleEnabled": false, // Whether to enable behavior events
-                "OrganizeDatabaseInterval": 144, // Behavior event database cleanup threshold (in hours)
+                "OrganizeRetentionHours": 144, // Behavior event data retention (in hours)
                 "CleanThresholdEvent": 10000, // Behavior event cleanup threshold
                 "CleanDatabaseInterval": 1, // Automatic database cleanup interval (in hours)
                 "RefreshIntervalInMinutes": 5, // Behavior event recording interval (in minutes)
@@ -282,20 +282,33 @@ When you upgrade the plugin version, newly added configuration items are automat
             "VisualizerBarGap": 2.0, // Visualizer bar gap (pixels)
             "EnterDuration": 0.5, // Slide-in animation duration (in seconds)
             "ExitDuration": 0.4 // Slide-out animation duration (in seconds)
+        },
+        "LoadingScreen": { // Client loading screen module configuration
+            "ModuleEnabled": true, // Whether to enable this module
+            "RouteKeywords": [ // Loading screen route keywords; any match counts as loading
+                "loading",
+                "preloading"
+            ],
+            "Title": "LOADING", // Loading screen title
+            "Tips": [ // Tip texts shown in rotation
+                "Loading terrain..."
+            ],
+            "CubeSize": 19.0, // Cube edge length (pixels)
+            "BarWidth": 440.0 // Progress bar width (pixels)
         }
     },
     "ScriptPermission": { // LCUI sandbox permissions
         "PermissionFilePath": "gui/permission.json" // Permission file location
     },
     "LanguageServer": { // LCUI language server
-        "enabled": true, // Whether to enable
+        "enabled": false, // Whether to enable
         "port": 9257 // Local port
     }
 }
 ```
 
 > [!NOTE]
-> The above content is taken from the configuration file structure of LOICollectionA 1.17.1. The configuration file structure of later versions may differ.
+> The above content is taken from the configuration file structure of LOICollectionA 1.17.3. The configuration file structure of later versions may differ.
 
 ## Module Data Files
 
@@ -349,6 +362,8 @@ Authorization runs in two gates: first the script's **trust level** is checked f
 | `defaultTrust` | string | Trust level used by scripts that do not declare `trust`; defaults to `"user"`. Must be a key defined in `trustLevels` |
 | `trustLevels` | object | Map of trust level → capability-name array, e.g. `{"user": ["GuiRead","GuiWrite"], "builtin": ["GuiRead","GuiWrite","ServerCommand"]}` |
 | `scripts.<id>.trust` | string | Trust level of this script; falls back to `defaultTrust` when omitted. Determines the capability set it holds |
+| `budget` | object | Global execution-budget override accepting `maxInstructions`, `maxWallTimeMs`, `maxFrames`, and related keys; omitted fields keep the built-in defaults |
+| `scripts.<id>.budget` | object | Execution-budget override for this script; omitted fields inherit the root `budget`. See [Execution Budget and Call Depth](./lcui.md#execution-budget-and-call-depth) for keys and ranges |
 
 Each sensitive call requires a capability up front; missing it is denied even if the id allowlist matches:
 
@@ -440,7 +455,7 @@ Bytes outside `[A-Za-z0-9_-]` in script and player ids are percent-encoded to pr
 Capabilities and limits:
 
 - `get` / `has` / `keys` require `StorageRead` or `PlayerDataRead`; `set` / `remove` / `clear` require `StorageWrite` or `PlayerDataWrite`
-- Keys are capped at 512 characters; a single serialized value at 1 MiB; a file at 16 MiB (larger files are refused on load)
+- Keys are capped at 512 bytes; a single serialized value at 1 MiB; a file at 16 MiB (larger files are refused on load)
 - Object / array nesting is capped at 64; non-finite floats, native objects, functions and enum values cannot be stored
 - Each value file is loaded on first access and cached in memory; `set` / `remove` / `clear` write back to disk immediately
 - Bulk writes save the whole file each time; prefer pre-seeding a JSON file outside the script for large initial data

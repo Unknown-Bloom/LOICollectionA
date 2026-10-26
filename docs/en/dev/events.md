@@ -1,6 +1,6 @@
 # Custom Events
 
-Besides LeviLamina and vanilla Minecraft events, LOICollectionA publishes 12 custom event headers (22 event types in total) under `src/LOICollectionA/include/server/Events/`. They are all published through `ll::event::EventBus`, so you listen to them in exactly the same way as any other event.
+Besides LeviLamina and vanilla Minecraft events, LOICollectionA publishes 12 custom event headers (19 event types in total) under `src/LOICollectionA/include/server/Events/`. They are all published through `ll::event::EventBus`, so you listen to them in exactly the same way as any other event.
 
 > [!NOTE]
 > All of these headers are server-only. For the client target, `xmake.lua` removes them from the distribution manifest with `remove_headerfiles("src/LOICollectionA/include/(server/**.h)")`.

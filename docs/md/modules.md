@@ -91,14 +91,18 @@ LOICollectionA 采用微内核架构：所有功能都由模块（Module）提�
 
 ## 客户端模块
 
-客户端目标（`--target_type=client`）下构建的模块只有音乐播放通知：
+客户端目标（`--target_type=client`）下构建两个模块：
 
 | 模块 | 用途 | 配置键 | 默认状态 |
 | --- | --- | --- | --- |
 | Music | 检测系统媒体会话（默认匹配网易云音乐），在游戏内以卡片形式显示「正在播放」信息，并可选显示音频可视化 | `ClientConfig.Music.ModuleEnabled` | 启用 |
+| LoadingScreen | 识别 OreUI 加载界面，用自定义标题、提示、立方体动画与进度条覆盖原生加载画面 | `ClientConfig.LoadingScreen.ModuleEnabled` | 启用 |
 
 > [!WARNING]
-> Music 是**纯客户端**模块，源码位于 `src/LOICollectionA/modules/client/Plugins/music/`，在服务端目标下完全不参与编译（`xmake.lua` 的 `is_server` 分支会排除 `modules/client/**.cpp`）。它依赖 `imgui` 与 Windows 的媒体会话 API，无法在服务端启用。其外观参数（卡片尺寸、字号、动画时长等）见 [数据文件](./data.md#配置文件)。
+> Music 与 LoadingScreen 都是**纯客户端**模块，源码位于 `src/LOICollectionA/modules/client/Plugins/`，在服务端目标下完全不参与编译（`xmake.lua` 的 `is_server` 分支会排除 `modules/client/**.cpp`）。Music 依赖 `imgui` 与 Windows 的媒体会话 API；LoadingScreen 依赖客户端 UI 钩子，无法在服务端启用。它们的外观参数（卡片尺寸、字号、动画时长、标题、提示、立方体尺寸与进度条宽度等）见 [数据文件](./data.md#配置文件)。
+
+> [!NOTE]
+> LoadingScreen 通过 `RouteKeywords` 匹配加载界面的路由名（默认 `loading`、`preloading`）。当场景钩子不可用时，模块会降级为仅在关卡切换事件上播放动画，并在控制台输出一条警告。
 
 ## 相关文档
 

@@ -1,7 +1,7 @@
 # Native UI
 
 > [!NOTE]
-> The following content is taken from the native UI structure of LOICollectionA 1.17.1 and may differ in later versions.
+> The following content is taken from the native UI structure of LOICollectionA 1.17.3 and may differ in later versions.
 
 ## Overview
 
@@ -270,6 +270,33 @@ The construction parameters are (initial value, client writable). When `clientWr
 
 > [!NOTE]
 > The parameter type currently registered for `ObservableNumber::setData` is inconsistent with its implementation (registered as boolean type); if the call behaves abnormally, refer to the source code.
+
+### Observable Operators
+
+`ObservableNumber` / `ObservableString` / `ObservableBoolean` overload common operators. Operands may be another observable of the same type or the corresponding native value, and the native value may appear on **either side** (`num + 3` and `3 + num` behave the same). The operator reads the current value and returns a plain value:
+
+```lcui
+let num = new ObservableNumber(2, false);
+num + 3;        // 5
+3 + num;        // 5
+num * 2 - 1;    // 3
+num > 2;        // true
+5 == num + 3;   // true
+
+let text = new ObservableString("ab", false);
+text + "cd";    // "abcd"
+"x" + text;     // "xab"
+text == "ab";   // true
+
+let flag = new ObservableBoolean(true, false);
+flag == false;  // false
+```
+
+| Class | Supported operators |
+| --- | --- |
+| `ObservableNumber` | `+ - * / % ^` and `== != > < >= <=` |
+| `ObservableString` | `+` (concatenation) and `== != > < >= <=` |
+| `ObservableBoolean` | `== !=` |
 
 ### Observable Example
 

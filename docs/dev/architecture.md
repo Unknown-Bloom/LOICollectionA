@@ -1,7 +1,7 @@
 # 架构概览
 
 > [!NOTE]
-> 以下内容取自 LOICollectionA 1.17.1 的代码结构，对于后续版本可能会有所不同。
+> 以下内容取自 LOICollectionA 1.17.3 的代码结构，对于后续版本可能会有所不同。
 
 LOICollectionA 是一个基于 [LeviLamina](https://github.com/LiteLDev/LeviLamina) 的 C++ 插件（NativeMod），整体采用**微内核架构**：核心只负责配置加载、服务注册与模块调度，所有功能以 **模块（Module）** 为单位独立实现，可在配置文件中按需开关。
 
@@ -17,9 +17,9 @@ LL_REGISTER_MOD(LOICollection::A, LOICollection::A::getInstance());
 
 | 阶段 | 核心动作 | 对模块的调用 |
 | --- | --- | --- |
-| `load` | 计算配置版本 → 生成/合并/加载 `config.json` → 注册全局服务 → 初始化数据库目录与语言目录 | 逐个调用模块 `load()` |
-| `enable` | 根据 `ConsoleLanguage` 设置默认语言 → 编译 LOICollectionAPI 脚本 → | 逐个调用模块 `registry()` |
-| `disable` | — | 逐个调用模块 `unregistry()` |
+| `load` | 计算配置版本 → 生成/合并/加载 `config.json` → 注册配置与路径服务 → 打开 `settings.db` → 加载 `gui/permission.json` 并注册沙箱权限与脚本存储服务 → 初始化语言目录 | 逐个调用模块 `load()` |
+| `enable` | 设置默认语言 → 编译 LOICollectionAPI 脚本 → 启动 `ProcSchedulerDriver` → 按 `LanguageServer.enabled` 启动 LSP | 逐个调用模块 `registry()` |
+| `disable` | 停止调度器与 LSP → 释放全部 UI | 逐个调用模块 `unregistry()` |
 | `unload` | — | 逐个调用模块 `unload()` |
 
 > [!TIP]
@@ -89,13 +89,15 @@ auto svc = ServiceProvider::getInstance().getService<TService>(name);
 | `std::string` | `"GuiPath"` | GUI 目录（`plugins/LOICollectionA/gui`） |
 | `std::string` | `"ConfigPath"` | 配置目录（`plugins/LOICollectionA/config`） |
 | `BlockRepository` | `"SettingsDB"` | 全局设置数据库（`data/settings.db`，块存储） |
+| `std::shared_ptr<frontend::sandbox::ScriptPermissionService>` | 无 | LCUI 沙箱权限：读取 `gui/permission.json`，向脚本引擎提供信任级、能力与预算策略 |
+| `std::shared_ptr<frontend::storage::ScriptStorage>` | 无 | LCUI 脚本持久化存储（根目录 `data/script`），承载 `storage` / `playerdata` 命名空间 |
 
 > [!NOTE]
 > 配置以 `ReadOnlyWrapper<Config::C_Config>` 注册，模块只能**读取**配置，无法修改。这是有意设计：配置只在启动时读取一次，运行期修改需要重启服务器。
 
 ## 配置系统
 
-- 配置结构定义在 `src/LOICollectionA/ConfigPlugin.h`，共 105 个配置键（嵌套结构 `C_Config` → `C_ServerConfig` → `C_ServerPlugins` / `C_ServerProtableTool`）
+- 配置结构定义在 `src/LOICollectionA/ConfigPlugin.h`（嵌套结构 `C_Config` → `C_ServerConfig` → `C_ServerPlugins` / `C_ServerProtableTool`，另含 `C_ClientConfig`、`C_ScriptPermission` 与 `C_LanguageServer`）
 - 配置版本由插件版本号哈希生成（`SynchronousPluginConfigVersion`）
 - 升级插件时，代码中的默认配置通过 `MergePatch` **递归合并**进现有 `config.json`：新增键自动补入，已有键保留用户取值
 - 详细配置项说明见 [数据文件](../md/data.md)

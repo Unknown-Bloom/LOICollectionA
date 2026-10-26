@@ -1,6 +1,6 @@
 # 自定义事件
 
-除 LeviLamina 与 Minecraft 原生事件外，LOICollectionA 还对外发布了 12 个自定义事件头文件（共 22 个事件类型），位于 `src/LOICollectionA/include/server/Events/`。它们都使用 `ll::event::EventBus` 发布，因此可以用与其他事件完全相同的方式监听。
+除 LeviLamina 与 Minecraft 原生事件外，LOICollectionA 还对外发布了 12 个自定义事件头文件（共 19 个事件类型），位于 `src/LOICollectionA/include/server/Events/`。它们都使用 `ll::event::EventBus` 发布，因此可以用与其他事件完全相同的方式监听。
 
 > [!NOTE]
 > 所有这些头文件都是服务端专用的。`xmake.lua` 在 client 目标下会通过 `remove_headerfiles("src/LOICollectionA/include/(server/**.h)")` 把它们从分发清单中移除。

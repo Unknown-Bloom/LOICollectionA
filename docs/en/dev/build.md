@@ -92,12 +92,12 @@ The release manifest `tooth.json` defines the plugin metadata and installation m
 
 - `tooth`: release address (`github.com/loitietu/LOICollectionA`)
 - `version`: plugin version (must match `set_version` in `xmake.lua`)
-- `variants`: platform variants and dependencies (e.g. `win-x64` + LeviLamina 26.50.*)
+- `variants`: platform variants and dependencies (e.g. `win-x64` + LeviLamina 26.51.*)
 - `assets`: release assets (zip packages in the Release)
 
 ### Release Workflow
 
-`.github/workflows/release.yml` runs automatically when a tag (e.g. `v1.17.1`) is created: build → package zip → create GitHub Release → upload `lip` install assets. Users install via `lip install github.com/loitietu/LOICollectionA`.
+`.github/workflows/release.yml` runs automatically after a GitHub Release is published: build → package zip → append release notes and upload `lip` install assets. Users install via `lip install github.com/loitietu/LOICollectionA`.
 
 ## Code Standards
 

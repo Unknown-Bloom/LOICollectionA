@@ -1,7 +1,7 @@
 # LOICollectionAPI
 
 > [!NOTE]
-> 以下内容取自 LOICollectionA 1.17.1 的 `LOICollectionAPI` 结构，对于后续版本的 `LOICollectionAPI` 结构可能会有所不同。
+> 以下内容取自 LOICollectionA 1.17.3 的 `LOICollectionAPI` 结构，对于后续版本的 `LOICollectionAPI` 结构可能会有所不同。
 
 ## 默认变量
 
@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | {version_mc} | 当前服务器 Minecraft 版本 | string |
 | {version_ll} | 当前服务器 LeviLamina 版本 | string |
-| {version_protocol} | 当前服务器协议版本 | string |
+| {version_protocol} | 当前服务器协议版本（网络协议号） | int |
 | {player} | 当前玩家名称 | string |
 | {player_language} | 获取玩家使用的语言ID | string |
 | {player_language_name} | 获取玩家使用的语言名称 | string |
@@ -30,9 +30,9 @@
 | {player_pos_y} | 玩家所在Y坐标 | int |
 | {player_pos_z} | 玩家所在Z坐标 | int |
 | {player_pos_respawn} | 玩家重生坐标 | string |
-| {player_pos_respawn_x} | 玩家重生X坐标 | int / string(None) |
-| {player_pos_respawn_y} | 玩家重生Y坐标 | int / string(None) |
-| {player_pos_respawn_z} | 玩家重生Z坐标 | int / string(None) |
+| {player_pos_respawn_x} | 玩家重生X坐标 | int |
+| {player_pos_respawn_y} | 玩家重生Y坐标 | int |
+| {player_pos_respawn_z} | 玩家重生Z坐标 | int |
 | {player_pos_block} | 玩家所在的方块坐标 | string |
 | {player_pos_lastdeath} | 玩家上次死亡的坐标 | string |
 | {player_realname} | 玩家的真实名字 | string |
@@ -56,10 +56,10 @@
 | {player_handitem} | 玩家手持物品名称 | string |
 | {player_offhand} | 玩家副手持物品名称 | string |
 | {player_os} | 玩家设备名称 | string |
-| {player_ms} | 玩家的网络延迟时间 (ms) | int |
-| {player_ms_avg} | 玩家的平均网络延迟时间 (ms) | int |
-| {player_packet} | 玩家的网络丢包率 (%) | int |
-| {player_packet_avg} | 玩家的平均网络丢包率 (%) | int |
+| {player_ms} | 玩家网络延迟，取自 `mAveragePing` (ms) | int |
+| {player_ms_avg} | 玩家网络延迟，取自 `mCurrentPing` (ms) | int |
+| {player_packet} | 玩家网络丢包率，取自 `mAveragePacketLoss` (%) | float |
+| {player_packet_avg} | 玩家网络丢包率，取自 `mCurrentPacketLoss` (%) | float |
 | {server_tps} | 获取当前服务器TPS | float |
 | {server_mspt} | 获取当前服务器MSPT | float |
 | {server_time} | 当前时间 | string |
@@ -122,7 +122,7 @@ if (condition)[result_yes : result_no]
 
 ### **判断语句具体使用实例**  
 
-以下将以不同的颜色展示玩家的平均网络延迟时间
+以下将以不同的颜色展示玩家的网络延迟
 
 > [!WARNING]
 > 需要注意的是语句的原 `result` 无法解析特殊字符，需要将其整合为字符串类型
@@ -225,6 +225,8 @@ if (a > b) [ a ] : [ b ]
 
 从 1.15.0 起，Menu 与 Shop 的界面数据改为 `.lcui` 脚本文件（见 [数据文件](./data.md)），其余模块的内置界面也使用同一套脚本语言编写。脚本支持变量、数组、字符串、数值、布尔值与 `none`，并支持 `if`、`while`、`for`、`break`、`continue`、`return` 等流程控制。
 
+当前实现还支持 `enum` 与模式匹配、`optional` / `variant`、`trait` / `impl`、运算符重载、`for-in` 与区间、`Result`、13 个标准库模块，以及脚本存储与 `Proc` 协作式任务；完整语法与 API 见 [LCUI 脚本语法](./lcui.md)。
+
 ### 函数定义与匿名函数
 
 使用 `func` 定义命名函数，参数与返回值可以指定类型（未指定时为动态类型）：
@@ -311,6 +313,7 @@ if (dog instanceof Animal) [
 | `GUIManager` | `switchTo(id, type)` | 将当前 GUI 切换为指定类型 |
 | `storage` | `get`、`set`、`has`、`remove`、`keys`、`clear` | 按脚本隔离的持久化存储 |
 | `playerdata` | `get`、`set`、`has`、`remove`、`keys`、`clear` | 按玩家 + 脚本隔离的持久化存储 |
+| `Proc` | `spawn`、`yield`、`sleep`、`send`、`recv`、`cancel`、`join` | 协作式任务调度（静态类） |
 
 > [!NOTE]
 > 早期文档中的 `string::length` / `string::upper` 等命名空间函数并不存在。字符串与数组是值类型，直接使用 `s.length()`、`arr.push(v)` 等成员方法；完整的方法表见 [LCUI 脚本语法](./lcui.md#字符串方法) 与 [数组方法](./lcui.md#数组方法)。`storage` / `playerdata` 的作用域、路径与限制见 [数据文件](./data.md#script-storage)。
@@ -337,6 +340,7 @@ if (dog instanceof Animal) [
 | `ObservableString` / `ObservableNumber` / `ObservableBoolean` | 可观察数据，构造参数为（初始值，客户端是否可写）；方法：`getData`、`setData`、`subscribe`、`unsubscribe`、`isClientWritable` |
 | `TextOptions` / `ButtonOptions` / `TextFieldOptions` / `DropdownOptions` / `DropdownItem` / `SliderOptions` / `ToggleOptions` / `DividerOptions` / `SpacingOptions` | 表单控件选项类 |
 | `GlobalValue` | 全局值容器，包含 `value` 字段 |
+| `Proc` | 协作式任务调度静态类：`spawn`、`yield`、`sleep`、`send`、`recv`、`cancel`、`join` |
 
 ---
 

@@ -92,12 +92,12 @@ xmake -y
 
 - `tooth`：发布地址（`github.com/loitietu/LOICollectionA`）
 - `version`：插件版本（需与 `xmake.lua` 的 `set_version` 一致）
-- `variants`：平台变体与依赖（如 `win-x64` + LeviLamina 26.50.*）
+- `variants`：平台变体与依赖（如 `win-x64` + LeviLamina 26.51.*）
 - `assets`：发布资源（Release 中的 zip 包）
 
 ### Release 流程
 
-`.github/workflows/release.yml` 在打 tag（如 `v1.17.1`）时自动执行：构建 → 打包 zip → 创建 GitHub Release → 上传 `lip` 安装资源。用户通过 `lip install github.com/loitietu/LOICollectionA` 安装。
+`.github/workflows/release.yml` 在 GitHub Release 发布（published）后自动执行：构建 → 打包 zip → 追加发布说明并上传 `lip` 安装资源。用户通过 `lip install github.com/loitietu/LOICollectionA` 安装。
 
 ## 代码规范
 
