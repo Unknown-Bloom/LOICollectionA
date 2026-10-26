@@ -783,7 +783,7 @@ namespace LOICollection::frontend::ir {
         if (op == "+") return this->emitBinary(MirOp::ADD, lhs, rhs, loc, resultType);
         if (op == "-") return this->emitBinary(MirOp::SUB, lhs, rhs, loc, resultType);
         if (op == "*") return this->emitBinary(MirOp::MUL, lhs, rhs, loc, resultType);
-        if (op == "/") return this->emitBinary(MirOp::DIV, lhs, rhs, loc);
+        if (op == "/") return this->emitBinary(MirOp::DIV, lhs, rhs, loc, resultType);
         if (op == "%") return this->emitBinary(MirOp::MOD, lhs, rhs, loc, resultType);
 
         this->diagnostics.addError(loc, "Unknown compound assignment op: " + op);
@@ -1209,9 +1209,9 @@ namespace LOICollection::frontend::ir {
         if (node.op == "+") this->lastResultReg = this->emitBinary(MirOp::ADD, lhs, rhs, node.loc, node.type);
         else if (node.op == "-") this->lastResultReg = this->emitBinary(MirOp::SUB, lhs, rhs, node.loc, node.type);
         else if (node.op == "*") this->lastResultReg = this->emitBinary(MirOp::MUL, lhs, rhs, node.loc, node.type);
-        else if (node.op == "/") this->lastResultReg = this->emitBinary(MirOp::DIV, lhs, rhs, node.loc);
+        else if (node.op == "/") this->lastResultReg = this->emitBinary(MirOp::DIV, lhs, rhs, node.loc, node.type);
         else if (node.op == "%") this->lastResultReg = this->emitBinary(MirOp::MOD, lhs, rhs, node.loc, node.type);
-        else if (node.op == "^") this->lastResultReg = this->emitBinary(MirOp::POW, lhs, rhs, node.loc);
+        else if (node.op == "^") this->lastResultReg = this->emitBinary(MirOp::POW, lhs, rhs, node.loc, node.type);
         else this->diagnostics.addError(node.loc, "Unknown arithmetic op: " + node.op);
     }
 

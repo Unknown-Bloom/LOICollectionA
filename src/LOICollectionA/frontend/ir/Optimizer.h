@@ -16,7 +16,8 @@ namespace LOICollection::frontend::ir {
             LICM = 1u << 3,
             CSE = 1u << 4,
             Inline = 1u << 5,
-            BranchFusion = 1u << 6
+            BranchFusion = 1u << 6,
+            Propagation = 1u << 7
         };
 
         static constexpr unsigned allPasses =
@@ -26,7 +27,8 @@ namespace LOICollection::frontend::ir {
             static_cast<unsigned>(Pass::LICM) |
             static_cast<unsigned>(Pass::CSE) |
             static_cast<unsigned>(Pass::Inline) |
-            static_cast<unsigned>(Pass::BranchFusion);
+            static_cast<unsigned>(Pass::BranchFusion) |
+            static_cast<unsigned>(Pass::Propagation);
 
         struct Stats {
             size_t folded = 0;

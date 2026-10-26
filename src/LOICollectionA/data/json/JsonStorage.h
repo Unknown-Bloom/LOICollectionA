@@ -6,6 +6,7 @@
 #include <string_view>
 #include <type_traits>
 #include <shared_mutex>
+#include <mutex>
 
 #include <nlohmann/json.hpp>
 

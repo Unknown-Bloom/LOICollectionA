@@ -2,6 +2,8 @@
 #include <utility>
 #include <variant>
 #include <algorithm>
+#include <functional>
+#include <unordered_map>
 #include <vector>
 
 #include <ll/api/Expected.h>
@@ -13,14 +15,6 @@
 using namespace LOICollection::frontend;
 
 namespace MapClass::detail {
-    struct MapHandle : NativeHandle {
-        std::vector<std::pair<TypedValue, TypedValue>> entries;
-    };
-
-    MapHandle& handleOf(const ObjectRef& self) {
-        return *static_cast<MapHandle*>(self->native.get());
-    }
-
     bool keyEquals(const TypedValue& left, const TypedValue& right) {
         if (auto li = std::get_if<int>(&left)) {
             if (auto ri = std::get_if<int>(&right)) return *li == *ri;
@@ -44,15 +38,45 @@ namespace MapClass::detail {
         return false;
     }
 
-    void syncFields(const ObjectRef& self) {
+    struct KeyHash {
+        std::size_t operator()(const TypedValue& key) const {
+            if (auto value = std::get_if<int>(&key))
+                return std::hash<float>{}(static_cast<float>(*value));
+
+            if (auto value = std::get_if<float>(&key))
+                return std::hash<float>{}(*value == 0.0f ? 0.0f : *value);
+
+            if (auto value = std::get_if<std::string>(&key))
+                return std::hash<std::string>{}(*value);
+
+            if (auto value = std::get_if<bool>(&key))
+                return std::hash<bool>{}(*value);
+
+            return 0;
+        }
+    };
+
+    struct KeyEqual {
+        bool operator()(const TypedValue& left, const TypedValue& right) const {
+            return keyEquals(left, right);
+        }
+    };
+
+    struct MapHandle : NativeHandle {
+        std::vector<std::pair<TypedValue, TypedValue>> entries;
+        std::unordered_map<TypedValue, std::size_t, KeyHash, KeyEqual> positions;
+        ArrayRef keys;
+    };
+
+    MapHandle& handleOf(const ObjectRef& self) {
+        return *static_cast<MapHandle*>(self->native.get());
+    }
+
+    void bindKeys(const ObjectRef& self) {
         auto& handle = handleOf(self);
 
-        auto keys = std::make_shared<ArrayValue>();
-        keys->elements.reserve(handle.entries.size());
-        for (const auto& [key, value] : handle.entries)
-            keys->elements.push_back(key);
-
-        self->assign("keys", keys);
+        handle.keys = std::make_shared<ArrayValue>();
+        self->assign("keys", handle.keys);
     }
 }
 
@@ -67,7 +91,7 @@ namespace MapClass {
         obj->classIndex = -1;
         obj->native = handle;
 
-        syncFields(obj);
+        bindKeys(obj);
 
         return obj;
     }
@@ -75,15 +99,15 @@ namespace MapClass {
     ll::Expected<TypedValue> set(const ObjectRef& self, const CallbackTypeValues& args) {
         auto& handle = handleOf(self);
 
-        for (auto& [key, value] : handle.entries) {
-            if (keyEquals(key, args[0])) {
-                value = args[1];
-                return args[1];
-            }
+        if (const auto it = handle.positions.find(args[0]); it != handle.positions.end()) {
+            handle.entries[it->second].second = args[1];
+            return args[1];
         }
 
+        const std::size_t index = handle.entries.size();
         handle.entries.emplace_back(args[0], args[1]);
-        syncFields(self);
+        handle.positions.emplace(args[0], index);
+        handle.keys->elements.push_back(args[0]);
 
         return args[1];
     }
@@ -91,22 +115,14 @@ namespace MapClass {
     ll::Expected<TypedValue> get(const ObjectRef& self, const CallbackTypeValues& args) {
         auto& handle = handleOf(self);
 
-        for (const auto& [key, value] : handle.entries) {
-            if (keyEquals(key, args[0]))
-                return value;
-        }
+        if (const auto it = handle.positions.find(args[0]); it != handle.positions.end())
+            return handle.entries[it->second].second;
 
         return TypedValue{ std::monostate{} };
     }
 
     ll::Expected<TypedValue> has(const ObjectRef& self, const CallbackTypeValues& args) {
-        auto& handle = handleOf(self);
-
-        return std::ranges::any_of(handle.entries,
-            [&args](const auto& entry) -> bool {
-                return keyEquals(entry.first, args[0]);
-            }
-        );
+        return handleOf(self).positions.contains(args[0]);
     }
 
     ll::Expected<TypedValue> length(const ObjectRef& self, const CallbackTypeValues&) {
@@ -126,16 +142,17 @@ namespace MapClass {
     ll::Expected<TypedValue> remove(const ObjectRef& self, const CallbackTypeValues& args) {
         auto& handle = handleOf(self);
 
-        auto it = std::ranges::find_if(handle.entries,
-            [&args](const auto& entry) -> bool {
-                return keyEquals(entry.first, args[0]);
-            }
-        );
-        if (it == handle.entries.end())
+        const auto it = handle.positions.find(args[0]);
+        if (it == handle.positions.end())
             return false;
 
-        handle.entries.erase(it);
-        syncFields(self);
+        const std::size_t index = it->second;
+        handle.positions.erase(it);
+        handle.entries.erase(handle.entries.begin() + static_cast<std::ptrdiff_t>(index));
+        handle.keys->elements.erase(handle.keys->elements.begin() + static_cast<std::ptrdiff_t>(index));
+
+        for (std::size_t i = index; i < handle.entries.size(); ++i)
+            handle.positions.insert_or_assign(handle.entries[i].first, i);
 
         return true;
     }

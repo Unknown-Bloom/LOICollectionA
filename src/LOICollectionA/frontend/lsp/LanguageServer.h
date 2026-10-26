@@ -18,15 +18,16 @@ namespace LOICollection::frontend::lsp {
         LOICOLLECTION_A_API std::string handle(std::string_view bytes);
 
         LOICOLLECTION_A_NDAPI static std::vector<CompletionItem> completionsAt(
-            const std::string& text, const Position& position
+            const std::string& text, const Position& position, const ImportResolver& resolver = {}
         );
 
         LOICOLLECTION_A_NDAPI static std::optional<Hover> hoverAt(
-            const std::string& text, const Position& position
+            const std::string& text, const Position& position, const ImportResolver& resolver = {}
         );
 
         LOICOLLECTION_A_NDAPI static std::optional<Location> definitionAt(
-            const std::string& uri, const std::string& text, const Position& position
+            const std::string& uri, const std::string& text, const Position& position,
+            const ImportResolver& resolver = {}
         );
 
         LOICOLLECTION_A_NDAPI static std::vector<CodeAction> codeActionsAt(
@@ -51,11 +52,18 @@ namespace LOICollection::frontend::lsp {
         );
 
         LOICOLLECTION_A_NDAPI static std::optional<Location> typeDefinitionAt(
-            const std::string& uri, const std::string& text, const Position& position
+            const std::string& uri, const std::string& text, const Position& position,
+            const ImportResolver& resolver = {}
         );
 
         LOICOLLECTION_A_NDAPI static std::optional<SignatureHelp> signatureHelpAt(
-            const std::string& text, const Position& position
+            const std::string& text, const Position& position, const ImportResolver& resolver = {}
+        );
+
+        LOICOLLECTION_A_NDAPI static SemanticTokens semanticTokens(const std::string& text);
+
+        LOICOLLECTION_A_NDAPI static std::vector<InlayHint> inlayHintsAt(
+            const std::string& text, const Range& range
         );
 
         LOICOLLECTION_A_NDAPI static std::vector<TextEdit> formattingEdits(const std::string& text);
@@ -69,6 +77,8 @@ namespace LOICollection::frontend::lsp {
         std::string inbound;
         std::unordered_map<std::string, Document> documents;
         bool initialized = false;
+
+        ImportResolver importResolverFor(const std::string& uri) const;
 
         std::string dispatch(const nlohmann::ordered_json& message);
 
@@ -88,6 +98,8 @@ namespace LOICollection::frontend::lsp {
         nlohmann::ordered_json documentRename(const nlohmann::ordered_json& params) const;
         nlohmann::ordered_json documentTypeDefinition(const nlohmann::ordered_json& params) const;
         nlohmann::ordered_json documentSignatureHelp(const nlohmann::ordered_json& params) const;
+        nlohmann::ordered_json documentSemanticTokens(const nlohmann::ordered_json& params) const;
+        nlohmann::ordered_json documentInlayHints(const nlohmann::ordered_json& params) const;
         nlohmann::ordered_json documentFormatting(const nlohmann::ordered_json& params) const;
 
         const std::string& textOf(const nlohmann::ordered_json& params) const;

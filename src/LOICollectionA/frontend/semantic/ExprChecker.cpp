@@ -207,7 +207,7 @@ namespace LOICollection::frontend {
                 if (targetType.kind == TypeKind::Unknown)
                     return {};
 
-                if (targetType.kind != TypeKind::Array) {
+                if (targetType.kind != TypeKind::Array && targetType.kind != TypeKind::String) {
                     diagnostics.addError(indexNode.loc, "Cannot index a non-array value");
                     return {};
                 }
@@ -216,7 +216,7 @@ namespace LOICollection::frontend {
                     diagnostics.addError(indexNode.loc, "Array index must be an int");
                 }
 
-                return {};
+                return targetType.kind == TypeKind::String ? TypeInfo{ TypeKind::String } : TypeInfo{};
             }
 
             case ASTNode::Type::If: {

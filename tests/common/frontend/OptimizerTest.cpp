@@ -1051,3 +1051,68 @@ TEST(OptimizerTest, KeepsLiveArithmeticValue) {
 
     EXPECT_TRUE(containsOpMir(chunk, MirOp::MUL));
 }
+
+TEST(OptimizerTest, PropagatesConstantsAcrossJoinBlocks) {
+    const auto makeChunk = [] {
+        auto chunk = std::make_unique<MirChunk>();
+        chunk->slotCount = 4;
+        chunk->constants.push_back(true);
+        chunk->constants.push_back(std::string("flag"));
+        chunk->constants.push_back(10);
+        chunk->constants.push_back(20);
+
+        chunk->code = {
+            { MirOp::LOAD_SLOT, 0, 1 },
+            { MirOp::JMP_IF_FALSE, 3, -1, 1 },
+            { MirOp::LOAD_CONST, 2, 2 },
+            { MirOp::STORE_VAR, 1, -1, 2 },
+            { MirOp::JMP, 2 },
+            { MirOp::LOAD_CONST, 2, 2 },
+            { MirOp::STORE_VAR, 1, -1, 2 },
+            { MirOp::LOAD_VAR, 1, 3 },
+            { MirOp::MOVE, 0, 0, 3 },
+            { MirOp::HALT, 0 },
+        };
+
+        return chunk;
+    };
+
+    auto withPropagation = makeChunk();
+    Optimizer on;
+    on.optimize(*withPropagation);
+
+    EXPECT_FALSE(containsOpMir(*withPropagation, MirOp::LOAD_VAR));
+
+    DiagnosticEngine diagnostics;
+    VM vm(diagnostics);
+    EXPECT_EQ(VM::valueToString(vm.run(std::shared_ptr<MirChunk>(withPropagation.release()), {})), "10");
+    EXPECT_FALSE(diagnostics.hasErrors());
+
+    auto withoutPropagation = makeChunk();
+    Optimizer off;
+    off.setEnabledPasses(Optimizer::allPasses & ~static_cast<unsigned>(Optimizer::Pass::Propagation));
+    off.optimize(*withoutPropagation);
+
+    EXPECT_TRUE(containsOpMir(*withoutPropagation, MirOp::LOAD_VAR));
+}
+
+TEST(OptimizerTest, ReducesNumericIdentitiesWithUnknownOperands) {
+    const std::string source =
+        "func f(x: int) -> int {\n"
+        "  let a = x + 0;\n"
+        "  let b = a * 1;\n"
+        "  return b;\n"
+        "}\n"
+        "f(7)";
+
+    const unsigned mask = Optimizer::allPasses & ~static_cast<unsigned>(Optimizer::Pass::Inline);
+    auto program = compileAndOptimize(source, mask);
+
+    EXPECT_FALSE(program.diagnostics.hasErrors());
+    EXPECT_EQ(countOpEverywhere(*program.chunk, MirOp::ADD), 0);
+    EXPECT_EQ(countOpEverywhere(*program.chunk, MirOp::MUL), 0);
+
+    VM vm(program.diagnostics);
+    EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "7");
+    EXPECT_FALSE(program.diagnostics.hasErrors());
+}

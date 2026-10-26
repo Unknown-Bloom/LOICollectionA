@@ -38,6 +38,14 @@ namespace LOICollection::frontend::lsp {
             return false;
         }
 
+        bool hasJsonLabel(const nlohmann::ordered_json& items, const std::string& label) {
+            for (const auto& item : items)
+                if (item.value("label", std::string{}) == label)
+                    return true;
+
+            return false;
+        }
+
         nlohmann::ordered_json request(int id, const std::string& method, const nlohmann::ordered_json& params) {
             return nlohmann::ordered_json{
                 { "jsonrpc", "2.0" },
@@ -472,6 +480,265 @@ namespace LOICollection::frontend::lsp {
 
         ASSERT_TRUE(declaration.at("result").is_object());
         EXPECT_EQ(declaration.at("result").at("range").at("start").at("line"), 0u);
+    }
+
+    TEST(LspTest, AnalyzeCollectsParametersEnumsAndComponents) {
+        const std::string text =
+            "component Badge(label) {\n"
+            "    let text = label;\n"
+            "}\n"
+            "enum Suit {\n"
+            "    Hearts\n"
+            "    Spades(int)\n"
+            "}\n"
+            "func pick(index: int) -> int {\n"
+            "    let chosen = index;\n"
+            "    return chosen;\n"
+            "}\n";
+
+        const auto analysis = analyze(text);
+
+        bool hasComponent = false;
+        bool hasParameter = false;
+        bool hasLocal = false;
+        bool hasEnum = false;
+        bool hasVariant = false;
+
+        for (const auto& symbol : analysis.symbols) {
+            if (symbol.name == "Badge" && symbol.kind == SymbolKind::Component)
+                hasComponent = true;
+            if (symbol.name == "label" && symbol.kind == SymbolKind::Parameter
+                && symbol.container == "Badge" && symbol.local)
+                hasParameter = true;
+            if (symbol.name == "chosen" && symbol.kind == SymbolKind::Variable && symbol.local)
+                hasLocal = true;
+            if (symbol.name == "Suit" && symbol.kind == SymbolKind::Enum)
+                hasEnum = true;
+            if (symbol.name == "Spades" && symbol.kind == SymbolKind::EnumMember
+                && symbol.container == "Suit")
+                hasVariant = true;
+        }
+
+        EXPECT_TRUE(hasComponent);
+        EXPECT_TRUE(hasParameter);
+        EXPECT_TRUE(hasLocal);
+        EXPECT_TRUE(hasEnum);
+        EXPECT_TRUE(hasVariant);
+    }
+
+    TEST(LspTest, CompletionReadsNativeStringMembers) {
+        const std::string text = "let s = \"hello\";\nlet x = s.up;\n";
+
+        const auto items = LanguageServer::completionsAt(text, Position{ 1, 12 });
+
+        EXPECT_TRUE(hasLabel(items, "upper"));
+        EXPECT_TRUE(hasLabel(items, "substring"));
+        EXPECT_TRUE(hasLabel(items, "split"));
+    }
+
+    TEST(LspTest, CompletionReadsNativeArrayMembers) {
+        const std::string text = "let xs = [];\nlet n = xs.le;\n";
+
+        const auto items = LanguageServer::completionsAt(text, Position{ 1, 13 });
+
+        EXPECT_TRUE(hasLabel(items, "length"));
+        EXPECT_TRUE(hasLabel(items, "pop"));
+        EXPECT_TRUE(hasLabel(items, "slice"));
+    }
+
+    TEST(LspTest, CompletionReadsNativeMembersFromTypedParameter) {
+        const std::string text =
+            "func shout(text: string) -> string {\n"
+            "    return text.up;\n"
+            "}\n";
+
+        const auto items = LanguageServer::completionsAt(text, Position{ 1, 16 });
+
+        EXPECT_TRUE(hasLabel(items, "upper"));
+    }
+
+    TEST(LspTest, EnumReceiverOffersVariants) {
+        const std::string text =
+            "enum Suit {\n"
+            "    Hearts\n"
+            "    Spades\n"
+            "}\n"
+            "let s = Suit.He;\n";
+
+        const auto items = LanguageServer::completionsAt(text, Position{ 4, 16 });
+
+        EXPECT_TRUE(hasLabel(items, "Hearts"));
+        EXPECT_TRUE(hasLabel(items, "Spades"));
+    }
+
+    TEST(LspTest, HoverDescribesNativeMembersAndNamespaces) {
+        const std::string text = "let s = \"hi\";\nlet x = s.upper();\nlet r = math::sqrt(4);\n";
+
+        const auto member = LanguageServer::hoverAt(text, Position{ 1, 13 });
+        ASSERT_TRUE(member.has_value());
+        EXPECT_NE(member->contents.find("upper()"), std::string::npos);
+
+        const auto function = LanguageServer::hoverAt(text, Position{ 2, 17 });
+        ASSERT_TRUE(function.has_value());
+        EXPECT_NE(function->contents.find("sqrt"), std::string::npos);
+    }
+
+    TEST(LspTest, SignatureHelpReadsNativeSignatures) {
+        const std::string text = "let s = \"hello\";\nlet u = s.substring(0, 1);\n";
+
+        const auto method = LanguageServer::signatureHelpAt(text, Position{ 1, 23 });
+        ASSERT_TRUE(method.has_value());
+        ASSERT_FALSE(method->signatures.empty());
+        EXPECT_EQ(method->signatures.front().label, "substring(int, int)");
+        EXPECT_EQ(method->signatures.front().parameters.size(), 2u);
+        EXPECT_EQ(method->activeParameter, 1);
+
+        const std::string math = "let r = math::sqrt(4);\n";
+        const auto function = LanguageServer::signatureHelpAt(math, Position{ 0, 19 });
+        ASSERT_TRUE(function.has_value());
+        ASSERT_FALSE(function->signatures.empty());
+        EXPECT_NE(function->signatures.front().label.find("sqrt("), std::string::npos);
+    }
+
+    TEST(LspTest, SemanticTokensCoverKeywordsCommentsAndParameters) {
+        const std::string text =
+            "// note\n"
+            "func add(value: int) -> int {\n"
+            "    return value + 1;\n"
+            "}\n";
+
+        const auto tokens = LanguageServer::semanticTokens(text);
+
+        ASSERT_FALSE(tokens.data.empty());
+        EXPECT_EQ(tokens.data.size() % 5, 0u);
+
+        bool hasKeyword = false;
+        bool hasComment = false;
+        bool hasParameter = false;
+        bool hasNumber = false;
+
+        for (std::size_t i = 0; i + 4 < tokens.data.size(); i += 5) {
+            switch (tokens.data[i + 3]) {
+                case 7: hasParameter = true; break;
+                case 15: hasKeyword = true; break;
+                case 17: hasComment = true; break;
+                case 19: hasNumber = true; break;
+                default: break;
+            }
+        }
+
+        EXPECT_TRUE(hasKeyword);
+        EXPECT_TRUE(hasComment);
+        EXPECT_TRUE(hasParameter);
+        EXPECT_TRUE(hasNumber);
+    }
+
+    TEST(LspTest, InlayHintsInferLocalTypes) {
+        const std::string text =
+            "class Deck {}\n"
+            "let deck = new Deck();\n"
+            "let count = 1;\n";
+
+        const auto hints = LanguageServer::inlayHintsAt(text,
+            Range{ Position{ 0, 0 }, Position{ 3, 0 } });
+
+        ASSERT_EQ(hints.size(), 2u);
+        EXPECT_EQ(hints[0].label, ": Deck");
+        EXPECT_EQ(hints[0].position.line, 1u);
+        EXPECT_EQ(hints[0].position.character, 8u);
+        EXPECT_EQ(hints[1].label, ": int");
+        EXPECT_EQ(hints[1].position.line, 2u);
+    }
+
+    TEST(LspTest, ServerAppliesIncrementalChanges) {
+        LanguageServer server;
+
+        nlohmann::ordered_json document;
+        document["uri"] = kUri;
+        document["languageId"] = "lcui";
+        document["version"] = 1;
+        document["text"] = kSource;
+
+        server.handle(encodeMessage(makeNotification("textDocument/didOpen",
+            nlohmann::ordered_json{ { "textDocument", document } })));
+
+        nlohmann::ordered_json change;
+        change["text"] = "\nclass Added {}\n";
+        change["range"] = Range{ Position{ 7, 0 }, Position{ 7, 0 } };
+
+        nlohmann::ordered_json revised = document;
+        revised["version"] = 2;
+
+        server.handle(encodeMessage(makeNotification("textDocument/didChange",
+            nlohmann::ordered_json{
+                { "textDocument", revised },
+                { "contentChanges", nlohmann::ordered_json::array({ change }) },
+            })));
+
+        const auto symbols = singleMessage(server.handle(encodeMessage(request(9, "textDocument/documentSymbol",
+            nlohmann::ordered_json{ { "textDocument", nlohmann::ordered_json{ { "uri", kUri } } } }))));
+
+        bool hasAdded = false;
+        for (const auto& symbol : symbols.at("result"))
+            if (symbol.value("name", std::string{}) == "Added")
+                hasAdded = true;
+
+        EXPECT_TRUE(hasAdded);
+    }
+
+    TEST(LspTest, ServerResolvesImportedSymbolsAcrossDocuments) {
+        LanguageServer server;
+
+        const std::string libraryUri = "file:///lib.lcui";
+        const std::string mainUri = "file:///main.lcui";
+
+        const std::string library =
+            "enum Suit {\n"
+            "    Hearts\n"
+            "}\n"
+            "func helper(x: int) -> int { return x; }\n"
+            "class Hidden {}\n";
+
+        const std::string main =
+            "import \"lib.lcui\" { helper };\n"
+            "let r = helper(1);\n";
+
+        auto open = [&server](const std::string& uri, const std::string& text, int version) {
+            server.handle(encodeMessage(makeNotification("textDocument/didOpen",
+                nlohmann::ordered_json{
+                    { "textDocument", nlohmann::ordered_json{
+                        { "uri", uri },
+                        { "languageId", "lcui" },
+                        { "version", version },
+                        { "text", text },
+                    } },
+                })));
+        };
+
+        open(libraryUri, library, 1);
+        open(mainUri, main, 1);
+
+        nlohmann::ordered_json completionParams;
+        completionParams["textDocument"] = nlohmann::ordered_json{ { "uri", mainUri } };
+        completionParams["position"] = Position{ 1, 12 };
+
+        const auto completion = singleMessage(server.handle(
+            encodeMessage(request(10, "textDocument/completion", completionParams))));
+
+        ASSERT_TRUE(completion.at("result").at("items").is_array());
+        EXPECT_TRUE(hasJsonLabel(completion.at("result").at("items"), "helper"));
+        EXPECT_FALSE(hasJsonLabel(completion.at("result").at("items"), "Hidden"));
+
+        nlohmann::ordered_json definitionParams;
+        definitionParams["textDocument"] = nlohmann::ordered_json{ { "uri", mainUri } };
+        definitionParams["position"] = Position{ 1, 12 };
+
+        const auto definition = singleMessage(server.handle(
+            encodeMessage(request(11, "textDocument/definition", definitionParams))));
+
+        ASSERT_TRUE(definition.at("result").is_object());
+        EXPECT_EQ(definition.at("result").value("uri", std::string{}), libraryUri);
+        EXPECT_EQ(definition.at("result").at("range").at("start").at("line"), 3u);
     }
 
     TEST(LspTest, ServerRejectsUnknownMethod) {

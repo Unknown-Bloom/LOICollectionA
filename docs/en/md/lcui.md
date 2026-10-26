@@ -118,7 +118,7 @@ The shared control combinations of the built-in scripts are defined in `generic.
 
 ## Multi-file Imports
 
-The top of a script may use `import` to pull in the top-level definitions (`class` / `func` / `using` / `component`) of other `.lcui` files for cross-file reuse. The shared GUI vocabulary of the built-in scripts (pagination buttons, save/cancel labels, etc.) is extracted into `generic.lcui`:
+The top of a script may use `import` to pull in the top-level definitions (`class` / `func` / `using` / `component` / `enum`) of other `.lcui` files for cross-file reuse. The shared GUI vocabulary of the built-in scripts (pagination buttons, save/cancel labels, etc.) is extracted into `generic.lcui`:
 
 ```lcui
 import "generic.lcui";
@@ -131,14 +131,21 @@ let quote = new PaginatedForm("market.quote", {tr("market.gui.title")}, GUIManag
 };
 ```
 
+A file can also be imported selectively: append `{ name, ... }` to the path and only the listed definitions are merged (referencing an unlisted definition raises an undefined error):
+
+```lcui
+import "generic.lcui" { PageControls, closeButton };
+```
+
 Rules:
 
 | Rule | Description |
 | --- | --- |
 | Path resolution | `import` paths are resolved relative to the directory of the entry script |
 | Merge order | The import graph is expanded dependencies-first (topological order); each file's definitions are merged exactly once. Diamond imports (A and B both import C) are legal, and C appears once |
-| Definition conflicts | Same-named `class` / `func` / `using` / `component` in different files raise an error listing the file and line of both definitions |
-| Definitions only | Imported files may only contain `class` / `func` / `using` / `component` / `import` — no executable statements (imports must not have side effects); the entry file is exempt |
+| Selective imports | `import "path" { a, b };` merges only the listed definitions; multiple import sites union their symbols; omitting the list still imports everything |
+| Definition conflicts | Same-named `class` / `func` / `using` / `component` / `enum` in different files raise an error listing the file and line of both definitions |
+| Definitions only | Imported files may only contain `class` / `func` / `using` / `component` / `enum` / `import` — no executable statements (imports must not have side effects); the entry file is exempt |
 | Circular imports | Circular imports (e.g. A -> B -> A) raise an error with the full cycle path |
 | Missing files | An import whose file is missing or unreadable raises an error |
 
@@ -267,6 +274,40 @@ data = 1.5;     // Error: float is not in the declaration list
 
 `variant` requires at least two type parameters (e.g. `variant<int>` is invalid).
 
+### Enums (enum)
+
+`enum` declares a tagged union and may only appear at script top level. Variant names are unique across the whole program. A payload-free variant may omit parentheses in the declaration, but construction and pattern matching must write `Variant()`:
+
+```lcui
+enum Option {
+    Some(int)
+    Nothing
+}
+
+let a = Some(42);
+let b = Nothing();
+
+a == Some(42);   // true (compares the tag and every payload)
+a == Nothing();  // false
+```
+
+Variants may carry several payloads; construct them by calling the variant name, and the argument count must match the declaration:
+
+```lcui
+enum Shape {
+    Point(int, int)
+    Empty
+}
+
+let p = Point(3, 4);
+let label = match (p) [
+    Point(x, y) [ "(" + x + ", " + y + ")" ]
+    Empty() [ "empty" ]
+];
+```
+
+Enum values compare by content and cannot participate in arithmetic. Destructure them with `match`, `if let`, or `while let` (see "match (Pattern Matching)"). A variant belongs to the enum that declares it; matching it against another enum's value is a compile error.
+
 ### Type Aliases with using
 
 `using` can define an alias for a type; it is only allowed at the top level of a script:
@@ -287,14 +328,101 @@ Arrays are created with `[element1, element2, ...]` and support arbitrary mixed 
 
 ```lcui
 let items = [1, "a", true];
-items[0];       // 1
-items.length;   // 3
+items[0];        // 1
+items.length();  // 3
 
 items.push(2);  // Appends an element and returns the new length
 items[1] = "b"; // Modifies an existing element (assigning at index == length also appends)
 ```
 
 Array indices start at `0`; out-of-bounds reads and negative indices raise an error. Array `==`/`!=` compares references (whether they are the same array), not contents. An array field of a class is isolated between instances (it is copied when an instance is created); modifying the array of one instance does not affect other instances.
+
+### Array Methods
+
+Arrays provide the following methods (available directly as `array.method(...)`):
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| `push` | `arr.push(v)` | Appends an element and returns the new length |
+| `pop` | `arr.pop()` | Removes and returns the last element; an empty array raises an error |
+| `contains` | `arr.contains(v)` | Whether an equal element exists (`==` semantics) |
+| `indexOf` | `arr.indexOf(v)` | Index of the first occurrence; `-1` when absent |
+| `join` | `arr.join(sep)` | Converts every element to a string and joins them with `sep` |
+| `slice` | `arr.slice(start, end)` | Half-open slice returning a new array; out-of-range bounds are clamped |
+| `sort` | `arr.sort([cmp])` | Sorts in place; `cmp` is `func(a, b) -> int`; without it every pair of elements must be comparable |
+
+```lcui
+let items = [3, 1, 2];
+items.push(4);        // items = [3, 1, 2, 4], returns 4
+items.sort();         // items = [1, 2, 3, 4]
+let names = items.join(",");   // "1,2,3,4"
+
+let words = ["b", "a"];
+words.sort(func (a, b) -> int {
+    return if (a < b) [ -1 : 1 ];
+});
+```
+
+The argument-less `sort` raises a runtime error when a pair of elements cannot be compared (e.g. numbers mixed with strings); `slice` raises an error for negative indices.
+
+### String Methods
+
+Strings are value types and also expose methods as `string.method(...)`:
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| `length` | `s.length()` | Character count (Unicode code points) |
+| `charAt` | `s.charAt(i)` | The `i`-th character; returns an empty string when out of range or negative |
+| `substring` | `s.substring(start, end)` | Half-open substring counted in code points; bounds are clamped |
+| `upper` / `lower` | `s.upper()` | ASCII case conversion |
+| `trim` / `trimStart` / `trimEnd` | `s.trim()` | Strips leading/trailing, leading only, or trailing only whitespace |
+| `replace` | `s.replace(from, to)` | Replaces every occurrence; returns the input unchanged when `from` is empty |
+| `split` | `s.split(sep)` | Splits into an array; an empty `sep` splits into characters |
+| `contains` | `s.contains(sub)` | Whether the substring exists |
+| `startsWith` / `endsWith` | `s.startsWith(sub)` | Prefix / suffix test |
+| `indexOf` / `lastIndexOf` | `s.indexOf(sub)` | Character index of the first / last occurrence; `-1` when absent |
+| `toInt` / `toFloat` | `s.toInt()` | Parses to `optional<int>` / `optional<float>`; empty on failure |
+
+Strings also support `[]` indexing, returning a one-character `string`; out-of-range or negative indices raise an error:
+
+```lcui
+"hello"[0];   // "h"
+"hello"[4];   // "o"
+"hello"[-1];  // Error: negative index
+```
+
+```lcui
+"a,b,c".split(",");         // ["a", "b", "c"]
+"hello".startsWith("he");   // true
+
+let value: optional<int> = "42".toInt();
+value.has_value;            // true
+value.value;                // 42
+
+let bad: optional<int> = "abc".toInt();
+bad.has_value;              // false
+```
+
+### Map
+
+`Map` is an insertion-ordered key-value container. Keys may be `int` / `float` / `string` / `bool` (equal values are the same key):
+
+```lcui
+let m = new Map();
+m.set("apple", 3);
+m.set("banana", 5);
+m.get("apple");         // 3
+m.has("banana");        // true
+m.remove("apple");
+m.length();             // 1
+m.keys;                 // ["banana"], in insertion order
+
+for (k in m.keys) [
+    println(k + " = " + m.get(k));
+]
+```
+
+`get` returns `None` when the key is absent, which works well with the null-safe operators (see below).
 
 ## Operators
 
@@ -420,6 +548,7 @@ let name = match (code) [
 | --- | --- | --- |
 | Literal | `1`, `-2`, `3.5`, `"text"`, `true`, `None` | Matches by equality; `None` matches an empty `optional`; `int` / `float` literals match interchangeably |
 | Type | `Circle c` | Dispatches via `instanceof`; `c` binds the matched object inside the arm |
+| Enum variant | `Some(x)`, `Nothing()` | Matches the tag and binds payloads to the parameters; the variant must belong to the scrutinee's enum type |
 | Bind | `n` | Matches any value and makes `n` available inside the arm |
 | Wildcard | `_` | Matches any value without binding |
 | Guard | `n if (n > 10)` | Extra test applied after the pattern matches; may reference the arm's binder |
@@ -437,6 +566,24 @@ match (shape) [
 - Guards are evaluated only after the pattern matches, so `Square s if (...)` never tests a non-`Square` value.
 - Exhaustiveness is mandatory: an unguarded binding or `_` arm must exist (a `bool` scrutinee may instead be covered by both a `true` and a `false` arm), otherwise compilation fails.
 - Binders are visible only inside their own arm and may shadow outer variables; type-pattern class names are checked at compile time.
+
+### if let / while let
+
+When only one enum variant needs handling, a `let` pattern can be written directly in an `if` / `while` condition:
+
+```lcui
+let v = Some(7);
+
+if (let Some(x) = v) [
+    println("got " + x);
+]
+
+while (let Some(x) = next()) [
+    total = total + x;
+]
+```
+
+`if let` binds the payload and runs its body when the tag matches, otherwise it skips the body; `while let` re-evaluates the right-hand side on every iteration and stops at the first mismatch. Binders are visible only inside the corresponding branch and never leak to the outer scope. Variant names and payload arity are checked at compile time.
 
 ## Functions
 
@@ -645,7 +792,7 @@ class Deck {
 
 impl Iterable for Deck {
     func length() -> int {
-        return this.cards.length;
+        return this.cards.length();
     }
 
     func element(i: int) -> string {
@@ -680,11 +827,12 @@ for (i, card in deck) [
 
 | Namespace | Functions | Description |
 | --- | --- | --- |
-| `math` | `abs`, `min`, `max`, `sqrt`, `pow`, `log`, `sin`, `cos`, `random` | Math functions |
-| `string` | `length`, `upper`, `lower`, `substr`, `trim`, `replace` | String functions |
+| `math` | `sqrt`, `pow`, `log`, `sin`, `cos`, `random(min, max)` | Native transcendental functions; scriptable `abs` / `min` / `max` live in the `std/math.lcui` standard library |
 | `std` | `format(formatStr, array)` | Formats a string with the values in an array (fmt style) |
 | `mc` | `runCmd(command)` | Executes a command as the current player |
 | `GUIManager` | `value(id)`, `request(id, args)`, `callback(id, args)`, `open(id, formId, type[, ctx])`, `switchTo(id, type)` | Interacts with GUI data |
+| `storage` | `get(key)`, `set(key, value)`, `has(key)`, `remove(key)`, `keys()`, `clear()` | Persistent storage isolated per script |
+| `playerdata` | `get(key)`, `set(key, value)`, `has(key)`, `remove(key)`, `keys()`, `clear()` | Persistent storage isolated per player and script |
 
 The call format is `Namespace::function(parameters)`, for example:
 
@@ -694,7 +842,10 @@ GUIManager::callback("example.submit", [ "data" ]);
 let text = std::format({tr("example.gui.info")}, [ 1, "two" ]);
 ```
 
-> The `type` in `GUIManager::open` and `GUIManager::switchTo` is an integer: `1` is CustomForm, `2` is MessageBox, `3` is PaginatedForm, `4` is ScriptForm.
+> The `type` in `GUIManager::open` and `GUIManager::switchTo` is an integer: `1` is CustomForm, `2` is MessageBox, `3` is PaginatedForm, `4` is ScriptForm. Built-in form scripts import `FORM_CUSTOM`, `FORM_MESSAGE`, `FORM_PAGINATED`, and `FORM_SCRIPT` from `generic.lcui` instead of using raw numbers.
+
+> [!NOTE]
+> Early docs mentioned `string::length` / `string::upper` namespace functions; they do not exist. Strings and arrays are value types and use member methods (see "String Methods" and "Array Methods"). Scope, paths, and limits of `storage` / `playerdata` are documented in [Data Files](./data.md#script-storage).
 
 > [!NOTE]
 > When `GUIManager::open` navigates to **another script**, the target script id must be declared in `scripts.<id>.gui.navigations` in `gui/permission.json`, otherwise the call is denied. Opening a script's own form needs no declaration.
@@ -726,6 +877,7 @@ The following native classes can be directly `new`ed in a script (overview):
 | --- | --- | --- |
 | `GlobalValue` | Global value container, field `value` | [api.md](./api.md) |
 | `CtxValue` | Reads the `ctx` array passed to `GUIManager::open`, field `value` | See below |
+| `Map` | Insertion-ordered key-value container | See "Map" above |
 | `ObservableString` / `ObservableNumber` / `ObservableBoolean` / `ObservableUIRawMessage` | Observable data for two-way binding of controls | [native-ui.md](./native-ui.md) |
 | `UIRawMessage` | Constructs rich text / translated text | [native-ui.md](./native-ui.md) |
 | `CustomForm` / `MessageBox` / `PaginatedForm` | Native forms | [native-ui.md](./native-ui.md) |
@@ -850,16 +1002,22 @@ After compilation and before execution, the bytecode passes through an optimizer
 
 | Optimization | Example | Effect |
 | --- | --- | --- |
-| Constant folding | `1 + 2 * 3` | Folded to `PUSH_INT 7` at compile time; nothing computed at runtime |
-| Variable forwarding | `let x = 1; if (x == 1) [...]` | Later reads of `x` are replaced by the known value, and the branch folds away |
-| Pure-function folding | `math::abs(-3)`, `math::pow(2, 10)` | `math::` pure functions with all-constant arguments evaluate at compile time; impure ones like `math::random` never fold |
-| Super-instructions | `let x = 1` (`DUP` + `STORE_VAR`) | Hot instruction pairs fuse into a single `DUP_STORE` / `DUP_IS_NONE`, doing two jobs in one dispatch |
-| Jump peephole | A conditional jump immediately followed by an unconditional jump to the same target | The double jump collapses and the unreachable block in between is removed |
+| Constant folding | `1 + 2 * 3`, `math::sqrt(9)` | Computed at compile time; the runtime loads a constant |
+| Strength reduction | `x * 1`, `x + 0` | For numeric types the original operand is used directly, removing an arithmetic instruction |
+| Cross-block propagation | Both branches assign the same constant to `x`, then `x` is read at the join | Known values flow forward over the CFG; the join intersects them, turning provable reads into constants |
+| Variable forwarding | `let x = 1; if (x == 1) [...]` | After a known scalar is stored, reads are replaced by the constant and the branch folds away |
+| Pure-function folding | `math::sqrt(9)`, `math::pow(2, 10)` | Native pure functions with all-constant arguments evaluate at compile time; impure ones like `math::random` never fold |
+| Dead-store elimination | `x = 1;` followed by no reads | Removes assignments that can never be observed |
+| Dead-value elimination | A computed result that is never used | Removes pure computations whose results are unused |
+| Common subexpression elimination | The same expression computed in adjacent statements | Reuses the already-computed register |
+| Loop-invariant code motion | A computation inside a loop that does not depend on the iteration | Hoisted out of the loop and computed once |
+| Branch fusion | `CMP_*` immediately followed by `JMP_IF_FALSE` on its result | Fuses into one compare-and-branch instruction, saving a register read/write |
+| Function inlining | A call to a small function | Expands the body and removes call overhead |
 | Dead-code elimination | `while (false) [...]`, `if (false) [...]` | Unreachable branches are removed wholesale |
 
-The optimizer iterates these passes until the bytecode stops changing (a fixed point), so opportunities exposed by one rewrite (e.g. variable forwarding turning a condition into a constant) are picked up by the next round.
+The optimizer iterates propagation, folding, dead-store/dead-value elimination, and CSE until the bytecode stops changing (a fixed point), so opportunities exposed by one rewrite are picked up by the next round; loop-invariant code motion and branch fusion run after convergence.
 
-At runtime there is an additional layer of **inline caching**: when a script calls the same native function or native method repeatedly (e.g. `math::abs(...)` or `arr.push(...)` inside a loop), the VM remembers the previous resolution and skips signature matching and registry lookups on a hit. This affects speed only, never behavior — on invalidation (e.g. a plugin reload mutating the registry) the VM falls back to the full lookup.
+At runtime there is an additional layer of **inline caching**: when a script calls the same native function or native method repeatedly (e.g. `math::sqrt(...)` or `arr.push(...)` inside a loop), the VM remembers the previous resolution and skips signature matching and registry lookups on a hit. This affects speed only, never behavior — on invalidation (e.g. a plugin reload mutating the registry) the VM falls back to the full lookup.
 
 ## Bytecode Package
 
@@ -879,7 +1037,7 @@ The current package format version is v2.
 - Classes, named functions, `using`, and components can only appear at the top level of a script; they cannot be nested.
 - Declarative UI blocks are only allowed on form classes (`CustomForm` / `MessageBox` / `PaginatedForm` / `ScriptForm`); the `on:` named argument is only available inside a block.
 - Component calls may only appear as statements inside a declarative UI block; component recursion (direct or indirect) is a compile error.
-- Imported files may only contain top-level definitions (`class` / `func` / `using` / `component` / `import`); same-named definitions in different files conflict and raise an error.
+- Imported files may only contain top-level definitions (`class` / `func` / `using` / `component` / `enum` / `import`); same-named definitions in different files conflict and raise an error.
 - Every script execution is bound by the execution budget (1,000,000 instructions / 256 call frames by default); exceeding it aborts the execution. The budget is tunable per script via `budget` in `permission.json` — see [Execution Budget and Call Depth](#execution-budget-and-call-depth).
 - `return` can only be used inside a function; `break`/`continue` can only be used inside a loop.
 - A type declaration (`let x: int = 0;`) must also provide an initial value; class fields without a default value must be assigned in the constructor.

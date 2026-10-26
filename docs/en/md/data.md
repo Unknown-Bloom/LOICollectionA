@@ -358,8 +358,8 @@ Each sensitive call requires a capability up front; missing it is denied even if
 | `GUIManager::callback` | `GuiWrite` |
 | `GUIManager::open` / `GUIManager::switchTo` (incl. cross-script) | `GuiWrite` |
 | `mc::runCmd` | `ServerCommand` |
-| Read player data / storage (future built-in natives) | `PlayerDataRead` / `StorageRead` |
-| Write player data / storage (future built-in natives) | `PlayerDataWrite` / `StorageWrite` |
+| Read script storage / player data | `StorageRead` / `PlayerDataRead` |
+| Write script storage / player data | `StorageWrite` / `PlayerDataWrite` |
 
 ```json
 {
@@ -404,6 +404,46 @@ Each sensitive call requires a capability up front; missing it is denied even if
 
 > [!TIP]
 > Authorization for built-in scripts (`blacklist`, `wallet`, etc.) is maintained automatically with plugin updates. `menu` / `shop` are scripts you write yourself, so their authorization must be synced manually based on the commands and GUI ids actually invoked in the script.
+
+### Script Storage (storage / playerdata) {#script-storage}
+
+`storage` and `playerdata` are the script-facing persistence namespaces, backed by `JsonStorage`. Their APIs are identical; only the scope differs: `storage` is isolated per script, while `playerdata` is additionally isolated per player.
+
+```lcui
+storage::set("enabled", true);
+let enabled: optional<bool> = storage::get("enabled");
+
+playerdata::set("points", playerdata::get("points") ?? 0);
+if (playerdata::has("points")) [
+    print(playerdata::keys());
+]
+```
+
+| Function | Returns | Description |
+| --- | --- | --- |
+| `get(key)` | any value or `None` | `None` when the key is missing |
+| `set(key, value)` | the stored value | Accepts `int` / `float` / `string` / `bool` / plain objects / arrays |
+| `has(key)` | `bool` | Whether the key exists |
+| `remove(key)` | `bool` | Removes the key and reports whether it existed |
+| `keys()` | `string[]` | All keys in insertion order |
+| `clear()` | `None` | Clears the current scope |
+
+Scope and on-disk paths:
+
+| Namespace | Scope | Path (relative to `plugins/LOICollectionA/data/`) |
+| --- | --- | --- |
+| `storage` | current script | `script/storage/script-<script id>.json` |
+| `playerdata` | current player + current script | `script/playerdata/player-<player id>/script-<script id>.json` |
+
+Bytes outside `[A-Za-z0-9_-]` in script and player ids are percent-encoded to prevent path traversal. `storage` requires a script context; `playerdata` also requires a player context. Missing contexts fail the call instead of falling back to global storage.
+
+Capabilities and limits:
+
+- `get` / `has` / `keys` require `StorageRead` or `PlayerDataRead`; `set` / `remove` / `clear` require `StorageWrite` or `PlayerDataWrite`
+- Keys are capped at 512 characters; a single serialized value at 1 MiB; a file at 16 MiB (larger files are refused on load)
+- Object / array nesting is capped at 64; non-finite floats, native objects, functions and enum values cannot be stored
+- Each value file is loaded on first access and cached in memory; `set` / `remove` / `clear` write back to disk immediately
+- Bulk writes save the whole file each time; prefer pre-seeding a JSON file outside the script for large initial data
 
 ### menu.lcui (config directory)
 

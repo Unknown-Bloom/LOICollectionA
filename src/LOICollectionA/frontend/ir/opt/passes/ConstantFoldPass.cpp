@@ -82,6 +82,10 @@ namespace LOICollection::frontend::ir::opt::detail {
                 return false;
         }
     }
+
+    bool numericResult(const MirInstr& instr) {
+        return instr.type.kind == TypeKind::Int || instr.type.kind == TypeKind::Float;
+    }
 }
 
 namespace LOICollection::frontend::ir::opt {
@@ -212,13 +216,13 @@ namespace LOICollection::frontend::ir::opt {
             }
         }
 
-        if (lk && rk && identityEligible(instr.op, right.value)) {
+        if (rk && numericResult(instr) && identityEligible(instr.op, right.value)) {
             ++mCtx.stats.folded;
             return emitMove(instr.dst, instr.src1, instr.loc);
         }
 
         const bool commutative = instr.op == MirOp::ADD || instr.op == MirOp::MUL;
-        if (lk && rk && commutative && identityEligible(instr.op, left.value)) {
+        if (commutative && lk && numericResult(instr) && identityEligible(instr.op, left.value)) {
             ++mCtx.stats.folded;
             return emitMove(instr.dst, instr.src2, instr.loc);
         }

@@ -9,6 +9,7 @@
 #include "LOICollectionA/frontend/ir/opt/passes/DeadValuePass.h"
 #include "LOICollectionA/frontend/ir/opt/passes/InlinePass.h"
 #include "LOICollectionA/frontend/ir/opt/passes/BranchFusionPass.h"
+#include "LOICollectionA/frontend/ir/opt/passes/ConstantPropagationPass.h"
 
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 
@@ -76,9 +77,14 @@ namespace LOICollection::frontend::ir {
         if (chunk.code.empty())
             return {};
 
-        const opt::JumpTargetAnalysis jumps{ chunk.code };
-
         opt::OptContext ctx{ chunk.code.size() };
+
+        if (this->enabled(Pass::Propagation)) {
+            opt::ConstantPropagationPass propagate{ chunk };
+            ctx.stats.folded += propagate.run();
+        }
+
+        const opt::JumpTargetAnalysis jumps{ chunk.code };
 
         opt::ConstantFoldPass foldPass{ chunk, ctx, jumps };
         foldPass.run(this->enabled(Pass::ConstantFold));

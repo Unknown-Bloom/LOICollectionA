@@ -359,8 +359,8 @@
 | `GUIManager::callback` | `GuiWrite` |
 | `GUIManager::open` / `GUIManager::switchTo`（含跨脚本跳转） | `GuiWrite` |
 | `mc::runCmd` | `ServerCommand` |
-| 读取玩家数据 / 存档（未来内置原生） | `PlayerDataRead` / `StorageRead` |
-| 写入玩家数据 / 存档（未来内置原生） | `PlayerDataWrite` / `StorageWrite` |
+| 读取脚本存储 / 玩家数据 | `StorageRead` / `PlayerDataRead` |
+| 写入脚本存储 / 玩家数据 | `StorageWrite` / `PlayerDataWrite` |
 
 ```json
 {
@@ -405,6 +405,46 @@
 
 > [!TIP]
 > 内置脚本（`blacklist`、`wallet` 等）的授权随插件更新自动维护；`menu` / `shop` 是您自行编写的脚本，其授权需要您根据脚本内实际调用的命令与 GUI id 手动同步。
+
+### 脚本存储（storage / playerdata） {#script-storage}
+
+`storage` 与 `playerdata` 是脚本侧的持久化内置命名空间，底层复用 `JsonStorage`。两者接口一致，区别只在作用域：`storage` 按脚本隔离，`playerdata` 再按玩家隔离。
+
+```lcui
+storage::set("enabled", true);
+let enabled: optional<bool> = storage::get("enabled");
+
+playerdata::set("points", playerdata::get("points") ?? 0);
+if (playerdata::has("points")) [
+    print(playerdata::keys());
+]
+```
+
+| 函数 | 返回 | 说明 |
+| --- | --- | --- |
+| `get(key)` | 任意值或 `None` | 键不存在时返回 `None` |
+| `set(key, value)` | 写入的值 | 支持 `int` / `float` / `string` / `bool` / 普通对象 / 数组 |
+| `has(key)` | `bool` | 键是否存在 |
+| `remove(key)` | `bool` | 删除并返回是否原本存在 |
+| `keys()` | `string[]` | 按插入序返回全部键 |
+| `clear()` | `None` | 清空当前作用域 |
+
+作用域与路径：
+
+| 命名空间 | 作用域 | 落盘路径（相对 `plugins/LOICollectionA/data/`） |
+| --- | --- | --- |
+| `storage` | 当前脚本 | `script/storage/script-<脚本 id>.json` |
+| `playerdata` | 当前玩家 + 当前脚本 | `script/playerdata/player-<玩家 id>/script-<脚本 id>.json` |
+
+脚本 id 与玩家 id 中的非 `[A-Za-z0-9_-]` 字节会被百分号编码，避免路径穿越。`storage` 要求调用点拥有脚本上下文，`playerdata` 还要求玩家上下文；缺少上下文会直接报错而不是退化为全局存储。
+
+能力与限制：
+
+- 读取 `get` / `has` / `keys` 需要 `StorageRead` 或 `PlayerDataRead`，写入 `set` / `remove` / `clear` 需要 `StorageWrite` 或 `PlayerDataWrite`
+- 键长上限 512 字符；单个值序列化后上限 1 MiB；单个文件上限 16 MiB（超限拒绝加载）
+- 对象 / 数组嵌套深度上限 64；非有限浮点数、原生对象、函数与枚举值不可存储
+- 每个值文件在首次访问时加载并缓存，之后读写都作用于内存；`set` / `remove` / `clear` 立即写回磁盘
+- 大批量写入会逐次触发整文件保存；需要批量初始化时，优先在脚本外部预置 JSON 文件
 
 ### menu.lcui（config 目录）
 

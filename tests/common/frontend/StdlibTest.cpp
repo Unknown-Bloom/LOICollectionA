@@ -93,6 +93,41 @@ TEST(StdlibStringTest, IndexesByCharacter) {
     EXPECT_EQ(eval("let out = \"\"; for (c in \"中文\") [ out += c; ]; out"), "中文");
 }
 
+TEST(StdlibStringTest, CharAtAndSubstring) {
+    EXPECT_EQ(eval("\"hello\".charAt(1)"), "e");
+    EXPECT_EQ(eval("\"hello\".charAt(-1)"), "");
+    EXPECT_EQ(eval("\"hello\".charAt(9)"), "");
+    EXPECT_EQ(eval("\"中文\".charAt(1)"), "文");
+    EXPECT_EQ(eval("\"hello\".substring(1, 4)"), "ell");
+    EXPECT_EQ(eval("\"hello\".substring(-2, 2)"), "he");
+    EXPECT_EQ(eval("\"hello\".substring(3, 99)"), "lo");
+    EXPECT_EQ(eval("\"hello\".substring(3, 1)"), "");
+    EXPECT_EQ(eval("\"中文abc\".substring(1, 4)"), "文ab");
+}
+
+TEST(StdlibStringTest, UpperLowerTrimReplace) {
+    EXPECT_EQ(eval("\"aBc-中\".upper()"), "ABC-中");
+    EXPECT_EQ(eval("\"aBc-中\".lower()"), "abc-中");
+    EXPECT_EQ(eval("\"  \\t hi \\n \".trim()"), "hi");
+    EXPECT_EQ(eval("\"  hi \".trimStart()"), "hi ");
+    EXPECT_EQ(eval("\" hi  \".trimEnd()"), " hi");
+    EXPECT_EQ(eval("\"a-b-a\".replace(\"a\", \"xx\")"), "xx-b-xx");
+    EXPECT_EQ(eval("\"abc\".replace(\"\", \"x\")"), "abc");
+    EXPECT_EQ(eval("\"a中b\".replace(\"中\", \"--\")"), "a--b");
+}
+
+TEST(StdlibStringTest, LastIndexOf) {
+    EXPECT_EQ(eval("\"ababa\".lastIndexOf(\"ba\")"), "3");
+    EXPECT_EQ(eval("\"ababa\".lastIndexOf(\"z\")"), "-1");
+    EXPECT_EQ(eval("\"中文中\".lastIndexOf(\"中\")"), "2");
+}
+
+TEST(StdlibStringTest, IndexAccess) {
+    EXPECT_EQ(eval("\"hello\"[1]"), "e");
+    EXPECT_EQ(eval("\"中文\"[1]"), "文");
+    EXPECT_EQ(eval("let s = \"abc\"; s[0]"), "a");
+}
+
 TEST(StdlibStringTest, ToInt) {
     EXPECT_EQ(eval("\"42\".toInt()"), "42");
     EXPECT_EQ(eval("\"-7\".toInt()"), "-7");
@@ -130,6 +165,26 @@ TEST(StdlibMapTest, NonStringKeys) {
     EXPECT_EQ(eval("let m = new Map(); m.set(1, \"one\"); m.get(1)"), "one");
     EXPECT_EQ(eval("let m = new Map(); m.set(1.5, \"f\"); m.has(1.5)"), "true");
     EXPECT_EQ(eval("let m = new Map(); m.set(true, \"t\"); m.get(true)"), "t");
+}
+
+TEST(StdlibMapTest, RemoveKeepsRemainingOrderAndLookups) {
+    EXPECT_EQ(eval(
+        "let m = new Map(); "
+        "m.set(\"a\", 1); m.set(\"b\", 2); m.set(\"c\", 3); "
+        "m.remove(\"b\"); "
+        "m.keys"),
+        "[a, c]");
+    EXPECT_EQ(eval(
+        "let m = new Map(); "
+        "m.set(\"a\", 1); m.set(\"b\", 2); m.set(\"c\", 3); "
+        "m.remove(\"b\"); "
+        "m.get(\"c\")"),
+        "3");
+    EXPECT_EQ(eval(
+        "let m = new Map(); "
+        "m.set(1, \"one\"); m.set(1.0, \"uno\"); "
+        "m.get(1) + m.length()"),
+        "uno1");
 }
 
 TEST(StdlibMapTest, ForInOverKeys) {

@@ -35,6 +35,10 @@ LCUI.Schema = (function () {
         return { key: key, label: label, type: 'scores', initial: '', required: false, argument: false };
     }
 
+    function file(initial) {
+        return { key: 'file', label: '文件名', type: 'text', initial: initial || 'form.lcui', required: true, argument: false };
+    }
+
     var controls = [
         { kind: 'Label', name: 'label', label: '标签', category: '基础', optionsClass: 'TextOptions', observable: null, hasCallback: false, unique: false, properties: [
             text('text', '文本', '', true), flag('visible', '可见')
@@ -97,30 +101,43 @@ LCUI.Schema = (function () {
         { kind: 'ChooseButton', name: 'chooseButton', label: '跳页按钮', category: '分页', optionsClass: null, observable: null, hasCallback: false, unique: true, properties: [
             text('text', '文本', '跳转', true), text('prompt', '输入提示', '', false)
         ] },
-        { kind: 'CloseButton', name: 'closeButton', label: '关闭按钮', category: '分页', optionsClass: null, observable: null, hasCallback: false, unique: true, properties: [] }
+        { kind: 'CloseButton', name: 'closeButton', label: '关闭按钮', category: '分页', optionsClass: null, observable: null, hasCallback: false, unique: true, properties: [] },
+        { kind: 'ComponentCall', name: 'component', label: '组件调用', category: '组件', optionsClass: null, observable: null, hasCallback: false, unique: false, properties: [
+            { key: 'target', label: '目标组件', type: 'document', initial: '', required: true, argument: false },
+            { key: 'arguments', label: '调用参数', type: 'arguments', initial: '', required: false, argument: false }
+        ] }
     ];
 
-    var genericControls = ['Label', 'Header', 'TextField', 'Dropdown', 'Toggle', 'Slider', 'Button', 'Divider', 'Spacer', 'CloseButton'];
-    var paginatedControls = ['Label', 'Header', 'TextField', 'Dropdown', 'Toggle', 'Slider', 'Button', 'Divider', 'Spacer', 'PreviousButton', 'NextButton', 'ChooseButton', 'CloseButton'];
-    var menuControls = ['Label', 'Header', 'TextField', 'Dropdown', 'Toggle', 'Slider', 'Button', 'MenuButton', 'Divider', 'Spacer', 'CloseButton'];
+    var genericControls = ['Label', 'Header', 'TextField', 'Dropdown', 'Toggle', 'Slider', 'Button', 'Divider', 'Spacer', 'CloseButton', 'ComponentCall'];
+    var paginatedControls = ['Label', 'Header', 'TextField', 'Dropdown', 'Toggle', 'Slider', 'Button', 'Divider', 'Spacer', 'PreviousButton', 'NextButton', 'ChooseButton', 'CloseButton', 'ComponentCall'];
+    var menuControls = ['Label', 'Header', 'TextField', 'Dropdown', 'Toggle', 'Slider', 'Button', 'MenuButton', 'Divider', 'Spacer', 'CloseButton', 'ComponentCall'];
     var shopControls = ['ShopItem'];
+    var componentControls = ['Label', 'Header', 'TextField', 'Dropdown', 'Toggle', 'Slider', 'Button', 'Divider', 'Spacer', 'CloseButton', 'ComponentCall'];
+    var documentControls = {
+        Custom: genericControls,
+        MessageBox: ['Body', 'Button1', 'Button2'],
+        Paginated: paginatedControls,
+        Menu: menuControls,
+        Shop: shopControls,
+        Component: componentControls
+    };
 
     var forms = [
         { kind: 'Custom', name: 'CustomForm', label: '自定义表单', hint: '逐行排布的通用表单，适合设置页与数据提交。', controls: genericControls, properties: [
-            text('id', '表单标识', '', true), text('title', '表单标题', '', true), text('variable', '脚本变量名', 'form', true)
+            text('id', '表单标识', '', true), text('title', '表单标题', '', true), text('variable', '脚本变量名', 'form', true), file()
         ] },
         { kind: 'MessageBox', name: 'MessageBox', label: '消息框', hint: '正文加两个按钮的确认对话框。', controls: ['Body', 'Button1', 'Button2'], properties: [
-            text('id', '表单标识', '', true), text('title', '表单标题', '', true), text('variable', '脚本变量名', 'form', true)
+            text('id', '表单标识', '', true), text('title', '表单标题', '', true), text('variable', '脚本变量名', 'form', true), file()
         ] },
         { kind: 'Paginated', name: 'PaginatedForm', label: '分页列表', hint: '按页展示条目，附带翻页与跳页按钮。', controls: paginatedControls, properties: [
-            text('id', '表单标识', '', true), text('title', '表单标题', '', true), text('variable', '脚本变量名', 'form', true),
+            text('id', '表单标识', '', true), text('title', '表单标题', '', true), text('variable', '脚本变量名', 'form', true), file(),
             items('pages', '条目列表'), number('pageSize', '每页条数', 4, 1, 64, 1, true)
         ] },
         { kind: 'Menu', name: 'MenuForm', label: '菜单表单', hint: '菜单按钮可配置权限与 Score，生成 MenuForm 业务表单。', controls: menuControls, file: 'menu.lcui', properties: [
-            text('id', '表单标识', '', true), text('title', '表单标题', '', true), text('variable', '脚本变量名', 'form', true)
+            text('id', '表单标识', '', true), text('title', '表单标题', '', true), text('variable', '脚本变量名', 'form', true), file()
         ] },
         { kind: 'Shop', name: 'ShopForm', label: '商店表单', hint: '由商品条目驱动的 ShopForm，生成可直接部署的商店脚本。', controls: shopControls, file: 'shop.lcui', properties: [
-            text('id', '表单标识', '', true), text('title', '表单标题', '', true), text('variable', '脚本变量名', 'form', true),
+            text('id', '表单标识', '', true), text('title', '表单标题', '', true), text('variable', '脚本变量名', 'form', true), file(),
             optionText('type', '商店类型', 'buy'), optionText('content', '商店介绍'),
             optionText('exitCommand', '退出命令'), optionText('scoreCommand', '分数不足命令'),
             optionText('titleCommand', '称号购买命令'), optionText('itemCommand', '物品购买命令')
@@ -129,6 +146,12 @@ LCUI.Schema = (function () {
 
     var controlIndex = controls.reduce(function (map, entry) { map[entry.kind] = entry; return map; }, {});
     var formIndex = forms.reduce(function (map, entry) { map[entry.kind] = entry; return map; }, {});
+    formIndex.Component = { kind: 'Component', name: 'component', label: '组件声明', controls: componentControls, properties: [
+        text('name', '组件名', 'Component', true), text('params', '参数', '', false), file('component.lcui')
+    ] };
+    formIndex.Enum = { kind: 'Enum', name: 'enum', label: '枚举声明', controls: [], properties: [
+        text('name', '枚举名', 'Option', true), { key: 'variants', label: '变体', type: 'variants', initial: 'Some(int)\nNothing', required: true, argument: false }, file('option.lcui')
+    ] };
 
     function findControl(kind) { return controlIndex[kind] || null; }
     function findControlByName(name, formKind) {
@@ -140,8 +163,13 @@ LCUI.Schema = (function () {
     function findFormByName(name) { return forms.filter(function (entry) { return entry.name === name; })[0] || null; }
 
     function formAcceptsControl(formKind, controlKind) {
-        var form = findForm(formKind);
-        return !!form && form.controls.indexOf(controlKind) !== -1;
+        if (formKind === 'Component') return componentControls.indexOf(controlKind) !== -1;
+        var accepted = documentControls[formKind];
+        return !!accepted && accepted.indexOf(controlKind) !== -1;
+    }
+
+    function componentAcceptsControl(controlKind) {
+        return componentControls.indexOf(controlKind) !== -1;
     }
 
     function propertyOf(controlKind, key) {
@@ -163,11 +191,17 @@ LCUI.Schema = (function () {
     return {
         forms: forms,
         controls: controls,
+        documents: [
+            { kind: 'form', label: '表单', hint: '可部署的 .lcui 界面脚本，包含控件与回调。' },
+            { kind: 'enum', label: '枚举', hint: '带标签的联合类型，变体可携带多个载荷。' },
+            { kind: 'component', label: '组件', hint: '编译期展开的控件片段，可按参数复用。' }
+        ],
         findControl: findControl,
         findControlByName: findControlByName,
         findForm: findForm,
         findFormByName: findFormByName,
         formAcceptsControl: formAcceptsControl,
+        componentAcceptsControl: componentAcceptsControl,
         propertyOf: propertyOf,
         formPropertyOf: formPropertyOf,
         initialValue: initialValue

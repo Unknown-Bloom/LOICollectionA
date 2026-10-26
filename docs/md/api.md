@@ -200,16 +200,21 @@ namespaces::function_name(parameter1, parameter2,...)
 
 ### **函数具体使用实例**
 
-以下将展示计算 `cos(sqrt(100))` 和 `sin(sqrt(100))` 的最大值，并取其绝对值。
+以下将展示计算 `cos(sqrt(100))` 和 `sin(sqrt(100))` 并取较大值，`math::` 命名空间只保留原生超越函数。
 
 > [!TIP]
-> 需要注意的是，函数的调用需要使用 `::` 进行分隔，且函数的参数需要使用 `,` 进行分隔。
+> 命名空间与函数之间使用 `::` 分隔，参数之间使用 `,` 分隔。
 
 ```text
-math::abs(math::max(math::cos(math::sqrt(100)), math::sin(math::sqrt(100))))
+let a = math::cos(math::sqrt(100));
+let b = math::sin(math::sqrt(100));
+if (a > b) [ a ] : [ b ]
 ```
 
 - 返回结果：0.544021
+
+> [!TIP]
+> `abs` / `min` / `max` / `clamp` 等可脚本化的函数已移入 `assets/common/std/math.lcui`，导入后以普通函数调用，例如 `import "std/math.lcui" { max }; max(1, 2);`。
 
 > [!WARNING]
 > 每个表达式后都必须添加分隔符 `;`
@@ -296,8 +301,7 @@ if (dog instanceof Animal) [
 
 | 命名空间 | 函数 | 说明 |
 | --- | --- | --- |
-| `math` | `abs`、`max`、`min`、`sqrt`、`pow`、`log`、`sin`、`cos`、`random` | 数学函数 |
-| `string` | `length`、`upper`、`lower`、`substr`、`trim`、`replace` | 字符串函数 |
+| `math` | `sqrt`、`pow`、`log`、`sin`、`cos`、`random(min, max)` | 原生超越函数；`abs` / `min` / `max` 等可脚本化的实现位于标准库 `std/math.lcui` |
 | `std` | `format(formatStr, array)` | 使用数组中的值格式化字符串 |
 | `mc` | `runCmd(command)` | 以当前玩家身份执行命令 |
 | `GUIManager` | `value(id)` | 获取 GUI 注册值 |
@@ -305,6 +309,11 @@ if (dog instanceof Animal) [
 | `GUIManager` | `callback(id, args)` | 调用 GUI 注册回调 |
 | `GUIManager` | `open(id, formId, type[, ctx])` | 打开指定类型的 GUI |
 | `GUIManager` | `switchTo(id, type)` | 将当前 GUI 切换为指定类型 |
+| `storage` | `get`、`set`、`has`、`remove`、`keys`、`clear` | 按脚本隔离的持久化存储 |
+| `playerdata` | `get`、`set`、`has`、`remove`、`keys`、`clear` | 按玩家 + 脚本隔离的持久化存储 |
+
+> [!NOTE]
+> 早期文档中的 `string::length` / `string::upper` 等命名空间函数并不存在。字符串与数组是值类型，直接使用 `s.length()`、`arr.push(v)` 等成员方法；完整的方法表见 [LCUI 脚本语法](./lcui.md#字符串方法) 与 [数组方法](./lcui.md#数组方法)。`storage` / `playerdata` 的作用域、路径与限制见 [数据文件](./data.md#script-storage)。
 
 > [!TIP]
 > `GUIManager::open` 与 `GUIManager::switchTo` 中的 `type` 为整数：`1` 为 CustomForm，`2` 为 MessageBox，`3` 为 PaginatedForm，`4` 为 ScriptForm。

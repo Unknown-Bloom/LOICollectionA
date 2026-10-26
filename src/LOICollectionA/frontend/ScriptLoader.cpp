@@ -35,6 +35,8 @@ namespace LOICollection::frontend::detail {
                 return &static_cast<UsingNode&>(node).name;
             case ASTNode::Type::Component:
                 return &static_cast<ComponentNode&>(node).name;
+            case ASTNode::Type::Enum:
+                return &static_cast<EnumDeclNode&>(node).name;
             default:
                 return nullptr;
         }
@@ -50,6 +52,8 @@ namespace LOICollection::frontend::detail {
                 return static_cast<UsingNode&>(node).loc;
             case ASTNode::Type::Component:
                 return static_cast<ComponentNode&>(node).loc;
+            case ASTNode::Type::Enum:
+                return static_cast<EnumDeclNode&>(node).loc;
             default:
                 return {};
         }
@@ -187,7 +191,7 @@ namespace LOICollection::frontend {
                 if (!isTopLevelDefinition(*part)) {
                     diagnostics.addError({},
                         "Imported file '" + displayName(path, root) +
-                        "' must only contain top-level definitions (class/func/using/component)");
+                        "' must only contain top-level definitions (class/func/using/component/enum)");
                     return std::nullopt;
                 }
             }

@@ -46,8 +46,8 @@ LCUI.Codegen = (function () {
         return String(number);
     }
 
-    function optionValue(descriptor, value) {
-        if (descriptor.type === 'text') return quote(value);
+    function optionValue(descriptor, value, params) {
+        if (descriptor.type === 'text') return textValue(value, params);
         if (descriptor.type === 'boolean') return value ? 'true' : 'false';
         return numberLiteral(value);
     }
@@ -62,182 +62,324 @@ LCUI.Codegen = (function () {
         });
     }
 
-    function emit(document) {
-        var issues = Model.validate(document);
-        if (issues.length) return { ok: false, issues: issues };
+    function prefixOf(document) {
+        if (document.docType === 'component')
+            return Model.isIdentifier(document.properties.name) ? document.properties.name : 'component';
+        return Model.isIdentifier(document.properties.variable) ? document.properties.variable : 'form';
+    }
 
-        var prefix = Model.isIdentifier(document.properties.variable) ? document.properties.variable : 'form';
+    function buildEntries(document) {
+        var prefix = prefixOf(document);
+        var params = document.docType === 'component' ? Model.componentParams(document) : [];
+        var used = {};
+        params.forEach(function (name) { used[name] = true; });
+        var ordinals = {};
+        var entries = [];
 
+        document.controls.forEach(function (control) {
+            var descriptor = Schema.findControl(control.kind);
+            if (!descriptor) return;
+            var ordinal = (ordinals[descriptor.name] = (ordinals[descriptor.name] || 0) + 1);
+            var base = prefix + '_' + descriptor.name + '_' + ordinal;
+            while (used[base]) base += '_';
+            used[base] = true;
+            entries.push({ control: control, descriptor: descriptor, base: base });
+        });
+
+        return { prefix: prefix, params: params, entries: entries };
+    }
+
+    function observableNames(document) {
+        return buildEntries(document).entries.filter(function (entry) {
+            return !!entry.descriptor.observable;
+        }).map(function (entry) {
+            return entry.base + '_value';
+        });
+    }
+
+    function textValue(value, params) {
+        var text = String(value === null || value === undefined ? '' : value);
+        if (params && text.charAt(0) === '$' && params.indexOf(text.slice(1)) !== -1)
+            return text.slice(1);
+        return quote(text);
+    }
+
+    function numberValue(value, params) {
+        var text = String(value === null || value === undefined ? '' : value);
+        if (params && text.charAt(0) === '$' && params.indexOf(text.slice(1)) !== -1)
+            return text.slice(1);
+        return numberLiteral(value);
+    }
+
+    function importsFor(document, project) {
+        var entries = [];
+        var seen = {};
+
+        function add(file, symbols) {
+            if (!file || file === document.properties.file || seen[file]) return;
+            seen[file] = true;
+            entries.push({ file: file, symbols: symbols || [] });
+        }
+
+        (document.imports || []).forEach(function (entry) { add(entry.file, entry.symbols); });
+
+        document.controls.forEach(function (control) {
+            if (control.kind !== 'ComponentCall') return;
+            var target = Model.findComponentByName(project, control.properties.target);
+            if (target) add(target.properties.file);
+        });
+
+        entries.sort(function (left, right) { return left.file < right.file ? -1 : left.file > right.file ? 1 : 0; });
+        return entries;
+    }
+
+    function importLines(document, project) {
+        return importsFor(document, project).map(function (entry) {
+            if (!entry.symbols.length) return 'import ' + quote(entry.file) + ';';
+            return 'import ' + quote(entry.file) + ' { ' + entry.symbols.join(', ') + ' };';
+        });
+    }
+
+    function callbackValue(control, params) {
+        if (control.callbackParam && params.indexOf(control.callbackParam) !== -1)
+            return control.callbackParam;
+        var workspace = control.callbacks && control.callbacks.on;
+        if (workspace && workspace.blocks && workspace.blocks.length)
+            return 'func () -> void {\n' + LCUI.Blocks.generate(workspace, { indent: 2 }) + '\n    }';
+        return 'func () -> void {\n    }';
+    }
+
+    function callStatement(control, context) {
+        var target = Model.findComponentByName(context.project, control.properties.target);
+        var name = target ? target.properties.name : control.properties.target;
+        var args = Model.callArguments(control.properties.arguments).map(function (argument) {
+            if (context.params && argument.charAt(0) === '$' && context.params.indexOf(argument.slice(1)) !== -1)
+                return argument.slice(1);
+            if (argument.charAt(0) === '=') return argument.slice(1);
+            return quote(argument);
+        });
+        return name + '(' + args.join(', ') + ');';
+    }
+
+    function emitControl(entry, context, helpers) {
+        var control = entry.control;
+        var descriptor = entry.descriptor;
+        var base = entry.base;
+        var params = context.params;
+
+        if (control.kind === 'ComponentCall') return callStatement(control, context);
+
+        if (control.kind === 'MenuButton') {
+            helpers.push('let ' + base + '_action = new MenuItemData();');
+            helpers.push(base + '_action.type = ' + quote(control.properties.actionType || 'button') + ';');
+            helpers.push(base + '_action.title = ' + quote(control.properties.text) + ';');
+            if (String(control.properties.actionId || '').trim())
+                helpers.push(base + '_action.id = ' + quote(control.properties.actionId) + ';');
+            helpers.push(base + '_action.permission = ' + numberLiteral(control.properties.permission) + ';');
+            var menuRun = Model.splitLines(control.properties.run);
+            if (menuRun.length)
+                helpers.push(base + '_action.run = [' + menuRun.map(quote).join(', ') + '];');
+            var menuScores = scoreHelpers(base, control.properties.scores, helpers);
+            if (menuScores.length)
+                helpers.push(base + '_action.scores = [' + menuScores.join(', ') + '];');
+            if (hasCustomOptions(control, descriptor)) {
+                helpers.push('let ' + base + '_options = new ButtonOptions();');
+                descriptor.properties.forEach(function (propertyDescriptor) {
+                    if (isOptionProperty(propertyDescriptor) && !isDefault(control, propertyDescriptor))
+                        helpers.push(base + '_options.' + propertyDescriptor.key + ' = ' + optionValue(propertyDescriptor, control.properties[propertyDescriptor.key], params) + ';');
+                });
+            }
+
+            var menuArgs = [quote(control.properties.text), base + '_action'];
+            if (descriptor.hasCallback) menuArgs.push('on: ' + callbackValue(control, params));
+            menuArgs.push(hasCustomOptions(control, descriptor) ? base + '_options' : 'new ' + descriptor.optionsClass + '()');
+            return descriptor.name + '(' + menuArgs.join(', ') + ');';
+        }
+
+        if (descriptor.observable === 'String')
+            helpers.push('let ' + base + '_value = new ObservableString(' + textValue(control.properties[descriptor.observableKey], params) + ', true);');
+        if (descriptor.observable === 'Boolean')
+            helpers.push('let ' + base + '_value = new ObservableBoolean(' + (control.properties[descriptor.observableKey] ? 'true' : 'false') + ', true);');
+        if (descriptor.observable === 'Number')
+            helpers.push('let ' + base + '_value = new ObservableNumber(' + numberValue(control.properties[descriptor.observableKey], params) + ', true);');
+
+        if (control.kind === 'Dropdown') {
+            var items = Model.splitLines(control.properties.items);
+            items.forEach(function (item, index) {
+                helpers.push('let ' + base + '_items_' + index + ' = new DropdownItem();');
+                helpers.push(base + '_items_' + index + '.label = ' + quote(item) + ';');
+                helpers.push(base + '_items_' + index + '.value = ' + index + ';');
+            });
+            helpers.push('let ' + base + '_items = [' + items.map(function (item, index) { return base + '_items_' + index; }).join(', ') + '];');
+        }
+
+        if (hasCustomOptions(control, descriptor)) {
+            helpers.push('let ' + base + '_options = new ' + descriptor.optionsClass + '();');
+            descriptor.properties.forEach(function (propertyDescriptor) {
+                if (isOptionProperty(propertyDescriptor) && !isDefault(control, propertyDescriptor))
+                    helpers.push(base + '_options.' + propertyDescriptor.key + ' = ' + optionValue(propertyDescriptor, control.properties[propertyDescriptor.key], params) + ';');
+            });
+        }
+
+        var args = [];
+        descriptor.properties.forEach(function (propertyDescriptor) {
+            if (!propertyDescriptor.argument) return;
+            if (!propertyDescriptor.required && propertyDescriptor.type === 'text' &&
+                propertyDescriptor.key !== descriptor.observableKey &&
+                String(control.properties[propertyDescriptor.key]) === String(propertyDescriptor.initial))
+                return;
+
+            if (descriptor.observable && propertyDescriptor.key === descriptor.observableKey) {
+                args.push(base + '_value');
+                return;
+            }
+
+            if (control.kind === 'Dropdown' && propertyDescriptor.key === 'items') {
+                args.push(base + '_items');
+                return;
+            }
+
+            if (propertyDescriptor.type === 'text') args.push(textValue(control.properties[propertyDescriptor.key], params));
+            else if (propertyDescriptor.type === 'boolean') args.push(control.properties[propertyDescriptor.key] ? 'true' : 'false');
+            else args.push(numberValue(control.properties[propertyDescriptor.key], params));
+        });
+
+        if (descriptor.hasCallback) args.push('on: ' + callbackValue(control, params));
+
+        if (descriptor.optionsClass)
+            args.push(hasCustomOptions(control, descriptor) ? base + '_options' : 'new ' + descriptor.optionsClass + '()');
+
+        return descriptor.name + '(' + args.join(', ') + ');';
+    }
+
+    function scoreHelpers(base, value, helperLines) {
+        var references = [];
+        Model.scoreEntries(value).forEach(function (entry, index) {
+            if (!entry.valid) return;
+            var name = base + '_score_' + index;
+            helperLines.push('let ' + name + ' = new ScoreRequirement();');
+            helperLines.push(name + '.objective = ' + quote(entry.objective) + ';');
+            helperLines.push(name + '.value = ' + numberLiteral(entry.value) + ';');
+            references.push(name);
+        });
+        return references;
+    }
+
+    function emitShop(document, project) {
+        var prefix = prefixOf(document);
         var helperLines = [];
         var ordinals = {};
         var entries = document.controls.map(function (control) {
             var descriptor = Schema.findControl(control.kind);
-            var ordinal = (ordinals[descriptor.name] = (ordinals[descriptor.name] || 0) + 1);
-            return { control: control, descriptor: descriptor, base: prefix + '_' + descriptor.name + '_' + ordinal };
+            ordinals[control.kind] = (ordinals[control.kind] || 0) + 1;
+            return { control: control, descriptor: descriptor, base: prefix + '_' + descriptor.name + '_' + ordinals[control.kind] };
         });
-
-        function scoreHelpers(base, value) {
-            var references = [];
-            Model.scoreEntries(value).forEach(function (entry, index) {
-                if (!entry.valid) return;
-                var name = base + '_score_' + index;
-                helperLines.push('let ' + name + ' = new ScoreRequirement();');
-                helperLines.push(name + '.objective = ' + quote(entry.objective) + ';');
-                helperLines.push(name + '.value = ' + numberLiteral(entry.value) + ';');
-                references.push(name);
-            });
-            return references;
-        }
 
         entries.forEach(function (entry) {
             var control = entry.control;
-            var descriptor = entry.descriptor;
             var base = entry.base;
-
-            if (control.kind === 'MenuButton') {
-                helperLines.push('let ' + base + '_action = new MenuItemData();');
-                helperLines.push(base + '_action.type = ' + quote(control.properties.actionType || 'button') + ';');
-                helperLines.push(base + '_action.title = ' + quote(control.properties.text) + ';');
-                if (String(control.properties.actionId || '').trim())
-                    helperLines.push(base + '_action.id = ' + quote(control.properties.actionId) + ';');
-                helperLines.push(base + '_action.permission = ' + numberLiteral(control.properties.permission) + ';');
-                var menuRun = Model.splitLines(control.properties.run);
-                if (menuRun.length)
-                    helperLines.push(base + '_action.run = [' + menuRun.map(quote).join(', ') + '];');
-                var menuScores = scoreHelpers(base, control.properties.scores);
-                if (menuScores.length)
-                    helperLines.push(base + '_action.scores = [' + menuScores.join(', ') + '];');
-                if (hasCustomOptions(control, descriptor)) {
-                    helperLines.push('let ' + base + '_options = new ButtonOptions();');
-                    descriptor.properties.forEach(function (propertyDescriptor) {
-                        if (isOptionProperty(propertyDescriptor) && !isDefault(control, propertyDescriptor))
-                            helperLines.push(base + '_options.' + propertyDescriptor.key + ' = ' + optionValue(propertyDescriptor, control.properties[propertyDescriptor.key]) + ';');
-                    });
-                }
-            } else if (control.kind === 'ShopItem') {
-                helperLines.push('let ' + base + ' = new ShopItemData();');
-                helperLines.push(base + '.type = ' + quote(control.properties.type || 'commodity') + ';');
-                helperLines.push(base + '.title = ' + quote(control.properties.title) + ';');
-                ['id', 'introduce', 'number', 'nbt', 'confirmButton', 'cancelButton'].forEach(function (key) {
-                    if (String(control.properties[key] || '').trim())
-                        helperLines.push(base + '.' + key + ' = ' + quote(control.properties[key]) + ';');
-                });
-                if (Number(control.properties.time))
-                    helperLines.push(base + '.time = ' + numberLiteral(control.properties.time) + ';');
-                var itemScores = scoreHelpers(base, control.properties.scores);
-                if (itemScores.length)
-                    helperLines.push(base + '.scores = [' + itemScores.join(', ') + '];');
-            } else {
-                if (descriptor.observable === 'String')
-                    helperLines.push('let ' + base + '_value = new ObservableString(' + quote(control.properties[descriptor.observableKey]) + ', true);');
-                if (descriptor.observable === 'Boolean')
-                    helperLines.push('let ' + base + '_value = new ObservableBoolean(' + (control.properties[descriptor.observableKey] ? 'true' : 'false') + ', true);');
-                if (descriptor.observable === 'Number')
-                    helperLines.push('let ' + base + '_value = new ObservableNumber(' + numberLiteral(control.properties[descriptor.observableKey]) + ', true);');
-
-                if (control.kind === 'Dropdown') {
-                    Model.splitLines(control.properties.items).forEach(function (item, index) {
-                        helperLines.push('let ' + base + '_items_' + index + ' = new DropdownItem();');
-                        helperLines.push(base + '_items_' + index + '.label = ' + quote(item) + ';');
-                        helperLines.push(base + '_items_' + index + '.value = ' + index + ';');
-                    });
-                    var references = Model.splitLines(control.properties.items).map(function (item, index) { return base + '_items_' + index; });
-                    helperLines.push('let ' + base + '_items = [' + references.join(', ') + '];');
-                }
-
-                if (hasCustomOptions(control, descriptor)) {
-                    helperLines.push('let ' + base + '_options = new ' + descriptor.optionsClass + '();');
-                    descriptor.properties.forEach(function (propertyDescriptor) {
-                        if (isOptionProperty(propertyDescriptor) && !isDefault(control, propertyDescriptor))
-                            helperLines.push(base + '_options.' + propertyDescriptor.key + ' = ' + optionValue(propertyDescriptor, control.properties[propertyDescriptor.key]) + ';');
-                    });
-                }
-            }
+            helperLines.push('let ' + base + ' = new ShopItemData();');
+            helperLines.push(base + '.type = ' + quote(control.properties.type || 'commodity') + ';');
+            helperLines.push(base + '.title = ' + quote(control.properties.title) + ';');
+            ['id', 'introduce', 'number', 'nbt', 'confirmButton', 'cancelButton'].forEach(function (key) {
+                if (String(control.properties[key] || '').trim())
+                    helperLines.push(base + '.' + key + ' = ' + quote(control.properties[key]) + ';');
+            });
+            if (Number(control.properties.time))
+                helperLines.push(base + '.time = ' + numberLiteral(control.properties.time) + ';');
+            var itemScores = scoreHelpers(base, control.properties.scores, helperLines);
+            if (itemScores.length)
+                helperLines.push(base + '.scores = [' + itemScores.join(', ') + '];');
         });
 
         var shopVariable = prefix + '_shop';
-        if (document.kind === 'Shop') {
-            helperLines.push('let ' + shopVariable + ' = new ShopData();');
-            helperLines.push(shopVariable + '.id = ' + quote(document.properties.id) + ';');
-            helperLines.push(shopVariable + '.type = ' + quote(document.properties.type || 'buy') + ';');
-            helperLines.push(shopVariable + '.title = ' + quote(document.properties.title) + ';');
-            ['content', 'exitCommand', 'scoreCommand', 'titleCommand', 'itemCommand'].forEach(function (key) {
-                if (String(document.properties[key] || '').trim())
-                    helperLines.push(shopVariable + '.' + key + ' = ' + quote(document.properties[key]) + ';');
-            });
-            var itemReferences = entries.filter(function (entry) { return entry.control.kind === 'ShopItem'; }).map(function (entry) { return entry.base; });
-            if (itemReferences.length)
-                helperLines.push(shopVariable + '.items = [' + itemReferences.join(', ') + '];');
-        }
+        helperLines.push('let ' + shopVariable + ' = new ShopData();');
+        helperLines.push(shopVariable + '.id = ' + quote(document.properties.id) + ';');
+        helperLines.push(shopVariable + '.type = ' + quote(document.properties.type || 'buy') + ';');
+        helperLines.push(shopVariable + '.title = ' + quote(document.properties.title) + ';');
+        ['content', 'exitCommand', 'scoreCommand', 'titleCommand', 'itemCommand'].forEach(function (key) {
+            if (String(document.properties[key] || '').trim())
+                helperLines.push(shopVariable + '.' + key + ' = ' + quote(document.properties[key]) + ';');
+        });
+        helperLines.push(shopVariable + '.items = [' + entries.map(function (entry) { return entry.base; }).join(', ') + '];');
 
-        var formDescriptor = Schema.findForm(document.kind);
-        var constructor = 'let ' + prefix + ' = new ' + formDescriptor.name + '(' + quote(document.properties.id);
-        if (document.kind === 'Shop') {
-            constructor += ', ' + shopVariable + ') {';
-        } else {
-            constructor += ', ' + quote(document.properties.title);
-            if (document.kind === 'Paginated') {
-                var pages = Model.splitLines(document.properties.pages).map(function (entry) { return quote(entry); }).join(', ');
-                constructor += ', [' + pages + '], ' + numberLiteral(document.properties.pageSize);
-            }
-            constructor += ') {';
-        }
-
-        var source = '';
+        var constructor = 'let ' + prefix + ' = new ShopForm(' + quote(document.properties.id) + ', ' + shopVariable + ') {';
+        var source = importLines(document, project);
+        if (source.length) source = source.join('\n') + '\n\n';
         if (helperLines.length) source += helperLines.join('\n') + '\n\n';
         source += constructor + '\n';
 
-        if (document.kind !== 'Shop') {
-            entries.forEach(function (entry) {
-                var control = entry.control;
-                var descriptor = entry.descriptor;
-                var base = entry.base;
-                var args = [];
+        var shown = document.callbacks && document.callbacks.shown;
+        if (shown && shown.blocks && shown.blocks.length)
+            source += '    show(func (result) -> void {\n' + LCUI.Blocks.generate(shown, { indent: 2 }) + '\n    });\n};\n';
+        else
+            source += '    show();\n};\n';
 
-                if (control.kind === 'MenuButton') {
-                    args.push(quote(control.properties.text));
-                    args.push(base + '_action');
-                } else {
-                    descriptor.properties.forEach(function (propertyDescriptor) {
-                        if (!propertyDescriptor.argument) return;
-                        if (!propertyDescriptor.required && propertyDescriptor.type === 'text' &&
-                            propertyDescriptor.key !== descriptor.observableKey &&
-                            String(control.properties[propertyDescriptor.key]) === String(propertyDescriptor.initial))
-                            return;
+        return { ok: true, source: source };
+    }
 
-                        if (descriptor.observable && propertyDescriptor.key === descriptor.observableKey) {
-                            args.push(base + '_value');
-                            return;
-                        }
+    function emitEnum(document, project) {
+        var lines = importLines(document, project);
+        var source = lines.length ? lines.join('\n') + '\n\n' : '';
+        source += 'enum ' + document.properties.name + ' {\n';
+        Model.enumVariants(document).forEach(function (entry) {
+            if (!entry.valid) return;
+            source += '    ' + entry.name + (entry.params.length ? '(' + entry.params.join(', ') + ')' : '') + '\n';
+        });
+        source += '}\n';
+        return { ok: true, source: source };
+    }
 
-                        if (control.kind === 'Dropdown' && propertyDescriptor.key === 'items') {
-                            args.push(base + '_items');
-                            return;
-                        }
+    function emitComponent(document, project) {
+        var lines = importLines(document, project);
+        var source = lines.length ? lines.join('\n') + '\n\n' : '';
+        source += 'component ' + document.properties.name + '(' + Model.componentParams(document).join(', ') + ') {\n';
 
-                        if (propertyDescriptor.type === 'text') args.push(quote(control.properties[propertyDescriptor.key]));
-                        else if (propertyDescriptor.type === 'boolean') args.push(control.properties[propertyDescriptor.key] ? 'true' : 'false');
-                        else args.push(numberLiteral(control.properties[propertyDescriptor.key]));
-                    });
-                }
+        var built = buildEntries(document);
+        var helpers = [];
+        var statements = built.entries.map(function (entry) {
+            return emitControl(entry, { document: document, project: project, params: built.params }, helpers);
+        });
 
-                if (descriptor.hasCallback) {
-                    var bcb = control.callbacks && control.callbacks.on;
-                    if (bcb && bcb.blocks && bcb.blocks.length) {
-                        args.push('on: func () -> void {\n' + LCUI.Blocks.generate(bcb, { indent: 2 }) + '\n    }');
-                    } else {
-                        args.push('on: func () -> void {\n    }');
-                    }
-                }
+        helpers.forEach(function (line) { source += '    ' + line + '\n'; });
+        if (helpers.length) source += '\n';
+        statements.forEach(function (line) { source += '    ' + line + '\n'; });
+        source += '}\n';
+        return { ok: true, source: source };
+    }
 
-                if (descriptor.optionsClass) {
-                    if (hasCustomOptions(control, descriptor)) args.push(base + '_options');
-                    else args.push('new ' + descriptor.optionsClass + '()');
-                }
+    function emit(document, project) {
+        project = project || Model.makeProject([document]);
+        var issues = Model.validate(document).map(function (issue) { return { line: 0, message: issue.message }; });
+        Model.projectIssues(project).forEach(function (issue) {
+            if (issue.level === 'error') issues.push({ line: 0, message: issue.message });
+        });
+        if (issues.length) return { ok: false, issues: issues };
 
-                source += '    ' + descriptor.name + '(' + args.join(', ') + ');\n';
-            });
+        if (document.docType === 'enum') return emitEnum(document, project);
+        if (document.docType === 'component') return emitComponent(document, project);
+        if (document.kind === 'Shop') return emitShop(document, project);
+
+        var prefix = prefixOf(document);
+        var built = buildEntries(document);
+        var helperLines = [];
+        var statements = built.entries.map(function (entry) {
+            return emitControl(entry, { document: document, project: project, params: null }, helperLines);
+        });
+
+        var constructor = 'let ' + prefix + ' = new ' + Schema.findForm(document.kind).name + '(' + quote(document.properties.id);
+        constructor += ', ' + quote(document.properties.title);
+        if (document.kind === 'Paginated') {
+            var pages = Model.splitLines(document.properties.pages).map(function (entry) { return quote(entry); }).join(', ');
+            constructor += ', [' + pages + '], ' + numberLiteral(document.properties.pageSize);
         }
+        constructor += ') {';
+
+        var source = importLines(document, project);
+        if (source.length) source = source.join('\n') + '\n\n';
+        if (helperLines.length) source += helperLines.join('\n') + '\n\n';
+        source += constructor + '\n';
+        statements.forEach(function (line) { source += '    ' + line + '\n'; });
 
         var shownWs = document.callbacks && document.callbacks.shown;
         if (shownWs && shownWs.blocks && shownWs.blocks.length) {
@@ -283,7 +425,7 @@ LCUI.Codegen = (function () {
             if (entry === '&' && text.charAt(position + 1) === '&') { tokens.push({ type: 'punct', value: '&&', line: startLine }); position += 2; continue; }
             if (entry === '|' && text.charAt(position + 1) === '|') { tokens.push({ type: 'punct', value: '||', line: startLine }); position += 2; continue; }
 
-            if ('(){}[];,.:=!+'.indexOf(entry) !== -1) {
+            if ('(){}[];,.:=!+<>'.indexOf(entry) !== -1) {
                 tokens.push({ type: 'punct', value: entry, line: startLine });
                 position++;
                 continue;
@@ -315,6 +457,7 @@ LCUI.Codegen = (function () {
 
             if (/[0-9]/.test(entry) || (entry === '-' && /[0-9]/.test(text.charAt(position + 1) || ''))) {
                 var number = '';
+                if (entry === '-') { number = '-'; position++; }
                 while (position < text.length && /[0-9.]/.test(text.charAt(position))) {
                     number += text.charAt(position);
                     position++;
@@ -342,7 +485,7 @@ LCUI.Codegen = (function () {
 
     function parse(source) {
         try {
-            if (String(source).length > 1048576)
+            if (String(source).length > Model.Limits.maxSourceLength)
                 return { ok: false, errors: [{ line: 0, message: '源码过长，编辑器仅接受 1 MiB 以内的脚本' }] };
 
             var state = { tokens: tokenize(source), index: 0, helpers: {} };
@@ -365,6 +508,87 @@ LCUI.Codegen = (function () {
             function isBool(token) { return token.type === 'ident' && (token.value === 'true' || token.value === 'false'); }
             function boolValue(token) { return token.value === 'true'; }
 
+            function parseImport() {
+                eat('import');
+                var path = next();
+                if (!isString(path)) fail('import 后应为文件路径', path);
+                var symbols = [];
+                if (at('{')) {
+                    next();
+                    while (!at('}')) {
+                        if (symbols.length) eat(',');
+                        var symbol = next();
+                        if (!isIdent(symbol)) fail('导入列表应为标识符', symbol);
+                        symbols.push(symbol.value);
+                    }
+                    eat('}');
+                }
+                expectSemicolon();
+                return { file: path.value, symbols: symbols };
+            }
+
+            function parseTypeList() {
+                var types = [];
+                var current = [];
+                var angles = 0;
+                var parens = 0;
+
+                function flush() {
+                    var text = typeText(current);
+                    if (text.length) types.push(text);
+                    current = [];
+                }
+
+                while (!at(')') || angles > 0 || parens > 0) {
+                    var token = next();
+                    if (token.type === 'eof') fail('类型列表未闭合', token);
+                    if (token.type === 'punct' && token.value === '<') angles++;
+                    if (token.type === 'punct' && token.value === '>') angles--;
+                    if (token.type === 'punct' && token.value === '(') parens++;
+                    if (token.type === 'punct' && token.value === ')') parens--;
+                    if (token.type === 'punct' && token.value === ',' && angles === 0 && parens === 0) {
+                        flush();
+                        continue;
+                    }
+                    current.push(token);
+                }
+                flush();
+                return types;
+            }
+
+            function typeText(tokens) {
+                var out = '';
+                tokens.forEach(function (token, index) {
+                    if (index && /[A-Za-z0-9_]$/.test(out) && token.type === 'ident') out += ' ';
+                    out += String(token.value);
+                    if (token.value === ',') out += ' ';
+                });
+                return out.trim();
+            }
+
+            function parseEnumDeclaration() {
+                var token = eat('enum');
+                var name = next();
+                if (!isIdent(name)) fail('enum 后应为枚举名', name);
+                eat('{');
+                var variants = [];
+                while (!at('}')) {
+                    if (at(',')) { next(); continue; }
+                    var variant = next();
+                    if (!isIdent(variant)) fail('枚举体内应为变体名', variant);
+                    var params = [];
+                    if (at('(')) {
+                        next();
+                        params = parseTypeList();
+                        eat(')');
+                    }
+                    variants.push({ name: variant.value, params: params });
+                }
+                eat('}');
+                expectSemicolon();
+                return { name: name.value, variants: variants, line: token.line };
+            }
+
             function parseArguments() {
                 eat('(');
                 var args = [];
@@ -379,7 +603,12 @@ LCUI.Codegen = (function () {
                     if (isIdent(token)) {
                         if (token.value === 'on' && peek(1).value === ':') {
                             state.index += 2;
-                            args.push(parseFuncLiteral());
+                            if (at('func')) args.push(parseFuncLiteral());
+                            else {
+                                var target = next();
+                                if (!isIdent(target)) fail('on: 后应为回调参数或 func', target);
+                                args.push({ kind: 'reference', name: target.value });
+                            }
                             continue;
                         }
 
@@ -391,10 +620,8 @@ LCUI.Codegen = (function () {
                         if (token.value === 'new' && peek(1).type === 'ident') {
                             state.index += 2;
                             var className = state.tokens[state.index - 1].value;
-                            eat('(');
-                            if (!at(')')) fail('内联构造仅支持无参形式 new ' + className + '()', peek());
-                            eat(')');
-                            args.push({ kind: 'inline', className: className });
+                            var nested = parseArguments();
+                            args.push({ kind: 'inline', className: className, args: nested });
                             continue;
                         }
 
@@ -605,113 +832,197 @@ LCUI.Codegen = (function () {
                 if (at(';')) state.index++;
             }
 
+            function parseCallStatement() {
+                var name = next();
+                if (!isIdent(name)) fail('声明式块内只支持方法调用', name);
+                var args = parseArguments();
+                expectSemicolon();
+                return { name: name.value, args: args, line: name.line };
+            }
+
+            function parseLet() {
+                eat('let');
+                var name = next();
+                if (!isIdent(name)) fail('let 后应为变量名', name);
+                eat('=');
+
+                if (at('[')) {
+                    next();
+                    var references = [];
+                    while (!at(']')) {
+                        if (references.length) eat(',');
+                        var element = peek();
+                        if (isIdent(element)) references.push({ kind: 'reference', name: next().value });
+                        else if (isString(element)) references.push({ kind: 'string', value: next().value });
+                        else fail('数组元素必须是变量名或字符串', element);
+                    }
+                    eat(']');
+                    state.helpers[name.value] = { kind: 'itemsArray', elements: references };
+                    expectSemicolon();
+                    return null;
+                }
+
+                if (!at('new')) fail('let 声明仅支持 new 构造或数组', peek());
+
+                next();
+                var classNameToken = next();
+                if (!isIdent(classNameToken)) fail('new 后应为类名', classNameToken);
+                var className = classNameToken.value;
+
+                if (Schema.findFormByName(className)) {
+                    var args = parseArguments();
+
+                    if (!at('{')) fail('表单构造必须带声明式块 { … }', classNameToken);
+                    next();
+
+                    var binding = { variable: name.value, className: className, args: args, calls: [], line: classNameToken.line };
+                    while (!at('}')) {
+                        binding.calls.push(parseCallStatement());
+                    }
+                    eat('}');
+                    expectSemicolon();
+                    if (peek().type !== 'eof') fail('表单声明必须是最后一条语句', peek());
+                    return { formBinding: binding };
+                }
+
+                if (observableClasses[className]) {
+                    var observableArgs = parseArguments();
+                    if (observableArgs.length !== 2 || observableArgs[1].kind !== 'boolean' || !observableArgs[1].value)
+                        fail('可观察对象构造应为 new ' + className + '(初始值, true)', classNameToken);
+                    state.helpers[name.value] = { kind: 'observable', className: className, initial: observableArgs[0] };
+                    expectSemicolon();
+                    return null;
+                }
+
+                if (optionsClasses.indexOf(className) !== -1) {
+                    var optionArgs = parseArguments();
+                    if (optionArgs.length) fail('选项对象应为无参构造 new ' + className + '()', classNameToken);
+                    state.helpers[name.value] = { kind: 'options', className: className, fields: {} };
+                    expectSemicolon();
+                    return null;
+                }
+
+                if (className === 'DropdownItem') {
+                    var itemArgs = parseArguments();
+                    if (itemArgs.length) fail('下拉条目应为无参构造 new DropdownItem()', classNameToken);
+                    state.helpers[name.value] = { kind: 'item', fields: {} };
+                    expectSemicolon();
+                    return null;
+                }
+
+                if (recordClasses.indexOf(className) !== -1) {
+                    var recordArgs = parseArguments();
+                    if (recordArgs.length) fail(className + ' 应为无参构造', classNameToken);
+                    state.helpers[name.value] = { kind: 'record', className: className, fields: {} };
+                    expectSemicolon();
+                    return null;
+                }
+
+                fail('不支持的构造类 ' + className, classNameToken);
+            }
+
+            function parseHelperAssignment() {
+                var target = next();
+                eat('.');
+                var field = next();
+                if (!isIdent(field)) fail('应为字段名', field);
+                eat('=');
+
+                var helper = state.helpers[target.value];
+                if (!helper) fail('赋值目标 ' + target.value + ' 未预先声明', target);
+
+                if (helper.kind === 'record') {
+                    if (at('[')) helper.fields[field.value] = { kind: 'array', elements: parseReferenceArray() };
+                    else helper.fields[field.value] = readLiteral();
+                } else {
+                    var valueToken = next();
+                    if (!isString(valueToken) && !isNumber(valueToken) && !isBool(valueToken)) fail('字段赋值仅支持字面量', valueToken);
+                    if (helper.kind === 'options' || helper.kind === 'item')
+                        helper.fields[field.value] = isBool(valueToken) ? boolValue(valueToken) : valueToken.value;
+                    else fail(target.value + ' 不是选项或下拉条目变量', target);
+                }
+                expectSemicolon();
+            }
+
+            function parseComponentDeclaration() {
+                var token = eat('component');
+                var name = next();
+                if (!isIdent(name)) fail('component 后应为组件名', name);
+                eat('(');
+                var params = [];
+                if (!at(')')) {
+                    var first = next();
+                    if (!isIdent(first)) fail('组件参数应为标识符', first);
+                    params.push(first.value);
+                    while (at(',')) {
+                        next();
+                        var param = next();
+                        if (!isIdent(param)) fail('组件参数应为标识符', param);
+                        params.push(param.value);
+                    }
+                }
+                eat(')');
+                eat('{');
+
+                var calls = [];
+                while (!at('}')) {
+                    if (at('eof')) fail('组件体缺少 }', peek());
+                    if (isIdent(peek()) && peek().value === 'let') { parseLet(); continue; }
+                    if (isIdent(peek()) && peek(1).type === 'punct' && peek(1).value === '.') { parseHelperAssignment(); continue; }
+                    calls.push(parseCallStatement());
+                }
+                eat('}');
+                expectSemicolon();
+                return { name: name.value, params: params, calls: calls, line: token.line };
+            }
+
+            var imports = [];
             var formBinding = null;
+            var component = null;
+            var enumDecl = null;
+            var definitions = 0;
 
             while (peek().type !== 'eof') {
                 var token = peek();
 
-                if (isIdent(token) && token.value === 'let') {
-                    next();
-                    var name = next();
-                    if (!isIdent(name)) fail('let 后应为变量名', name);
-                    eat('=');
-
-                    if (at('[')) {
-                        next();
-                        var references = [];
-                        while (!at(']')) {
-                            if (references.length) eat(',');
-                            var element = peek();
-                            if (isIdent(element)) references.push({ kind: 'reference', name: next().value });
-                            else if (isString(element)) references.push({ kind: 'string', value: next().value });
-                            else fail('数组元素必须是变量名或字符串', element);
-                        }
-                        eat(']');
-                        state.helpers[name.value] = { kind: 'itemsArray', elements: references };
-                        expectSemicolon();
-                        continue;
-                    }
-
-                    if (!at('new')) fail('let 声明仅支持 new 构造或数组', peek());
-
-                    next();
-                    var classNameToken = next();
-                    if (!isIdent(classNameToken)) fail('new 后应为类名', classNameToken);
-                    var className = classNameToken.value;
-
-                    if (Schema.findFormByName(className)) {
-                        if (formBinding) fail('只支持单个表单声明', classNameToken);
-                        var args = parseArguments();
-
-                        if (!at('{')) fail('表单构造必须带声明式块 { … }', classNameToken);
-                        next();
-
-                        formBinding = { variable: name.value, className: className, args: args, calls: [], line: classNameToken.line };
-                        while (!at('}')) {
-                            var call = next();
-                            if (!isIdent(call)) fail('声明式块内只支持方法调用', call);
-                            var callArgs = parseArguments();
-                            formBinding.calls.push({ name: call.value, args: callArgs, line: call.line });
-                            expectSemicolon();
-                        }
-                        eat('}');
-                        expectSemicolon();
-                        if (peek().type !== 'eof') fail('表单声明必须是最后一条语句', peek());
-                    } else if (observableClasses[className]) {
-                        var observableArgs = parseArguments();
-                        if (observableArgs.length !== 2 || observableArgs[1].kind !== 'boolean' || !observableArgs[1].value)
-                            fail('可观察对象构造应为 new ' + className + '(初始值, true)', classNameToken);
-                        state.helpers[name.value] = { kind: 'observable', className: className, initial: observableArgs[0].value };
-                        expectSemicolon();
-                    } else if (optionsClasses.indexOf(className) !== -1) {
-                        var optionArgs = parseArguments();
-                        if (optionArgs.length) fail('选项对象应为无参构造 new ' + className + '()', classNameToken);
-                        state.helpers[name.value] = { kind: 'options', className: className, fields: {} };
-                        expectSemicolon();
-                    } else if (className === 'DropdownItem') {
-                        var itemArgs = parseArguments();
-                        if (itemArgs.length) fail('下拉条目应为无参构造 new DropdownItem()', classNameToken);
-                        state.helpers[name.value] = { kind: 'item', fields: {} };
-                        expectSemicolon();
-                    } else if (recordClasses.indexOf(className) !== -1) {
-                        var recordArgs = parseArguments();
-                        if (recordArgs.length) fail(className + ' 应为无参构造', classNameToken);
-                        state.helpers[name.value] = { kind: 'record', className: className, fields: {} };
-                        expectSemicolon();
-                    } else {
-                        fail('不支持的构造类 ' + className, classNameToken);
-                    }
-                } else if (isIdent(token)) {
-                    var target = next();
-                    if (!at('.'))
-                        fail('仅支持编辑器生成的脚本结构（let 声明或辅助变量赋值）', target);
-                    eat('.');
-                    var field = next();
-                    if (!isIdent(field)) fail('应为字段名', field);
-                    eat('=');
-
-                    var helper = state.helpers[target.value];
-                    if (!helper) fail('赋值目标 ' + target.value + ' 未预先声明', target);
-
-                    if (helper.kind === 'record') {
-                        if (at('[')) helper.fields[field.value] = { kind: 'array', elements: parseReferenceArray() };
-                        else helper.fields[field.value] = readLiteral();
-                    } else {
-                        var valueToken = next();
-                        if (!isString(valueToken) && !isNumber(valueToken) && !isBool(valueToken)) fail('字段赋值仅支持字面量', valueToken);
-                        if (helper.kind === 'options' || helper.kind === 'item')
-                            helper.fields[field.value] = isBool(valueToken) ? boolValue(valueToken) : valueToken.value;
-                        else fail(target.value + ' 不是选项或下拉条目变量', target);
-                    }
-                    expectSemicolon();
-                } else {
-                    fail('仅支持 let 声明与辅助变量赋值', token);
+                if (isIdent(token) && token.value === 'import') {
+                    if (formBinding || component || enumDecl) fail('import 必须位于脚本顶部', token);
+                    imports.push(parseImport());
+                    continue;
                 }
+                if (formBinding) fail('表单声明必须是最后一条语句', token);
+                if (isIdent(token) && token.value === 'enum') {
+                    if (definitions) fail('每个文件只支持一个顶层声明', token);
+                    enumDecl = parseEnumDeclaration();
+                    definitions++;
+                    continue;
+                }
+                if (isIdent(token) && token.value === 'component') {
+                    if (definitions) fail('每个文件只支持一个顶层声明', token);
+                    component = parseComponentDeclaration();
+                    definitions++;
+                    continue;
+                }
+                if (isIdent(token) && token.value === 'let') {
+                    var declaration = parseLet();
+                    if (declaration && declaration.formBinding) {
+                        if (definitions) fail('每个文件只支持一个顶层声明', token);
+                        formBinding = declaration.formBinding;
+                        definitions++;
+                    }
+                    continue;
+                }
+                if (isIdent(token) && peek(1).type === 'punct' && peek(1).value === '.') {
+                    parseHelperAssignment();
+                    continue;
+                }
+                fail('仅支持编辑器生成的脚本结构（import / enum / component / let 声明）', token);
             }
 
-            if (!formBinding) return { ok: false, errors: [{ line: 0, message: '未找到表单声明（let 变量 = new 表单类(…) { … };）' }] };
+            if (!formBinding && !component && !enumDecl)
+                return { ok: false, errors: [{ line: 0, message: '未找到表单、枚举或组件声明' }] };
 
-            return { ok: true, binding: formBinding, helpers: state.helpers };
+            return { ok: true, imports: imports, binding: formBinding, component: component, enumDecl: enumDecl, helpers: state.helpers };
         } catch (error) {
             if (error && error.line !== undefined) return { ok: false, errors: [{ line: error.line, message: error.message }] };
             return { ok: false, errors: [{ line: 0, message: '解析失败: ' + (error && error.message ? error.message : String(error)) }] };
@@ -750,10 +1061,10 @@ LCUI.Codegen = (function () {
             var action = recordOf(helpers, call.args[1]);
             if (action && action.className === 'MenuItemData') return Schema.findControl('MenuButton');
         }
-        return Schema.findControlByName(call.name, formDescriptor.kind);
+        return Schema.findControlByName(call.name, formDescriptor.kind === 'Component' ? 'Component' : formDescriptor.kind);
     }
 
-    function applyOptions(control, descriptor, arg, helpers, errors, line) {
+    function applyOptions(control, descriptor, arg, helpers, errors, line, params) {
         if (arg && arg.kind === 'reference' && helpers[arg.name] && helpers[arg.name].kind === 'options') {
             var fields = helpers[arg.name].fields;
             if (helpers[arg.name].className !== descriptor.optionsClass)
@@ -769,6 +1080,10 @@ LCUI.Codegen = (function () {
     }
 
     function attachCallback(control, callback) {
+        if (callback && callback.kind === 'reference') {
+            control.callbackParam = callback.name;
+            return;
+        }
         if (callback && callback.body && callback.body.length) {
             control.callbacks = control.callbacks || {};
             control.callbacks.on = LCUI.Blocks.workspace();
@@ -776,7 +1091,118 @@ LCUI.Codegen = (function () {
         }
     }
 
-    function shopDocument(binding, helpers, formDescriptor) {
+    function initialProperty(value, params) {
+        if (!value) return '';
+        if (value.kind === 'string' || value.kind === 'number') return value.value;
+        if (value.kind === 'boolean') return value.value;
+        if (value.kind === 'reference' && params.indexOf(value.name) !== -1) return '$' + value.name;
+        return '';
+    }
+
+    function componentCallControl(call, params, errors) {
+        var control = Model.makeControl('ComponentCall');
+        control.properties.target = call.name;
+
+        var args = call.args.map(function (argument) {
+            if (argument.kind === 'string') return argument.value;
+            if (argument.kind === 'number') return '=' + argument.value;
+            if (argument.kind === 'boolean') return argument.value ? '=true' : '=false';
+            if (argument.kind === 'reference') {
+                if (params.indexOf(argument.name) !== -1) return '$' + argument.name;
+                return '=' + argument.name;
+            }
+            return null;
+        });
+
+        if (args.some(function (argument) { return argument === null; })) {
+            errors.push({ line: call.line, message: '组件调用 ' + call.name + ' 的参数仅支持字面量、组件参数或简单表达式' });
+            return null;
+        }
+
+        control.properties.arguments = args.join('\n');
+        return control;
+    }
+
+    function controlFromCall(call, descriptor, helpers, params, errors) {
+        var control = Model.makeControl(descriptor.kind);
+        var position = 0;
+        var minimumCount = 0;
+        var maximumCount = 0;
+
+        descriptor.properties.forEach(function (propertyDescriptor) {
+            if (!propertyDescriptor.argument) return;
+            maximumCount++;
+            if (propertyDescriptor.required) minimumCount++;
+
+            var arg = call.args[position++];
+
+            if (descriptor.observable && propertyDescriptor.key === descriptor.observableKey) {
+                if (arg && arg.kind === 'reference' && helpers[arg.name] && helpers[arg.name].kind === 'observable') {
+                    control.properties[propertyDescriptor.key] = initialProperty(helpers[arg.name].initial, params);
+                } else if (arg && arg.kind === 'inline' && observableClasses[arg.className] && arg.args && arg.args.length) {
+                    control.properties[propertyDescriptor.key] = initialProperty(arg.args[0], params);
+                } else {
+                    errors.push({ line: call.line, message: descriptor.label + ' 的 ' + propertyDescriptor.label + ' 应为可观察对象变量' });
+                }
+                return;
+            }
+
+            if (propertyDescriptor.type === 'items') {
+                var elements = null;
+                if (arg && arg.kind === 'reference' && helpers[arg.name] && helpers[arg.name].kind === 'itemsArray')
+                    elements = helpers[arg.name].elements;
+                else if (arg && arg.kind === 'array')
+                    elements = arg.elements;
+
+                if (!elements) {
+                    errors.push({ line: call.line, message: descriptor.label + ' 的选项列表应为条目数组变量' });
+                    return;
+                }
+                control.properties.items = elements.map(function (element) {
+                    if (element.kind === 'string') return element.value;
+                    var item = helpers[element.name];
+                    return item && item.kind === 'item' && item.fields.label !== undefined ? String(item.fields.label) : element.name;
+                }).join('\n');
+                return;
+            }
+
+            if (!arg) return;
+
+            if (propertyDescriptor.type === 'text') {
+                if (arg.kind === 'string' || arg.kind === 'number') control.properties[propertyDescriptor.key] = String(arg.value);
+                else if (arg.kind === 'reference' && params.indexOf(arg.name) !== -1) control.properties[propertyDescriptor.key] = '$' + arg.name;
+                else errors.push({ line: call.line, message: descriptor.label + ' 的 ' + propertyDescriptor.label + ' 参数类型不匹配' });
+            } else if (propertyDescriptor.type === 'boolean' && arg.kind === 'boolean') {
+                control.properties[propertyDescriptor.key] = arg.value;
+            } else if (propertyDescriptor.type === 'number' && arg.kind === 'number') {
+                control.properties[propertyDescriptor.key] = arg.value;
+            } else {
+                errors.push({ line: call.line, message: descriptor.label + ' 的 ' + propertyDescriptor.label + ' 参数类型不匹配' });
+            }
+        });
+
+        if (descriptor.hasCallback) {
+            minimumCount++;
+            maximumCount++;
+            var callback = call.args[position++];
+            if (!callback || (callback.kind !== 'callback' && callback.kind !== 'reference'))
+                errors.push({ line: call.line, message: descriptor.label + ' 必须携带 on: 回调占位' });
+            else attachCallback(control, callback);
+        }
+
+        if (descriptor.optionsClass) {
+            minimumCount++;
+            maximumCount++;
+            applyOptions(control, descriptor, call.args[position++], helpers, errors, call.line, params);
+        }
+
+        if (call.args.length < minimumCount || call.args.length > maximumCount)
+            errors.push({ line: call.line, message: descriptor.label + ' 参数数量不符（期望 ' + minimumCount + ' 到 ' + maximumCount + ' 个，实际 ' + call.args.length + ' 个）' });
+
+        return control;
+    }
+
+    function shopDocument(binding, helpers, formDescriptor, imports) {
         var errors = [];
         var document = Model.makeDocument(formDescriptor.kind);
         document.properties.variable = binding.variable;
@@ -830,14 +1256,15 @@ LCUI.Codegen = (function () {
             document.callbacks.shown.blocks = document.shownBody;
         }
 
+        document.imports = imports;
         if (errors.length) return { ok: false, errors: errors };
         return { ok: true, document: document };
     }
 
-    function documentFromBinding(binding, helpers) {
+    function documentFromBinding(binding, helpers, imports) {
         var formDescriptor = Schema.findFormByName(binding.className);
         if (!formDescriptor) return { ok: false, errors: [{ line: binding.line, message: '未知表单类 ' + binding.className }] };
-        if (formDescriptor.kind === 'Shop') return shopDocument(binding, helpers, formDescriptor);
+        if (formDescriptor.kind === 'Shop') return shopDocument(binding, helpers, formDescriptor, imports);
 
         var errors = [];
         var document = Model.makeDocument(formDescriptor.kind);
@@ -878,7 +1305,12 @@ LCUI.Codegen = (function () {
 
             var descriptor = controlForCall(formDescriptor, call, helpers);
             if (!descriptor) {
-                errors.push({ line: call.line, message: '控件 ' + call.name + ' 不能用于 ' + formDescriptor.name });
+                if (Schema.findControlByName(call.name)) {
+                    errors.push({ line: call.line, message: '控件 ' + call.name + ' 不能用于 ' + formDescriptor.name });
+                    return;
+                }
+                var callControl = componentCallControl(call, [], errors);
+                if (callControl) document.controls.push(callControl);
                 return;
             }
 
@@ -903,90 +1335,13 @@ LCUI.Codegen = (function () {
                 if (!menuCallback || menuCallback.kind !== 'callback')
                     errors.push({ line: call.line, message: '菜单按钮必须携带 on: 回调占位' });
                 attachCallback(menuControl, menuCallback);
-                applyOptions(menuControl, descriptor, call.args[3], helpers, errors, call.line);
+                applyOptions(menuControl, descriptor, call.args[3], helpers, errors, call.line, []);
                 document.controls.push(menuControl);
                 return;
             }
 
-            var control = Model.makeControl(descriptor.kind);
-            var position = 0;
-            var minimumCount = 0;
-            var maximumCount = 0;
-
-            descriptor.properties.forEach(function (propertyDescriptor) {
-                if (!propertyDescriptor.argument) return;
-                maximumCount++;
-                if (propertyDescriptor.required) minimumCount++;
-
-                var arg = call.args[position++];
-
-                if (descriptor.observable && propertyDescriptor.key === descriptor.observableKey) {
-                    if (!arg || arg.kind !== 'reference' || !helpers[arg.name] || helpers[arg.name].kind !== 'observable') {
-                        errors.push({ line: call.line, message: descriptor.label + ' 的 ' + propertyDescriptor.label + ' 应为可观察对象变量' });
-                        return;
-                    }
-                    control.properties[propertyDescriptor.key] = helpers[arg.name].initial;
-                    return;
-                }
-
-                if (propertyDescriptor.type === 'items') {
-                    var elements = null;
-                    if (arg && arg.kind === 'reference' && helpers[arg.name] && helpers[arg.name].kind === 'itemsArray')
-                        elements = helpers[arg.name].elements;
-                    else if (arg && arg.kind === 'array')
-                        elements = arg.elements;
-
-                    if (!elements) {
-                        errors.push({ line: call.line, message: descriptor.label + ' 的选项列表应为条目数组变量' });
-                        return;
-                    }
-                    control.properties.items = elements.map(function (element) {
-                        if (element.kind === 'string') return element.value;
-                        var item = helpers[element.name];
-                        return item && item.kind === 'item' && item.fields.label !== undefined ? String(item.fields.label) : element.name;
-                    }).join('\n');
-                    return;
-                }
-
-                if (!arg) return;
-
-                if (propertyDescriptor.type === 'text' && arg.kind === 'string') control.properties[propertyDescriptor.key] = arg.value;
-                else if (propertyDescriptor.type === 'text' && arg.kind === 'number') control.properties[propertyDescriptor.key] = String(arg.value);
-                else if (propertyDescriptor.type === 'boolean' && arg.kind === 'boolean') control.properties[propertyDescriptor.key] = arg.value;
-                else if (propertyDescriptor.type === 'number' && arg.kind === 'number') control.properties[propertyDescriptor.key] = arg.value;
-                else errors.push({ line: call.line, message: descriptor.label + ' 的 ' + propertyDescriptor.label + ' 参数类型不匹配' });
-            });
-
-            if (descriptor.hasCallback) {
-                minimumCount++;
-                maximumCount++;
-                var callback = call.args[position++];
-                if (!callback || callback.kind !== 'callback')
-                    errors.push({ line: call.line, message: descriptor.label + ' 必须携带 on: 回调占位' });
-            }
-
-            if (descriptor.optionsClass) {
-                minimumCount++;
-                maximumCount++;
-                applyOptions(control, descriptor, call.args[position++], helpers, errors, call.line);
-            }
-
-            if (call.args.length < minimumCount || call.args.length > maximumCount)
-                errors.push({ line: call.line, message: descriptor.label + ' 参数数量不符（期望 ' + minimumCount + ' 到 ' + maximumCount + ' 个，实际 ' + call.args.length + ' 个）' });
-
-            document.controls.push(control);
-
-            if (descriptor.hasCallback) {
-                var cbArg = null;
-                for (var ci = 0; ci < call.args.length; ci++) {
-                    if (call.args[ci] && call.args[ci].kind === 'callback') { cbArg = call.args[ci]; break; }
-                }
-                if (cbArg && cbArg.body && cbArg.body.length) {
-                    control.callbacks = control.callbacks || {};
-                    control.callbacks.on = LCUI.Blocks.workspace();
-                    control.callbacks.on.blocks = cbArg.body;
-                }
-            }
+            var control = controlFromCall(call, descriptor, helpers, [], errors);
+            if (control) document.controls.push(control);
         });
 
         if (binding.shownBody && binding.shownBody.length) {
@@ -997,15 +1352,71 @@ LCUI.Codegen = (function () {
 
         if (!showSeen) errors.push({ line: binding.line, message: '声明式块末尾必须调用 show();' });
 
+        document.imports = imports;
         if (errors.length) return { ok: false, errors: errors };
         return { ok: true, document: document };
     }
 
-    function importDocument(source) {
-        var parsed = parse(source);
-        if (!parsed.ok) return parsed;
-        return documentFromBinding(parsed.binding, parsed.helpers);
+    function componentFromDeclaration(declaration, helpers, imports) {
+        var errors = [];
+        var document = Model.makeDeclaration('Component', declaration.name);
+        document.properties.params = declaration.params.join(', ');
+        document.imports = imports;
+
+        declaration.calls.forEach(function (call) {
+            var descriptor = Schema.findControlByName(call.name, 'Component');
+            if (!descriptor) {
+                var callControl = componentCallControl(call, declaration.params, errors);
+                if (callControl) document.controls.push(callControl);
+                return;
+            }
+            var control = controlFromCall(call, descriptor, helpers, declaration.params, errors);
+            if (control) document.controls.push(control);
+        });
+
+        if (errors.length) return { ok: false, errors: errors };
+        return { ok: true, document: document };
     }
 
-    return { emit: emit, parse: parse, importDocument: importDocument, quote: quote, numberLiteral: numberLiteral };
+    function enumFromDeclaration(declaration, imports) {
+        var document = Model.makeDeclaration('Enum', declaration.name);
+        document.properties.variants = declaration.variants.map(function (variant) {
+            return variant.name + (variant.params.length ? '(' + variant.params.join(', ') + ')' : '');
+        }).join('\n');
+        document.imports = imports;
+        return { ok: true, document: document };
+    }
+
+    function baseName(name) {
+        var text = String(name || '').split(/[\\/]/).pop();
+        return Model.isFileName(text) ? text : '';
+    }
+
+    function importDocument(source, fileName) {
+        var parsed = parse(source);
+        if (!parsed.ok) return parsed;
+
+        var definitions = (parsed.binding ? 1 : 0) + (parsed.component ? 1 : 0) + (parsed.enumDecl ? 1 : 0);
+        if (definitions !== 1)
+            return { ok: false, errors: [{ line: 0, message: '每个文件必须且只能包含一个表单、枚举或组件声明' }] };
+
+        var result;
+        if (parsed.binding) result = documentFromBinding(parsed.binding, parsed.helpers, parsed.imports);
+        else if (parsed.component) result = componentFromDeclaration(parsed.component, parsed.helpers, parsed.imports);
+        else result = enumFromDeclaration(parsed.enumDecl, parsed.imports);
+        if (!result.ok) return result;
+
+        var file = baseName(fileName);
+        if (file) result.document.properties.file = file;
+        return result;
+    }
+
+    return {
+        emit: emit,
+        parse: parse,
+        importDocument: importDocument,
+        observableNames: observableNames,
+        quote: quote,
+        numberLiteral: numberLiteral
+    };
 })();

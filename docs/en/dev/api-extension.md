@@ -89,7 +89,7 @@ void registerMyFunctions(const std::string& namespaces) {
 ```
 
 > [!TIP]
-> See the real implementations: how functions such as `math::abs` and `math::min` are registered in `frontend/builtin/MathBuiltin.cpp`; `frontend/builtin/mc/server/CommandBuiltin.cpp` demonstrates server functions such as `mc::runCmd`.
+> See the real implementations: how native functions such as `math::sqrt` and `math::pow` are registered in `frontend/stdlib/MathBuiltin.cpp`; `frontend/builtin/mc/server/CommandBuiltin.cpp` demonstrates server functions such as `mc::runCmd`.
 
 ### Combination Variant
 

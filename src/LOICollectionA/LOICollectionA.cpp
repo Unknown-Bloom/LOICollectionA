@@ -28,6 +28,7 @@
 #include "LOICollectionA/base/ServiceProvider.h"
 
 #include "LOICollectionA/frontend/sandbox/ScriptPermission.h"
+#include "LOICollectionA/frontend/storage/ScriptStorage.h"
 
 #include "LOICollectionA/frontend/lsp/Server.h"
 
@@ -117,6 +118,10 @@ namespace LOICollection {
 
             ServiceProvider::getInstance().registerInstance(permission);
         }
+
+        ServiceProvider::getInstance().registerInstance(
+            std::make_shared<frontend::storage::ScriptStorage>(dataFilePath / "script")
+        );
 
         std::vector<std::string> mMods = modules::ModManager::getInstance().mods();
         std::for_each(mMods.begin(), mMods.end(), [&logger](const std::string& mod) -> void {

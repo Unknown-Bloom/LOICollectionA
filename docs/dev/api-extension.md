@@ -89,7 +89,7 @@ void registerMyFunctions(const std::string& namespaces) {
 ```
 
 > [!TIP]
-> 参考真实实现：`frontend/builtin/MathBuiltin.cpp` 中 `math::abs`、`math::min` 等函数的注册方式；`frontend/builtin/mc/server/CommandBuiltin.cpp` 演示了 `mc::runCmd` 这类服务端函数。
+> 参考真实实现：`frontend/stdlib/MathBuiltin.cpp` 中 `math::sqrt`、`math::pow` 等原生函数的注册方式；`frontend/builtin/mc/server/CommandBuiltin.cpp` 演示了 `mc::runCmd` 这类服务端函数。
 
 ### Combination 变体
 

@@ -120,7 +120,7 @@ let form = new CustomForm("wallet.main", {tr("wallet.gui.title")}) {
 
 `import` 路径**相对导入语句所在的文件**解析（入口文件即其所在目录）；`std/` 标准库模块互相引用也因此稳定，无论入口脚本放在哪里。
 
-脚本顶部可以使用 `import` 引入其他 `.lcui` 文件的顶层定义（`class` / `func` / `using` / `component`），实现跨文件复用。内置脚本的公共界面词汇表（分页按钮、保存/取消文案等）就抽取在 `generic.lcui` 中：
+脚本顶部可以使用 `import` 引入其他 `.lcui` 文件的顶层定义（`class` / `func` / `using` / `component` / `enum`），实现跨文件复用。内置脚本的公共界面词汇表（分页按钮、保存/取消文案等）就抽取在 `generic.lcui` 中：
 
 ```lcui
 import "generic.lcui";
@@ -146,8 +146,8 @@ import "generic.lcui" { PageControls, closeButton };
 | 路径解析 | `import` 路径相对于入口脚本所在目录解析 |
 | 合并顺序 | 导入图按依赖优先（拓扑序）展开，每个文件的定义只合并一次；菱形导入（A、B 都导入 C）合法，C 只出现一次 |
 | 选择性导入 | `import "path" { a, b };` 只合并列出的定义；同一文件被多处导入时按所有导入点的**符号并集**合并；不带列表仍为全量导入（完全向后兼容） |
-| 定义冲突 | 不同文件中同名 `class` / `func` / `using` / `component` 会报错，错误信息包含两处定义的文件与行号 |
-| 仅限定义 | 被导入的文件只能包含 `class` / `func` / `using` / `component` / `import`，不能包含可执行语句（避免导入产生副作用）；入口文件不受此限制 |
+| 定义冲突 | 不同文件中同名 `class` / `func` / `using` / `component` / `enum` 会报错，错误信息包含两处定义的文件与行号 |
+| 仅限定义 | 被导入的文件只能包含 `class` / `func` / `using` / `component` / `enum` / `import`，不能包含可执行语句（避免导入产生副作用）；入口文件不受此限制 |
 | 循环导入 | 循环导入（如 A → B → A）会报错，并给出完整环路径 |
 | 文件缺失 | 导入的文件不存在或不可读时报错 |
 
@@ -276,6 +276,40 @@ data = 1.5;     // 报错：float 不在声明列表中
 
 `variant` 至少需要两个类型参数（如 `variant<int>` 不合法）。
 
+### 枚举（enum）
+
+`enum` 定义带标签的联合类型，仅允许出现在脚本顶层。变体名在同一程序中全局唯一；无载荷变体在声明中可省略圆括号，但构造与模式匹配时必须写作 `Variant()`：
+
+```lcui
+enum Option {
+    Some(int)
+    Nothing
+}
+
+let a = Some(42);
+let b = Nothing();
+
+a == Some(42);   // true（按标签与全部载荷比较）
+a == Nothing();  // false
+```
+
+变体可以携带多个载荷，构造时直接以变体名调用，参数个数必须与声明一致：
+
+```lcui
+enum Shape {
+    Point(int, int)
+    Empty
+}
+
+let p = Point(3, 4);
+let label = match (p) [
+    Point(x, y) [ "(" + x + ", " + y + ")" ]
+    Empty() [ "empty" ]
+];
+```
+
+枚举值按内容比较，不能参与算术运算；使用 `match`、`if let` 或 `while let` 解构（见「match（模式匹配）」）。变体属于声明它的枚举，跨枚举使用同名模式会在编译期报错。
+
 ### 类型别名 using
 
 使用 `using` 可以为类型定义别名，仅允许出现在脚本顶层：
@@ -296,8 +330,8 @@ let b: Count = 3;
 
 ```lcui
 let items = [1, "a", true];
-items[0];       // 1
-items.length;   // 3
+items[0];        // 1
+items.length();  // 3
 
 items.push(2);  // 追加元素，返回新长度
 items[1] = "b"; // 修改已有元素（索引等于当前长度时同样会追加）
@@ -339,10 +373,16 @@ words.sort(func (a, b) -> int {
 
 | 方法 | 签名 | 说明 |
 | --- | --- | --- |
+| `length` | `s.length()` | 字符数（按 Unicode 码点计） |
+| `charAt` | `s.charAt(i)` | 第 `i` 个字符；越界或负数返回空串 |
+| `substring` | `s.substring(start, end)` | 半开区间子串，按码点计；越界自动裁剪 |
+| `upper` / `lower` | `s.upper()` | ASCII 大小写转换 |
+| `trim` / `trimStart` / `trimEnd` | `s.trim()` | 去除首尾 / 开头 / 结尾空白 |
+| `replace` | `s.replace(from, to)` | 替换全部子串；`from` 为空串时原样返回 |
 | `split` | `s.split(sep)` | 按分隔符拆分为数组；`sep` 为空串时按字符拆分 |
 | `contains` | `s.contains(sub)` | 是否包含子串 |
 | `startsWith` / `endsWith` | `s.startsWith(sub)` | 前缀 / 后缀判断 |
-| `indexOf` | `s.indexOf(sub)` | 首次出现的字符下标；找不到返回 `-1` |
+| `indexOf` / `lastIndexOf` | `s.indexOf(sub)` | 首次 / 末次出现的字符下标；找不到返回 `-1` |
 | `toInt` / `toFloat` | `s.toInt()` | 解析为 `optional<int>` / `optional<float>`，失败时为空 |
 
 字符串也支持以 `[]` 取下标索引，返回指定位置的单个字符（类型为 `string`），越界或负索引会报错：
@@ -376,7 +416,7 @@ m.set("banana", 5);
 m.get("apple");         // 3
 m.has("banana");        // true
 m.remove("apple");
-m.length;               // 1
+m.length();             // 1
 m.keys;                 // ["banana"]，插入序
 
 for (k in m.keys) [
@@ -765,6 +805,7 @@ let name = match (code) [
 | --- | --- | --- |
 | 字面量 | `1`、`-2`、`3.5`、`"text"`、`true`、`None` | 按值相等匹配；`None` 匹配空的 `optional`；`int` / `float` 字面量可以互换匹配 |
 | 类型 | `Circle c` | 按 `instanceof` 分发，`c` 在分支内绑定匹配到的对象 |
+| 枚举变体 | `Some(x)`、`Nothing()` | 按标签匹配并由参数绑定载荷；变体必须属于目标的枚举类型 |
 | 绑定 | `n` | 匹配任意值，`n` 在分支内可用 |
 | 通配符 | `_` | 匹配任意值，不绑定 |
 | 带守卫 | `n if (n > 10)` | 模式命中后再做附加判断，守卫内可引用当前分支的绑定变量 |
@@ -782,6 +823,24 @@ match (shape) [
 - 守卫只在模式命中后才求值，因此 `Square s if (...)` 不会对非 `Square` 的值执行判断。
 - 穷尽性是强制的：必须存在一个不带守卫的绑定或 `_` 分支（`bool` 目标也可以由 `true` 与 `false` 两个字面量分支覆盖），否则编译报错。
 - 绑定变量只在自己的分支内可见，允许遮蔽外层同名变量；类型模式的类名在编译期校验，未知类会报错。
+
+### if let / while let
+
+当只需要处理单个枚举变体时，可以把 `let` 模式直接写进 `if` / `while` 条件：
+
+```lcui
+let v = Some(7);
+
+if (let Some(x) = v) [
+    println("got " + x);
+]
+
+while (let Some(x) = next()) [
+    total = total + x;
+]
+```
+
+`if let` 在标签匹配时绑定载荷并执行主体，否则跳过；`while let` 每轮重新求值右侧表达式，首次不匹配时结束循环。绑定变量仅在对应分支内可见，不会泄漏到外层作用域。变体名与参数个数会在编译期校验。
 
 ## 标准库（std）
 
@@ -1027,7 +1086,7 @@ class Deck {
 
 impl Iterable for Deck {
     func length() -> int {
-        return this.cards.length;
+        return this.cards.length();
     }
 
     func element(i: int) -> string {
@@ -1062,10 +1121,12 @@ for (i, card in deck) [
 
 | 命名空间 | 函数 | 说明 |
 | --- | --- | --- |
-| `math` | `sqrt`、`pow`、`log`、`sin`、`cos`、`random` | 数学函数（超越函数；`abs`/`min`/`max` 等可脚本化的已移入标准库） |
+| `math` | `sqrt`、`pow`、`log`、`sin`、`cos`、`random(min, max)` | 数学函数（超越函数；`abs`/`min`/`max` 等可脚本化的已移入标准库） |
 | `std` | `format(formatStr, array)` | 使用数组中的值格式化字符串（fmt 风格） |
 | `mc` | `runCmd(command)` | 以当前玩家身份执行命令 |
 | `GUIManager` | `value(id)`、`request(id, args)`、`callback(id, args)`、`open(id, formId, type[, ctx])`、`switchTo(id, type)` | 与 GUI 数据交互 |
+| `storage` | `get(key)`、`set(key, value)`、`has(key)`、`remove(key)`、`keys()`、`clear()` | 按脚本隔离的持久化存储 |
+| `playerdata` | `get(key)`、`set(key, value)`、`has(key)`、`remove(key)`、`keys()`、`clear()` | 按玩家 + 脚本隔离的持久化存储 |
 
 调用格式为 `命名空间::函数(参数)`，例如：
 
@@ -1232,14 +1293,20 @@ let form = new CustomForm("example.shop", {tr("example.shop.title")}) {
 
 | 优化 | 例子 | 效果 |
 | --- | --- | --- |
-| 常量折叠 | `1 + 2 * 3` | 编译期算成 `PUSH_INT 7`，运行期不再计算 |
-| 变量值转发 | `let x = 1; if (x == 1) [...]` | 后续读取 `x` 直接替换为已知值，条件分支随之消除 |
-| 纯函数折叠 | `math::sqrt(9)`、`math::pow(2, 10)` | 全常量参数的 `math::` 纯函数在编译期求值；`math::random` 等非纯函数不折叠 |
-| 超级指令 | `let x = 1`（`DUP` + `STORE_VAR`） | 高频指令对融合为单条 `DUP_STORE` / `DUP_IS_NONE`，一次分发完成两件事 |
-| 跳转窥孔 | 条件跳转后紧跟同目标无条件跳转 | 双重跳转合并，中间不可达代码整体删除 |
+| 常量折叠 | `1 + 2 * 3`、`math::sqrt(9)` | 编译期算出结果，运行期直接加载常量 |
+| 强度削减 | `x * 1`、`x + 0` | 数值类型下直接改用原操作数，省掉一次算术指令 |
+| 跨块常量传播 | 分支两侧都给 `x` 赋同一个常量，汇合后再读 `x` | 沿控制流图前向传播已知值，汇合点取交集，把可确定的读取改为常量 |
+| 变量转发 | `let x = 1; if (x == 1) [...]` | 已知标量写入后，读取处直接替换为常量，条件分支随之消除 |
+| 纯函数折叠 | `math::sqrt(9)`、`math::pow(2, 10)` | 全常量参数的原生纯函数在编译期求值；`math::random` 等非纯函数不折叠 |
+| 死存储删除 | `x = 1;` 之后再无读取 | 删除不会被读取的赋值 |
+| 死值删除 | 计算结果从未使用 | 删除无副作用的纯计算 |
+| 公共子表达式消除 | 同一表达式在相邻语句重复计算 | 复用已算出的寄存器 |
+| 循环不变量外提 | 循环体内不随迭代变化的计算 | 移到循环外只算一次 |
+| 分支融合 | `CMP_*` 后紧跟依赖该结果的 `JMP_IF_FALSE` | 融合为一条比较跳转，少一次寄存器读写 |
+| 函数内联 | 小型函数调用 | 展开函数体，消除调用开销 |
 | 死代码删除 | `while (false) [...]`、`if (false) [...]` | 不可达分支整体移除 |
 
-优化器会反复迭代以上过程直到字节码不再变化（不动点），因此一条优化暴露出的新机会（如变量转发让条件变为常量）会在下一轮被继续吃掉。
+优化器会反复迭代常量传播、折叠、死存储/死值删除和 CSE，直到字节码不再变化（不动点），因此一条优化暴露出的新机会会在下一轮被继续吃掉；循环不变量外提与分支融合在迭代收敛后收尾。
 
 运行期还有一层**内联缓存**：脚本反复调用同一个原生函数或原生方法时（例如循环里的 `math::sqrt(...)`、`arr.push(...)`），VM 会记住上一次的解析结果，命中时跳过签名匹配与注册表查找。这只影响速度不影响行为——缓存失效（如插件重载导致注册表变化）时自动回退到完整查找。
 
@@ -1261,7 +1328,7 @@ let form = new CustomForm("example.shop", {tr("example.shop.title")}) {
 - 类、命名函数、`using` 与组件只能出现在脚本顶层，不能嵌套定义。
 - 声明式 UI 块只能用于表单类（`CustomForm` / `MessageBox` / `PaginatedForm` / `ScriptForm`）；`on:` 命名参数只在块内可用。
 - 组件调用只能作为声明式 UI 块内的语句；组件递归（直接或间接）会报编译错误。
-- 被导入的文件只能包含顶层定义（`class` / `func` / `using` / `component` / `import`）；不同文件中的同名定义会冲突报错。
+- 被导入的文件只能包含顶层定义（`class` / `func` / `using` / `component` / `enum` / `import`）；不同文件中的同名定义会冲突报错。
 - 每次脚本执行都受执行预算约束（默认 1,000,000 条指令 / 256 层调用帧），超限会终止执行；可按脚本在 `permission.json` 的 `budget` 中调整，见[执行预算与调用深度](#执行预算与调用深度)。
 - `return` 只能在函数内使用；`break`/`continue` 只能在循环内使用。
 - 类型声明（`let x: int = 0;`）必须同时提供初始值；没有默认值的类字段必须在构造函数中赋值。

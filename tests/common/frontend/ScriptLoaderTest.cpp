@@ -229,3 +229,38 @@ TEST(ScriptLoaderTest, SelectiveImportWildcardStillMergesEverything) {
 
     EXPECT_EQ(evalFiles(files, "/main.lcui"), "7");
 }
+
+TEST(ScriptLoaderTest, SelectiveImportEnumMergesVariants) {
+    FileMap files = {
+        {"/lib.lcui", "enum Option { Some(int) Nothing }\nfunc drop() -> int { return 0; }\n"},
+        {"/main.lcui",
+         "import \"lib.lcui\" { Option };\n"
+         "let v = Some(7);\n"
+         "match (v) [ Some(x) [ x ] Nothing() [ 0 ] ]"},
+    };
+
+    EXPECT_EQ(evalFiles(files, "/main.lcui"), "7");
+}
+
+TEST(ScriptLoaderTest, SelectiveImportExcludedEnumIsUndefined) {
+    FileMap files = {
+        {"/lib.lcui", "enum Option { Some(int) }\nfunc keep() -> int { return 1; }\n"},
+        {"/main.lcui", "import \"lib.lcui\" { keep };\nSome(1)"},
+    };
+
+    EXPECT_THROW(evalFiles(files, "/main.lcui"), std::runtime_error);
+}
+
+TEST(ScriptLoaderTest, DuplicateEnumNameReportsConflict) {
+    FileMap files = {
+        {"/a.lcui", "enum Kind { A }\n"},
+        {"/b.lcui", "enum Kind { B }\n"},
+        {"/main.lcui", "import \"a.lcui\";\nimport \"b.lcui\";\n1"},
+    };
+
+    DiagnosticEngine diagnostics;
+    auto loaded = ScriptLoader::load("/main.lcui", "/", readerFor(files), diagnostics);
+
+    EXPECT_FALSE(loaded.has_value());
+    EXPECT_NE(diagnostics.getErrorMessage().find("conflicts with"), std::string::npos);
+}

@@ -85,6 +85,11 @@ namespace LOICollection::frontend::lsp {
                 case SymbolKind::Constant: return 14;
                 case SymbolKind::Class: return 5;
                 case SymbolKind::Interface: return 11;
+                case SymbolKind::Enum: return 10;
+                case SymbolKind::EnumMember: return 22;
+                case SymbolKind::Component: return 5;
+                case SymbolKind::Module: return 2;
+                case SymbolKind::Parameter: return 13;
             }
 
             return 13;
@@ -135,6 +140,18 @@ namespace LOICollection::frontend::lsp {
         changes[value.uri] = value.edits;
 
         j = nlohmann::ordered_json{ { "changes", std::move(changes) } };
+    }
+
+    void to_json(nlohmann::ordered_json& j, const SemanticTokens& value) {
+        j = nlohmann::ordered_json{ { "data", value.data } };
+    }
+
+    void to_json(nlohmann::ordered_json& j, const InlayHint& value) {
+        j = nlohmann::ordered_json{
+            { "position", value.position },
+            { "label", value.label },
+            { "kind", value.kind },
+        };
     }
 
     nlohmann::ordered_json makeResponse(const nlohmann::ordered_json& id, nlohmann::ordered_json result) {

@@ -1,10 +1,9 @@
 #include <string>
 #include <variant>
 #include <charconv>
+#include <optional>
 
 #include <ll/api/Expected.h>
-
-#include <optional>
 
 #include "LOICollectionA/frontend/Callback.h"
 #include "LOICollectionA/frontend/Unicode.h"
@@ -21,6 +20,10 @@ namespace StringClass::detail {
             return *text;
 
         return std::nullopt;
+    }
+
+    bool isSpace(char c) {
+        return c == ' ' || c == '\t' || c == '\n' || c == '\r';
     }
 }
 
@@ -79,10 +82,134 @@ namespace StringClass {
                text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
     }
 
+    ll::Expected<TypedValue> charAt(const TypedValue& self, const CallbackTypeValues& args) {
+        const std::string& text = std::get<std::string>(self);
+
+        const int index = std::get<int>(args[0]);
+        if (index < 0)
+            return std::string{};
+
+        auto character = codepointAt(text, static_cast<size_t>(index));
+        if (!character)
+            return std::string{};
+
+        return std::move(*character);
+    }
+
+    ll::Expected<TypedValue> upper(const TypedValue& self, const CallbackTypeValues&) {
+        std::string result = std::get<std::string>(self);
+        for (char& c : result) {
+            if (c >= 'a' && c <= 'z')
+                c = static_cast<char>(c - 'a' + 'A');
+        }
+
+        return result;
+    }
+
+    ll::Expected<TypedValue> lower(const TypedValue& self, const CallbackTypeValues&) {
+        std::string result = std::get<std::string>(self);
+        for (char& c : result) {
+            if (c >= 'A' && c <= 'Z')
+                c = static_cast<char>(c - 'A' + 'a');
+        }
+
+        return result;
+    }
+
+    ll::Expected<TypedValue> trim(const TypedValue& self, const CallbackTypeValues&) {
+        const std::string& text = std::get<std::string>(self);
+
+        size_t start = 0;
+        size_t end = text.size();
+        while (start < end && isSpace(text[start]))
+            ++start;
+        while (end > start && isSpace(text[end - 1]))
+            --end;
+
+        return text.substr(start, end - start);
+    }
+
+    ll::Expected<TypedValue> trimStart(const TypedValue& self, const CallbackTypeValues&) {
+        const std::string& text = std::get<std::string>(self);
+
+        size_t start = 0;
+        while (start < text.size() && isSpace(text[start]))
+            ++start;
+
+        return text.substr(start);
+    }
+
+    ll::Expected<TypedValue> trimEnd(const TypedValue& self, const CallbackTypeValues&) {
+        const std::string& text = std::get<std::string>(self);
+
+        size_t end = text.size();
+        while (end > 0 && isSpace(text[end - 1]))
+            --end;
+
+        return text.substr(0, end);
+    }
+
+    ll::Expected<TypedValue> replace(const TypedValue& self, const CallbackTypeValues& args) {
+        const std::string& text = std::get<std::string>(self);
+        const std::string& from = std::get<std::string>(args[0]);
+        const std::string& to = std::get<std::string>(args[1]);
+
+        if (from.empty())
+            return text;
+
+        std::string result;
+        result.reserve(text.size());
+
+        size_t start = 0;
+        while (true) {
+            const size_t pos = text.find(from, start);
+            if (pos == std::string::npos) {
+                result.append(text, start, std::string::npos);
+                break;
+            }
+
+            result.append(text, start, pos - start);
+            result.append(to);
+            start = pos + from.size();
+        }
+
+        return result;
+    }
+
+    ll::Expected<TypedValue> substring(const TypedValue& self, const CallbackTypeValues& args) {
+        const std::string& text = std::get<std::string>(self);
+
+        int start = std::get<int>(args[0]);
+        int end = std::get<int>(args[1]);
+        const int count = static_cast<int>(codepointCount(text));
+
+        if (start < 0)
+            start = 0;
+        if (end > count)
+            end = count;
+        if (start >= end)
+            return std::string{};
+
+        const size_t begin = codepointOffset(text, static_cast<size_t>(start));
+        size_t stop = codepointOffset(text, static_cast<size_t>(end));
+        if (stop == std::string::npos)
+            stop = text.size();
+
+        return text.substr(begin, stop - begin);
+    }
+
     ll::Expected<TypedValue> indexOf(const TypedValue& self, const CallbackTypeValues& args) {
         const std::string& text = std::get<std::string>(self);
 
         size_t pos = text.find(std::get<std::string>(args[0]));
+
+        return pos == std::string::npos ? -1 : static_cast<int>(codepointDistance(text, pos));
+    }
+
+    ll::Expected<TypedValue> lastIndexOf(const TypedValue& self, const CallbackTypeValues& args) {
+        const std::string& text = std::get<std::string>(self);
+
+        size_t pos = text.rfind(std::get<std::string>(args[0]));
 
         return pos == std::string::npos ? -1 : static_cast<int>(codepointDistance(text, pos));
     }
@@ -115,11 +242,20 @@ namespace StringClass {
         classes.registerClass("String", {});
 
         classes.registerValueMethod("String", "length", length, {});
+        classes.registerValueMethod("String", "charAt", charAt, { ParamType::INT });
+        classes.registerValueMethod("String", "substring", substring, { ParamType::INT, ParamType::INT });
+        classes.registerValueMethod("String", "upper", upper, {});
+        classes.registerValueMethod("String", "lower", lower, {});
+        classes.registerValueMethod("String", "trim", trim, {});
+        classes.registerValueMethod("String", "trimStart", trimStart, {});
+        classes.registerValueMethod("String", "trimEnd", trimEnd, {});
+        classes.registerValueMethod("String", "replace", replace, { ParamType::STRING, ParamType::STRING });
         classes.registerValueMethod("String", "split", split, { ParamType::STRING });
         classes.registerValueMethod("String", "contains", contains, { ParamType::STRING });
         classes.registerValueMethod("String", "startsWith", startsWith, { ParamType::STRING });
         classes.registerValueMethod("String", "endsWith", endsWith, { ParamType::STRING });
         classes.registerValueMethod("String", "indexOf", indexOf, { ParamType::STRING });
+        classes.registerValueMethod("String", "lastIndexOf", lastIndexOf, { ParamType::STRING });
         classes.registerValueMethod("String", "toInt", toInt, {});
         classes.registerValueMethod("String", "toFloat", toFloat, {});
 

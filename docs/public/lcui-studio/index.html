@@ -28,6 +28,7 @@
             </button>
             <span class="appbar-sep"></span>
             <button id="btnNew" class="tool wide">新建</button>
+            <button id="btnProject" class="tool wide">项目</button>
             <button id="btnImport" class="tool wide">导入</button>
             <button id="btnSave" class="tool wide primary">保存</button>
         </div>
@@ -73,6 +74,29 @@
             <pre id="codeView" class="code-view"><code></code></pre>
         </section>
 
+        <section id="projectPanel" class="panel">
+            <div class="panel-head project-head">
+                <span>项目</span>
+                <span id="projectSummary" class="project-summary"></span>
+                <button id="btnProjectClose" class="tool icon" title="返回编辑" aria-label="返回编辑">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+                </button>
+            </div>
+            <div class="project-toolbar">
+                <button id="btnNewProject" class="tool wide">新建项目</button>
+                <button id="btnAddDoc" class="tool wide">新建文档</button>
+                <button id="btnImportProject" class="tool wide">导入</button>
+                <button id="btnExportProject" class="tool wide primary">导出 ZIP</button>
+                <button id="btnDeleteDoc" class="tool wide danger">删除</button>
+            </div>
+            <div class="project-docs-head">文档</div>
+            <div id="projectDocs" class="project-docs"></div>
+            <div class="project-docs-head">导入图</div>
+            <div id="projectGraph" class="project-graph"></div>
+            <div class="project-docs-head">项目校验</div>
+            <div id="projectIssues" class="project-issues"></div>
+        </section>
+
         <section id="logicPanel" class="panel logic-panel" hidden>
             <div class="panel-head logic-head">
                 <div class="logic-title">
@@ -109,13 +133,17 @@
         <button class="tab" data-tab="codePanel">
             <span class="tab-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/></svg></span>代码
         </button>
+        <button class="tab" data-tab="projectPanel">
+            <span class="tab-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.5 6h7M7 8.5l4 7M17 8.5l-4 7"/></svg></span>项目
+        </button>
     </nav>
 
     <dialog id="importDialog">
         <form method="dialog" class="dialog-form">
             <h3>导入 .lcui 脚本</h3>
-            <p class="dialog-hint">仅支持由本编辑器生成的脚本结构（单一声明式表单 + 辅助变量）。</p>
-            <input type="file" id="importFile" accept=".lcui,text/plain">
+            <p class="dialog-hint">支持由本编辑器生成的表单、枚举与组件文件；可一次选择多个文件以还原导入图。</p>
+            <input type="file" id="importFile" accept=".lcui,text/plain" multiple>
+            <div id="importFileList" class="import-file-list"></div>
             <textarea id="importText" rows="12" spellcheck="false" placeholder="将 .lcui 文件内容粘贴到此处，或选择文件…"></textarea>
             <div id="importErrors" class="import-errors" hidden></div>
             <div class="dialog-actions">
@@ -129,9 +157,10 @@
         <form method="dialog" class="dialog-form">
             <h3>新建表单</h3>
             <div id="newKindList" class="kind-list"></div>
-            <label class="field-row"><span>表单标识</span><input id="newFormId" type="text" placeholder="example.main" autocomplete="off"></label>
-            <label class="field-row"><span>表单标题</span><input id="newFormTitle" type="text" placeholder="我的表单" autocomplete="off"></label>
-            <label class="check-row"><input id="newFormSample" type="checkbox" checked><span>填入示例组件</span></label>
+            <label class="field-row"><span id="newIdLabel">表单标识</span><input id="newFormId" type="text" placeholder="example.main" autocomplete="off"></label>
+            <label class="field-row" id="newTitleRow"><span>表单标题</span><input id="newFormTitle" type="text" placeholder="我的表单" autocomplete="off"></label>
+            <label class="field-row"><span>文件名</span><input id="newDocFile" type="text" placeholder="form.lcui" autocomplete="off"></label>
+            <label class="check-row"><input id="newFormSample" type="checkbox" checked><span>填入示例内容</span></label>
             <div class="dialog-actions">
                 <button value="cancel" class="tool wide">取消</button>
                 <button id="newConfirm" value="ok" class="tool wide primary">创建</button>
@@ -144,6 +173,7 @@
     <script src="js/schema.js"></script>
     <script src="js/model.js"></script>
     <script src="js/codegen.js"></script>
+    <script src="js/zip.js"></script>
     <script src="js/blocks.js"></script>
     <script src="js/blockview.js"></script>
     <script src="js/ui.js"></script>

@@ -523,6 +523,7 @@ LCUI.Blocks = (function () {
     }
 
     function observableNames(document) {
+        if (LCUI.Codegen && LCUI.Codegen.observableNames) return LCUI.Codegen.observableNames(document);
         var prefix = Model.isIdentifier(document.properties.variable) ? document.properties.variable : 'form';
         var ordinals = {};
         var names = [];

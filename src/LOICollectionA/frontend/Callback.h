@@ -135,6 +135,10 @@ namespace LOICollection::frontend {
 
         LOICOLLECTION_A_NDAPI bool isRegistered(const std::string& namespaces, const std::string& function, const CallbackTypeArgs& args) const;
 
+        LOICOLLECTION_A_NDAPI std::vector<std::string> getNamespaces() const;
+        LOICOLLECTION_A_NDAPI std::vector<std::string> getFunctionNames(const std::string& namespaces) const;
+        LOICOLLECTION_A_NDAPI std::vector<CallbackTypeArgs> getFunctionSignatures(const std::string& namespaces, const std::string& function) const;
+
         LOICOLLECTION_A_NDAPI std::string exportShape() const;
 
         LOICOLLECTION_A_NDAPI ll::Expected<TypedValue> callFunction(const std::string& namespaces, const std::string& function, const CallbackTypeValues& args, const CallbackTypePlaces& placeholders, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
@@ -157,6 +161,9 @@ namespace LOICollection::frontend {
         LOICOLLECTION_A_API   void unregisterMacro(const std::string& name, const CallbackTypeArgs& args, bool isCombination);
 
         LOICOLLECTION_A_NDAPI bool isRegistered(const std::string& name, const CallbackTypeArgs& args) const;
+
+        LOICOLLECTION_A_NDAPI std::vector<std::string> getMacroNames() const;
+        LOICOLLECTION_A_NDAPI std::vector<CallbackTypeArgs> getMacroSignatures(const std::string& name) const;
 
         LOICOLLECTION_A_NDAPI std::string exportShape() const;
 
@@ -196,6 +203,7 @@ namespace LOICollection::frontend {
         LOICOLLECTION_A_NDAPI std::vector<std::string> getFields(const std::string& name) const;
         LOICOLLECTION_A_NDAPI FieldLayoutPtr layoutOf(const std::string& name) const;
         LOICOLLECTION_A_NDAPI std::vector<std::string> getStaticFields(const std::string& name) const;
+        LOICOLLECTION_A_NDAPI std::vector<std::string> getMethodNames(const std::string& className) const;
         LOICOLLECTION_A_NDAPI std::vector<CallbackTypeArgs> getConstructorSignatures(const std::string& name) const;
         LOICOLLECTION_A_NDAPI std::vector<CallbackTypeArgs> getMethodSignatures(const std::string& className, const std::string& method) const;
         LOICOLLECTION_A_NDAPI std::vector<CallbackTypeArgs> getStaticMethodSignatures(const std::string& className, const std::string& method) const;

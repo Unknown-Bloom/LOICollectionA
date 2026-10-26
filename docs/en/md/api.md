@@ -200,16 +200,21 @@ namespaces::function_name(parameter1, parameter2,...)
 
 ### **Concrete Usage Example of Functions**
 
-The following shows calculating the maximum of `cos(sqrt(100))` and `sin(sqrt(100))`, and taking its absolute value.
+The following shows calculating the larger of `cos(sqrt(100))` and `sin(sqrt(100))`; the `math::` namespace keeps only native transcendental functions.
 
 > [!TIP]
-> Note that function calls need to be separated with `::`, and function parameters need to be separated with `,`.
+> Note that namespaces and function names are separated with `::`, and function parameters need to be separated with `,`.
 
 ```text
-math::abs(math::max(math::cos(math::sqrt(100)), math::sin(math::sqrt(100))))
+let a = math::cos(math::sqrt(100));
+let b = math::sin(math::sqrt(100));
+if (a > b) [ a ] : [ b ]
 ```
 
 - Returned result: 0.544021
+
+> [!TIP]
+> Scriptable functions such as `abs` / `min` / `max` / `clamp` live in `assets/common/std/math.lcui`; import them and call them as ordinary functions, e.g. `import "std/math.lcui" { max }; max(1, 2);`.
 
 > [!WARNING]
 > Every expression must be followed by the separator `;`
@@ -296,8 +301,7 @@ Class-related keywords and operators:
 
 | Namespace | Function | Description |
 | --- | --- | --- |
-| `math` | `abs`, `max`, `min`, `sqrt`, `pow`, `log`, `sin`, `cos`, `random` | Math functions |
-| `string` | `length`, `upper`, `lower`, `substr`, `trim`, `replace` | String functions |
+| `math` | `sqrt`, `pow`, `log`, `sin`, `cos`, `random(min, max)` | Native transcendental functions; scriptable `abs` / `min` / `max` live in the `std/math.lcui` standard library |
 | `std` | `format(formatStr, array)` | Formats a string using values from an array |
 | `mc` | `runCmd(command)` | Executes a command as the current player |
 | `GUIManager` | `value(id)` | Gets a GUI registered value |
@@ -305,6 +309,11 @@ Class-related keywords and operators:
 | `GUIManager` | `callback(id, args)` | Calls a GUI registered callback |
 | `GUIManager` | `open(id, formId, type[, ctx])` | Opens a GUI of the specified type |
 | `GUIManager` | `switchTo(id, type)` | Switches the current GUI to the specified type |
+| `storage` | `get`, `set`, `has`, `remove`, `keys`, `clear` | Persistent storage isolated per script |
+| `playerdata` | `get`, `set`, `has`, `remove`, `keys`, `clear` | Persistent storage isolated per player and script |
+
+> [!NOTE]
+> The `string::length` / `string::upper` namespace functions mentioned in early docs do not exist. Strings and arrays are value types; use member methods such as `s.length()` and `arr.push(v)`. See the full method tables in [LCUI Script Syntax](./lcui.md#string-methods) and [array methods](./lcui.md#array-methods). Scope, paths, and limits of `storage` / `playerdata` are documented in [Data Files](./data.md#script-storage).
 
 > [!TIP]
 > The `type` in `GUIManager::open` and `GUIManager::switchTo` is an integer: `1` is CustomForm, `2` is MessageBox, `3` is PaginatedForm, and `4` is ScriptForm.

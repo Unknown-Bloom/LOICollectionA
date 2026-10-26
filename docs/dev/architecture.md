@@ -111,13 +111,18 @@ src/LOICollectionA/
 ├─ data/                     # 数据层：sqlite/ 块存储（BlockStore + WriteBatch +
 │                            #   BlockRepository）、JsonStorage
 ├─ frontend/                 # LCUI 脚本引擎：Lexer、Parser、SemanticAnalyzer、
-│   │                        #   AST、Callback（原生绑定注册表）、ir/（编译器、VM）
+│   │                        #   AST、Callback（原生绑定注册表）、ir/（编译器、VM、优化器）
 │   ├─ sandbox/              # 脚本沙箱：ScriptPermission（权限与执行预算配置）、
 │   │                        #   SandboxBudget（燃料计量）、SandboxReport；权限采用信任级 + 能力两层模型
+│   ├─ storage/              # 脚本持久化存储：storage（按脚本隔离）与 playerdata
+│   │                        #   （按玩家 + 脚本隔离），负责路径、能力校验与整文件缓存
+│   ├─ stdlib/               # 原生值与函数：Math/Format、String/Array/Map、
+│   │                        #   Observable 与 UIRawMessage 等
 │   ├─ lsp/                  # LCUI 语言服务核心：Protocol（JSON-RPC 分帧）、
-│   │                        #   Analysis（诊断与符号）、LanguageServer（分发）
-│   └─ builtin/              # 脚本内置实现：Math/Format/String 函数、
-│                            #   mc/server 命令、ui/（表单与 Observable 原生类）
+│   │                        #   Analysis（诊断与符号）、LanguageServer（分发）、
+│   │                        #   Server（可选的 TCP 传输）
+│   └─ builtin/              # 脚本内置命名空间：mc/server 命令、storage、
+│                            #   ui/（表单与 GUIManager 原生类）
 ├─ include/                  # 对外公开头文件（安装后随插件分发）
 │   ├─ ModuleBase.h / ModManager.h / ModulePriority.h
 │   ├─ CallbackUtils.h       # LOICollectionAPI 变量注册入口
@@ -214,6 +219,10 @@ LCUI 脚本在 `frontend/ir/` 编译为三地址 MIR，由 `VM` 直接解释执�
 堆由 `ScriptHeapRegistry` 按脚本 id 共享：同一脚本的所有 VM（同一玩家的重复打开、不同玩家的实例、宿主持有的数组）落在同一张图上，跨 VM 的环因此可见。注册表创建的堆是共享堆，其登记、屏障与推进都走同一把互斥锁；VM 自带的堆不是共享堆，不加锁。推进（`step`/`collect`）额外要求当前只有一个执行者（`exclusive`）：并发跑同一个脚本时回收被跳过而不是冒险扫描正在被另一个线程改写的字段，少收的环会在之后的独占窗口里收走。
 
 回收按 `Build → Index → Mark → Sweep` 分阶段推进，`step(budget)` 每次只处理固定数量的节点，由解释器每 1024 条指令推进一次，因此不会在单条 tick 上停顿整堆扫描。运行期间若有引用写入，VM 会把「被覆盖的旧值」与「写入的新值」标记为根（写屏障），保证增量期间不会误收活对象；屏障只会多留、不会误杀。
+
+### 优化器流水线
+
+优化器以基本块为单位反复执行 `ConstantPropagation → ConstantFold → DeadStore → DeadCode → CSE → DeadValue`，直到一轮没有任何改动；随后执行 LICM 与分支融合，再做一次收敛迭代。`ConstantPropagation` 在 CFG 上做前向数据流分析，汇合点对寄存器、slot 与变量名状态取交集；自环块单独迭代到稳定，避免把循环入口误判为常量。`ConstantFold` 在做全常量折叠之外，还处理数值恒等元（`x + 0`、`x * 1`、`x / 1`、`x ^ 1`），只在结果类型确定为 `int` / `float` 时把指令替换为 `MOVE`，保证与运行期类型提升一致。
 
 ### 字节码包（`.lcp`）
 

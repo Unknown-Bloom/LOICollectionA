@@ -145,6 +145,55 @@ namespace LOICollection::frontend {
         return result || this->mImpl->mFunctionCombinations[namespaces].find(sig) != this->mImpl->mFunctionCombinations[namespaces].end();
     }
 
+    std::vector<std::string> FunctionCall::getNamespaces() const {
+        std::vector<std::string> result;
+        result.reserve(this->mImpl->mFunctions.size() + this->mImpl->mFunctionCombinations.size());
+
+        for (const auto& [namespaces, functions] : this->mImpl->mFunctions)
+            result.push_back(namespaces);
+        for (const auto& [namespaces, functions] : this->mImpl->mFunctionCombinations)
+            if (std::find(result.begin(), result.end(), namespaces) == result.end())
+                result.push_back(namespaces);
+
+        std::sort(result.begin(), result.end());
+
+        return result;
+    }
+
+    std::vector<std::string> FunctionCall::getFunctionNames(const std::string& namespaces) const {
+        std::vector<std::string> result;
+
+        if (const auto it = this->mImpl->mFunctions.find(namespaces); it != this->mImpl->mFunctions.end())
+            for (const auto& [sig, callback] : it->second)
+                if (std::find(result.begin(), result.end(), sig.name) == result.end())
+                    result.push_back(sig.name);
+
+        if (const auto it = this->mImpl->mFunctionCombinations.find(namespaces); it != this->mImpl->mFunctionCombinations.end())
+            for (const auto& [sig, callback] : it->second)
+                if (std::find(result.begin(), result.end(), sig.name) == result.end())
+                    result.push_back(sig.name);
+
+        std::sort(result.begin(), result.end());
+
+        return result;
+    }
+
+    std::vector<CallbackTypeArgs> FunctionCall::getFunctionSignatures(const std::string& namespaces, const std::string& function) const {
+        std::vector<CallbackTypeArgs> result;
+
+        if (const auto it = this->mImpl->mFunctions.find(namespaces); it != this->mImpl->mFunctions.end())
+            for (const auto& [sig, callback] : it->second)
+                if (sig.name == function)
+                    result.push_back(sig.args);
+
+        if (const auto it = this->mImpl->mFunctionCombinations.find(namespaces); it != this->mImpl->mFunctionCombinations.end())
+            for (const auto& [sig, callback] : it->second)
+                if (sig.name == function)
+                    result.push_back(sig.args);
+
+        return result;
+    }
+
     std::string FunctionCall::exportShape() const {
         std::vector<std::string> parts;
 
@@ -302,6 +351,36 @@ namespace LOICollection::frontend {
 
         sig.isCombination = true;
         return result || this->mImpl->mMacroCombinations.find(sig) != this->mImpl->mMacroCombinations.end();
+    }
+
+    std::vector<std::string> MacroCall::getMacroNames() const {
+        std::vector<std::string> result;
+
+        for (const auto& [sig, callback] : this->mImpl->mMacros)
+            if (std::find(result.begin(), result.end(), sig.name) == result.end())
+                result.push_back(sig.name);
+
+        for (const auto& [sig, callback] : this->mImpl->mMacroCombinations)
+            if (std::find(result.begin(), result.end(), sig.name) == result.end())
+                result.push_back(sig.name);
+
+        std::sort(result.begin(), result.end());
+
+        return result;
+    }
+
+    std::vector<CallbackTypeArgs> MacroCall::getMacroSignatures(const std::string& name) const {
+        std::vector<CallbackTypeArgs> result;
+
+        for (const auto& [sig, callback] : this->mImpl->mMacros)
+            if (sig.name == name)
+                result.push_back(sig.args);
+
+        for (const auto& [sig, callback] : this->mImpl->mMacroCombinations)
+            if (sig.name == name)
+                result.push_back(sig.args);
+
+        return result;
     }
 
     std::string MacroCall::exportShape() const {
@@ -536,6 +615,30 @@ namespace LOICollection::frontend {
     std::vector<std::string> ClassCall::getStaticFields(const std::string& name) const {
         auto it = this->mImpl->classes.find(name);
         return it == this->mImpl->classes.end() ? std::vector<std::string>{} : it->second.staticFields;
+    }
+
+    std::vector<std::string> ClassCall::getMethodNames(const std::string& className) const {
+        std::vector<std::string> result;
+
+        auto it = this->mImpl->classes.find(className);
+        if (it == this->mImpl->classes.end())
+            return result;
+
+        const auto append = [&result](const auto& methods) {
+            for (const auto& [sig, callback] : methods)
+                if (std::find(result.begin(), result.end(), sig.name) == result.end())
+                    result.push_back(sig.name);
+        };
+
+        append(it->second.methods);
+        append(it->second.methodCombinations);
+        append(it->second.staticMethods);
+        append(it->second.staticMethodCombinations);
+        append(it->second.valueMethods);
+
+        std::sort(result.begin(), result.end());
+
+        return result;
     }
 
     std::vector<CallbackTypeArgs> ClassCall::getConstructorSignatures(const std::string& name) const {

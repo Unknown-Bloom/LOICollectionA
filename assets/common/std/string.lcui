@@ -15,10 +15,7 @@ func length(s) {
 
 /* charAt returns the character at index i, or "" if out of range. */
 func charAt(s, i) {
-    for (j, c in s) [
-        if (j == i) [ return c; ]
-    ]
-    return "";
+    return s.charAt(i);
 }
 
 /* isSpace reports whether c is a space, tab, newline or carriage return. */
@@ -28,13 +25,7 @@ func isSpace(c) -> bool {
 
 /* slice(s, start, end) keeps chars in [start, end). */
 func slice(s, start: int, end: int) {
-    let out = "";
-    let i = 0;
-    for (c in s) [
-        if (i >= start && i < end) [ out = out + c; ]
-        i = i + 1;
-    ]
-    return out;
+    return s.substring(start, end);
 }
 
 /* substr(s, start, count) keeps `count` chars beginning at `start`. */
@@ -44,30 +35,12 @@ func substr(s, start: int, count: int) {
 
 /* upper returns s with ASCII letters upper-cased; other chars pass through. */
 func upper(s) {
-    let low = "abcdefghijklmnopqrstuvwxyz";
-    let up = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    let out = "";
-    for (c in s) [
-        let p = low.indexOf(c);
-        let mapped = c;
-        if (p >= 0) [ mapped = charAt(up, p); ]
-        out = out + mapped;
-    ]
-    return out;
+    return s.upper();
 }
 
 /* lower returns s with ASCII letters lower-cased; other chars pass through. */
 func lower(s) {
-    let low = "abcdefghijklmnopqrstuvwxyz";
-    let up = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    let out = "";
-    for (c in s) [
-        let p = up.indexOf(c);
-        let mapped = c;
-        if (p >= 0) [ mapped = charAt(low, p); ]
-        out = out + mapped;
-    ]
-    return out;
+    return s.lower();
 }
 
 /* capitalize upper-cases the first character and keeps the rest unchanged. */
@@ -78,15 +51,7 @@ func capitalize(s) {
 
 /* trim strips leading and trailing whitespace from s. */
 func trim(s) {
-    let start = 0;
-    let end = s.length();
-    while (start < end && isSpace(charAt(s, start))) [
-        start = start + 1;
-    ]
-    while (end > start && isSpace(charAt(s, end - 1))) [
-        end = end - 1;
-    ]
-    return slice(s, start, end);
+    return s.trim();
 }
 
 /* startsWithAt reports whether needle occurs at index `at` in s. */
@@ -102,21 +67,7 @@ func startsWithAt(s, needle, at: int) -> bool {
 
 /* replace replaces every occurrence of `from` with `to`. */
 func replace(s, from, to) {
-    if (from.length() == 0) [ return s; ]
-    let out = "";
-    let i = 0;
-    let n = s.length();
-    let m = from.length();
-    while (i < n) [
-        if (startsWithAt(s, from, i)) [
-            out = out + to;
-            i = i + m;
-        :
-            out = out + charAt(s, i);
-            i = i + 1;
-        ]
-    ]
-    return out;
+    return s.replace(from, to);
 }
 
 /* repeat concatenates s `times` times (empty result when times <= 0). */
@@ -159,61 +110,37 @@ func reverse(s) {
 
 /* trimStart strips leading whitespace from s. */
 func trimStart(s) {
-    let start = 0;
-    let n = s.length();
-    while (start < n && isSpace(charAt(s, start))) [
-        start = start + 1;
-    ]
-    return slice(s, start, n);
+    return s.trimStart();
 }
 
 /* trimEnd strips trailing whitespace from s. */
 func trimEnd(s) {
-    let end = s.length();
-    while (end > 0 && isSpace(charAt(s, end - 1))) [
-        end = end - 1;
-    ]
-    return slice(s, 0, end);
+    return s.trimEnd();
 }
 
 /* startsWith reports whether s begins with prefix. */
 func startsWith(s, prefix) -> bool {
-    return startsWithAt(s, prefix, 0);
+    return s.startsWith(prefix);
 }
 
 /* endsWith reports whether s ends with suffix. */
 func endsWith(s, suffix) -> bool {
-    let at = s.length() - suffix.length();
-    if (at < 0) [ return false; ]
-    return startsWithAt(s, suffix, at);
+    return s.endsWith(suffix);
 }
 
 /* contains reports whether needle occurs anywhere in s. */
 func contains(s, needle) -> bool {
-    return indexOf(s, needle) >= 0;
+    return s.contains(needle);
 }
 
 /* indexOf returns the first position of needle in s, or -1 when absent. */
 func indexOf(s, needle) -> int {
-    if (needle.length() == 0) [ return 0; ]
-    let i = 0;
-    let last = s.length() - needle.length();
-    while (i <= last) [
-        if (startsWithAt(s, needle, i)) [ return i; ]
-        i = i + 1;
-    ]
-    return -1;
+    return s.indexOf(needle);
 }
 
 /* lastIndexOf returns the last position of needle in s, or -1 when absent. */
 func lastIndexOf(s, needle) -> int {
-    if (needle.length() == 0) [ return s.length(); ]
-    let i = s.length() - needle.length();
-    while (i >= 0) [
-        if (startsWithAt(s, needle, i)) [ return i; ]
-        i = i - 1;
-    ]
-    return -1;
+    return s.lastIndexOf(needle);
 }
 
 /* count returns how many non-overlapping times needle occurs in s. */

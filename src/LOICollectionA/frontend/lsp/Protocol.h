@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -47,7 +48,12 @@ namespace LOICollection::frontend::lsp {
         Variable = 5,
         Constant = 6,
         Class = 7,
-        Interface = 8
+        Interface = 8,
+        Enum = 9,
+        EnumMember = 10,
+        Component = 11,
+        Module = 12,
+        Parameter = 13
     };
 
     enum class CompletionKind : int {
@@ -57,8 +63,13 @@ namespace LOICollection::frontend::lsp {
         Variable = 6,
         Class = 7,
         Interface = 8,
+        Module = 9,
+        Property = 10,
+        Enum = 13,
         Keyword = 14,
-        Constant = 21
+        EnumMember = 20,
+        Constant = 21,
+        Struct = 22
     };
 
     struct Symbol {
@@ -67,6 +78,11 @@ namespace LOICollection::frontend::lsp {
         std::string detail;
         Range range{};
         std::string container;
+        std::string uri;
+        std::size_t offset = 0;
+        std::size_t scopeStart = 0;
+        std::size_t scopeEnd = 0;
+        bool local = false;
     };
 
     struct CompletionItem {
@@ -122,6 +138,16 @@ namespace LOICollection::frontend::lsp {
         std::vector<TextEdit> edits;
     };
 
+    struct SemanticTokens {
+        std::vector<std::uint32_t> data;
+    };
+
+    struct InlayHint {
+        Position position{};
+        std::string label;
+        int kind = 1;
+    };
+
     LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const Position& value);
     LOICOLLECTION_A_API void from_json(const nlohmann::ordered_json& j, Position& value);
 
@@ -147,6 +173,10 @@ namespace LOICollection::frontend::lsp {
     LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const SignatureHelp& value);
 
     LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const WorkspaceEdit& value);
+
+    LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const SemanticTokens& value);
+
+    LOICOLLECTION_A_API void to_json(nlohmann::ordered_json& j, const InlayHint& value);
 
     LOICOLLECTION_A_NDAPI nlohmann::ordered_json makeResponse(const nlohmann::ordered_json& id, nlohmann::ordered_json result);
 

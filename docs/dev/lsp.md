@@ -1,39 +1,49 @@
 # LCUI 语言服务
 
 > [!NOTE]
-> 以下内容取自 LOICollectionA 1.17.1 的代码结构，对于后续版本可能会有所不同。
+> 以下内容取自 LOICollectionA 1.17.3 的代码结构，对于后续版本可能会有所不同。
 
 ## 定位
 
-`src/LOICollectionA/frontend/lsp/` 是 `.lcui` 脚本的**语言服务核心**：它复用编译器前端（Lexer → Parser → ComponentExpander → SemanticAnalyzer）产出诊断、符号、补全、悬停与跳转定义，并按 LSP 协议封装成 JSON-RPC 消息。
+`src/LOICollectionA/frontend/lsp/` 是 `.lcui` 脚本的**语言服务核心**：它复用编译器前端（Lexer → Parser → ComponentExpander → SemanticAnalyzer）产出诊断、符号、补全、悬停、跳转、重命名、语义高亮与内联提示，并按 LSP 协议封装成 JSON-RPC 消息。
 
-它**只做协议与分析**，不做 I/O：
+`LanguageServer` 只做协议与分析，不做 I/O：
 
 - 不监听端口、不读写 stdio、不启动线程
 - 输入是一段字节流，输出是待发回的字节流
 - 传输层（stdio、管道、WebSocket、游戏内命令）由调用方决定
 
-这样设计有两个原因：插件本体不需要为了编辑器支持常驻一个服务端；而语言核心能被 gtest 直接驱动（`tests/common/frontend/LspTest.cpp`），无需任何进程间通信。
+仓库另提供可选的 `LspServer`：默认关闭，在配置 `"LanguageServer": { "enabled": true, "port": 9257 }` 时监听 `127.0.0.1`，用 TCP 承载同样的 JSON-RPC 帧。核心与传输层分离，既能让插件按需提供编辑器服务，也能让 gtest 直接驱动语言核心（`tests/common/frontend/LspTest.cpp`），无需进程间通信。
 
 ## 模块结构
 
 | 文件 | 职责 |
 | --- | --- |
-| `Protocol.h` / `.cpp` | LSP 数据类型（`Position` / `Range` / `Diagnostic` / `CompletionItem` / `Hover` / `Location`）、JSON 序列化、JSON-RPC 消息构造、`Content-Length` 分帧与解帧 |
-| `Analysis.h` / `.cpp` | 对一段脚本文本跑完整前端，输出 `DocumentAnalysis`（诊断 + 符号表） |
-| `LanguageServer.h` / `.cpp` | 文档同步（全量同步）、请求分发、能力声明，以及 `completionsAt` / `hoverAt` / `definitionAt` 三个纯函数 |
+| `Protocol.h` / `.cpp` | LSP 数据类型（`Position` / `Range` / `Diagnostic` / `CompletionItem` / `Hover` / `Location` / `SemanticTokens` / `InlayHint`）、JSON 序列化、JSON-RPC 消息构造、`Content-Length` 分帧与解帧 |
+| `Analysis.h` / `.cpp` | 对一段脚本文本跑完整前端，输出 `DocumentAnalysis`（诊断 + 符号 + 导入符号 + 内联提示） |
+| `LanguageServer.h` / `.cpp` | 文档同步（增量与全量）、请求分发、能力声明，以及补全 / 悬停 / 跳转等纯函数 |
+| `Server.h` / `.cpp` | 可选的回环 TCP 传输层，内部持有 `LanguageServer` 与 asio 事件循环 |
 
 ## 能力清单
 
 | LSP 方法 | 行为 |
 | --- | --- |
-| `initialize` | 返回 `textDocumentSync: 1`（全量同步）、`completionProvider`（触发字符 `.`）、`hoverProvider`、`definitionProvider`、`codeActionProvider` |
+| `initialize` | 声明 `textDocumentSync: 2`（增量同步）、补全触发字符 `.` 与 `:`、悬停、定义、类型定义、引用、文档高亮、重命名、文档符号、签名帮助、语义令牌（full）、内联提示、格式化与快速修复 |
 | `textDocument/didOpen` | 记录文档，立即推送 `publishDiagnostics` |
-| `textDocument/didChange` | 整体替换文本（取最后一条 `contentChanges`），重新推送诊断 |
+| `textDocument/didChange` | 按 `contentChanges` 顺序应用编辑：带 `range` 的条目按行/列替换，不带 `range` 的条目整体替换；随后重新推送诊断 |
 | `textDocument/didClose` | 移除文档并清空该文档的诊断 |
 | `textDocument/completion` | 见「补全规则」 |
-| `textDocument/hover` | 返回光标处标识符的声明签名 |
-| `textDocument/definition` | 返回声明处的 `Location` |
+| `textDocument/hover` | 返回光标处符号的声明签名、原生成员签名或命名空间说明 |
+| `textDocument/definition` / `declaration` | 返回声明处的 `Location`，跨文件时带导入文档的 URI |
+| `textDocument/typeDefinition` | 由变量 / 字段的类型标注或推断结果跳转到类、枚举或 trait 声明 |
+| `textDocument/references` | 返回解析后属于同一符号的全部引用 |
+| `textDocument/documentHighlight` | 标记同一符号的读 / 写出现位置（`2` 读，`3` 写） |
+| `textDocument/rename` | 返回与目标符号解析结果一致的全部 `TextEdit`；调用方可用 `WorkspaceEdit` 包装 |
+| `textDocument/documentSymbol` | 返回非局部符号的扁平列表 |
+| `textDocument/signatureHelp` | 见「签名帮助规则」 |
+| `textDocument/semanticTokens/full` | 返回整篇文档的语义令牌；`full/delta` 当前按全量结果返回 |
+| `textDocument/inlayHint` | 返回请求区间内的类型提示 |
+| `textDocument/formatting` | 基于 `{}` / `[]` 嵌套重排缩进，返回整篇替换编辑 |
 | `textDocument/codeAction` | 为请求区间内的诊断返回 `quickfix`，见「快速修复规则」 |
 | `shutdown` / `exit` | 正常结束 |
 
@@ -62,20 +72,36 @@ if (!outbound.empty())
 
 ## 符号收集规则
 
-`analyze` 在语义分析**之后**遍历 AST，因此 `impl` 块合并进目标类的方法、`component` 展开生成的节点都会被纳入：
+`analyze` 在语义分析**之后**遍历 AST，因此 `impl` 块合并进目标类的方法、`component` 展开生成的节点都会被纳入。符号同时记录声明偏移、作用域起止与 `local` 标记，供补全、跳转和解析校验使用：
 
-| 来源 | 符号类型 | 归属（container） |
-| --- | --- | --- |
-| `class` | Class | 全局 |
-| 类字段 / `static` 字段 | Field / StaticField | 类名 |
-| 类方法 / `static` 方法 | Method / StaticMethod | 类名 |
-| `trait` | Interface | 全局 |
-| `trait` 内的方法 | Method | trait 名 |
-| `impl` 内的方法与关联常量 | Method / StaticMethod / Constant | impl 目标类型名 |
-| 顶层 `func` | Function | 全局 |
-| 顶层 `let` / `const` | Variable / Constant | 全局 |
+| 来源 | 符号类型 | 归属（container） | 局部 |
+| --- | --- | --- | --- |
+| `class` | Class | 全局 | 否 |
+| 类字段 / `static` 字段 | Field / StaticField | 类名 | 否 |
+| 类方法 / `static` 方法 | Method / StaticMethod | 类名 | 否 |
+| `trait` | Interface | 全局 | 否 |
+| `trait` 内的方法 | Method | trait 名 | 否 |
+| `impl` 内的方法与关联常量 | Method / StaticMethod / Constant | impl 目标类型名 | 否 |
+| `enum` | Enum | 全局 | 否 |
+| 枚举变体 | EnumMember | 枚举名 | 否 |
+| `component` | Component | 全局 | 否 |
+| `component` 参数 | Parameter | component 名 | 是 |
+| `import` | Module | 全局 | 否 |
+| 顶层 `func` | Function | 全局 | 否 |
+| 顶层 `let` / `const` | Variable / Constant | 全局 | 否 |
+| 函数 / 方法 / lambda 参数 | Parameter | 所属函数或类 | 是 |
+| 块内 `let`、`for`-`in` 变量、`match` 绑定、`if let` / `while let` 绑定 | Variable | 全局 | 是 |
 
-`detail` 为可读签名，例如 `size() -> int`、`add(x: int, y: int) -> int`。
+`detail` 为可读签名，例如 `size() -> int`、`add(x: int, y: int) -> int`、`Some(int)`、`component card(title, body)`。
+
+## 导入解析
+
+`ImportResolver` 把 `import` 路径映射为 `{ uri, text }`。`LanguageServer` 在收到 `didOpen` 后自动构建解析器：先按导入文件的 URI 做相对解析，再在当前打开的文档中按完整路径或后缀匹配，因此只要依赖文件已经打开，跨文件补全、悬停、定义、引用与重命名都能工作。
+
+- 解析深度上限为 8，出现循环导入时按读取栈去重
+- 仅导入声明的符号时过滤非目标符号；`import "path";` 导入该文件的全部导出
+- 解析不到的文件被静默跳过，诊断仍以当前文档为准
+- 纯函数接口可传入自定义 `ImportResolver`，由调用方从磁盘或虚拟文件系统读取
 
 ## 补全规则
 
@@ -83,15 +109,44 @@ if (!outbound.empty())
 
 - `this` → 取光标前最近一次 `class <Name>` 声明的类
 - 已知类名 → 该类的静态成员
-- 带类型标注的变量（`let deck: Deck = ...`）→ 其标注类型的成员
+- 变量 / 字段 / 参数 → 其标注类型，或在 `new` 表达式、参数类型、返回值类型中推断出的类
+- 枚举名 → 该枚举的变体（如 `Suit.He`）
+- 原生类：`String` / `Array` / `Map` 等通过 ABI 反射列出字段、方法与签名；字符串与数组的接收者也会映射到对应原生类
+- `std::`、`math::`、`mc::`、`GUIManager::`、`storage::`、`playerdata::` 等命名空间 → 已注册函数的重载列表
 - 无法推断 → 返回空列表（不做"猜一个"式的误报）
 
-**其他位置**（全局补全）：全局符号 + 关键字 + 基础类型 + 内置函数（`tr` / `score` / `entity` / `print` / `println` / `error`）+ 表单类（`CustomForm` / `MessageBox` / `PaginatedForm` / `ScriptForm`）。
+**其他位置**（全局补全）：当前作用域可达的局部符号 + 导入符号 + 全局符号 + 枚举变体 + 关键字 + 基础类型 + 全部已注册原生函数 / 宏 / 类。
+
+## 签名帮助规则
+
+`signatureHelpAt` 从光标向前匹配最内层未闭合的 `(`，识别 `命名空间::函数`、`接收者.方法`、`类名(...)`、枚举变体与宏，并从以下来源收集签名：
+
+- 当前文档与导入文档中的方法 / 函数声明
+- ABI 反射得到的原生函数重载与方法重载
+- 原生类构造器
+- 枚举变体的载荷签名
+- 宏注册表
+
+`activeParameter` 按顶层逗号计数，嵌套的 `()` / `[]` / `{}` 不计入。找不到签名时返回 `null`。
+
+## 语义令牌与内联提示
+
+语义令牌的图例顺序为：
+
+```text
+namespace, type, class, enum, interface, struct, typeParameter, parameter,
+variable, property, enumMember, event, function, method, macro, keyword,
+modifier, comment, string, number, regexp, operator
+```
+
+令牌长度取自真实词法单元：标识符与字符串覆盖完整源码片段，跨行字符串与块注释按行拆分；注释单独扫描补充。文档内的声明符号优先于启发式分类，因此局部变量、参数、枚举、组件与导入模块都能得到准确类型。
+
+内联提示目前只生成类型提示（kind `1`）：未显式标注类型的函数参数与局部 `let` 在名称后显示 `: 类型`。类型来自语义分析器的推断；`unknown` 与 `void` 不生成提示。
 
 ## 已知限制
 
-- 局部变量（函数参数、块内 `let`）不进符号表，因此不参与补全与跳转
-- 不解析 `import`，跨文件符号需要调用方先把导入图展开后逐文档喂入
-- 每次请求都会重新跑一遍完整前端，未做增量分析；单文件脚本规模下开销可忽略
-- 诊断区间长度为 1 个字符（诊断引擎只记录起点，不记录词法单元长度）
+- 每次请求都会重新跑一遍完整前端，未做增量解析；增量同步只减少文本传输量，单文件脚本规模下开销可忽略
+- 诊断区间优先扩展为完整标识符或字符串，其他位置仍可能只有 1 个字符
 - 快速修复目前只覆盖「变量未声明」一类，且只插入 `let`，不推断初始值
+- 语义令牌只支持全量请求；`full/delta` 不返回增量编辑
+- 跨文件解析依赖调用方提供 `ImportResolver`；内置 TCP 服务只解析已打开的文档

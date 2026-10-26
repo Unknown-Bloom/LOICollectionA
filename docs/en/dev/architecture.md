@@ -111,14 +111,19 @@ src/LOICollectionA/
 ├─ data/                     # data layer: sqlite/ block storage (BlockStore + WriteBatch +
 │                            #   BlockRepository), JsonStorage
 ├─ frontend/                 # LCUI script engine: Lexer, Parser, SemanticAnalyzer,
-│   │                        #   AST, Callback (native binding registry), ir/ (compiler, VM)
+│   │                        #   AST, Callback (native binding registry), ir/ (compiler, VM, optimizer)
 │   ├─ sandbox/              # script sandbox: ScriptPermission (permission and execution
 │   │                        #   budget configuration), SandboxBudget (fuel metering),
 │   │                        #   SandboxReport; permissions use a trust-level + capability model
+│   ├─ storage/              # script persistence: storage (per script) and playerdata
+│   │                        #   (per player + script): paths, capability checks, whole-file cache
+│   ├─ stdlib/               # native values and functions: Math/Format, String/Array/Map,
+│   │                        #   Observable and UIRawMessage, etc.
 │   ├─ lsp/                  # LCUI language service core: Protocol (JSON-RPC framing),
-│   │                        #   Analysis (diagnostics and symbols), LanguageServer (dispatch)
-│   └─ builtin/              # built-in script implementations: Math/Format/String functions,
-│                            #   mc/server commands, ui/ (form and Observable native classes)
+│   │                        #   Analysis (diagnostics and symbols), LanguageServer (dispatch),
+│   │                        #   Server (optional TCP transport)
+│   └─ builtin/              # built-in script namespaces: mc/server commands, storage,
+│                            #   ui/ (form and GUIManager native classes)
 ├─ include/                  # public header files (distributed with the plugin after installation)
 │   ├─ ModuleBase.h / ModManager.h / ModulePriority.h
 │   ├─ CallbackUtils.h       # LOICollectionAPI variable registration entry
@@ -196,13 +201,33 @@ LCUI scripts are compiled in `frontend/ir/` into three-address MIR and executed 
 
 Each `Object` holds an **immutable** `FieldLayout` (an ordered map from field names to slot indices). Class fields known at compile/construction time occupy contiguous slots, so `slotOf(name)` is O(1). Dynamically written fields fall back to a `spill` hash map, keeping undeclared fields accessible.
 
-### Polymorphic Inline Cache (PIC)
+### Field Inline Cache
 
-`VM::mFieldSlots` was upgraded from monomorphic (a single `name+layout+slot`) to a **polymorphic inline cache** of capacity 4: the field name is constant per instruction and up to 4 candidate slots are cached keyed by `layout` pointer. Same-shape objects hit directly; heterogeneous call sites degrade to sequential probing; beyond 4 shapes it falls back to a linear lookup. This accelerates hot same-shape paths without sacrificing correctness at heterogeneous sites.
+Field names are constant per instruction. `VM` keeps a fixed-size table indexed directly by instruction address, whose entries record `(instruction, layout, slot)`: the same instruction on the same shape hits immediately, and a shape change or slot rearrangement invalidates and recomputes the entry. The cache is private to each VM, so it no longer goes through a shared `ChunkCache` hash lookup and needs no cross-thread synchronization.
+
+Name-based dispatch (`CALL_METHOD_BY_NAME`) caches the resolved ordinal keyed by `(instruction, classIndex)`, and host function calls cache the split of `ns::func` at the instruction, avoiding repeated linear lookup and slice allocation.
 
 ### Hidden Class / Shape Transitions
 
 `extendShape(base, name)` memoizes an immutable extended `FieldLayout` keyed by `(base, name)`, so objects of the same kind share one shape. `Object::addField()` migrates dynamically added fields into real slots (instead of per-object `spill`), letting objects with the same dynamic shape converge to one `layout` and thus stabilizing the PIC across objects. Existing fields are written in place, preserving semantics.
 
 > [!NOTE]
-> The shape-transition table and caches follow the project's existing **single-threaded (tick model)** assumption, consistent with `ClassCall`'s `epoch` cache; no locks are introduced, keeping it simple and fast.
+> The shape-transition table is protected by a mutex: the scheduler may pump tasks on several threads, and the same shape can be registered concurrently. Field and dispatch caches are VM-private state, read and written only by the thread that owns the VM.
+
+### Cycle Collection (`CycleCollector`)
+
+Script objects, arrays, and closures can reference each other through `shared_ptr`, forming cycles whose destructors never run. Each VM owns a collector that registers only containers that have **received a reference write**: it finds externally reachable roots using "reference count minus internal in-degree", detaches the outgoing edges of the rest, and lets destruction release their budget slots. Node indices are embedded in the objects, so a scan allocates no hash table.
+
+`NativeHandle::trace(ValueVisitor&)` lets native handles expose the script values they hold (such as a form's `show` callback or the wrapped value of `CtxValue`) to the same scan; the default implementation is empty, so handles that hold no script values need no override. Script values captured by `std::function` remain invisible, and cycles through them still leak — this is a deliberately preserved boundary.
+
+Heaps are shared per script id through `ScriptHeapRegistry`: every VM of the same script (repeated open by one player, instances of different players, arrays held by the host) lands on the same graph, so cross-VM cycles are visible. Heaps created by the registry are shared heaps, and registration, barriers, and advancement all take the same mutex; a VM's own heap is not shared and takes no lock. Advancement (`step`/`collect`) additionally requires that there is exactly one executor (`exclusive`): when the same script runs concurrently, collection is skipped rather than scanning fields another thread is rewriting, and missed cycles are collected in a later exclusive window.
+
+Collection advances in stages (`Build -> Index -> Mark -> Sweep`); `step(budget)` processes a fixed number of nodes, driven by the interpreter every 1024 instructions, so a single tick never stalls on a full-heap scan. If a reference is written during execution, the VM marks both the overwritten old value and the new value as roots (write barrier), ensuring live objects are not collected during incrementality; the barrier only retains extra objects and never kills live ones.
+
+### Optimizer Pipeline
+
+The optimizer repeatedly runs `ConstantPropagation -> ConstantFold -> DeadStore -> DeadCode -> CSE -> DeadValue` per basic block until a round makes no changes; it then runs LICM and branch fusion followed by another convergence pass. `ConstantPropagation` performs forward dataflow analysis over the CFG and intersects register, slot, and variable-name states at joins; self-loop blocks are iterated separately until stable so loop headers are not mistaken for constants. Besides full constant folding, `ConstantFold` reduces numeric identities (`x + 0`, `x * 1`, `x / 1`, `x ^ 1`) by replacing the instruction with `MOVE` only when the result type is known to be `int` / `float`, matching runtime promotion.
+
+### Bytecode Package (`.lcp`)
+
+A package written by `MirSerializer` consists of `abiFingerprint` (the native export surface), source/import hashes, `layoutFingerprint` (the class table of this package), and the MIR body. `layoutFingerprint` is computed from the in-memory chunk when writing and recomputed from the decoded result when reading; a mismatch rejects the package — it catches self-consistent but semantically wrong packages caused by writer/reader drift (e.g. a class-table field not being written). On a version mismatch or checksum failure, the loader falls back to recompiling the source and overwrites the package.
