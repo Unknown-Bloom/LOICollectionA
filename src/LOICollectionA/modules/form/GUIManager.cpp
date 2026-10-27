@@ -280,7 +280,7 @@ namespace LOICollection::form {
         const auto budget = frontend::sandbox::budgetForScript(id);
         auto pooled = frontend::runtime::ScriptVMRegistry::getInstance().tryGetOrCreate(id, context.ownerId);
 
-        if (frontend::ir::VM::current() != &pooled->vm()) {
+        if (!frontend::runtime::ScriptVMSession::holds(pooled.get())) {
             frontend::runtime::ScriptVMSession session(*pooled, std::move(globals), budget);
             session.vm().run(cached, context);
             if (session.diagnostics().hasErrors())
@@ -288,12 +288,13 @@ namespace LOICollection::form {
             return {};
         }
 
-        frontend::ir::VM vm(pooled->diagnostics(), std::move(globals));
+        frontend::DiagnosticEngine diagnostics;
+        frontend::ir::VM vm(diagnostics, std::move(globals));
         vm.setHeap(frontend::runtime::ScriptHeapRegistry::getInstance().forScript(id));
         vm.setBudget(budget);
         vm.run(cached, context);
-        if (vm.diagnosticsEngine().hasErrors())
-            return ll::makeStringError(vm.diagnosticsEngine().getErrorMessage());
+        if (diagnostics.hasErrors())
+            return ll::makeStringError(diagnostics.getErrorMessage());
         return {};
     }
 
@@ -513,7 +514,10 @@ namespace LOICollection::form {
 
                 [[maybe_unused]] auto cbResult = frontend::ir::VM::callFunctionRef(
                     handle->show, values,
-                    frontend::Context::withScriptId(frontend::Context{ player }.params, handle->scriptId),
+                    frontend::Context::withOwnerId(
+                        frontend::Context::withScriptId(frontend::Context{ player }.params, handle->scriptId),
+                        player.get().getUuid().asString()
+                    ),
                     diagnostics, &budget
                 );
 
@@ -567,7 +571,10 @@ namespace LOICollection::form {
 
                 [[maybe_unused]] auto cbResult = frontend::ir::VM::callFunctionRef(
                     handle->show, values,
-                    frontend::Context::withScriptId(frontend::Context{ player }.params, handle->scriptId),
+                    frontend::Context::withOwnerId(
+                        frontend::Context::withScriptId(frontend::Context{ player }.params, handle->scriptId),
+                        player.get().getUuid().asString()
+                    ),
                     diagnostics, &budget
                 );
 

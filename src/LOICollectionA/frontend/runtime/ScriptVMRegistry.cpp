@@ -1,8 +1,40 @@
+#include <algorithm>
 #include <utility>
+#include <vector>
 
 #include "LOICollectionA/frontend/runtime/ScriptVMRegistry.h"
 
+namespace LOICollection::frontend::runtime::detail {
+    thread_local std::vector<const ScriptVM*> tlsHeldVMs;
+}
+
 namespace LOICollection::frontend::runtime {
+    ScriptVMSession::ScriptVMSession(
+        ScriptVM& vm,
+        std::shared_ptr<GlobalsTable> globals,
+        const sandbox::SandboxBudget& budget
+    ) : mLock(vm.lock()),
+        mVM(vm) {
+        detail::tlsHeldVMs.push_back(&vm);
+
+        mVM.diagnostics().clear();
+        mVM.vm().reset();
+        mVM.vm().setHeap(ScriptHeapRegistry::getInstance().forScript(mVM.scriptId()));
+        mVM.vm().setGlobals(std::move(globals));
+        mVM.vm().setBudget(budget);
+    }
+
+    ScriptVMSession::~ScriptVMSession() {
+        mVM.vm().reset();
+        std::erase(detail::tlsHeldVMs, &this->mVM);
+    }
+
+    bool ScriptVMSession::holds(const ScriptVM* vm) {
+        const auto& held = detail::tlsHeldVMs;
+
+        return std::find(held.begin(), held.end(), vm) != held.end();
+    }
+
     ScriptVMRegistry& ScriptVMRegistry::getInstance() {
         static ScriptVMRegistry instance;
         return instance;

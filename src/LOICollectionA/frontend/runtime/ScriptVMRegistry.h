@@ -40,18 +40,18 @@ namespace LOICollection::frontend::runtime {
 
     class ScriptVMSession {
     public:
-        ScriptVMSession(
+        LOICOLLECTION_A_NDAPI ScriptVMSession(
             ScriptVM& vm,
             std::shared_ptr<GlobalsTable> globals,
             const sandbox::SandboxBudget& budget
-        ) : mLock(vm.lock()),
-            mVM(vm) {
-            mVM.diagnostics().clear();
-            mVM.vm().reset();
-            mVM.vm().setHeap(ScriptHeapRegistry::getInstance().forScript(mVM.scriptId()));
-            mVM.vm().setGlobals(std::move(globals));
-            mVM.vm().setBudget(budget);
-        }
+        );
+
+        LOICOLLECTION_A_API ~ScriptVMSession();
+
+        ScriptVMSession(const ScriptVMSession&) = delete;
+        ScriptVMSession& operator=(const ScriptVMSession&) = delete;
+
+        LOICOLLECTION_A_NDAPI static bool holds(const ScriptVM* vm);
 
         [[nodiscard]] ir::VM& vm() { return mVM.vm(); }
         [[nodiscard]] DiagnosticEngine& diagnostics() { return mVM.diagnostics(); }

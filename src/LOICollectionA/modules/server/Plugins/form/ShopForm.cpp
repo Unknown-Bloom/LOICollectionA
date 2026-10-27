@@ -105,7 +105,10 @@ namespace LOICollection::server::Plugins {
 
         [[maybe_unused]] auto cbResult = frontend::ir::VM::callFunctionRef(
             handle->show, values,
-            frontend::Context::withScriptId(frontend::Context{ std::ref(player) }.params, handle->scriptId),
+            frontend::Context::withOwnerId(
+                frontend::Context::withScriptId(frontend::Context{ std::ref(player) }.params, handle->scriptId),
+                player.getUuid().asString()
+            ),
             diagnostics, &budget
         );
 

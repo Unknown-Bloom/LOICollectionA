@@ -520,7 +520,7 @@ namespace LOICollection::frontend::ir {
             effective = active->budget();
 
         std::shared_ptr<runtime::ScriptVM> pooled;
-        std::unique_lock<std::mutex> pooledGuard;
+        std::unique_ptr<runtime::ScriptVMSession> session;
         std::unique_ptr<VM> standalone;
         bool usedPooled = false;
 
@@ -528,15 +528,10 @@ namespace LOICollection::frontend::ir {
         if (!scriptId.empty()) {
             pooled = runtime::ScriptVMRegistry::getInstance().tryGetOrCreate(scriptId, ownerId);
 
-            if (VM::current() != &pooled->vm()) {
-                pooledGuard = pooled->lock();
-                pooled->diagnostics().clear();
-                pooled->vm().reset();
-                pooled->vm().setGlobals(std::move(globals));
-                pooled->vm().setHeap(runtime::ScriptHeapRegistry::getInstance().forScript(scriptId));
-                pooled->vm().setBudget(effective);
+            if (!runtime::ScriptVMSession::holds(pooled.get())) {
+                session = std::make_unique<runtime::ScriptVMSession>(*pooled, std::move(globals), effective);
 
-                target = &pooled->vm();
+                target = &session->vm();
                 usedPooled = true;
             }
         }
@@ -583,23 +578,28 @@ namespace LOICollection::frontend::ir {
             callee.thisObj = self;
         }
 
-        const size_t paramBase = func->captures.size();
-        if (paramBase + static_cast<size_t>(func->argCount) > callee.localsSize) {
+        const size_t captureCount = func->captures.size();
+        if (captureCount + static_cast<size_t>(func->argCount) > callee.localsSize
+            || func->captureSlots.size() != captureCount) {
             diagnostics.addError({}, "Lambda frame is too small for its parameters");
             return std::monostate{};
         }
 
-        vm.localPool.resize(callee.localsSize);
-        std::copy_n(func->captures.begin(), paramBase, vm.localPool.begin());
+        vm.localPool.assign(callee.localsSize, ValueNode::ValueType{});
+
+        for (size_t i = 0; i < captureCount; ++i)
+            vm.localPool[static_cast<size_t>(func->captureSlots[i])] = func->captures[i];
 
         for (int i = 0; i < func->argCount; ++i)
-            vm.localPool[paramBase + i] = args[i];
+            vm.localPool[static_cast<size_t>(i)] = args[static_cast<size_t>(i)];
 
         vm.frames.push_back(std::move(callee));
 
+        const HeapLease lease{ vm.heap() };
+
         auto result = vm.execute(func->owner, placeholders);
-        if (usedPooled && pooled->diagnostics().hasErrors())
-            diagnostics.addError({}, pooled->diagnostics().getErrorMessage());
+        if (usedPooled && session->diagnostics().hasErrors())
+            diagnostics.addError({}, session->diagnostics().getErrorMessage());
 
         return result;
     }
