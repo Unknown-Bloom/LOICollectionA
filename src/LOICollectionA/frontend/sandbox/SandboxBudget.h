@@ -106,5 +106,10 @@ namespace LOICollection::frontend::sandbox {
         Violation accountString(std::size_t byteCount) {
             return byteCount > maxStringBytes ? Violation::StringByteLimit : Violation::None;
         }
+
+        Violation accountBytes(std::size_t byteCount) {
+            allocatedBytes += byteCount;
+            return allocatedBytes > maxTotalBytes ? Violation::TotalByteLimit : Violation::None;
+        }
     };
 }

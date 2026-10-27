@@ -78,6 +78,7 @@ namespace LOICollection::frontend::ir {
 
         LOICOLLECTION_A_API   void setBudget(const sandbox::SandboxBudget& budget) { *mBudget = budget; }
         LOICOLLECTION_A_NDAPI const sandbox::SandboxBudget& budget() const { return *mBudget; }
+        LOICOLLECTION_A_API   sandbox::SandboxBudget& mutableBudget() { return *mBudget; }
         LOICOLLECTION_A_NDAPI const sandbox::SandboxReport& report() const { return mReport; }
 
         LOICOLLECTION_A_API void reset();
@@ -217,7 +218,11 @@ namespace LOICollection::frontend::ir {
 
         [[nodiscard]] bool isDerived(const MirChunk& chunk, int derivedClassIndex, int baseClassIndex) const;
 
-        [[nodiscard]] static ValueNode::ValueType cloneValue(const ValueNode::ValueType& val);
+        [[nodiscard]] static ValueNode::ValueType cloneValue(const ValueNode::ValueType& val, std::size_t depth = 0);
+
+        [[nodiscard]] bool accountValue(const ValueNode::ValueType& value);
+
+        void storeNativeResult(Frame& frame, int index, ValueNode::ValueType value);
 
         void setupRootFrame(const FunctionRefPtr& func, const CallbackTypeValues& args);
 

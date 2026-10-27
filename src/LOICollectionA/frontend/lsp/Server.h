@@ -1,6 +1,8 @@
 #pragma once
 
 #include <atomic>
+#include <memory>
+#include <mutex>
 #include <thread>
 
 #include <asio.hpp>
@@ -22,12 +24,15 @@ namespace LOICollection::frontend::lsp {
 
     private:
         void acceptLoop();
-        void serve(asio::ip::tcp::socket socket);
+        void serve(const std::shared_ptr<asio::ip::tcp::socket>& socket);
 
         LanguageServer& engine_;
         asio::io_context io_;
         asio::ip::tcp::acceptor acceptor_{ io_ };
         std::thread worker_;
         std::atomic<bool> running_{ false };
+
+        std::mutex socketMutex_;
+        std::shared_ptr<asio::ip::tcp::socket> activeSocket_;
     };
 }

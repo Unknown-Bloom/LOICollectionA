@@ -7,6 +7,7 @@
 #include <variant>
 #include <charconv>
 #include <optional>
+#include <algorithm>
 
 #include <ll/api/Expected.h>
 #include <ll/api/io/Logger.h>
@@ -34,6 +35,8 @@ using namespace LOICollection::frontend;
 using namespace CustomFormOptionsClass;
 
 namespace PaginatedFormClass {
+    constexpr int kMaxPageSize = 100;
+
     void refreshPage(const std::shared_ptr<PaginatedFormHandle>& form) {
         const int begin = (form->page - 1) * form->pageSize;
         const int end = std::min(begin + form->pageSize, static_cast<int>(form->elements.size()));
@@ -61,27 +64,32 @@ namespace PaginatedFormClass {
             return ll::Unexpected(title.error());
 
         auto elementsRef = std::get<ArrayRef>(args[2]);
+        if (!elementsRef)
+            return ll::makeStringError("makePaginatedForm's ArrayRef argument is null");
+
         if (!std::ranges::all_of(elementsRef->elements, [](auto&& e) {
             return std::holds_alternative<std::string>(e);
         })) {
             return ll::makeStringError("makePaginatedForm's ArrayRef argument must contain only strings");
         }
 
-        std::reference_wrapper<Player> player = std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0));
+        auto player = Context::playerOf(placeholders);
+        if (!player)
+            return ll::makeStringError("PaginatedForm requires a player context");
 
         auto handle = std::make_shared<PaginatedFormHandle>();
         handle->scriptId = Context::scriptIdOf(placeholders);
         handle->guiId = std::get<std::string>(args[0]);
         handle->title = std::move(*title);
-        handle->pageSize = args.size() >= 4
-            ? std::get<int>(args[3]) : 10;
-        handle->pageSize = std::max(1, handle->pageSize);
+        handle->pageSize = std::clamp(args.size() >= 4
+            ? std::get<int>(args[3]) : 10, 1, kMaxPageSize);
 
         handle->elements = elementsRef->elements
             | std::views::transform([](auto&& e) { return std::get<std::string>(e); })
             | std::ranges::to<std::vector>();
 
-        handle->pageCount = (static_cast<int>(handle->elements.size()) + handle->pageSize - 1) / handle->pageSize;
+        const std::size_t pageSize = static_cast<std::size_t>(handle->pageSize);
+        handle->pageCount = static_cast<int>((handle->elements.size() + pageSize - 1) / pageSize);
         handle->pageCount = std::max(1, handle->pageCount);
 
         handle->labels.reserve(handle->pageSize);
@@ -97,7 +105,7 @@ namespace PaginatedFormClass {
         handle->nextVisible = std::make_shared<ll::ui::ObservableBoolean>(false);
         handle->chooseVisible = std::make_shared<ll::ui::ObservableBoolean>(false);
 
-        handle->base = std::make_unique<ll::ui::CustomForm>(player, handle->title);
+        handle->base = std::make_unique<ll::ui::CustomForm>(*player, handle->title);
         handle->base->label(*handle->pageIndicator);
 
         for (int i = 0; i < handle->pageSize; ++i) {
@@ -125,7 +133,7 @@ namespace PaginatedFormClass {
 
         refreshPage(handle);
 
-        LOICollection::form::GUIManager::getInstance().registerPaginatedFormUI(handle->guiId, handle, player);
+        LOICollection::form::GUIManager::getInstance().registerPaginatedFormUI(handle->guiId, handle, *player);
 
         auto obj = std::make_shared<Object>();
         obj->className = "PaginatedForm";
@@ -258,7 +266,11 @@ namespace PaginatedFormClass {
         if (!label)
             return ll::Unexpected(label.error());
 
-        auto callback = std::get<FunctionRefPtr>(args[1]);
+        const auto* function = std::get_if<FunctionRefPtr>(&args[1]);
+        if (!function || !*function)
+            return ll::makeStringError("button callback must be a function");
+
+        const FunctionRefPtr callback = *function;
         if (callback->argCount != 0)
             return ll::makeStringError("button callback must not take any arguments");
 
@@ -468,7 +480,11 @@ namespace PaginatedFormClass {
         if (args.empty())
             return self;
 
-        auto callback = std::get<FunctionRefPtr>(args[0]);
+        const auto* function = std::get_if<FunctionRefPtr>(&args[0]);
+        if (!function || !*function)
+            return ll::makeStringError("show callback must be a function");
+
+        const FunctionRefPtr callback = *function;
         if (callback->argCount != 1)
             return ll::makeStringError("show callback must take exactly one parameter");
 

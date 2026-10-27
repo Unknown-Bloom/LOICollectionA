@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cstddef>
+#include <exception>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -736,8 +737,19 @@ namespace LOICollection::frontend::lsp {
         std::string outbound;
         nlohmann::ordered_json message;
 
-        while (decodeMessage(this->inbound, message))
-            outbound += this->dispatch(message);
+        while (decodeMessage(this->inbound, message)) {
+            const nlohmann::ordered_json id = message.is_object() && message.contains("id")
+                ? message.at("id")
+                : nlohmann::ordered_json(nullptr);
+
+            try {
+                outbound += this->dispatch(message);
+            } catch (const std::exception& e) {
+                outbound += encodeMessage(makeError(id, -32603, std::string("Internal error: ") + e.what()));
+            } catch (...) {
+                outbound += encodeMessage(makeError(id, -32603, "Internal error"));
+            }
+        }
 
         return outbound;
     }

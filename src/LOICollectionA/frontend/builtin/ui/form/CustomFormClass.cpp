@@ -35,13 +35,15 @@ namespace CustomFormClass {
         if (!title)
             return ll::Unexpected(title.error());
 
-        std::reference_wrapper<Player> player = std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0));
+        const auto player = Context::playerOf(placeholders);
+        if (!player)
+            return ll::makeStringError("CustomForm requires a player context");
 
         auto handle = std::make_shared<CustomFormHandle>();
         handle->scriptId = Context::scriptIdOf(placeholders);
-        handle->base = std::make_unique<ll::ui::CustomForm>(player, *title);
+        handle->base = std::make_unique<ll::ui::CustomForm>(*player, *title);
 
-        LOICollection::form::GUIManager::getInstance().registerCustomFormUI(std::get<std::string>(args[0]), handle, player);
+        LOICollection::form::GUIManager::getInstance().registerCustomFormUI(std::get<std::string>(args[0]), handle, *player);
 
         auto obj = std::make_shared<Object>();
         obj->className = "CustomForm";
@@ -60,7 +62,11 @@ namespace CustomFormClass {
         if (!label)
             return ll::Unexpected(label.error());
 
-        auto callback = std::get<FunctionRefPtr>(args[1]);
+        const auto* function = std::get_if<FunctionRefPtr>(&args[1]);
+        if (!function || !*function)
+            return ll::makeStringError("button callback must be a function");
+
+        const FunctionRefPtr callback = *function;
         if (callback->argCount != 0)
             return ll::makeStringError("button callback must not take any arguments");
 

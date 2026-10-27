@@ -1,6 +1,7 @@
 #include <cmath>
 #include <cctype>
 #include <chrono>
+#include <exception>
 #include <limits>
 #include <ranges>
 #include <string>
@@ -292,76 +293,86 @@ namespace LOICollection::frontend::ir {
         const MirChunk& chunk = s.chunk;
         Frame& frame = s.frame;
 
-        switch (instr.op) {
-            case MirOp::CALL_NATIVE_METHOD: {
-                if (const auto violation = this->mBudget->accountNativeCall();
-                    violation != sandbox::SandboxBudget::Violation::None) {
-                    this->failBudget(violation, "Native call budget exhausted");
-                    break;
-                }
+        try {
+            switch (instr.op) {
+                case MirOp::CALL_NATIVE_METHOD: {
+                    if (const auto violation = this->mBudget->accountNativeCall();
+                        violation != sandbox::SandboxBudget::Violation::None) {
+                        this->failBudget(violation, "Native call budget exhausted");
+                        break;
+                    }
 
-                const auto& meta = chunk.nativeCalls[instr.operand];
-                auto args = this->collectArgs(frame, instr.src1, meta.argCount);
+                    const auto& meta = chunk.nativeCalls[instr.operand];
+                    auto args = this->collectArgs(frame, instr.src1, meta.argCount);
 
-                if (meta.isStatic) {
-                    auto result = ClassCall::getInstance().callStaticMethodCached(
-                        meta.className, meta.name, args, s.placeholders,
-                        this->mCache->nativeStaticMethodSlots[instr.operand], this->diagnostics, this->currentLoc
+                    if (meta.isStatic) {
+                        auto result = ClassCall::getInstance().callStaticMethodCached(
+                            meta.className, meta.name, args, s.placeholders,
+                            this->mCache->nativeStaticMethodSlots[instr.operand], this->diagnostics, this->currentLoc
+                        );
+
+                        if (!result.has_value()) {
+                            this->diagnostics.addError(this->currentLoc,
+                                "Native static method call failed '" + meta.className + "::" + meta.name +
+                                "': " + result.error().message());
+                            break;
+                        }
+
+                        this->storeNativeResult(frame, instr.dst, result.value());
+                        break;
+                    }
+
+                    auto receiver = this->regOf(frame, instr.src1 + instr.imm);
+                    if (!std::holds_alternative<ObjectRef>(receiver)) {
+                        std::string valueClassName = valueClassNameOf(receiver);
+                        if (valueClassName.empty()) {
+                            this->diagnostics.addError(this->currentLoc, "Native method call target is not an object");
+                            break;
+                        }
+
+                        auto result = ClassCall::getInstance().callValueMethodCached(
+                            valueClassName, meta.name, receiver, args,
+                            this->mCache->nativeValueMethodSlots[instr.operand], this->diagnostics, this->currentLoc
+                        );
+
+                        if (!result.has_value()) {
+                            this->diagnostics.addError(this->currentLoc,
+                                "Native value method call failed '" + valueClassName + "::" + meta.name +
+                                "': " + result.error().message());
+                            break;
+                        }
+
+                        this->storeNativeResult(frame, instr.dst, result.value());
+                        break;
+                    }
+
+                    auto obj = std::get<ObjectRef>(receiver);
+
+                    auto result = ClassCall::getInstance().callMethodCached(
+                        obj->className, meta.name, args, obj, s.placeholders,
+                        this->mCache->nativeMethodSlots[instr.operand], this->diagnostics, this->currentLoc
                     );
 
                     if (!result.has_value()) {
                         this->diagnostics.addError(this->currentLoc,
-                            "Native static method call failed '" + meta.className + "::" + meta.name +
+                            "Native method call failed '" + meta.className + "::" + meta.name +
                             "': " + result.error().message());
                         break;
                     }
 
-                    this->setReg(frame, instr.dst, result.value());
-                    break;
-                }
-
-                auto receiver = this->regOf(frame, instr.src1 + instr.imm);
-                if (!std::holds_alternative<ObjectRef>(receiver)) {
-                    std::string valueClassName = valueClassNameOf(receiver);
-                    if (valueClassName.empty()) {
-                        this->diagnostics.addError(this->currentLoc, "Native method call target is not an object");
-                        break;
-                    }
-
-                    auto result = ClassCall::getInstance().callValueMethodCached(
-                        valueClassName, meta.name, receiver, args,
-                        this->mCache->nativeValueMethodSlots[instr.operand], this->diagnostics, this->currentLoc
-                    );
-
-                    if (!result.has_value()) {
-                        this->diagnostics.addError(this->currentLoc,
-                            "Native value method call failed '" + valueClassName + "::" + meta.name +
-                            "': " + result.error().message());
-                        break;
-                    }
-
-                    this->setReg(frame, instr.dst, result.value());
-                    break;
-                }
-
-                auto obj = std::get<ObjectRef>(receiver);
-
-                auto result = ClassCall::getInstance().callMethodCached(
-                    obj->className, meta.name, args, obj, s.placeholders,
-                    this->mCache->nativeMethodSlots[instr.operand], this->diagnostics, this->currentLoc
-                );
-
-                if (!result.has_value()) {
-                    this->diagnostics.addError(this->currentLoc,
-                        "Native method call failed '" + meta.className + "::" + meta.name +
-                        "': " + result.error().message());
-                    break;
-                }
-
-                this->setReg(frame, instr.dst, result.value());
-            } break;
-            default: break;
+                    this->storeNativeResult(frame, instr.dst, result.value());
+                } break;
+                default: break;
+            }
+        } catch (const std::exception& e) {
+            this->diagnostics.addError(this->currentLoc, std::string("Native call failed: ") + e.what());
+        } catch (...) {
+            this->diagnostics.addError(this->currentLoc, "Native call failed");
         }
+
+        if (!this->diagnostics.hasErrors()
+            && this->mBudget->elapsedWall() > this->mBudget->maxWallTime)
+            this->failBudget(sandbox::SandboxBudget::Violation::WallTimeLimit, "Execution timeout");
     }
 
     void VM::execFunctionCall(ExecArgs& s) {
@@ -446,70 +457,80 @@ namespace LOICollection::frontend::ir {
         const MirChunk& cur = s.cur;
         Frame& frame = s.frame;
 
-        switch (instr.op) {
-            case MirOp::CALL: {
-                if (const auto violation = this->mBudget->accountNativeCall();
-                    violation != sandbox::SandboxBudget::Violation::None) {
-                    this->failBudget(violation, "Native call budget exhausted");
-                    break;
-                }
+        try {
+            switch (instr.op) {
+                case MirOp::CALL: {
+                    if (const auto violation = this->mBudget->accountNativeCall();
+                        violation != sandbox::SandboxBudget::Violation::None) {
+                        this->failBudget(violation, "Native call budget exhausted");
+                        break;
+                    }
 
-                const auto& meta = cur.functions[instr.operand];
+                    const auto& meta = cur.functions[instr.operand];
 
-                CallbackTypeValues args;
-                args.reserve(static_cast<size_t>(instr.imm));
-                for (int i = 0; i < instr.imm; ++i)
-                    args.push_back(this->regOf(frame, instr.src1 + i));
+                    CallbackTypeValues args;
+                    args.reserve(static_cast<size_t>(instr.imm));
+                    for (int i = 0; i < instr.imm; ++i)
+                        args.push_back(this->regOf(frame, instr.src1 + i));
 
-                HostCallCacheEntry& cached = this->mHostCallCache[inlineCacheSlot<kHostCallCacheSize>(&instr)];
-                if (cached.instr != &instr) {
-                    const size_t pos = meta.name.find("::");
-                    cached.namespaces = meta.name.substr(0, pos);
-                    cached.function = meta.name.substr(pos + 2);
-                    cached.instr = &instr;
-                }
+                    HostCallCacheEntry& cached = this->mHostCallCache[inlineCacheSlot<kHostCallCacheSize>(&instr)];
+                    if (cached.instr != &instr) {
+                        const size_t pos = meta.name.find("::");
+                        cached.namespaces = meta.name.substr(0, pos);
+                        cached.function = meta.name.substr(pos + 2);
+                        cached.instr = &instr;
+                    }
 
-                auto result = FunctionCall::getInstance().callFunctionCached(
-                    cached.namespaces, cached.function, args, s.placeholders,
-                    this->mCache->functionCallSlots[instr.operand], this->diagnostics, this->currentLoc
-                );
+                    auto result = FunctionCall::getInstance().callFunctionCached(
+                        cached.namespaces, cached.function, args, s.placeholders,
+                        this->mCache->functionCallSlots[instr.operand], this->diagnostics, this->currentLoc
+                    );
 
-                if (!result.has_value()) {
-                    this->diagnostics.addError(this->currentLoc, result.error().message());
-                    this->setReg(frame, instr.dst, ValueNode::ValueType{});
-                    break;
-                }
+                    if (!result.has_value()) {
+                        this->diagnostics.addError(this->currentLoc, result.error().message());
+                        this->setReg(frame, instr.dst, ValueNode::ValueType{});
+                        break;
+                    }
 
-                this->setReg(frame, instr.dst, result.value());
-            } break;
-            case MirOp::CALL_MACRO: {
-                if (const auto violation = this->mBudget->accountNativeCall();
-                    violation != sandbox::SandboxBudget::Violation::None) {
-                    this->failBudget(violation, "Native call budget exhausted");
-                    break;
-                }
+                    this->storeNativeResult(frame, instr.dst, result.value());
+                } break;
+                case MirOp::CALL_MACRO: {
+                    if (const auto violation = this->mBudget->accountNativeCall();
+                        violation != sandbox::SandboxBudget::Violation::None) {
+                        this->failBudget(violation, "Native call budget exhausted");
+                        break;
+                    }
 
-                const auto& meta = cur.macros[instr.operand];
+                    const auto& meta = cur.macros[instr.operand];
 
-                CallbackTypeValues args;
-                args.reserve(static_cast<size_t>(instr.imm));
-                for (int i = 0; i < instr.imm; ++i)
-                    args.push_back(this->regOf(frame, instr.src1 + i));
+                    CallbackTypeValues args;
+                    args.reserve(static_cast<size_t>(instr.imm));
+                    for (int i = 0; i < instr.imm; ++i)
+                        args.push_back(this->regOf(frame, instr.src1 + i));
 
-                auto result = MacroCall::getInstance().callMacro(
-                    meta.name, args, s.placeholders, this->diagnostics, this->currentLoc
-                );
+                    auto result = MacroCall::getInstance().callMacro(
+                        meta.name, args, s.placeholders, this->diagnostics, this->currentLoc
+                    );
 
-                if (!result.has_value()) {
-                    this->diagnostics.addError(this->currentLoc, result.error().message());
-                    this->setReg(frame, instr.dst, ValueNode::ValueType{});
-                    break;
-                }
+                    if (!result.has_value()) {
+                        this->diagnostics.addError(this->currentLoc, result.error().message());
+                        this->setReg(frame, instr.dst, ValueNode::ValueType{});
+                        break;
+                    }
 
-                this->setReg(frame, instr.dst, result.value());
-            } break;
-            default: break;
+                    this->storeNativeResult(frame, instr.dst, result.value());
+                } break;
+                default: break;
+            }
+        } catch (const std::exception& e) {
+            this->diagnostics.addError(this->currentLoc, std::string("Host call failed: ") + e.what());
+        } catch (...) {
+            this->diagnostics.addError(this->currentLoc, "Host call failed");
         }
+
+        if (!this->diagnostics.hasErrors()
+            && this->mBudget->elapsedWall() > this->mBudget->maxWallTime)
+            this->failBudget(sandbox::SandboxBudget::Violation::WallTimeLimit, "Execution timeout");
     }
 
 }

@@ -3,6 +3,7 @@
 #include <memory>
 
 #include <ll/api/Mod/NativeMod.h>
+#include <ll/api/event/ListenerBase.h>
 
 #include "LOICollectionA/ConfigPlugin.h"
 #include "LOICollectionA/frontend/lsp/LanguageServer.h"
@@ -33,6 +34,7 @@ namespace LOICollection {
 
         ::Config::C_Config config;
         
+        ll::event::ListenerPtr mPlayerLeaveListener;
         frontend::lsp::LanguageServer lspEngine_;
         std::unique_ptr<frontend::lsp::LspServer> lspServer_;
     };

@@ -25,6 +25,16 @@ namespace LOICollection::frontend::runtime {
         return nullptr;
     }
 
+    void ProcScheduler::reapDone() {
+        std::erase_if(tasks_, [this](const std::unique_ptr<Task>& task) {
+            if (!task || task->state != TaskState::Done)
+                return false;
+
+            index_.erase(task->id);
+            return true;
+        });
+    }
+
     void ProcScheduler::completeTask(Task& task) {
         task.state = TaskState::Done;
         for (TaskId jid : task.joiners) {
@@ -97,6 +107,12 @@ namespace LOICollection::frontend::runtime {
         if (static_cast<int>(args.size()) != fn->argCount)
             return 0;
 
+        if (tasks_.size() >= config_.maxTasks) {
+            reapDone();
+            if (tasks_.size() >= config_.maxTasks)
+                return 0;
+        }
+
         auto task = std::make_unique<Task>();
         task->id = nextId_++;
         task->diag = std::make_shared<DiagnosticEngine>();
@@ -116,15 +132,18 @@ namespace LOICollection::frontend::runtime {
         return id;
     }
 
-    void ProcScheduler::send(TaskId to, ValueNode::ValueType msg) {
+    bool ProcScheduler::send(TaskId to, ValueNode::ValueType msg) {
         Task* t = findTask(to);
-        if (!t)
-            return;
+        if (!t || t->state == TaskState::Done || t->mailbox.size() >= config_.maxMailboxMessages)
+            return false;
+
         t->mailbox.push_back(std::move(msg));
         if (t->state == TaskState::BlockedRecv) {
             t->state = TaskState::Ready;
             ready_.push_back(t->id);
         }
+
+        return true;
     }
 
     bool ProcScheduler::cancel(TaskId id) {
@@ -163,9 +182,10 @@ namespace LOICollection::frontend::runtime {
             return std::string("joined task does not exist");
 
         const size_t kMaxPumps = config_.joinMaxPumps;
+        const auto deadline = now() + config_.joinTimeout;
         size_t pumps = 0;
         while (t->state != TaskState::Done) {
-            if (++pumps > kMaxPumps)
+            if (++pumps > kMaxPumps || now() > deadline)
                 break;
             const size_t ran = pump();
             if (ran == 0) {
@@ -233,7 +253,8 @@ namespace LOICollection::frontend::runtime {
             }
             if (!any)
                 break;
-            pump();
+            if (pump() == 0)
+                break;
         }
     }
 

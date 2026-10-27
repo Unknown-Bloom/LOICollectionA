@@ -78,6 +78,20 @@ namespace MapClass::detail {
         handle.keys = std::make_shared<ArrayValue>();
         self->assign("keys", handle.keys);
     }
+
+    void rebuildKeys(const ObjectRef& self) {
+        auto& handle = handleOf(self);
+
+        if (!handle.keys)
+            handle.keys = std::make_shared<ArrayValue>();
+
+        handle.keys->elements.clear();
+        handle.keys->elements.reserve(handle.entries.size());
+        for (const auto& entry : handle.entries)
+            handle.keys->elements.push_back(entry.first);
+
+        self->assign("keys", handle.keys);
+    }
 }
 
 namespace MapClass {
@@ -103,6 +117,9 @@ namespace MapClass {
             handle.entries[it->second].second = args[1];
             return args[1];
         }
+
+        if (!handle.keys || handle.keys->elements.size() != handle.entries.size())
+            rebuildKeys(self);
 
         const std::size_t index = handle.entries.size();
         handle.entries.emplace_back(args[0], args[1]);
@@ -149,10 +166,11 @@ namespace MapClass {
         const std::size_t index = it->second;
         handle.positions.erase(it);
         handle.entries.erase(handle.entries.begin() + static_cast<std::ptrdiff_t>(index));
-        handle.keys->elements.erase(handle.keys->elements.begin() + static_cast<std::ptrdiff_t>(index));
 
         for (std::size_t i = index; i < handle.entries.size(); ++i)
             handle.positions.insert_or_assign(handle.entries[i].first, i);
+
+        rebuildKeys(self);
 
         return true;
     }

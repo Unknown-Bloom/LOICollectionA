@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <functional>
 #include <unordered_map>
+#include <cstdint>
 
 #include <ll/api/Expected.h>
 #include <ll/api/io/Logger.h>
@@ -46,6 +47,8 @@
 #include "LOICollectionA/frontend/runtime/ScriptVMRegistry.h"
 
 namespace LOICollection::form::detail {
+    constexpr std::uintmax_t kMaxScriptFileBytes = 64 << 20;
+
     void warnIfMissingPermission(const std::string& id) {
         const auto permission = ServiceProvider::getInstance().getService<LOICollection::frontend::sandbox::ScriptPermissionService>();
         if (permission && !permission->gate().hasEntry(id))
@@ -76,6 +79,12 @@ namespace LOICollection::form::detail {
                 handle->release();
 
         registry.clear();
+    }
+
+    template <typename Handle>
+    bool ownedByOtherScript(const std::shared_ptr<Handle>& existing, const std::shared_ptr<Handle>& incoming) {
+        return existing && !existing->scriptId.empty() && !incoming->scriptId.empty()
+            && existing->scriptId != incoming->scriptId;
     }
 }
 
@@ -128,6 +137,8 @@ namespace LOICollection::form {
         auto size = std::filesystem::file_size(path, ec);
         if (ec)
             return ll::makeErrorCodeError(ec);
+        if (size > kMaxScriptFileBytes)
+            return ll::makeStringError("Script file exceeds the 64 MiB limit: " + path);
 
         std::ifstream file(path, std::ios::binary);
         if (!file)
@@ -303,16 +314,16 @@ namespace LOICollection::form {
 
             std::string uuid = player.getUuid().asString();
             if (this->mImpl->forms.contains(uuid) && this->mImpl->forms.at(uuid).contains(formId))
-                return this->switchToCustomForm(formId, player);
+                return this->switchToCustomForm(formId, player, id);
 
             if (this->mImpl->boxs.contains(uuid) && this->mImpl->boxs.at(uuid).contains(formId))
-                return this->switchToMessageBox(formId, player); 
+                return this->switchToMessageBox(formId, player, id);
 
             if (this->mImpl->paginatedForms.contains(uuid) && this->mImpl->paginatedForms.at(uuid).contains(formId))
-                return this->switchToPaginatedForm(formId, player);
+                return this->switchToPaginatedForm(formId, player, id);
 
             if (this->mImpl->scriptForms.contains(uuid) && this->mImpl->scriptForms.at(uuid).contains(formId))
-                return this->switchToScriptForm(formId, player);
+                return this->switchToScriptForm(formId, player, id);
 
             return ll::makeStringError("open: Fuzzy matching can't find the specific form type");
         }
@@ -338,20 +349,23 @@ namespace LOICollection::form {
                 return err;
 
             switch (type) {
-                case GUIManagerType::CustomForm: return this->switchToCustomForm(formId, player);
-                case GUIManagerType::MessageBox: return this->switchToMessageBox(formId, player); 
-                case GUIManagerType::PaginatedForm: return this->switchToPaginatedForm(formId, player);
-                case GUIManagerType::ScriptForm: return this->switchToScriptForm(formId, player);
+                case GUIManagerType::CustomForm: return this->switchToCustomForm(formId, player, id);
+                case GUIManagerType::MessageBox: return this->switchToMessageBox(formId, player, id);
+                case GUIManagerType::PaginatedForm: return this->switchToPaginatedForm(formId, player, id);
+                case GUIManagerType::ScriptForm: return this->switchToScriptForm(formId, player, id);
             }
         }
 
         return ll::makeStringError("open: No corresponding bytecode cache was found");
     }
 
-    ll::Expected<void> GUIManager::switchToCustomForm(const std::string& id, Player& player) {
+    ll::Expected<void> GUIManager::switchToCustomForm(const std::string& id, Player& player, const std::string& scriptId) {
         auto handle = this->getCustomFormUI(id, player);
         if (!handle.has_value())
             return ll::Unexpected(handle.error());
+
+        if (!scriptId.empty() && !handle.value()->scriptId.empty() && handle.value()->scriptId != scriptId)
+            return ll::makeStringError("CustomForm '" + id + "' belongs to another script");
 
         if (!handle.value()->show) {
             auto result = handle.value()->base->show([this, id, handle = handle.value(), player = std::ref(player)](ll::ui::ScreenSession::Result) mutable -> void {
@@ -389,7 +403,7 @@ namespace LOICollection::form {
                 ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA")
                     ->error("CustomForm::show callback: {}", diagnostics.getErrorMessage());
             }
-            
+
             if (auto current = this->getCustomFormUI(id, player.get());
                 current.has_value() && current.value() == handle)
                 this->unregisterCustomFormUI(id, player.get());
@@ -401,10 +415,13 @@ namespace LOICollection::form {
         return {};
     }
 
-    ll::Expected<void> GUIManager::switchToMessageBox(const std::string& id, Player& player) {
+    ll::Expected<void> GUIManager::switchToMessageBox(const std::string& id, Player& player, const std::string& scriptId) {
         auto handle = this->getMessageBoxUI(id, player);
         if (!handle.has_value())
             return ll::Unexpected(handle.error());
+
+        if (!scriptId.empty() && !handle.value()->scriptId.empty() && handle.value()->scriptId != scriptId)
+            return ll::makeStringError("MessageBox '" + id + "' belongs to another script");
 
         if (!handle.value()->show) {
             auto result = handle.value()->base->show([this, id, handle = handle.value(), player = std::ref(player)](ll::ui::MessageBox::Result) mutable -> void{
@@ -432,7 +449,7 @@ namespace LOICollection::form {
                 resultObj->assign("selection", closeResult->selection
                     ? frontend::TypedValue(static_cast<int>(*closeResult->selection))
                     : frontend::TypedValue(std::monostate{}));
-                
+
                 values.emplace_back(resultObj);
             } else {
                 values.emplace_back(std::monostate{});
@@ -451,7 +468,7 @@ namespace LOICollection::form {
                 ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA")
                     ->error("MessageBox::show callback: {}", diagnostics.getErrorMessage());
             }
-            
+
             if (auto current = this->getMessageBoxUI(id, player.get());
                 current.has_value() && current.value() == handle)
                 this->unregisterMessageBoxUI(id, player.get());
@@ -463,10 +480,13 @@ namespace LOICollection::form {
         return {};
     }
 
-    ll::Expected<void> GUIManager::switchToPaginatedForm(const std::string& id, Player& player) {
+    ll::Expected<void> GUIManager::switchToPaginatedForm(const std::string& id, Player& player, const std::string& scriptId) {
         auto handle = this->getPaginatedFormUI(id, player);
         if (!handle.has_value())
             return ll::Unexpected(handle.error());
+
+        if (!scriptId.empty() && !handle.value()->scriptId.empty() && handle.value()->scriptId != scriptId)
+            return ll::makeStringError("PaginatedForm '" + id + "' belongs to another script");
 
         if (!handle.value()->base)
             return ll::makeStringError("PaginatedForm is not built");
@@ -514,10 +534,13 @@ namespace LOICollection::form {
         return {};
     }
 
-    ll::Expected<void> GUIManager::switchToScriptForm(const std::string& id, Player& player) {
+    ll::Expected<void> GUIManager::switchToScriptForm(const std::string& id, Player& player, const std::string& scriptId) {
         auto handle = this->getScriptFormUI(id, player);
         if (!handle.has_value())
             return ll::Unexpected(handle.error());
+
+        if (!scriptId.empty() && !handle.value()->scriptId.empty() && handle.value()->scriptId != scriptId)
+            return ll::makeStringError("ScriptForm '" + id + "' belongs to another script");
 
         const auto budget = frontend::sandbox::budgetForScript(handle.value()->scriptId);
 
@@ -586,23 +609,35 @@ namespace LOICollection::form {
     }
 
     void GUIManager::registerCustomFormUI(const std::string& id, std::shared_ptr<CustomFormClass::CustomFormHandle> form, Player& player) {
-        auto [it, _] = this->mImpl->forms.try_emplace(player.getUuid().asString());
-        it->second.insert_or_assign(id, std::move(form));
+        auto& byPlayer = this->mImpl->forms[player.getUuid().asString()];
+        if (auto it = byPlayer.find(id); it != byPlayer.end() && detail::ownedByOtherScript(it->second, form))
+            return;
+
+        byPlayer.insert_or_assign(id, std::move(form));
     }
 
     void GUIManager::registerMessageBoxUI(const std::string& id, std::shared_ptr<MessageBoxClass::MessageBoxHandle> box, Player& player) {
-        auto [it, _] = this->mImpl->boxs.try_emplace(player.getUuid().asString());
-        it->second.insert_or_assign(id, std::move(box));
+        auto& byPlayer = this->mImpl->boxs[player.getUuid().asString()];
+        if (auto it = byPlayer.find(id); it != byPlayer.end() && detail::ownedByOtherScript(it->second, box))
+            return;
+
+        byPlayer.insert_or_assign(id, std::move(box));
     }
 
     void GUIManager::registerPaginatedFormUI(const std::string& id, std::shared_ptr<PaginatedFormClass::PaginatedFormHandle> form, Player& player) {
-        auto [it, _] = this->mImpl->paginatedForms.try_emplace(player.getUuid().asString());
-        it->second.insert_or_assign(id, std::move(form));
+        auto& byPlayer = this->mImpl->paginatedForms[player.getUuid().asString()];
+        if (auto it = byPlayer.find(id); it != byPlayer.end() && detail::ownedByOtherScript(it->second, form))
+            return;
+
+        byPlayer.insert_or_assign(id, std::move(form));
     }
 
     void GUIManager::registerScriptFormUI(const std::string& id, std::shared_ptr<ScriptFormClass::ScriptFormHandle> form, Player& player) {
-        auto [it, _] = this->mImpl->scriptForms.try_emplace(player.getUuid().asString());
-        it->second.insert_or_assign(id, std::move(form));
+        auto& byPlayer = this->mImpl->scriptForms[player.getUuid().asString()];
+        if (auto it = byPlayer.find(id); it != byPlayer.end() && detail::ownedByOtherScript(it->second, form))
+            return;
+
+        byPlayer.insert_or_assign(id, std::move(form));
     }
 
     bool GUIManager::unregisterCustomFormUI(const std::string& id, Player& player) {
@@ -663,7 +698,7 @@ namespace LOICollection::form {
             auto& innerMap = it->second;
             if (auto innerIt = innerMap.find(id); innerIt != innerMap.end())
                 return innerIt->second;
-            
+
             return ll::makeStringError("Form not found for player: " + id);
         }
 
@@ -675,7 +710,7 @@ namespace LOICollection::form {
             auto& innerMap = it->second;
             if (auto innerIt = innerMap.find(id); innerIt != innerMap.end())
                 return innerIt->second;
-            
+
             return ll::makeStringError("MessageBox not found for player: " + id);
         }
 

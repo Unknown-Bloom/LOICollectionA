@@ -1,8 +1,10 @@
+#include <algorithm>
 #include <memory>
 #include <ranges>
 #include <string>
 #include <vector>
 #include <optional>
+#include <cstdint>
 #include <cstring>
 
 #include "LOICollectionA/frontend/ir/MirSerializer.h"
@@ -75,6 +77,14 @@ namespace LOICollection::frontend::ir::detail {
             return true;
         }
 
+        bool consumeChunk() {
+            if (this->chunksRemaining == 0)
+                return false;
+
+            --this->chunksRemaining;
+            return true;
+        }
+
         [[nodiscard]] bool done() const { return this->pos == this->blob.size(); }
 
         [[nodiscard]] size_t position() const { return this->pos; }
@@ -84,6 +94,7 @@ namespace LOICollection::frontend::ir::detail {
     private:
         const std::string& blob;
         size_t pos = 0;
+        size_t chunksRemaining = 65536;
     };
 
     constexpr uint8_t CONST_INT = 0;
@@ -95,6 +106,11 @@ namespace LOICollection::frontend::ir::detail {
 
     constexpr size_t kDigestSize = 32;
     constexpr size_t kMaxDepth = 64;
+    constexpr size_t kMaxOptionCount = 1024;
+    constexpr size_t kMaxConstantElements = 1'000'000;
+    constexpr size_t kMaxSlotCount = 1 << 20;
+    constexpr size_t kMaxBodyCount = 65536;
+    constexpr size_t kMinChunkBytes = 56;
 
     void writeTypeInfo(Writer& writer, const TypeInfo& type) {
         writer.u8(static_cast<uint8_t>(type.kind));
@@ -123,7 +139,7 @@ namespace LOICollection::frontend::ir::detail {
             return false;
 
         uint32_t optionCount = 0;
-        if (!reader.u32(optionCount) || optionCount > reader.remaining())
+        if (!reader.u32(optionCount) || optionCount > reader.remaining() || optionCount > kMaxOptionCount)
             return false;
 
         type.variantOptions.clear();
@@ -264,7 +280,7 @@ namespace LOICollection::frontend::ir::detail {
                 return true;
             case CONST_ARRAY: {
                 uint32_t count = 0;
-                if (!reader.u32(count) || count > reader.remaining())
+                if (!reader.u32(count) || count > reader.remaining() || count > kMaxConstantElements)
                     return false;
 
                 auto elements = std::make_shared<ArrayValue>();
@@ -298,7 +314,7 @@ namespace LOICollection::frontend::ir::detail {
             return false;
 
         items.clear();
-        items.reserve(count);
+        items.reserve(std::min<size_t>(count, 256));
         for (uint32_t i = 0; i < count; ++i) {
             T item{};
             if (!read(reader, item))
@@ -701,8 +717,288 @@ namespace LOICollection::frontend::ir::detail {
                 refreshChunkMetadata(*body);
     }
 
+    bool validArgCount(int count) {
+        return count >= 0 && static_cast<std::size_t>(count) <= kMaxSlotCount;
+    }
+
+    bool fitsSlots(int base, std::int64_t count, int slotCount) {
+        if (base < 0 || count < 0)
+            return false;
+
+        return static_cast<std::int64_t>(base) + count <= static_cast<std::int64_t>(slotCount);
+    }
+
+    bool isNameConstant(const MirChunk& chunk, int index) {
+        return index >= 0 && static_cast<std::size_t>(index) < chunk.constants.size()
+            && std::holds_alternative<std::string>(chunk.constants[static_cast<std::size_t>(index)]);
+    }
+
+    bool validateInstruction(const MirChunk& chunk, std::size_t ip) {
+        const MirInstr& instr = chunk.code[ip];
+        const int slots = chunk.slotCount;
+
+        const auto hasConstant = [&chunk](int index) {
+            return index >= 0 && static_cast<std::size_t>(index) < chunk.constants.size();
+        };
+
+        const auto hasTarget = [&chunk, ip](int offset) {
+            const std::int64_t target = static_cast<std::int64_t>(ip) + 1 + offset;
+            return target >= 0 && target <= static_cast<std::int64_t>(chunk.code.size());
+        };
+
+        const auto hasArgs = [slots](int base, std::int64_t count) {
+            return fitsSlots(base, count, slots);
+        };
+
+        switch (instr.op) {
+            case MirOp::LOAD_CONST:
+                return hasConstant(instr.operand);
+
+            case MirOp::LOAD_VAR:
+            case MirOp::STORE_VAR:
+            case MirOp::LOAD_FIELD:
+            case MirOp::STORE_FIELD:
+            case MirOp::INSTANCEOF:
+                return isNameConstant(chunk, instr.operand);
+
+            case MirOp::MAKE_ARRAY:
+                return hasArgs(instr.src1, instr.operand);
+
+            case MirOp::MAKE_LAMBDA:
+                return instr.operand >= 0
+                    && static_cast<std::size_t>(instr.operand) < chunk.lambdas.size();
+
+            case MirOp::MAKE_ENUM: {
+                if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= chunk.enums.size())
+                    return false;
+
+                const auto& meta = chunk.enums[static_cast<std::size_t>(instr.operand)];
+                return instr.imm >= 0 && static_cast<std::size_t>(instr.imm) < meta.variantNames.size();
+            }
+
+            case MirOp::NEW: {
+                if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= chunk.classes.size())
+                    return false;
+
+                const auto& cls = chunk.classes[static_cast<std::size_t>(instr.operand)];
+                if (cls.constructorIndex < 0)
+                    return true;
+
+                if (static_cast<std::size_t>(cls.constructorIndex) >= chunk.methods.size())
+                    return false;
+
+                return hasArgs(instr.src1, chunk.methods[static_cast<std::size_t>(cls.constructorIndex)].argCount);
+            }
+
+            case MirOp::NEW_NATIVE:
+                return instr.operand >= 0
+                    && static_cast<std::size_t>(instr.operand) < chunk.nativeCalls.size()
+                    && hasArgs(instr.src1, chunk.nativeCalls[static_cast<std::size_t>(instr.operand)].argCount);
+
+            case MirOp::CALL:
+                return instr.operand >= 0
+                    && static_cast<std::size_t>(instr.operand) < chunk.functions.size()
+                    && hasArgs(instr.src1, instr.imm);
+
+            case MirOp::CALL_MACRO:
+                return instr.operand >= 0
+                    && static_cast<std::size_t>(instr.operand) < chunk.macros.size()
+                    && hasArgs(instr.src1, instr.imm);
+
+            case MirOp::CALL_METHOD: {
+                if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= chunk.methods.size())
+                    return false;
+
+                return hasArgs(instr.src1, instr.imm)
+                    && hasArgs(instr.src1, chunk.methods[static_cast<std::size_t>(instr.operand)].argCount);
+            }
+
+            case MirOp::CALL_METHOD_VIRTUAL: {
+                if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= chunk.virtualCalls.size())
+                    return false;
+
+                return hasArgs(instr.src1, instr.imm)
+                    && hasArgs(instr.src1, chunk.virtualCalls[static_cast<std::size_t>(instr.operand)].argCount);
+            }
+
+            case MirOp::CALL_METHOD_BY_NAME: {
+                if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= chunk.byNameCalls.size())
+                    return false;
+
+                return hasArgs(instr.src1, instr.imm)
+                    && hasArgs(instr.src1, chunk.byNameCalls[static_cast<std::size_t>(instr.operand)].argCount);
+            }
+
+            case MirOp::CALL_NATIVE_METHOD: {
+                if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= chunk.nativeCalls.size())
+                    return false;
+
+                return hasArgs(instr.src1, chunk.nativeCalls[static_cast<std::size_t>(instr.operand)].argCount);
+            }
+
+            case MirOp::CALL_SUPER_CTOR: {
+                if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= chunk.superCalls.size())
+                    return false;
+
+                return hasArgs(instr.src1, instr.imm)
+                    && hasArgs(instr.src1, chunk.superCalls[static_cast<std::size_t>(instr.operand)].argCount);
+            }
+
+            case MirOp::CALL_FUNC: {
+                if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= chunk.methods.size())
+                    return false;
+
+                return hasArgs(instr.src1, chunk.methods[static_cast<std::size_t>(instr.operand)].argCount);
+            }
+
+            case MirOp::CALL_LAMBDA:
+                return hasArgs(instr.src1, instr.imm);
+
+            case MirOp::JMP:
+            case MirOp::JMP_IF_FALSE:
+            case MirOp::JMP_IF_TRUE:
+                return hasTarget(instr.operand);
+
+            case MirOp::JMP_IF_CMP_FALSE:
+                return hasTarget(instr.operand)
+                    && instr.imm >= static_cast<int>(MirOp::CMP_EQ)
+                    && instr.imm <= static_cast<int>(MirOp::CMP_LE);
+
+            case MirOp::JMP_IF_TAG_NE:
+                return hasTarget(instr.operand)
+                    && instr.src2 >= 0
+                    && static_cast<std::size_t>(instr.src2) < chunk.enums.size()
+                    && instr.imm >= 0;
+
+            default:
+                return true;
+        }
+    }
+
+    bool validateChunk(const MirChunk& chunk) {
+        if (chunk.slotCount < 0 || static_cast<std::size_t>(chunk.slotCount) > kMaxSlotCount)
+            return false;
+
+        for (const auto& meta : chunk.functions)
+            if (!validArgCount(meta.argCount))
+                return false;
+
+        for (const auto& meta : chunk.macros)
+            if (!validArgCount(meta.argCount))
+                return false;
+
+        for (const auto& meta : chunk.nativeCalls)
+            if (!validArgCount(meta.argCount))
+                return false;
+
+        for (const auto& meta : chunk.byNameCalls)
+            if (!validArgCount(meta.argCount))
+                return false;
+
+        for (const auto& cls : chunk.classes) {
+            if (cls.baseClassIndex < -1 || cls.baseClassIndex >= static_cast<int>(chunk.classes.size()))
+                return false;
+
+            if (cls.fieldNames.size() != cls.defaults.size()
+                || cls.fieldNames.size() != cls.hasDefault.size())
+                return false;
+
+            if (cls.staticFieldNames.size() != cls.staticDefaults.size()
+                || cls.staticFieldNames.size() != cls.staticHasDefault.size())
+                return false;
+
+            if (cls.methods.size() != cls.methodSignatures.size()
+                || cls.staticMethods.size() != cls.staticMethodSignatures.size())
+                return false;
+
+            if (cls.constructorIndex < -1 || cls.constructorIndex >= static_cast<int>(chunk.methods.size()))
+                return false;
+
+            for (const int index : cls.methods)
+                if (index < 0 || index >= static_cast<int>(chunk.methods.size()))
+                    return false;
+
+            for (const int index : cls.staticMethods)
+                if (index < 0 || index >= static_cast<int>(chunk.methods.size()))
+                    return false;
+
+            for (const int ancestor : cls.ancestorIndices)
+                if (ancestor < 0 || ancestor >= static_cast<int>(chunk.classes.size()))
+                    return false;
+        }
+
+        for (const auto& meta : chunk.methods) {
+            if (meta.classIndex < -1 || meta.classIndex >= static_cast<int>(chunk.classes.size()))
+                return false;
+
+            if (!validArgCount(meta.argCount))
+                return false;
+
+            if (meta.bodyIndex < 0 || static_cast<std::size_t>(meta.bodyIndex) >= chunk.methodBodies.size())
+                return false;
+
+            const auto& body = chunk.methodBodies[static_cast<std::size_t>(meta.bodyIndex)];
+            if (!body || meta.argCount > body->slotCount)
+                return false;
+        }
+
+        for (const auto& meta : chunk.virtualCalls) {
+            if (meta.classIndex < 0 || static_cast<std::size_t>(meta.classIndex) >= chunk.classes.size())
+                return false;
+
+            const auto& cls = chunk.classes[static_cast<std::size_t>(meta.classIndex)];
+            if (meta.ordinal < 0 || static_cast<std::size_t>(meta.ordinal) >= cls.methods.size())
+                return false;
+
+            if (!validArgCount(meta.argCount))
+                return false;
+        }
+
+        for (const auto& meta : chunk.superCalls) {
+            if (!validArgCount(meta.argCount))
+                return false;
+
+            if (meta.constructorIndex >= 0
+                && static_cast<std::size_t>(meta.constructorIndex) >= chunk.methods.size())
+                return false;
+        }
+
+        for (const auto& meta : chunk.lambdas) {
+            if (meta.bodyIndex < 0 || static_cast<std::size_t>(meta.bodyIndex) >= chunk.methodBodies.size())
+                return false;
+
+            if (!validArgCount(meta.argCount))
+                return false;
+
+            if (meta.captureCount < 0
+                || static_cast<std::size_t>(meta.captureCount) != meta.captures.size())
+                return false;
+
+            const auto& body = chunk.methodBodies[static_cast<std::size_t>(meta.bodyIndex)];
+            if (!body || meta.argCount > body->slotCount)
+                return false;
+
+            if (static_cast<std::int64_t>(meta.captureCount) + meta.argCount > body->slotCount)
+                return false;
+
+            for (const auto& capture : meta.captures) {
+                if (capture.sourceSlot < -1)
+                    return false;
+
+                if (capture.slot < 0 || capture.slot >= body->slotCount)
+                    return false;
+            }
+        }
+
+        for (std::size_t ip = 0; ip < chunk.code.size(); ++ip)
+            if (!validateInstruction(chunk, ip))
+                return false;
+
+        return true;
+    }
+
     bool readChunk(Reader& reader, MirChunk& chunk, size_t depth) {
-        if (depth > kMaxDepth)
+        if (depth > kMaxDepth || !reader.consumeChunk())
             return false;
 
         if (!(readVector<MirInstr>(reader, chunk.code, [](Reader& r, MirInstr& instr) -> bool {
@@ -742,11 +1038,13 @@ namespace LOICollection::frontend::ir::detail {
             && reader.i32(chunk.slotCount)))
             return false;
 
-        if (chunk.slotCount < 0)
+        if (chunk.slotCount < 0 || static_cast<std::size_t>(chunk.slotCount) > kMaxSlotCount)
             return false;
 
         uint32_t bodyCount = 0;
-        if (!reader.u32(bodyCount))
+        if (!reader.u32(bodyCount)
+            || bodyCount > kMaxBodyCount
+            || bodyCount > reader.remaining() / kMinChunkBytes)
             return false;
 
         chunk.methodBodies.clear();
@@ -758,7 +1056,7 @@ namespace LOICollection::frontend::ir::detail {
             chunk.methodBodies.push_back(std::move(body));
         }
 
-        return true;
+        return validateChunk(chunk);
     }
 }
 

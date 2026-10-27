@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <string>
 #include <variant>
 #include <charconv>
@@ -25,6 +26,16 @@ namespace StringClass::detail {
     bool isSpace(char c) {
         return c == ' ' || c == '\t' || c == '\n' || c == '\r';
     }
+
+    std::size_t stringLimit() {
+        const ir::VM* vm = ir::VM::current();
+        return vm ? vm->budget().maxStringBytes : (1 << 20);
+    }
+
+    std::size_t arrayLimit() {
+        const ir::VM* vm = ir::VM::current();
+        return vm ? vm->budget().maxArrayElements : 100'000;
+    }
 }
 
 namespace StringClass {
@@ -37,17 +48,27 @@ namespace StringClass {
     ll::Expected<TypedValue> split(const TypedValue& self, const CallbackTypeValues& args) {
         const std::string& text = std::get<std::string>(self);
         const std::string& separator = std::get<std::string>(args[0]);
+        const std::size_t maxElements = arrayLimit();
 
         auto result = std::make_shared<ArrayValue>();
         if (separator.empty()) {
-            for (size_t i = 0; i < text.size(); i += codepointWidth(text[i]))
+            result->elements.reserve(std::min(text.size(), maxElements));
+
+            for (size_t i = 0; i < text.size(); i += codepointWidth(text[i])) {
+                if (result->elements.size() >= maxElements)
+                    return ll::makeStringError("String::split exceeds the array element budget");
+
                 result->elements.emplace_back(text.substr(i, codepointWidth(text[i])));
+            }
 
             return result;
         }
 
         size_t start = 0;
         while (true) {
+            if (result->elements.size() >= maxElements)
+                return ll::makeStringError("String::split exceeds the array element budget");
+
             size_t pos = text.find(separator, start);
             if (pos == std::string::npos) {
                 result->elements.emplace_back(text.substr(start));
@@ -157,18 +178,23 @@ namespace StringClass {
         if (from.empty())
             return text;
 
+        const std::size_t limit = stringLimit();
         std::string result;
-        result.reserve(text.size());
+        result.reserve(std::min(text.size(), limit));
 
         size_t start = 0;
         while (true) {
             const size_t pos = text.find(from, start);
-            if (pos == std::string::npos) {
-                result.append(text, start, std::string::npos);
-                break;
-            }
+            const size_t chunk = pos == std::string::npos ? text.size() - start : pos - start;
+            const size_t inserted = pos == std::string::npos ? 0 : to.size();
 
-            result.append(text, start, pos - start);
+            if (result.size() + chunk + inserted > limit)
+                return ll::makeStringError("String::replace exceeds the string budget");
+
+            result.append(text, start, chunk);
+            if (pos == std::string::npos)
+                break;
+
             result.append(to);
             start = pos + from.size();
         }
@@ -264,9 +290,12 @@ namespace StringClass {
             if (!l)
                 return ll::makeStringError("String '+' requires a string left operand");
 
-            if (auto r = stringOperand(right))
-                return *l + *r;
-            return *l + ir::VM::valueToString(right);
+            const std::optional<std::string> text = stringOperand(right);
+            const std::string rendered = text ? *text : ir::VM::valueToString(right);
+            if (l->size() + rendered.size() > stringLimit())
+                return ll::makeStringError("String '+' exceeds the string budget");
+
+            return *l + rendered;
         });
 
         for (const std::string op : { "==", "!=", ">", "<", ">=", "<=" })

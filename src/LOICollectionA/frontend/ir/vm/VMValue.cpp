@@ -16,59 +16,89 @@
 
 #include "LOICollectionA/frontend/ir/VM.h"
 
-namespace LOICollection::frontend::ir {
+namespace LOICollection::frontend::ir::detail {
+    constexpr std::size_t kMaxValueDepth = 64;
+    constexpr std::size_t kMaxValueBytes = 1 << 20;
 
-    std::string VM::valueToString(const ValueNode::ValueType& val) {
-        return std::visit([](auto&& arg) -> std::string {
+    void appendValueText(std::string& out, const ValueNode::ValueType& value, std::size_t depth) {
+        if (out.size() >= kMaxValueBytes)
+            return;
+
+        std::visit([&out, depth](auto&& arg) {
             using T = std::decay_t<decltype(arg)>;
             if constexpr (std::is_same_v<std::remove_cv_t<T>, int>)
-                return std::to_string(arg);
+                out += std::to_string(arg);
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, float>) {
                 std::string result = std::to_string(arg);
 
-                result.erase(result.find_last_not_of('0') + 1, std::string::npos);
-                if (result.back() == '.')
-                    result.pop_back();
-                
-                return result;
+                if (const auto last = result.find_last_not_of('0'); last != std::string::npos) {
+                    result.erase(last + 1);
+
+                    if (result.back() == '.')
+                        result.pop_back();
+                }
+
+                out += result;
             }
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, std::string>)
-                return arg;
+                out.append(arg.data(), std::min(arg.size(), kMaxValueBytes - out.size()));
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, bool>)
-                return arg ? "true" : "false";
+                out += arg ? "true" : "false";
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, ObjectRef>)
-                return "instance of " + arg->className;
+                out += "instance of " + (arg ? arg->className : std::string("none"));
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, FunctionRefPtr>)
-                return "function";
+                out += "function";
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, ArrayRef>) {
-                std::string result = "[";
-                for (size_t i = 0; i < arg->elements.size(); ++i) {
-                    if (i != 0)
-                        result += ", ";
-                    result += VM::valueToString(arg->elements[i]);
+                if (depth >= kMaxValueDepth) {
+                    out += "[...]";
+                    return;
                 }
-                result += "]";
-                return result;
+
+                out += '[';
+                if (arg) {
+                    for (size_t i = 0; i < arg->elements.size(); ++i) {
+                        if (i != 0)
+                            out += ", ";
+                        appendValueText(out, arg->elements[i], depth + 1);
+                        if (out.size() >= kMaxValueBytes)
+                            break;
+                    }
+                }
+                out += ']';
             }
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, std::monostate>)
-                return "None";
+                out += "None";
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, EnumValue>) {
-                std::string result =
-                    "enum#" + std::to_string(arg.enumId) + "[" + std::to_string(arg.tag) + "]";
+                out += "enum#" + std::to_string(arg.enumId) + "[" + std::to_string(arg.tag) + "]";
 
                 if (arg.payload && !arg.payload->items.empty()) {
-                    result += "(";
+                    if (depth >= kMaxValueDepth) {
+                        out += "(...)";
+                        return;
+                    }
+
+                    out += '(';
                     for (size_t i = 0; i < arg.payload->items.size(); ++i) {
                         if (i != 0)
-                            result += ", ";
-                        result += VM::valueToString(arg.payload->items[i]);
+                            out += ", ";
+                        appendValueText(out, arg.payload->items[i], depth + 1);
+                        if (out.size() >= kMaxValueBytes)
+                            break;
                     }
-                    result += ")";
+                    out += ')';
                 }
-
-                return result;
             }
-        }, val);
+        }, value);
+    }
+}
+
+namespace LOICollection::frontend::ir {
+
+    std::string VM::valueToString(const ValueNode::ValueType& val) {
+        std::string result;
+        result.reserve(64);
+        detail::appendValueText(result, val, 0);
+        return result;
     }
 
     std::string VM::typeNameOf(const ValueNode::ValueType& val) {
@@ -84,7 +114,7 @@ namespace LOICollection::frontend::ir {
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, bool>)
                 return "bool";
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, ObjectRef>)
-                return arg->className;
+                return arg ? arg->className : std::string("none");
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, FunctionRefPtr>)
                 return "function";
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, ArrayRef>)
@@ -96,16 +126,19 @@ namespace LOICollection::frontend::ir {
         }, val);
     }
 
-    ValueNode::ValueType VM::cloneValue(const ValueNode::ValueType& val) {
+    ValueNode::ValueType VM::cloneValue(const ValueNode::ValueType& val, std::size_t depth) {
         if (!std::holds_alternative<ArrayRef>(val))
             return val;
 
         auto& source = std::get<ArrayRef>(val);
+        if (!source || depth >= detail::kMaxValueDepth)
+            return ValueNode::ValueType{};
+
         auto copy = std::make_shared<ArrayValue>();
         copy->elements.reserve(source->elements.size());
 
         for (const auto& element : source->elements)
-            copy->elements.push_back(VM::cloneValue(element));
+            copy->elements.push_back(VM::cloneValue(element, depth + 1));
 
         return copy;
     }
@@ -133,7 +166,7 @@ namespace LOICollection::frontend::ir {
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, ObjectRef> || std::is_same_v<std::remove_cv_t<T>, FunctionRefPtr>)
                 return true;
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, ArrayRef>)
-                return !arg->elements.empty();
+                return arg && !arg->elements.empty();
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, std::monostate>)
                 return false;
             else if constexpr (std::is_same_v<std::remove_cv_t<T>, EnumValue>)

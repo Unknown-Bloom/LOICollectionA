@@ -1,11 +1,15 @@
 #include <string>
 #include <variant>
+#include <iterator>
+#include <exception>
 #include <algorithm>
 
 #include <fmt/args.h>
 #include <fmt/format.h>
 
 #include "LOICollectionA/frontend/Callback.h"
+
+#include "LOICollectionA/frontend/ir/VM.h"
 
 #include "LOICollectionA/frontend/stdlib/FormatBuiltin.h"
 
@@ -43,10 +47,22 @@ namespace FormatBuiltin {
             }, elem);
         }
 
+        ir::VM* vm = ir::VM::current();
+        const std::size_t limit = vm ? vm->budget().maxStringBytes : (1 << 20);
+
         try {
-            return fmt::vformat(*formatStr, store);
+            std::string result;
+            result.reserve(std::min<std::size_t>(limit, 4096));
+
+            const auto formatted = fmt::vformat_to_n(std::back_inserter(result), limit, *formatStr, store);
+            if (formatted.size > limit)
+                return ll::makeStringError("Format output exceeds the string budget");
+
+            return result;
         } catch (const fmt::format_error& e) {
             return ll::makeStringError(std::string("format error: ") + e.what());
+        } catch (const std::exception& e) {
+            return ll::makeStringError(std::string("format failed: ") + e.what());
         }
     }
 

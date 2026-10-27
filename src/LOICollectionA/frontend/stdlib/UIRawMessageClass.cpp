@@ -36,6 +36,9 @@ namespace UIRawMessageClass {
             auto result = std::visit([&](auto&& arg) -> ll::Expected<void> {
                 using T = std::decay_t<decltype(arg)>;
                 if constexpr (std::is_same_v<T, ArrayRef>) {
+                    if (!arg)
+                        return ll::makeStringError("translate's ArrayRef argument is null");
+
                     auto& elements = arg->elements;
                     if (elements.empty())
                         return {};
@@ -54,7 +57,7 @@ namespace UIRawMessageClass {
 
                     return {};
                 } else if constexpr (std::is_same_v<T, ObjectRef>) {
-                    if (arg->className == "UIRawMessage") {
+                    if (arg && arg->className == "UIRawMessage" && arg->native) {
                         handle->base = ll::ui::UIRawMessage::translate(key,
                             static_cast<UIRawMessageHandle*>(arg->native.get())->base
                         );
@@ -80,12 +83,17 @@ namespace UIRawMessageClass {
     ll::Expected<ObjectRef> rawText(const CallbackTypeValues& args) {
         auto handle = std::make_shared<UIRawMessageHandle>();
 
-        auto& elements = std::get<ArrayRef>(args[0])->elements;
+        const auto& array = std::get<ArrayRef>(args[0]);
+        if (!array)
+            return ll::makeStringError("rawText's ArrayRef argument is null");
+
+        const auto& elements = array->elements;
         if (elements.empty())
             return {};
-        
-        if (!std::ranges::all_of(elements, [](auto&& e) {
-            return std::holds_alternative<std::string>(e) && std::get<ObjectRef>(e)->className == "UIRawMessage";
+
+        if (!std::ranges::all_of(elements, [](const auto& e) {
+            const auto* object = std::get_if<ObjectRef>(&e);
+            return object && *object && (*object)->className == "UIRawMessage" && (*object)->native;
         })) {
             return ll::makeStringError("rawText's ArrayRef argument must contain only UIRawMessages");
         }

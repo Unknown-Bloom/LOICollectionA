@@ -1,5 +1,6 @@
 #include <cmath>
 #include <cstdint>
+#include <exception>
 #include <limits>
 #include <optional>
 #include <string>
@@ -22,6 +23,7 @@ namespace LOICollection::frontend::storage::detail {
     constexpr std::size_t kMaxKeyChars = 512;
     constexpr std::size_t kMaxValueBytes = 1 << 20;
     constexpr std::size_t kMaxFileBytes = 16 << 20;
+    constexpr std::size_t kMaxStores = 256;
     constexpr int kMaxDepth = 64;
 
     std::string encodeComponent(const std::string& text) {
@@ -321,6 +323,9 @@ namespace LOICollection::frontend::storage {
         if (auto loaded = storage->load(); !loaded)
             return ll::makeStringError("Failed to load script storage: " + loaded.error().message());
 
+        if (this->mStores.size() >= kMaxStores)
+            this->mStores.erase(this->mStores.begin());
+
         this->mStores.emplace(relative, storage);
 
         return storage;
@@ -351,6 +356,16 @@ namespace LOICollection::frontend::storage {
         auto storage = this->store(relative);
         if (!storage)
             return ll::Unexpected(storage.error());
+
+        try {
+            auto projected = storage.value()->get();
+            projected[key] = *json;
+
+            if (projected.dump().size() > kMaxFileBytes)
+                return ll::makeStringError("Script storage file would be too large");
+        } catch (const std::exception& e) {
+            return ll::makeStringError(std::string("Failed to encode script storage: ") + e.what());
+        }
 
         storage.value()->set(key, std::move(*json));
         if (auto saved = storage.value()->save(); !saved)

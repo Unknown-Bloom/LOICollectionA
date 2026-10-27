@@ -6,6 +6,7 @@
 #include <mutex>
 #include <ranges>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #include <algorithm>
@@ -19,7 +20,9 @@
 #include "LOICollectionA/utils/core/MathUtils.h"
 
 #include "LOICollectionA/frontend/ir/VM.h"
+#include "LOICollectionA/frontend/runtime/ScriptHeap.h"
 #include "LOICollectionA/frontend/runtime/ScriptVMRegistry.h"
+#include "LOICollectionA/frontend/sandbox/ScriptPermission.h"
 
 namespace LOICollection::frontend::ir::detail {
     thread_local std::shared_ptr<sandbox::SandboxBudget> tlsBudget;
@@ -371,6 +374,7 @@ namespace LOICollection::frontend::ir {
         this->localPool.clear();
         this->mReport = sandbox::SandboxReport{};
         this->currentLoc = SourceLocation{};
+        this->mBudget->reset();
 
         this->mInlineEpoch = 0;
     }
@@ -507,28 +511,43 @@ namespace LOICollection::frontend::ir {
         const std::string scriptId = Context::scriptIdOf(placeholders);
         const std::string ownerId = Context::ownerIdOf(placeholders);
 
+        sandbox::SandboxBudget effective;
+        if (budget)
+            effective = *budget;
+        else if (!scriptId.empty())
+            effective = sandbox::budgetForScript(scriptId);
+        else if (VM* active = VM::current())
+            effective = active->budget();
+
         std::shared_ptr<runtime::ScriptVM> pooled;
         std::unique_lock<std::mutex> pooledGuard;
         std::unique_ptr<VM> standalone;
+        bool usedPooled = false;
 
         VM* target = nullptr;
         if (!scriptId.empty()) {
             pooled = runtime::ScriptVMRegistry::getInstance().tryGetOrCreate(scriptId, ownerId);
-            pooledGuard = pooled->lock();
-            pooled->diagnostics().clear();
-            pooled->vm().reset();
-            pooled->vm().setGlobals(std::move(globals));
 
-            if (budget)
-                pooled->vm().setBudget(*budget);
+            if (VM::current() != &pooled->vm()) {
+                pooledGuard = pooled->lock();
+                pooled->diagnostics().clear();
+                pooled->vm().reset();
+                pooled->vm().setGlobals(std::move(globals));
+                pooled->vm().setHeap(runtime::ScriptHeapRegistry::getInstance().forScript(scriptId));
+                pooled->vm().setBudget(effective);
 
-            target = &pooled->vm();
-        } else {
+                target = &pooled->vm();
+                usedPooled = true;
+            }
+        }
+
+        if (!target) {
             standalone = std::make_unique<VM>(diagnostics, std::move(globals));
 
-            if (budget)
-                standalone->setBudget(*budget);
+            if (!scriptId.empty())
+                standalone->setHeap(runtime::ScriptHeapRegistry::getInstance().forScript(scriptId));
 
+            standalone->setBudget(effective);
             target = standalone.get();
         }
 
@@ -579,10 +598,61 @@ namespace LOICollection::frontend::ir {
         vm.frames.push_back(std::move(callee));
 
         auto result = vm.execute(func->owner, placeholders);
-        if (pooled && pooled->diagnostics().hasErrors())
+        if (usedPooled && pooled->diagnostics().hasErrors())
             diagnostics.addError({}, pooled->diagnostics().getErrorMessage());
 
         return result;
+    }
+
+    bool VM::accountValue(const ValueNode::ValueType& value) {
+        std::vector<const ValueNode::ValueType*> pending{ &value };
+        std::unordered_set<const ArrayValue*> visited;
+
+        while (!pending.empty()) {
+            const ValueNode::ValueType* current = pending.back();
+            pending.pop_back();
+
+            if (const auto* text = std::get_if<std::string>(current)) {
+                if (const auto violation = this->mBudget->accountString(text->size());
+                    violation != sandbox::SandboxBudget::Violation::None) {
+                    this->failBudget(violation, "Native result string exceeds the size budget");
+                    return false;
+                }
+
+                if (const auto violation = this->mBudget->accountBytes(text->size());
+                    violation != sandbox::SandboxBudget::Violation::None) {
+                    this->failBudget(violation, "Native result exceeds the memory budget");
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (const auto* array = std::get_if<ArrayRef>(current)) {
+                if (!*array || !visited.insert(array->get()).second)
+                    continue;
+
+                if (const auto violation = this->mBudget->accountArray((*array)->elements.size());
+                    violation != sandbox::SandboxBudget::Violation::None) {
+                    this->failBudget(violation, "Native result array exceeds the size budget");
+                    return false;
+                }
+
+                for (const auto& element : (*array)->elements)
+                    pending.push_back(&element);
+            }
+        }
+
+        return true;
+    }
+
+    void VM::storeNativeResult(Frame& frame, int index, ValueNode::ValueType value) {
+        if (!this->accountValue(value)) {
+            this->setReg(frame, index, ValueNode::ValueType{});
+            return;
+        }
+
+        this->setReg(frame, index, std::move(value));
     }
 
     void VM::setupRootFrame(const FunctionRefPtr& func, const CallbackTypeValues& args) {

@@ -22,7 +22,8 @@ namespace ObservableUIRawMessageClass {
     ll::Expected<ObjectRef> makeObservableUIRawMessage(const CallbackTypeValues& args) {
         auto handle = std::make_shared<ObservableUIRawMessageHandle>();
 
-        if (const auto* current = std::get_if<ObjectRef>(&args[0]); current && (*current)->className == "UIRawMessage") {
+        if (const auto* current = std::get_if<ObjectRef>(&args[0]);
+            current && *current && (*current)->className == "UIRawMessage" && (*current)->native) {
             handle->base = std::make_unique<ll::ui::ObservableUIRawMessage>(
                 static_cast<UIRawMessageClass::UIRawMessageHandle*>((*current)->native.get())->base, ll::ui::ObservableOptions{ std::get<bool>(args[1]) }
             );
@@ -59,19 +60,23 @@ namespace ObservableUIRawMessageClass {
     }
 
     bool setData(const ObjectRef& self, const CallbackTypeValues& args) {
-        if (const auto* current = std::get_if<ObjectRef>(&args[0])) {
-            static_cast<ObservableUIRawMessageHandle*>(self->native.get())->base->setData(
-                static_cast<UIRawMessageClass::UIRawMessageHandle*>((*current)->native.get())->base
-            );
+        const auto* current = std::get_if<ObjectRef>(&args[0]);
+        if (!current || !*current || (*current)->className != "UIRawMessage" || !(*current)->native)
+            return false;
 
-            return true;
-        }
+        static_cast<ObservableUIRawMessageHandle*>(self->native.get())->base->setData(
+            static_cast<UIRawMessageClass::UIRawMessageHandle*>((*current)->native.get())->base
+        );
 
-        return false;
+        return true;
     }
 
     ll::Expected<int> subscribe(const ObjectRef& self, const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
-        auto func = std::get<FunctionRefPtr>(args[0]);
+        const auto* function = std::get_if<FunctionRefPtr>(&args[0]);
+        if (!function || !*function)
+            return ll::makeStringError("Subscribe parameter must be a function");
+
+        const FunctionRefPtr func = *function;
         if (func->argCount != 1)
             return ll::makeStringError("Subscribe function only needs one bool parameter");
 

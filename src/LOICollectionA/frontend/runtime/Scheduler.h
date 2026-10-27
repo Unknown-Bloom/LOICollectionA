@@ -24,6 +24,9 @@ namespace LOICollection::frontend::runtime {
         size_t sliceInstructions = 100'000;
         size_t joinMaxPumps = 100'000'000;
         size_t drainGuard = 100'000'000;
+        size_t maxTasks = 1024;
+        size_t maxMailboxMessages = 1024;
+        std::chrono::milliseconds joinTimeout{ 5000 };
         sandbox::SandboxBudget taskBudget;
     };
 
@@ -42,7 +45,7 @@ namespace LOICollection::frontend::runtime {
         TaskId spawn(const FunctionRefPtr& fn, const CallbackTypeValues& args,
                      const std::string& scriptId = "", const std::string& ownerId = "");
 
-        void send(TaskId to, ValueNode::ValueType msg);
+        bool send(TaskId to, ValueNode::ValueType msg);
 
         bool cancel(TaskId id);
 
@@ -108,6 +111,7 @@ namespace LOICollection::frontend::runtime {
 
         Task* findTask(TaskId id) const;
         Task* findTaskByVM(ir::VM* vm);
+        void reapDone();
         void completeTask(Task& task);
         void runSlice(Task& task);
 

@@ -41,7 +41,7 @@ namespace LOICollection::frontend::ir {
         if (frame.hasThis) {
             auto obj = std::get<ObjectRef>(frame.thisObj);
 
-            if (obj->classIndex >= 0) {
+            if (obj->classIndex >= 0 && obj->classIndex < static_cast<int>(chunk.classes.size())) {
                 const auto& cls = chunk.classes[obj->classIndex];
                 bool isField = std::ranges::find(cls.fieldNames, name) != cls.fieldNames.end();
 
@@ -142,7 +142,7 @@ namespace LOICollection::frontend::ir {
                 if (frame.hasThis) {
                     auto obj = std::get<ObjectRef>(frame.thisObj);
 
-                    if (obj->classIndex >= 0) {
+                    if (obj->classIndex >= 0 && obj->classIndex < static_cast<int>(chunk.classes.size())) {
                         const auto& cls = chunk.classes[obj->classIndex];
                         bool isField = std::ranges::find(cls.fieldNames, name) != cls.fieldNames.end();
 
@@ -179,7 +179,7 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
 
-                    this->setReg(frame, instr.dst, result.value());
+                    this->storeNativeResult(frame, instr.dst, result.value());
                     break;
                 }
 

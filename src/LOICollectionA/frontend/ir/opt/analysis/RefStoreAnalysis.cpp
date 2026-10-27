@@ -44,9 +44,12 @@ namespace LOICollection::frontend::ir::opt {
             };
 
             switch (instr.op) {
-                case MirOp::LOAD_CONST:
-                    writes(instr.dst, isScalarConstant(this->mChunk.constants[static_cast<std::size_t>(instr.operand)]));
-                    break;
+                case MirOp::LOAD_CONST: {
+                    const std::size_t index = static_cast<std::size_t>(instr.operand);
+                    writes(instr.dst, instr.operand >= 0
+                        && index < this->mChunk.constants.size()
+                        && isScalarConstant(this->mChunk.constants[index]));
+                } break;
                 case MirOp::MOVE:
                     writes(instr.dst, reads(instr.src1));
                     break;
@@ -127,20 +130,26 @@ namespace LOICollection::frontend::ir::opt {
                     else
                         refStores = true;
                 } break;
-                case MirOp::MAKE_ARRAY:
-                case MirOp::MAKE_LAMBDA: {
-                    if (instr.op == MirOp::MAKE_LAMBDA) {
-                        refStores = true;
-                        break;
+                case MirOp::MAKE_LAMBDA:
+                    writes(instr.dst, false);
+                    refStores = true;
+                    break;
+                case MirOp::MAKE_ARRAY: {
+                    writes(instr.dst, false);
+
+                    bool allScalar = instr.operand >= 0 && instr.src1 >= 0;
+                    const std::size_t first = static_cast<std::size_t>(instr.src1);
+                    const std::size_t count = static_cast<std::size_t>(instr.operand);
+
+                    if (allScalar) {
+                        allScalar = first + count <= scalar.size() && first + count >= first;
+
+                        for (std::size_t i = 0; allScalar && i < count; ++i)
+                            allScalar = scalar[first + i];
                     }
 
-                    for (int i = 0; i < instr.operand; ++i) {
-                        if (reads(instr.src1 + i))
-                            continue;
-
+                    if (!allScalar)
                         refStores = true;
-                        break;
-                    }
                 } break;
                 default:
                     break;

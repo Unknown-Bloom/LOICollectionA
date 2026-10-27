@@ -23,11 +23,9 @@ namespace CommandBuiltin {
         const std::string command = std::get<std::string>(args[0]);
         const std::string scriptId = Context::scriptIdOf(placeholders);
 
-        const auto playerIt = placeholders.find(0);
-        if (playerIt == placeholders.end())
+        const auto player = Context::playerOf(placeholders);
+        if (!player)
             return ll::makeStringError("mc::runCmd requires a player context");
-
-        std::reference_wrapper<Player> player = std::any_cast<std::reference_wrapper<Player>>(playerIt->second);
 
         const auto permission = ServiceProvider::getInstance().getService<sandbox::ScriptPermissionService>();
         if (!permission || !permission->gate().isCommandAllowed(scriptId, command))
@@ -36,7 +34,7 @@ namespace CommandBuiltin {
                 "'. Add it to permission.json under scripts." + scriptId + ".commands.templates"
             );
 
-        CommandUtils::executeCommand(player.get(), command);
+        CommandUtils::executeCommand(player->get(), command);
 
         return TypedValue{};
     }

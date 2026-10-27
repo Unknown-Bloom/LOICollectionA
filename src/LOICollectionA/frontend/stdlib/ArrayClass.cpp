@@ -46,6 +46,18 @@ namespace ArrayClass::detail {
         return false;
     }
 
+    bool accountGrowth(const ArrayRef& arr, std::size_t count) {
+        ir::VM* vm = ir::VM::current();
+        if (!vm)
+            return true;
+
+        auto& budget = vm->mutableBudget();
+        if (arr->elements.size() + count > budget.maxArrayElements)
+            return false;
+
+        return budget.accountArray(count) == sandbox::SandboxBudget::Violation::None;
+    }
+
     ll::Expected<TypedValue> sortByComparator(const ArrayRef& arr, const FunctionRefPtr& comparator) {
         DiagnosticEngine diagnostics;
         bool failed = false;
@@ -67,8 +79,8 @@ namespace ArrayClass::detail {
             return false;
         };
 
-        std::vector<TypedValue>& elements = arr->elements;
-        const size_t count = elements.size();
+        std::vector<TypedValue> values = arr->elements;
+        const size_t count = values.size();
         std::vector<TypedValue> buffer(count);
 
         for (size_t width = 1; width < count && !failed; width *= 2) {
@@ -78,23 +90,27 @@ namespace ArrayClass::detail {
                 size_t i = lo, j = mid, k = lo;
 
                 while (i < mid && j < hi) {
-                    if (less(elements[j], elements[i]))
-                        buffer[k++] = std::move(elements[j++]);
+                    if (less(values[j], values[i]))
+                        buffer[k++] = std::move(values[j++]);
                     else
-                        buffer[k++] = std::move(elements[i++]);
+                        buffer[k++] = std::move(values[i++]);
                 }
                 while (i < mid)
-                    buffer[k++] = std::move(elements[i++]);
+                    buffer[k++] = std::move(values[i++]);
                 while (j < hi)
-                    buffer[k++] = std::move(elements[j++]);
+                    buffer[k++] = std::move(values[j++]);
             }
 
-            std::swap_ranges(elements.begin(), elements.begin() + static_cast<std::ptrdiff_t>(count), buffer.begin());
+            std::swap_ranges(values.begin(), values.begin() + static_cast<std::ptrdiff_t>(count), buffer.begin());
         }
 
         if (failed)
             return ll::makeStringError("Comparator failed or returned a non-numeric value");
 
+        if (arr->elements.size() != count)
+            return ll::makeStringError("Array was modified while sorting");
+
+        arr->elements = std::move(values);
         return arr;
     }
 }
@@ -111,6 +127,9 @@ namespace ArrayClass {
 
         if (auto* nested = std::get_if<ArrayRef>(&args[0]); nested && nested->get() == arr.get())
             return ll::makeStringError("Circular reference: an array cannot contain itself");
+
+        if (!accountGrowth(arr, 1))
+            return ll::makeStringError("Array exceeds the element budget");
 
         arr->elements.push_back(args[0]);
 
@@ -153,12 +172,18 @@ namespace ArrayClass {
         auto arr = std::get<ArrayRef>(self);
         const std::string& separator = std::get<std::string>(args[0]);
 
+        ir::VM* vm = ir::VM::current();
+        const std::size_t limit = vm ? vm->budget().maxStringBytes : (1 << 20);
+
         std::string result;
         for (size_t i = 0; i < arr->elements.size(); ++i) {
             if (i != 0)
                 result += separator;
 
             result += ir::VM::valueToString(arr->elements[i]);
+
+            if (result.size() > limit)
+                return ll::makeStringError("Joined string exceeds the string budget");
         }
 
         return result;
@@ -175,8 +200,13 @@ namespace ArrayClass {
         end = std::clamp(end, 0, length);
 
         auto result = std::make_shared<ArrayValue>();
-        if (start < end)
+        if (start < end) {
+            const std::size_t count = static_cast<std::size_t>(end - start);
+            if (!accountGrowth(result, count))
+                return ll::makeStringError("Array exceeds the element budget");
+
             result->elements.assign(arr->elements.begin() + start, arr->elements.begin() + end);
+        }
 
         return result;
     }

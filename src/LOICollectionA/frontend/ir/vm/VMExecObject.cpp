@@ -491,11 +491,7 @@ namespace LOICollection::frontend::ir {
                     break;
                 }
 
-                
-                
-                
-                
-                this->setReg(frame, instr.dst, result.value());
+                this->storeNativeResult(frame, instr.dst, result.value());
             } break;
             default: break;
         }

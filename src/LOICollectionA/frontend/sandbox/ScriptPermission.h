@@ -117,6 +117,9 @@ namespace LOICollection::frontend::sandbox {
             if (targetScript == scriptId)
                 return true;
 
+            if (!isScriptEnabled(targetScript))
+                return false;
+
             const auto* entry = find(scriptId);
             if (!entry)
                 return fallbackAllowed() && hasCapability(scriptId, Capability::GuiWrite);

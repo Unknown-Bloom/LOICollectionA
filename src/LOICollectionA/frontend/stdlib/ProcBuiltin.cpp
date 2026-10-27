@@ -56,7 +56,9 @@ namespace ProcBuiltin {
     ll::Expected<TypedValue> send(const CallbackTypeValues& args) {
         if (args.size() < 2)
             return ll::makeStringError("Proc::send requires (taskId, message)");
-        ProcScheduler::getInstance().send(static_cast<TaskId>(asLong(args[0])), args[1]);
+        if (!ProcScheduler::getInstance().send(static_cast<TaskId>(asLong(args[0])), args[1]))
+            return ll::makeStringError("Proc::send failed: task is missing, finished, or its mailbox is full");
+
         return std::monostate{};
     }
 

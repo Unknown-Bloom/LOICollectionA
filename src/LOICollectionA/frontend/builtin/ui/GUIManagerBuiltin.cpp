@@ -45,10 +45,11 @@ namespace GUIManagerBuiltin {
                 "'. Add it to permission.json under scripts." + scriptId + ".gui.values"
             );
 
-        return GUIManager::getInstance().getValue(
-            id,
-            std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0))
-        );
+        const auto player = Context::playerOf(placeholders);
+        if (!player)
+            return ll::makeStringError("GUIManager::value requires a player context");
+
+        return GUIManager::getInstance().getValue(id, player->get());
     }
 
     ll::Expected<TypedValue> request(const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
@@ -62,11 +63,11 @@ namespace GUIManagerBuiltin {
                 "'. Add it to permission.json under scripts." + scriptId + ".gui.requests"
             );
 
-        return GUIManager::getInstance().getRequest(
-            id,
-            std::get<ArrayRef>(args[1]),
-            std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0))
-        );
+        const auto player = Context::playerOf(placeholders);
+        if (!player)
+            return ll::makeStringError("GUIManager::request requires a player context");
+
+        return GUIManager::getInstance().getRequest(id, std::get<ArrayRef>(args[1]), player->get());
     }
 
     ll::Expected<TypedValue> callback(const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
@@ -80,10 +81,14 @@ namespace GUIManagerBuiltin {
                 "'. Add it to permission.json under scripts." + scriptId + ".gui.callbacks"
             );
 
+        const auto player = Context::playerOf(placeholders);
+        if (!player)
+            return ll::makeStringError("GUIManager::callback requires a player context");
+
         auto result = GUIManager::getInstance().getCallback(
             id,
             std::get<ArrayRef>(args[1]),
-            std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0))
+            player->get()
         );
 
         if (!result.has_value())
@@ -111,11 +116,15 @@ namespace GUIManagerBuiltin {
                 "'. Add '" + targetScript + "' to permission.json under scripts." + scriptId + ".gui.navigations"
             );
 
+        const auto player = Context::playerOf(placeholders);
+        if (!player)
+            return ll::makeStringError("GUIManager::open requires a player context");
+
         auto result = GUIManager::getInstance().open(
             targetScript,
             formId,
             static_cast<GUIManagerType>(std::get<int>(args[2])),
-            std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0)),
+            player->get(),
             args.size() >= 4 ? std::get<ArrayRef>(args[3]) : ArrayRef{}
         );
 
@@ -134,37 +143,37 @@ namespace GUIManagerBuiltin {
                 "'. Set scripts." + scriptId + ".enabled to true in permission.json"
             );
 
+        const auto player = Context::playerOf(placeholders);
+        if (!player)
+            return ll::makeStringError("GUIManager::switchTo requires a player context");
+
         ll::Expected<void> result;
 
         switch (std::get<int>(args[1])) {
             case static_cast<int>(GUIManagerType::CustomForm): {
                 result = GUIManager::getInstance().switchToCustomForm(
-                    std::get<std::string>(args[0]),
-                    std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0))
+                    std::get<std::string>(args[0]), player->get(), scriptId
                 );
 
                 break;
             }
             case static_cast<int>(GUIManagerType::MessageBox): {
                 result = GUIManager::getInstance().switchToMessageBox(
-                    std::get<std::string>(args[0]),
-                    std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0))
+                    std::get<std::string>(args[0]), player->get(), scriptId
                 );
 
                 break;
             }
             case static_cast<int>(GUIManagerType::PaginatedForm): {
                 result = GUIManager::getInstance().switchToPaginatedForm(
-                    std::get<std::string>(args[0]),
-                    std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0))
+                    std::get<std::string>(args[0]), player->get(), scriptId
                 );
 
                 break;
             }
             case static_cast<int>(GUIManagerType::ScriptForm): {
                 result = GUIManager::getInstance().switchToScriptForm(
-                    std::get<std::string>(args[0]),
-                    std::any_cast<std::reference_wrapper<Player>>(placeholders.at(0))
+                    std::get<std::string>(args[0]), player->get(), scriptId
                 );
 
                 break;

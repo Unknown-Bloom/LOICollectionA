@@ -10,6 +10,8 @@
 #include <ll/api/io/Logger.h>
 #include <ll/api/Mod/NativeMod.h>
 #include <ll/api/Mod/RegisterHelper.h>
+#include <ll/api/event/EventBus.h>
+#include <ll/api/event/player/PlayerDisconnectEvent.h>
 
 #include <mc/locale/I18n.h>
 #include <mc/locale/Localization.h>
@@ -173,6 +175,11 @@ namespace LOICollection {
     bool A::enable() {
         ll::io::Logger& logger = this->mSelf.getLogger();
 
+        this->mPlayerLeaveListener = ll::event::EventBus::getInstance()
+            .emplaceListener<ll::event::PlayerDisconnectEvent>([](ll::event::PlayerDisconnectEvent& event) -> void {
+                form::GUIManager::getInstance().releasePlayerUI(event.self());
+            });
+
         I18nUtils::getInstance()->defaultLocale = this->config.ConsoleLanguage == "system" ?
             getI18n().getCurrentLanguage()->mCode.get() : this->config.ConsoleLanguage;
 
@@ -213,6 +220,11 @@ namespace LOICollection {
 
     bool A::disable() {
         ll::io::Logger& logger = this->mSelf.getLogger();
+
+        if (this->mPlayerLeaveListener) {
+            ll::event::EventBus::getInstance().removeListener(this->mPlayerLeaveListener);
+            this->mPlayerLeaveListener.reset();
+        }
 
         LOICollectionAPI::ProcSchedulerDriver::getInstance().stop();
 

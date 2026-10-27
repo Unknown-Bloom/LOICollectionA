@@ -104,6 +104,21 @@ namespace LOICollection::frontend::detail {
 
         return std::filesystem::path(path).generic_string();
     }
+
+    std::optional<std::string> resolveImportPath(
+        const std::string& from, const std::string& importPath, const std::string& root
+    ) {
+        const std::filesystem::path target(importPath);
+        if (target.is_absolute() || target.has_root_name() || target.has_root_directory())
+            return std::nullopt;
+
+        const auto resolved = (std::filesystem::path(from).parent_path() / target).lexically_normal();
+        const auto relative = resolved.lexically_relative(root);
+        if (relative.empty() || *relative.begin() == "..")
+            return std::nullopt;
+
+        return resolved.generic_string();
+    }
 }
 
 namespace LOICollection::frontend {
@@ -160,14 +175,14 @@ namespace LOICollection::frontend {
 
                     auto& import = static_cast<ImportNode&>(*part);
 
-                    
-                    
-                    
-                    
-                    auto resolved = (std::filesystem::path(path).parent_path() / import.path)
-                                        .lexically_normal().generic_string();
+                    const auto resolved = resolveImportPath(path, import.path, root);
+                    if (!resolved) {
+                        diagnostics.addError(import.loc, "Import path escapes the script root: " + import.path);
+                        ok = false;
+                        continue;
+                    }
 
-                    ok = visit(resolved, import.loc) && ok;
+                    ok = visit(*resolved, import.loc) && ok;
                 }
                 stack.pop_back();
 
@@ -210,10 +225,13 @@ namespace LOICollection::frontend {
                     continue;
 
                 auto& import = static_cast<ImportNode&>(*part);
-                auto resolved = (std::filesystem::path(path).parent_path() / import.path)
-                                    .lexically_normal().generic_string();
+                const auto resolved = resolveImportPath(path, import.path, root);
+                if (!resolved) {
+                    diagnostics.addError(import.loc, "Import path escapes the script root: " + import.path);
+                    return std::nullopt;
+                }
 
-                auto& wanted = requested[resolved];
+                auto& wanted = requested[*resolved];
                 if (!import.hasSymbols) {
                     wanted.insert("*");
                     continue;
@@ -232,13 +250,16 @@ namespace LOICollection::frontend {
                 if (part->getType() == ASTNode::Type::Import) {
                     auto& import = static_cast<ImportNode&>(*part);
 
-                    auto resolved = (std::filesystem::path(path).parent_path() / import.path)
-                                        .lexically_normal().generic_string();
+                    const auto resolved = resolveImportPath(path, import.path, root);
+                    if (!resolved) {
+                        diagnostics.addError(import.loc, "Import path escapes the script root: " + import.path);
+                        return std::nullopt;
+                    }
 
-                    if (merged.insert(resolved).second) {
-                        auto& imported = expanded.at(resolved);
+                    if (merged.insert(*resolved).second) {
+                        auto& imported = expanded.at(*resolved);
 
-                        auto wantedIt = requested.find(resolved);
+                        auto wantedIt = requested.find(*resolved);
                         const bool wholeFile =
                             wantedIt == requested.end() || wantedIt->second.contains("*");
                         const auto& wanted =
