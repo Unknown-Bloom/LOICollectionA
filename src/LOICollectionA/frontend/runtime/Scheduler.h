@@ -95,6 +95,12 @@ namespace LOICollection::frontend::runtime {
         }
 
     private:
+        struct MailboxEntry {
+            ValueNode::ValueType value;
+            std::shared_ptr<sandbox::SandboxBudget> owner;
+            std::size_t bytes = 0;
+        };
+
         struct Task {
             TaskId id = 0;
             TaskState state = TaskState::Ready;
@@ -103,7 +109,7 @@ namespace LOICollection::frontend::runtime {
             FunctionRefPtr fn;
             CallbackTypeValues args;
             std::chrono::steady_clock::time_point wakeupAt{};
-            std::deque<ValueNode::ValueType> mailbox;
+            std::deque<MailboxEntry> mailbox;
             std::vector<TaskId> joiners;
             ValueNode::ValueType result;
             bool hasError = false;
@@ -113,6 +119,18 @@ namespace LOICollection::frontend::runtime {
             std::string scriptId;
             std::string ownerId;
             CallbackTypePlaces placeholders;
+
+            std::shared_ptr<sandbox::SandboxBudget> budgetOwner;
+            std::size_t budgetStringBytes = 0;
+            std::size_t resultStringBytes = 0;
+
+            ~Task() {
+                if (budgetOwner)
+                    budgetOwner->releaseBytes(budgetStringBytes + resultStringBytes);
+                for (const auto& entry : mailbox)
+                    if (entry.owner)
+                        entry.owner->releaseBytes(entry.bytes);
+            }
         };
 
         Task* findTask(TaskId id) const;

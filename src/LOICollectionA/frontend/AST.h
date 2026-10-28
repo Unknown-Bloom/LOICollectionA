@@ -196,6 +196,43 @@ namespace LOICollection::frontend {
         std::vector<ValueNode::ValueType> items{};
     };
 
+    inline std::size_t retainedBytes(const ValueNode::ValueType& value) {
+        if (const auto* text = std::get_if<std::string>(&value))
+            return text->size();
+
+        if (const auto* enumValue = std::get_if<EnumValue>(&value); enumValue && enumValue->payload) {
+            std::size_t bytes = 0;
+            for (const auto& item : enumValue->payload->items)
+                bytes += retainedBytes(item);
+            return bytes;
+        }
+
+        return 0;
+    }
+
+    inline bool adjustRetainedBytes(
+        const std::shared_ptr<sandbox::SandboxBudget>& owner,
+        std::size_t& counter,
+        std::size_t previous,
+        std::size_t current
+    ) {
+        if (!owner || previous == current)
+            return true;
+
+        if (current > previous) {
+            if (owner->accountBytes(current - previous) != sandbox::SandboxBudget::Violation::None)
+                return false;
+
+            counter += current - previous;
+            return true;
+        }
+
+        const std::size_t delta = previous - current;
+        owner->releaseBytes(delta);
+        counter = delta > counter ? 0 : counter - delta;
+        return true;
+    }
+
     inline bool EnumValue::operator==(const EnumValue& other) const {
         if (enumId != other.enumId || tag != other.tag)
             return false;
@@ -1164,10 +1201,13 @@ namespace LOICollection::frontend {
         std::shared_ptr<NativeHandle> native;
 
         std::shared_ptr<sandbox::SandboxBudget> budgetOwner;
+        std::size_t budgetStringBytes = 0;
 
         ~Object() {
-            if (budgetOwner)
+            if (budgetOwner) {
                 budgetOwner->releaseObject();
+                budgetOwner->releaseBytes(budgetStringBytes);
+            }
         }
 
         void resize(size_t count) {
@@ -1282,6 +1322,7 @@ namespace LOICollection::frontend {
 
         std::shared_ptr<sandbox::SandboxBudget> budgetOwner;
         std::size_t budgetBytes = 0;
+        std::size_t budgetStringBytes = 0;
 
         std::int32_t heapIndex = -1;
 
@@ -1293,7 +1334,7 @@ namespace LOICollection::frontend {
 
         ~ArrayValue() {
             if (budgetOwner)
-                budgetOwner->releaseBytes(budgetBytes);
+                budgetOwner->releaseBytes(budgetBytes + budgetStringBytes);
 
             std::vector<ArrayRef> pending;
 
@@ -1316,7 +1357,15 @@ namespace LOICollection::frontend {
         }
     };
 
-    struct GlobalsTable : std::unordered_map<std::string, ValueNode::ValueType> {};
+    struct GlobalsTable : std::unordered_map<std::string, ValueNode::ValueType> {
+        std::shared_ptr<sandbox::SandboxBudget> budgetOwner;
+        std::size_t budgetStringBytes = 0;
+
+        ~GlobalsTable() {
+            if (budgetOwner)
+                budgetOwner->releaseBytes(budgetStringBytes);
+        }
+    };
 
     struct FunctionRef {
         std::shared_ptr<const ir::MirChunk> owner;
@@ -1331,5 +1380,13 @@ namespace LOICollection::frontend {
         std::vector<ValueNode::ValueType> captures;
         std::vector<int> captureSlots;
         std::weak_ptr<GlobalsTable> globals;
+
+        std::shared_ptr<sandbox::SandboxBudget> budgetOwner;
+        std::size_t budgetStringBytes = 0;
+
+        ~FunctionRef() {
+            if (budgetOwner)
+                budgetOwner->releaseBytes(budgetStringBytes);
+        }
     };
 }

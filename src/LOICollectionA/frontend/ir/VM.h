@@ -132,6 +132,8 @@ namespace LOICollection::frontend::ir {
 
             int returnReg = -1;
 
+            std::size_t budgetStringBytes = 0;
+
             explicit Frame(const MirChunk& chunkRef)
                 : chunk(chunkRef), localsSize(chunkRef.slotCount) {}
         };
@@ -209,6 +211,8 @@ namespace LOICollection::frontend::ir {
 
         void placeArgs(std::size_t sourceBase, int count, std::size_t offset = 0);
 
+        void releaseLocalStrings();
+
         void storeVariable(
             const MirChunk& chunk,
             Frame& frame,
@@ -223,6 +227,8 @@ namespace LOICollection::frontend::ir {
         [[nodiscard]] static ValueNode::ValueType cloneValue(const ValueNode::ValueType& val, std::size_t depth = 0);
 
         [[nodiscard]] bool accountValue(const ValueNode::ValueType& value);
+
+        [[nodiscard]] bool adoptArray(ArrayValue& arr);
 
         void storeNativeResult(Frame& frame, int index, ValueNode::ValueType value);
 

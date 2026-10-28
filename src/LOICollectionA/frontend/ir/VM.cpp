@@ -114,7 +114,20 @@ namespace LOICollection::frontend::ir {
         if (index < 0)
             return;
 
-        this->regOf(frame, index) = std::move(value);
+        if (static_cast<std::size_t>(index) >= frame.localsSize) {
+            this->regOf(frame, index) = std::move(value);
+            return;
+        }
+
+        ValueNode::ValueType& slot = this->localPool[frame.localsBase + static_cast<std::size_t>(index)];
+        if (!adjustRetainedBytes(
+                this->mBudget, frame.budgetStringBytes, retainedBytes(slot), retainedBytes(value)
+            )) {
+            this->failBudget(sandbox::SandboxBudget::Violation::TotalByteLimit, "Local value exceeds the memory budget");
+            return;
+        }
+
+        slot = std::move(value);
     }
 
     std::vector<ValueNode::ValueType> VM::collectArgs(const Frame& frame, int base, int count) {
@@ -132,10 +145,28 @@ namespace LOICollection::frontend::ir {
 
     void VM::placeArgs(std::size_t sourceBase, int count, std::size_t offset) {
         const size_t base = this->frames.back().localsBase + offset;
+        Frame& destination = this->frames.back();
+        Frame* source = this->frames.size() > 1 ? &this->frames[this->frames.size() - 2] : nullptr;
+
         for (int i = 0; i < count; ++i) {
             const size_t index = static_cast<size_t>(i);
-            this->localPool[base + index] = std::move(this->localPool[sourceBase + index]);
+            ValueNode::ValueType& value = this->localPool[sourceBase + index];
+            const std::size_t bytes = retainedBytes(value);
+
+            if (source) {
+                source->budgetStringBytes = bytes > source->budgetStringBytes
+                    ? 0
+                    : source->budgetStringBytes - bytes;
+                destination.budgetStringBytes += bytes;
+            }
+
+            this->localPool[base + index] = std::move(value);
         }
+    }
+
+    void VM::releaseLocalStrings() {
+        for (const auto& frame : this->frames)
+            this->mBudget->releaseBytes(frame.budgetStringBytes);
     }
 
     ValueNode::ValueType VM::run(
@@ -147,8 +178,13 @@ namespace LOICollection::frontend::ir {
             return ValueNode::ValueType{};
         }
 
+        this->releaseLocalStrings();
         this->frames.clear();
         this->localPool.clear();
+        if (this->globals->budgetOwner)
+            this->globals->budgetOwner->releaseBytes(this->globals->budgetStringBytes);
+        this->globals->budgetOwner.reset();
+        this->globals->budgetStringBytes = 0;
         this->globals->clear();
         this->mReport = sandbox::SandboxReport{};
 
@@ -204,6 +240,33 @@ namespace LOICollection::frontend::ir {
             this->mFieldCache.fill({});
             this->mByNameCache.fill({});
             this->mHostCallCache.fill({});
+        }
+
+        if (this->globals->budgetOwner.get() != this->mBudget.get()) {
+            if (this->globals->budgetOwner)
+                this->globals->budgetOwner->releaseBytes(this->globals->budgetStringBytes);
+
+            this->globals->budgetOwner = this->mBudget;
+            this->globals->budgetStringBytes = 0;
+
+            std::size_t retained = 0;
+            for (auto& entry : *this->globals) {
+                retained += retainedBytes(entry.second);
+
+                if (auto* array = std::get_if<ArrayRef>(&entry.second); array && *array && !this->adoptArray(**array)) {
+                    this->failBudget(sandbox::SandboxBudget::Violation::TotalByteLimit, "Script globals exceed the memory budget");
+                    mOutcome = RunOutcome::Failed;
+                    return ValueNode::ValueType{};
+                }
+            }
+
+            if (retained && this->mBudget->accountBytes(retained) != sandbox::SandboxBudget::Violation::None) {
+                this->failBudget(sandbox::SandboxBudget::Violation::TotalByteLimit, "Script globals exceed the memory budget");
+                mOutcome = RunOutcome::Failed;
+                return ValueNode::ValueType{};
+            }
+
+            this->globals->budgetStringBytes = retained;
         }
 
         if (this->mCacheChunk != owner.get()) {
@@ -290,6 +353,7 @@ namespace LOICollection::frontend::ir {
 
                     Frame finished = std::move(this->frames.back());
                     this->frames.pop_back();
+                    this->mBudget->releaseBytes(finished.budgetStringBytes);
                     this->localPool.resize(finished.localsBase);
 
                     if (this->frames.empty()) {
@@ -301,7 +365,7 @@ namespace LOICollection::frontend::ir {
                         result = std::move(finished.pendingPush);
 
                     if (finished.returnReg >= 0)
-                        this->regOf(this->frames.back(), finished.returnReg) = std::move(result);
+                        this->setReg(this->frames.back(), finished.returnReg, std::move(result));
 
                     break;
                 }
@@ -331,6 +395,7 @@ namespace LOICollection::frontend::ir {
                     if (mStopRequest == StopKind::Cancel || this->mCancelToken.cancelled()) {
                         mOutcome = RunOutcome::Canceled;
                         mBlockInfo.kind = BlockKind::None;
+                        this->releaseLocalStrings();
                         this->frames.clear();
                         return ValueNode::ValueType{};
                     }
@@ -370,6 +435,7 @@ namespace LOICollection::frontend::ir {
     }
 
     void VM::reset() {
+        this->releaseLocalStrings();
         this->frames.clear();
         this->localPool.clear();
         this->mReport = sandbox::SandboxReport{};
@@ -382,6 +448,34 @@ namespace LOICollection::frontend::ir {
     void VM::failBudget(sandbox::SandboxBudget::Violation violation, const std::string& message) {
         this->mReport.violation = violation;
         this->diagnostics.addError(this->currentLoc, message);
+    }
+
+    bool VM::adoptArray(ArrayValue& arr) {
+        if (arr.budgetOwner && arr.budgetOwner.get() != this->mBudget.get())
+            return true;
+
+        if (!arr.budgetOwner) {
+            arr.budgetOwner = this->mBudget;
+            arr.budgetBytes = 0;
+            arr.budgetStringBytes = 0;
+
+            if (!arr.elements.empty()) {
+                if (this->mBudget->accountArray(arr.elements.size()) != sandbox::SandboxBudget::Violation::None)
+                    return false;
+
+                arr.budgetBytes = arr.elements.size() * 16;
+            }
+        }
+
+        std::size_t stringBytes = 0;
+        for (auto& element : arr.elements) {
+            stringBytes += retainedBytes(element);
+
+            if (auto* nested = std::get_if<ArrayRef>(&element); nested && *nested && !this->adoptArray(**nested))
+                return false;
+        }
+
+        return adjustRetainedBytes(arr.budgetOwner, arr.budgetStringBytes, arr.budgetStringBytes, stringBytes);
     }
 
     void VM::execLoadConst(ExecArgs& s) {
@@ -403,6 +497,11 @@ namespace LOICollection::frontend::ir {
         }
 
         ValueNode::ValueType copy = VM::cloneValue(value);
+
+        if (auto* array = std::get_if<ArrayRef>(&copy); array && *array && !this->adoptArray(**array)) {
+            this->failBudget(sandbox::SandboxBudget::Violation::TotalByteLimit, "Constant array exceeds the memory budget");
+            return;
+        }
 
         if (cur.hasRefStores) {
             const auto* array = std::get_if<ArrayRef>(&copy);
@@ -563,6 +662,7 @@ namespace LOICollection::frontend::ir {
             frameGuard.budget = tlsBudget;
         }
 
+        vm.releaseLocalStrings();
         vm.frames.clear();
 
         Frame callee(*func->owner->methodBodies[func->bodyIndex]);
@@ -588,10 +688,10 @@ namespace LOICollection::frontend::ir {
         vm.localPool.assign(callee.localsSize, ValueNode::ValueType{});
 
         for (size_t i = 0; i < captureCount; ++i)
-            vm.localPool[static_cast<size_t>(func->captureSlots[i])] = func->captures[i];
+            vm.setReg(callee, func->captureSlots[i], func->captures[i]);
 
         for (int i = 0; i < func->argCount; ++i)
-            vm.localPool[static_cast<size_t>(i)] = args[static_cast<size_t>(i)];
+            vm.setReg(callee, i, args[static_cast<size_t>(i)]);
 
         vm.frames.push_back(std::move(callee));
 
@@ -605,41 +705,103 @@ namespace LOICollection::frontend::ir {
     }
 
     bool VM::accountValue(const ValueNode::ValueType& value) {
+        if (const auto* text = std::get_if<std::string>(&value)) {
+            if (const auto violation = this->mBudget->accountString(text->size());
+                violation != sandbox::SandboxBudget::Violation::None) {
+                this->failBudget(violation, "Native result string exceeds the size budget");
+                return false;
+            }
+
+            return true;
+        }
+
         std::vector<const ValueNode::ValueType*> pending{ &value };
-        std::unordered_set<const ArrayValue*> visited;
+        std::unordered_set<const ArrayValue*> arrays;
+        std::unordered_set<const Object*> objects;
 
         while (!pending.empty()) {
             const ValueNode::ValueType* current = pending.back();
             pending.pop_back();
 
-            if (const auto* text = std::get_if<std::string>(current)) {
-                if (const auto violation = this->mBudget->accountString(text->size());
-                    violation != sandbox::SandboxBudget::Violation::None) {
-                    this->failBudget(violation, "Native result string exceeds the size budget");
-                    return false;
+            if (const auto* array = std::get_if<ArrayRef>(current)) {
+                if (!*array || !arrays.insert(array->get()).second)
+                    continue;
+
+                ArrayValue& arr = **array;
+                if (arr.budgetOwner && arr.budgetOwner != this->mBudget)
+                    continue;
+
+                if (!arr.budgetOwner) {
+                    arr.budgetOwner = this->mBudget;
+                    arr.budgetStringBytes = 0;
+
+                    if (!arr.elements.empty()) {
+                        if (const auto violation = this->mBudget->accountArray(arr.elements.size());
+                            violation != sandbox::SandboxBudget::Violation::None) {
+                            this->failBudget(violation, "Native result array exceeds the size budget");
+                            return false;
+                        }
+
+                        arr.budgetBytes = arr.elements.size() * 16;
+                    }
                 }
 
-                if (const auto violation = this->mBudget->accountBytes(text->size());
-                    violation != sandbox::SandboxBudget::Violation::None) {
-                    this->failBudget(violation, "Native result exceeds the memory budget");
+                std::size_t stringBytes = 0;
+                for (auto& element : arr.elements) {
+                    stringBytes += retainedBytes(element);
+
+                    if (std::holds_alternative<ArrayRef>(element) || std::holds_alternative<ObjectRef>(element))
+                        pending.push_back(&element);
+                }
+
+                if (!adjustRetainedBytes(arr.budgetOwner, arr.budgetStringBytes, arr.budgetStringBytes, stringBytes)) {
+                    this->failBudget(sandbox::SandboxBudget::Violation::TotalByteLimit, "Native result exceeds the memory budget");
                     return false;
                 }
 
                 continue;
             }
 
-            if (const auto* array = std::get_if<ArrayRef>(current)) {
-                if (!*array || !visited.insert(array->get()).second)
+            if (const auto* object = std::get_if<ObjectRef>(current)) {
+                if (!*object || !objects.insert(object->get()).second)
                     continue;
 
-                if (const auto violation = this->mBudget->accountArray((*array)->elements.size());
-                    violation != sandbox::SandboxBudget::Violation::None) {
-                    this->failBudget(violation, "Native result array exceeds the size budget");
-                    return false;
+                Object& obj = **object;
+                if (obj.budgetOwner && obj.budgetOwner != this->mBudget)
+                    continue;
+
+                if (!obj.budgetOwner) {
+                    if (const auto violation = this->mBudget->accountObject();
+                        violation != sandbox::SandboxBudget::Violation::None) {
+                        this->failBudget(violation, "Native result object exceeds the size budget");
+                        return false;
+                    }
+
+                    obj.budgetOwner = this->mBudget;
+                    obj.budgetStringBytes = 0;
                 }
 
-                for (const auto& element : (*array)->elements)
-                    pending.push_back(&element);
+                std::size_t stringBytes = 0;
+                for (auto& slot : obj.slots) {
+                    stringBytes += retainedBytes(slot);
+
+                    if (std::holds_alternative<ArrayRef>(slot) || std::holds_alternative<ObjectRef>(slot))
+                        pending.push_back(&slot);
+                }
+
+                if (obj.spill) {
+                    for (auto& [name, field] : *obj.spill) {
+                        stringBytes += retainedBytes(field);
+
+                        if (std::holds_alternative<ArrayRef>(field) || std::holds_alternative<ObjectRef>(field))
+                            pending.push_back(&field);
+                    }
+                }
+
+                if (!adjustRetainedBytes(obj.budgetOwner, obj.budgetStringBytes, obj.budgetStringBytes, stringBytes)) {
+                    this->failBudget(sandbox::SandboxBudget::Violation::TotalByteLimit, "Native result exceeds the memory budget");
+                    return false;
+                }
             }
         }
 
@@ -656,6 +818,7 @@ namespace LOICollection::frontend::ir {
     }
 
     void VM::setupRootFrame(const FunctionRefPtr& func, const CallbackTypeValues& args) {
+        this->releaseLocalStrings();
         this->frames.clear();
         this->localPool.clear();
 
@@ -681,11 +844,11 @@ namespace LOICollection::frontend::ir {
 
         this->localPool.resize(callee.localsSize);
         for (size_t i = 0; i < captureCount; ++i)
-            this->localPool[static_cast<size_t>(func->captureSlots[i])] = func->captures[i];
+            this->setReg(callee, func->captureSlots[i], func->captures[i]);
 
         const size_t n = std::min<size_t>(args.size(), static_cast<size_t>(func->argCount));
         for (size_t i = 0; i < n; ++i)
-            this->localPool[i] = args[i];
+            this->setReg(callee, static_cast<int>(i), args[i]);
 
         this->frames.push_back(std::move(callee));
     }

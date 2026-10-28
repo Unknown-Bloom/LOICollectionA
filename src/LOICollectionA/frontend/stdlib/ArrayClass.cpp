@@ -136,6 +136,9 @@ namespace ArrayClass {
         if (!accountGrowth(arr, 1))
             return ll::makeStringError("Array exceeds the element budget");
 
+        if (!adjustRetainedBytes(arr->budgetOwner, arr->budgetStringBytes, 0, retainedBytes(args[0])))
+            return ll::makeStringError("Array element exceeds the memory budget");
+
         arr->elements.push_back(args[0]);
 
         return static_cast<int>(arr->elements.size());
@@ -147,6 +150,7 @@ namespace ArrayClass {
             return ll::makeStringError("Cannot pop from an empty array");
 
         TypedValue last = arr->elements.back();
+        adjustRetainedBytes(arr->budgetOwner, arr->budgetStringBytes, retainedBytes(last), 0);
         arr->elements.pop_back();
 
         return last;
@@ -212,6 +216,13 @@ namespace ArrayClass {
             const std::size_t count = static_cast<std::size_t>(end - start);
             if (!accountGrowth(result, count))
                 return ll::makeStringError("Array exceeds the element budget");
+
+            std::size_t stringBytes = 0;
+            for (auto it = arr->elements.begin() + start; it != arr->elements.begin() + end; ++it)
+                stringBytes += retainedBytes(*it);
+
+            if (!adjustRetainedBytes(result->budgetOwner, result->budgetStringBytes, 0, stringBytes))
+                return ll::makeStringError("Array slice exceeds the memory budget");
 
             result->elements.assign(arr->elements.begin() + start, arr->elements.begin() + end);
         }

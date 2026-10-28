@@ -46,12 +46,31 @@ namespace LOICollection::frontend::ir {
                 bool isField = std::ranges::find(cls.fieldNames, name) != cls.fieldNames.end();
 
                 if (isField) {
+                    const auto* existing = obj->find(name);
+                    if (!adjustRetainedBytes(
+                            obj->budgetOwner, obj->budgetStringBytes,
+                            existing ? retainedBytes(*existing) : 0,
+                            retainedBytes(val)
+                        )) {
+                        this->failBudget(sandbox::SandboxBudget::Violation::TotalByteLimit, "Field value exceeds the memory budget");
+                        return;
+                    }
+
                     obj->assign(name, val);
                     return;
                 }
             }
 
             if (auto* existing = obj->find(name)) {
+                if (!adjustRetainedBytes(
+                        obj->budgetOwner, obj->budgetStringBytes,
+                        retainedBytes(*existing),
+                        retainedBytes(val)
+                    )) {
+                    this->failBudget(sandbox::SandboxBudget::Violation::TotalByteLimit, "Field value exceeds the memory budget");
+                    return;
+                }
+
                 *existing = val;
                 return;
             }
@@ -69,7 +88,21 @@ namespace LOICollection::frontend::ir {
             return;
         }
 
-        (*this->globals)[name] = val;
+        auto& table = *this->globals;
+        if (!table.budgetOwner)
+            table.budgetOwner = this->mBudget;
+
+        const auto existing = table.find(name);
+        if (!adjustRetainedBytes(
+                table.budgetOwner, table.budgetStringBytes,
+                existing == table.end() ? 0 : retainedBytes(existing->second),
+                retainedBytes(val)
+            )) {
+            this->failBudget(sandbox::SandboxBudget::Violation::TotalByteLimit, "Script variable exceeds the memory budget");
+            return;
+        }
+
+        table[name] = val;
     }
 
     bool VM::pushFrame(Frame&& frame) {

@@ -87,9 +87,8 @@ namespace LOICollection::frontend::ir {
         if (!this->pushFrame(std::move(callee)))
             return true;
 
-        const size_t base = this->frames.back().localsBase;
         for (size_t i = 0; i < captureCount; ++i)
-            this->localPool[base + static_cast<size_t>(func->captureSlots[i])] = func->captures[i];
+            this->setReg(this->frames.back(), func->captureSlots[i], func->captures[i]);
         this->placeArgs(argsBase, func->argCount, 0);
 
         return true;
@@ -443,9 +442,8 @@ namespace LOICollection::frontend::ir {
                 if (!this->pushFrame(std::move(callee)))
                     break;
 
-                const size_t base = this->frames.back().localsBase;
                 for (size_t i = 0; i < captureCount; ++i)
-                    this->localPool[base + static_cast<size_t>(func->captureSlots[i])] = func->captures[i];
+                    this->setReg(this->frames.back(), func->captureSlots[i], func->captures[i]);
                 this->placeArgs(argsBase, func->argCount, 0);
             } break;
             default: break;

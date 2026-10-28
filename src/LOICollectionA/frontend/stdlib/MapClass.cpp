@@ -71,10 +71,13 @@ namespace MapClass::detail {
 
         std::shared_ptr<sandbox::SandboxBudget> budgetOwner;
         std::size_t budgetBytes = 0;
+        std::size_t budgetStringBytes = 0;
 
         ~MapHandle() override {
-            if (budgetOwner)
+            if (budgetOwner) {
                 budgetOwner->releaseBytes(budgetBytes);
+                budgetOwner->releaseBytes(budgetStringBytes);
+            }
         }
     };
 
@@ -144,12 +147,27 @@ namespace MapClass {
         auto& handle = handleOf(self);
 
         if (const auto it = handle.positions.find(args[0]); it != handle.positions.end()) {
-            handle.entries[it->second].second = args[1];
+            auto& entry = handle.entries[it->second];
+            if (!adjustRetainedBytes(
+                    handle.budgetOwner, handle.budgetStringBytes,
+                    retainedBytes(entry.second), retainedBytes(args[1])
+                )) {
+                return ll::makeStringError("Map value exceeds the memory budget");
+            }
+
+            entry.second = args[1];
             return args[1];
         }
 
         if (!accountGrowth(self))
             return ll::makeStringError("Map exceeds the element budget");
+
+        if (!adjustRetainedBytes(
+                handle.budgetOwner, handle.budgetStringBytes, 0,
+                retainedBytes(args[0]) + retainedBytes(args[1])
+            )) {
+            return ll::makeStringError("Map entry exceeds the memory budget");
+        }
 
         if (!handle.keys || handle.keys->elements.size() != handle.entries.size())
             rebuildKeys(self);
@@ -197,6 +215,12 @@ namespace MapClass {
             return false;
 
         const std::size_t index = it->second;
+
+        adjustRetainedBytes(
+            handle.budgetOwner, handle.budgetStringBytes,
+            retainedBytes(handle.entries[index].first) + retainedBytes(handle.entries[index].second), 0
+        );
+
         handle.positions.erase(it);
         handle.entries.erase(handle.entries.begin() + static_cast<std::ptrdiff_t>(index));
 

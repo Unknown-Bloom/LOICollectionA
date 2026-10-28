@@ -53,11 +53,25 @@ namespace LOICollection::frontend::runtime {
     void ProcScheduler::runSlice(Task& task) {
         const auto outcome = task.vm->runTask(task.fn, task.args, config_.sliceInstructions, task.placeholders);
         switch (outcome) {
-            case ir::VM::RunOutcome::Completed:
-                task.result = task.vm->taskResult();
+            case ir::VM::RunOutcome::Completed: {
+                auto result = task.vm->taskResult();
+                const std::size_t bytes = retainedBytes(result);
+
+                if (bytes && task.budgetOwner
+                    && task.budgetOwner->accountBytes(bytes) != sandbox::SandboxBudget::Violation::None) {
+                    task.budgetOwner->releaseBytes(bytes);
+                    task.hasError = true;
+                    task.errorMessage = "Task result exceeds the memory budget";
+                    completeTask(task);
+                    break;
+                }
+
+                task.result = std::move(result);
+                task.resultStringBytes = bytes;
                 task.hasError = false;
                 completeTask(task);
                 break;
+            }
             case ir::VM::RunOutcome::Failed:
                 task.hasError = true;
                 task.errorMessage = task.diag->getErrorMessage();
@@ -119,6 +133,18 @@ namespace LOICollection::frontend::runtime {
                 return 0;
         }
 
+        auto budget = ir::VM::current() ? ir::VM::current()->budgetHandle() : nullptr;
+
+        std::size_t argBytes = 0;
+        for (const auto& arg : args)
+            argBytes += retainedBytes(arg);
+
+        if (budget && argBytes
+            && budget->accountBytes(argBytes) != sandbox::SandboxBudget::Violation::None) {
+            budget->releaseBytes(argBytes);
+            return 0;
+        }
+
         auto task = std::make_unique<Task>();
         task->id = nextId_++;
         task->diag = std::make_shared<DiagnosticEngine>();
@@ -133,6 +159,8 @@ namespace LOICollection::frontend::runtime {
         task->scriptId = scriptId;
         task->ownerId = ownerId;
         task->placeholders = Context::withOwnerId(Context::withScriptId({}, scriptId), ownerId);
+        task->budgetOwner = budget ? budget : task->vm->budgetHandle();
+        task->budgetStringBytes = budget ? argBytes : 0;
         task->state = TaskState::Ready;
 
         const TaskId id = task->id;
@@ -147,7 +175,15 @@ namespace LOICollection::frontend::runtime {
         if (!t || t->state == TaskState::Done || t->mailbox.size() >= config_.maxMailboxMessages)
             return false;
 
-        t->mailbox.push_back(std::move(msg));
+        const std::size_t bytes = retainedBytes(msg);
+        auto owner = ir::VM::current() ? ir::VM::current()->budgetHandle() : nullptr;
+        if (bytes && owner
+            && owner->accountBytes(bytes) != sandbox::SandboxBudget::Violation::None) {
+            owner->releaseBytes(bytes);
+            return false;
+        }
+
+        t->mailbox.push_back({ std::move(msg), owner, bytes });
         if (t->state == TaskState::BlockedRecv) {
             t->state = TaskState::Ready;
             ready_.push_back(t->id);
@@ -205,7 +241,10 @@ namespace LOICollection::frontend::runtime {
         if (!t)
             return false;
         if (!t->mailbox.empty()) {
-            out = std::move(t->mailbox.front());
+            auto& entry = t->mailbox.front();
+            out = std::move(entry.value);
+            if (entry.owner)
+                entry.owner->releaseBytes(entry.bytes);
             t->mailbox.pop_front();
             return true;
         }

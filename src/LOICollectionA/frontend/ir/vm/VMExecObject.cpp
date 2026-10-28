@@ -79,6 +79,16 @@ namespace LOICollection::frontend::ir {
                 auto obj = std::get<ObjectRef>(objValue);
                 int slot = this->resolveFieldSlot(*obj, name, instr);
 
+                const auto* existing = obj->fieldAt(slot, name);
+                if (!adjustRetainedBytes(
+                        obj->budgetOwner, obj->budgetStringBytes,
+                        existing ? retainedBytes(*existing) : 0,
+                        retainedBytes(this->regOf(frame, instr.src2))
+                    )) {
+                    this->failBudget(sandbox::SandboxBudget::Violation::TotalByteLimit, "Field value exceeds the memory budget");
+                    break;
+                }
+
                 ValueNode::ValueType previous;
                 const bool collectBarrier = this->heap().collecting();
                 if (collectBarrier && slot >= 0)
@@ -139,6 +149,15 @@ namespace LOICollection::frontend::ir {
                 ValueNode::ValueType previous;
                 if (collectBarrier)
                     previous = obj->slots[static_cast<size_t>(instr.operand)];
+
+                if (!adjustRetainedBytes(
+                        obj->budgetOwner, obj->budgetStringBytes,
+                        retainedBytes(obj->slots[static_cast<size_t>(instr.operand)]),
+                        retainedBytes(this->regOf(frame, instr.src2))
+                    )) {
+                    this->failBudget(sandbox::SandboxBudget::Violation::TotalByteLimit, "Field value exceeds the memory budget");
+                    break;
+                }
 
                 obj->slots[static_cast<size_t>(instr.operand)] = this->regOf(frame, instr.src2);
 
@@ -229,6 +248,15 @@ namespace LOICollection::frontend::ir {
                     holdsReferences = holdsReferences || CycleCollector::holdsReference(arr->elements[i]);
                 }
 
+                std::size_t stringBytes = 0;
+                for (const auto& element : arr->elements)
+                    stringBytes += retainedBytes(element);
+
+                if (!adjustRetainedBytes(arr->budgetOwner, arr->budgetStringBytes, 0, stringBytes)) {
+                    this->failBudget(sandbox::SandboxBudget::Violation::TotalByteLimit, "Array literal exceeds the memory budget");
+                    break;
+                }
+
                 if (holdsReferences)
                     this->heap().track(arr);
 
@@ -317,6 +345,15 @@ namespace LOICollection::frontend::ir {
                 if (collectBarrier && index < static_cast<int>(arr->elements.size()))
                     previous = arr->elements[static_cast<size_t>(index)];
 
+                const std::size_t previousString = index < static_cast<int>(arr->elements.size())
+                    ? retainedBytes(arr->elements[static_cast<size_t>(index)])
+                    : 0;
+
+                if (!adjustRetainedBytes(arr->budgetOwner, arr->budgetStringBytes, previousString, retainedBytes(value))) {
+                    this->failBudget(sandbox::SandboxBudget::Violation::TotalByteLimit, "Array element exceeds the memory budget");
+                    break;
+                }
+
                 if (index == static_cast<int>(arr->elements.size())) {
                     if (static_cast<std::size_t>(index + 1) > this->mBudget->maxArrayElements) {
                         this->failBudget(sandbox::SandboxBudget::Violation::ArrayElementLimit, "Array size budget exhausted");
@@ -386,6 +423,16 @@ namespace LOICollection::frontend::ir {
                 }
 
                 func->globals = this->globals;
+
+                func->budgetOwner = this->mBudget;
+                std::size_t captureBytes = 0;
+                for (const auto& capture : func->captures)
+                    captureBytes += retainedBytes(capture);
+
+                if (!adjustRetainedBytes(func->budgetOwner, func->budgetStringBytes, 0, captureBytes)) {
+                    this->failBudget(sandbox::SandboxBudget::Violation::TotalByteLimit, "Lambda captures exceed the memory budget");
+                    break;
+                }
 
                 if (!meta.captures.empty())
                     this->heap().track(func);
@@ -470,16 +517,34 @@ namespace LOICollection::frontend::ir {
                 obj->layout = this->classLayout(chunk, instr.operand);
                 obj->resize(cls.fieldNames.size());
 
+                std::size_t defaultStringBytes = 0;
+                for (size_t i = 0; i < cls.fieldNames.size(); ++i)
+                    if (cls.hasDefault[i])
+                        defaultStringBytes += retainedBytes(cls.defaults[i]);
+
+                if (!adjustRetainedBytes(obj->budgetOwner, obj->budgetStringBytes, 0, defaultStringBytes)) {
+                    this->failBudget(sandbox::SandboxBudget::Violation::TotalByteLimit, "Field defaults exceed the memory budget");
+                    break;
+                }
+
                 for (size_t i = 0; i < cls.fieldNames.size(); ++i) {
                     if (!cls.hasDefault[i])
                         continue;
 
                     obj->slots[i] = VM::cloneValue(cls.defaults[i]);
 
-                    const auto* array = std::get_if<ArrayRef>(&obj->slots[i]);
+                    auto* array = std::get_if<ArrayRef>(&obj->slots[i]);
+                    if (array && *array && !this->adoptArray(**array)) {
+                        this->failBudget(sandbox::SandboxBudget::Violation::TotalByteLimit, "Field defaults exceed the memory budget");
+                        break;
+                    }
+
                     if (array && std::any_of((*array)->elements.begin(), (*array)->elements.end(), CycleCollector::holdsReference))
                         this->heap().track(*array);
                 }
+
+                if (this->diagnostics.hasErrors())
+                    break;
 
                 this->setReg(frame, instr.dst, obj);
 
