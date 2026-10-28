@@ -2,6 +2,7 @@
 #include <string>
 #include <utility>
 #include <exception>
+#include <stdexcept>
 #include <string_view>
 
 #include <ll/api/Expected.h>
@@ -24,12 +25,28 @@ namespace LOICollection::data::detail {
 
         return std::string(base);
     }
+
+    bool isSavepointName(std::string_view name) noexcept {
+        if (name.empty() || name.size() > 64)
+            return false;
+
+        for (char c : name) {
+            bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+                   || (c >= '0' && c <= '9') || c == '_';
+
+            if (!ok)
+                return false;
+        }
+
+        return true;
+    }
 }
 
 using namespace LOICollection::data::detail;
 
-StorageTransaction::StorageTransaction(std::shared_ptr<SQLiteConnection> conn, observer<ConnectionPool> pool)
-        : mConnection(std::move(conn)), mPool(pool) {
+StorageTransaction::StorageTransaction(
+    std::shared_ptr<SQLiteConnection> conn, observer<ConnectionPool> pool, bool ownsWrite
+) : mConnection(std::move(conn)), mPool(pool), mOwnsWrite(ownsWrite) {
     mTransaction = std::make_unique<SQLite::Transaction>(this->mConnection->database());
     if (this->mPool)
         this->mPool->bindTransaction(this->mConnection.get());
@@ -37,6 +54,9 @@ StorageTransaction::StorageTransaction(std::shared_ptr<SQLiteConnection> conn, o
 
 StorageTransaction::StorageTransaction(std::shared_ptr<SQLiteConnection> conn, observer<ConnectionPool> pool, std::string savepoint)
         : mConnection(std::move(conn)), mPool(pool), mNested(true), mSavepoint(std::move(savepoint)) {
+    if (!isSavepointName(this->mSavepoint))
+        throw std::invalid_argument("invalid savepoint name");
+
     this->mConnection->database().exec("SAVEPOINT " + this->mSavepoint);
 }
 
@@ -44,10 +64,12 @@ StorageTransaction::StorageTransaction(StorageTransaction&& other) noexcept
     : mConnection(std::move(other.mConnection)),
       mTransaction(std::move(other.mTransaction)),
       mPool(other.mPool),
+      mOwnsWrite(other.mOwnsWrite),
       mNested(other.mNested),
       mSavepoint(std::move(other.mSavepoint)) {
     other.mConnection.reset();
     other.mPool = nullptr;
+    other.mOwnsWrite = false;
     other.mNested = false;
     other.mSavepoint.clear();
 }
@@ -61,6 +83,7 @@ void StorageTransaction::finish() {
     if (this->mNested) {
         this->mConnection.reset();
         this->mPool = nullptr;
+        this->mOwnsWrite = false;
         return;
     }
 
@@ -68,11 +91,13 @@ void StorageTransaction::finish() {
         if (this->mPool) {
             this->mPool->unbindTransaction(conn.get());
             this->mPool->release(std::move(conn));
-            this->mPool->releaseWrite();
+            if (this->mOwnsWrite)
+                this->mPool->releaseWrite();
         }
 
         this->mConnection.reset();
         this->mPool = nullptr;
+        this->mOwnsWrite = false;
     }
 }
 
@@ -84,7 +109,7 @@ ll::Expected<bool> StorageTransaction::commit() {
         if (this->mPool && this->mPool->activeTransaction() != this->mConnection.get()) {
             this->mSavepoint.clear();
             this->finish();
-            return true;
+            return ll::makeStringError("savepoint is no longer owned by an open transaction");
         }
 
         if (!this->mSavepoint.empty()) {

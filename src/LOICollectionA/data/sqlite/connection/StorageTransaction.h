@@ -17,7 +17,9 @@ namespace SQLite {
 
 class StorageTransaction {
 public:
-    LOICOLLECTION_A_API explicit StorageTransaction(std::shared_ptr<SQLiteConnection> conn, observer<ConnectionPool> pool);
+    LOICOLLECTION_A_API explicit StorageTransaction(
+        std::shared_ptr<SQLiteConnection> conn, observer<ConnectionPool> pool, bool ownsWrite = false
+    );
 
     LOICOLLECTION_A_API StorageTransaction(
         std::shared_ptr<SQLiteConnection> conn, observer<ConnectionPool> pool, std::string savepoint
@@ -44,6 +46,7 @@ private:
 
     observer<ConnectionPool> mPool = nullptr;
 
+    bool mOwnsWrite = false;
     bool mNested = false;
     std::string mSavepoint;
 };

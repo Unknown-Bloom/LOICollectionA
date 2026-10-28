@@ -201,6 +201,8 @@ private:
 
     bool mayCache() const noexcept;
 
+    void invalidateAll();
+
     std::shared_ptr<ConnectionPool> mPool;
     LRUCache<BlockId, BlockRecord> mBlockCache{2048};
     LRUKCache<std::string, BlockId> mNameCache{2048, 512, 2};

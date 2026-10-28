@@ -1,8 +1,10 @@
 #include <array>
 #include <chrono>
 #include <ranges>
+#include <span>
 #include <string>
 #include <utility>
+#include <algorithm>
 #include <exception>
 #include <string_view>
 
@@ -18,20 +20,40 @@
 #include "LOICollectionA/base/Ownership.h"
 
 namespace LOICollection::data::detail {
-    constexpr auto kPragmas = std::to_array<std::string_view>({
+    constexpr auto kCommonPragmas = std::to_array<std::string_view>({
         "PRAGMA busy_timeout = 5000;",
-        "PRAGMA journal_mode = WAL;",
         "PRAGMA synchronous = NORMAL;",
         "PRAGMA temp_store = MEMORY;",
         "PRAGMA cache_size = 8096;",
     });
+
+    constexpr auto kWritePragmas = std::to_array<std::string_view>({
+        "PRAGMA journal_mode = WAL;",
+    });
+
+    ll::Expected<void> applyPragmaList(SQLite::Database& db, std::span<const std::string_view> list) {
+        for (const auto& pragma : list) {
+            const int rc = db.tryExec(std::string(pragma));
+            if (rc != SQLite::OK) {
+                return ll::makeStringError(
+                    "PRAGMA '" + std::string(pragma) + "' failed: " + db.getErrorMsg()
+                );
+            }
+        }
+
+        return {};
+    }
 }
 
 using namespace LOICollection::data::detail;
 
 SQLiteConnection::SQLiteConnection(std::string path, bool readOnly)
     : mDatabase(std::make_unique<SQLite::Database>(path.c_str(),
-          readOnly ? SQLite::OPEN_READONLY : SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE)) {
+          readOnly ? SQLite::OPEN_READONLY : SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE)),
+      mReadOnly(readOnly) {
+    sqlite3_db_config(this->database().getHandle(), SQLITE_DBCONFIG_DEFENSIVE, 1, nullptr);
+    sqlite3_db_config(this->database().getHandle(), SQLITE_DBCONFIG_TRUSTED_SCHEMA, 0, nullptr);
+
     mStatements = std::make_unique<PreparedStatements>(this->database());
 }
 SQLiteConnection::~SQLiteConnection() = default;
@@ -48,24 +70,22 @@ ll::Expected<std::shared_ptr<SQLiteConnection>> SQLiteConnection::create(
         return ll::makeStringError("open database '" + path + "' failed: unknown error");
     }
 
-    if (!readOnly) {
-        auto pragmas = conn->applyPragmas();
-        if (!pragmas)
-            return ll::makeStringError(pragmas.error().message());
-    }
+    auto pragmas = conn->applyPragmas();
+    if (!pragmas)
+        return ll::makeStringError(pragmas.error().message());
 
     return conn;
 }
 
 ll::Expected<void> SQLiteConnection::applyPragmas() {
-    for (const auto& pragma : kPragmas) {
-        const int rc = this->mDatabase->tryExec(std::string(pragma));
-        if (rc != SQLite::OK) {
-            return ll::makeStringError(
-                "PRAGMA '" + std::string(pragma) + "' failed: " + this->mDatabase->getErrorMsg()
-            );
-        }
-    }
+    if (auto common = applyPragmaList(this->database(), kCommonPragmas); !common.has_value())
+        return ll::forwardError(common.error());
+
+    if (this->mReadOnly)
+        return {};
+
+    if (auto write = applyPragmaList(this->database(), kWritePragmas); !write.has_value())
+        return ll::forwardError(write.error());
 
     return {};
 }
@@ -96,7 +116,7 @@ ll::Expected<std::shared_ptr<SQLiteConnection>> ConnectionPool::acquire(int time
     while (true) {
         if (!this->mAvailable.empty()) {
             auto conn = this->mAvailable.front();
-            this->mAvailable.pop();
+            this->mAvailable.pop_front();
             return conn;
         }
 
@@ -141,6 +161,10 @@ void ConnectionPool::release(std::shared_ptr<SQLiteConnection> conn) {
         std::unique_lock lock(this->mMutex);
         if (this->mInTxn.contains(conn.get()))
             return;
+
+        if (std::ranges::find(this->mAvailable, conn.get(), &std::shared_ptr<SQLiteConnection>::get)
+            != this->mAvailable.end())
+            return;
     }
 
     if (!sqlite3_get_autocommit(conn->database().getHandle()))
@@ -148,7 +172,11 @@ void ConnectionPool::release(std::shared_ptr<SQLiteConnection> conn) {
 
     {
         std::unique_lock lock(this->mMutex);
-        this->mAvailable.push(std::move(conn));
+        if (std::ranges::find(this->mAvailable, conn.get(), &std::shared_ptr<SQLiteConnection>::get)
+            != this->mAvailable.end())
+            return;
+
+        this->mAvailable.push_back(std::move(conn));
     }
 
     this->mCond.notify_one();

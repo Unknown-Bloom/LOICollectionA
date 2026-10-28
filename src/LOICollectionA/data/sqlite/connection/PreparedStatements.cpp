@@ -11,6 +11,8 @@
 namespace LOICollection::data::detail {
     using StatementSpec = std::pair<std::string_view, std::string_view>;
 
+    constexpr std::size_t kMaxDynamicStatements = 1024;
+
     constexpr auto kCatalog = std::to_array<StatementSpec>({
         { "insertBlock",
             "INSERT INTO block(parent,name,kind,state,payload,created,updated) VALUES(?,?,?,?,?,?,?)" },
@@ -87,24 +89,11 @@ PreparedStatements::~PreparedStatements() = default;
 
 observer<SQLite::Statement> PreparedStatements::ensure(std::string_view name, std::string_view sql) noexcept {
     auto it = mStatements.find(name);
-    if (it != mStatements.end()) {
-        if (it->second.sql == sql)
-            return it->second.statement.get();
+    if (it != mStatements.end())
+        return it->second.sql == sql ? it->second.statement.get() : nullptr;
 
-        std::unique_ptr<SQLite::Statement> stmt;
-
-        try {
-            stmt = std::make_unique<SQLite::Statement>(mDb, std::string(sql));
-        } catch (...) {
-            return nullptr;
-        }
-
-        auto* ref = stmt.get();
-        it->second.statement = std::move(stmt);
-        it->second.sql.assign(sql);
-
-        return ref;
-    }
+    if (mStatements.size() >= kMaxDynamicStatements)
+        return nullptr;
 
     std::unique_ptr<SQLite::Statement> stmt;
     try {
@@ -114,7 +103,13 @@ observer<SQLite::Statement> PreparedStatements::ensure(std::string_view name, st
     }
 
     auto* ref = stmt.get();
-    mStatements.emplace(std::string(name), Entry{std::move(stmt), std::string(sql)});
+
+    try {
+        mStatements.emplace(std::string(name), Entry{std::move(stmt), std::string(sql)});
+    } catch (...) {
+        return nullptr;
+    }
+
     return ref;
 }
 
@@ -134,7 +129,13 @@ observer<SQLite::Statement> PreparedStatements::get(std::string_view name) noexc
         }
 
         auto* ref = stmt.get();
-        mCatalog.emplace(n, Entry{std::move(stmt), std::string(sql)});
+
+        try {
+            mCatalog.emplace(n, Entry{std::move(stmt), std::string(sql)});
+        } catch (...) {
+            return nullptr;
+        }
+
         return ref;
     }
 

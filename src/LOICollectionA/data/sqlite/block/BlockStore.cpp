@@ -1,4 +1,5 @@
 #include <string>
+#include <limits>
 #include <utility>
 #include <optional>
 #include <algorithm>
@@ -21,11 +22,17 @@
 #include "LOICollectionA/data/sqlite/block/BlockStore.h"
 
 namespace LOICollection::data::detail {
-    void bindPayload(SQLite::Statement& stmt, int index, std::string_view payload) {
-        if (payload.empty())
+    bool bindPayload(SQLite::Statement& stmt, int index, std::string_view payload) {
+        if (payload.empty()) {
             stmt.bind(index);
-        else
-            stmt.bind(index, payload.data(), static_cast<int>(payload.size()));
+            return true;
+        }
+
+        if (payload.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+            return false;
+
+        stmt.bind(index, payload.data(), static_cast<int>(payload.size()));
+        return true;
     }
 
     std::int64_t liveLimit(size_t limit) {
@@ -409,7 +416,9 @@ ll::Expected<void> BlockStore::implCreateBlock(
     stmt->bind(3, kind);
     stmt->bind(4, static_cast<std::int64_t>(BlockLifecycle::Active));
 
-    bindPayload(*stmt, 5, payload);
+    if (!bindPayload(*stmt, 5, payload))
+        return ll::makeStringError("block payload exceeds the maximum size");
+
     const std::int64_t ts = SystemUtils::getEpochMilliseconds();
     stmt->bind(6, ts);
     stmt->bind(7, ts);
@@ -461,7 +470,8 @@ ll::Expected<BlockId> BlockStore::implUpsertRow(
     stmt->bind(3, kTypedRowKind);
     stmt->bind(4, static_cast<std::int64_t>(BlockLifecycle::Active));
 
-    bindPayload(*stmt, 5, payload);
+    if (!bindPayload(*stmt, 5, payload))
+        return ll::makeStringError("block payload exceeds the maximum size");
 
     const std::int64_t ts = SystemUtils::getEpochMilliseconds();
     stmt->bind(6, ts);
@@ -473,7 +483,8 @@ ll::Expected<BlockId> BlockStore::implUpsertRow(
     BlockId id = static_cast<BlockId>(stmt->getColumn(0).getInt64());
     stmt->reset();
 
-    mBlockCache.erase(id);
+    if (this->mayCache())
+        mBlockCache.erase(id);
 
     return id;
 }
@@ -678,7 +689,8 @@ ll::Expected<void> BlockStore::implSetPayload(SQLiteConnection& conn, BlockId id
         return prepareError("setPayload");
     stmt->reset();
 
-    bindPayload(*stmt, 1, payload);
+    if (!bindPayload(*stmt, 1, payload))
+        return ll::makeStringError("block payload exceeds the maximum size");
 
     stmt->bind(2, SystemUtils::getEpochMilliseconds());
     stmt->bind(3, id);
@@ -690,7 +702,9 @@ ll::Expected<void> BlockStore::implSetPayload(SQLiteConnection& conn, BlockId id
     if (stmt->getChanges() == 0)
         return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound));
 
-    mBlockCache.erase(id);
+    if (this->mayCache())
+        mBlockCache.erase(id);
+
     return {};
 }
 
@@ -726,7 +740,9 @@ ll::Expected<void> BlockStore::implControl(SQLiteConnection& conn, BlockId id, B
     if (stmt->getChanges() == 0)
         return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound));
 
-    mBlockCache.erase(id);
+    if (this->mayCache())
+        mBlockCache.erase(id);
+
     return {};
 }
 
@@ -976,7 +992,9 @@ ll::Expected<void> BlockStore::implSetProp(
     if (stmt->getChanges() == 0)
         return ll::makeErrorCodeError(BlockError::makeErrorCode(BlockError::BlockErrorCode::NotFound));
 
-    mBlockCache.erase(id);
+    if (this->mayCache())
+        mBlockCache.erase(id);
+
     return {};
 }
 
@@ -1081,24 +1099,11 @@ ll::Expected<std::vector<std::pair<BlockId, std::string>>> BlockStore::queryText
 
     std::size_t const n = conds.size();
 
-    std::string sql = "SELECT b.id, b.name FROM prop p0";
-    for (std::size_t i = 1; i < n; ++i) {
-        sql += " CROSS JOIN prop p";
-        sql += std::to_string(i);
-        sql += " ON p";
-        sql += std::to_string(i);
-        sql += ".block_id=p0.block_id";
-    }
-    sql += " CROSS JOIN block b ON b.id=p0.block_id";
-    sql += " WHERE p0.key=? AND p0.tval=?";
-    for (std::size_t i = 1; i < n; ++i) {
-        sql += " AND p";
-        sql += std::to_string(i);
-        sql += ".key=? AND p";
-        sql += std::to_string(i);
-        sql += ".tval=?";
-    }
-    sql += " AND b.parent=? AND b.state < 8";
+    std::string sql = "SELECT b.id, b.name FROM block b WHERE b.parent=? AND b.state < 8";
+
+    for (std::size_t i = 0; i < n; ++i)
+        sql += " AND EXISTS(SELECT 1 FROM prop p WHERE p.block_id=b.id AND p.key=? AND p.tval=?)";
+
     sql += " ORDER BY b.id LIMIT ?";
 
     auto stmt = (*guard).statements().ensure("queryTextNamesAll" + std::to_string(n), sql);
@@ -1108,11 +1113,11 @@ ll::Expected<std::vector<std::pair<BlockId, std::string>>> BlockStore::queryText
     stmt->reset();
 
     int idx = 1;
+    stmt->bind(idx++, static_cast<std::int64_t>(parent));
     for (auto const& c : conds) {
         stmt->bind(idx++, static_cast<int>(c.key));
         stmt->bind(idx++, c.value);
     }
-    stmt->bind(idx++, static_cast<std::int64_t>(parent));
     stmt->bind(idx++, liveLimit(limit));
 
     std::vector<std::pair<BlockId, std::string>> out;
@@ -1190,6 +1195,9 @@ ll::Expected<void> BlockStore::exec(std::string_view sql) {
     if (rc != SQLITE_OK)
         return sqlError(*guard);
 
+    if (this->mayCache())
+        this->invalidateAll();
+
     return {};
 }
 
@@ -1223,8 +1231,7 @@ ll::Expected<void> BlockStore::controlChildren(BlockId parent, BlockLifecycle to
     if (!changed.has_value())
         return ll::forwardError(changed.error());
 
-    mBlockCache.clear();
-    mNameCache.clear();
+    this->invalidateAll();
 
     return {};
 }
@@ -1457,6 +1464,11 @@ ll::Expected<std::int32_t> BlockStore::resolveKey(SQLiteConnection& conn, std::s
 
 bool BlockStore::mayCache() const noexcept {
     return !mPool->activeTransaction();
+}
+
+void BlockStore::invalidateAll() {
+    mBlockCache.clear();
+    mNameCache.clear();
 }
 
 ll::Expected<std::optional<std::string>> BlockStore::metaGet(std::string_view key) {

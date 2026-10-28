@@ -1,7 +1,7 @@
 #pragma once
 
 #include <mutex>
-#include <queue>
+#include <deque>
 #include <memory>
 #include <string>
 #include <vector>
@@ -35,6 +35,8 @@ private:
 
     std::unique_ptr<SQLite::Database> mDatabase;
     std::unique_ptr<PreparedStatements> mStatements;
+
+    bool mReadOnly = false;
 };
 
 class ConnectionPool {
@@ -76,7 +78,7 @@ private:
     std::size_t mOpen = 0;
     
     std::vector<std::shared_ptr<SQLiteConnection>> mAll;
-    std::queue<std::shared_ptr<SQLiteConnection>> mAvailable;
+    std::deque<std::shared_ptr<SQLiteConnection>> mAvailable;
     std::unordered_set<SQLiteConnection*> mInTxn;
 
     static thread_local std::vector<std::pair<observer<ConnectionPool const>, observer<SQLiteConnection>>> sActiveTxns;

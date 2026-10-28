@@ -42,15 +42,27 @@ ll::Expected<std::unique_ptr<WriteBatch>> WriteBatch::begin(BlockStore& store) {
         return ll::makeStringError(conn.error().message());
     }
 
+    std::unique_ptr<WriteBatch> batch;
+
+    try {
+        batch = std::unique_ptr<WriteBatch>(new WriteBatch(store, nullptr));
+    } catch (...) {
+        pool->releaseWrite();
+        store.release(std::move(*conn));
+        return ll::makeStringError("write batch allocation failed");
+    }
+
     auto held = *conn;
     try {
-        auto txn = std::make_unique<StorageTransaction>(std::move(*conn), pool);
-        return std::unique_ptr<WriteBatch>(new WriteBatch(store, std::move(txn)));
+        batch->mTxn = std::make_unique<StorageTransaction>(std::move(*conn), pool, true);
     } catch (...) {
+        pool->unbindTransaction(held.get());
         pool->releaseWrite();
         store.release(std::move(held));
         return ll::makeStringError("begin transaction failed");
     }
+
+    return batch;
 }
 
 WriteBatch::WriteBatch(BlockStore& store, std::unique_ptr<StorageTransaction> txn) : mStore(&store), mTxn(std::move(txn)) {}
@@ -204,9 +216,14 @@ ll::Expected<bool> WriteBatch::commit() {
     if (mFinished)
         return ll::makeStringError("write batch already finished");
 
+    if (!mTxn)
+        return ll::makeStringError("write batch has no transaction");
+
+    mFinished = true;
+
     auto ok = mTxn->commit();
     if (ok.has_value())
-        mFinished = true;
+        mStore->invalidateAll();
 
     return ok;
 }
@@ -215,9 +232,14 @@ ll::Expected<bool> WriteBatch::rollback() {
     if (mFinished)
         return ll::makeStringError("write batch already finished");
 
+    if (!mTxn)
+        return ll::makeStringError("write batch has no transaction");
+
+    mFinished = true;
+
     auto ok = mTxn->rollback();
     if (ok.has_value())
-        mFinished = true;
+        mStore->invalidateAll();
 
     return ok;
 }

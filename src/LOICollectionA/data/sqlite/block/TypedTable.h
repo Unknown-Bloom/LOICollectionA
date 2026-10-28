@@ -776,27 +776,23 @@ namespace LOICollection::data {
 
             std::unordered_map<BlockId, RowCells> oldSide;
             {
-                std::vector<std::string> oldCols;
+                std::size_t columns = 0;
                 auto info = mRepo.store().withQuery(
                     "sideInfo:" + mSide, "PRAGMA table_info(\"" + mSide + "\")",
                     std::span<const BlockProp>(),
-                    [&](SQLite::Statement& stmt) { oldCols.emplace_back(columnToString(stmt.getColumn(1))); }
+                    [&](SQLite::Statement&) { ++columns; }
                 );
 
                 if (!info.has_value())
                     return ll::makeStringError(info.error().message());
 
-                if (oldCols.size() > 1) {
-                    std::string sel = "SELECT \"id\"";
-                    for (std::size_t j = 1; j < oldCols.size(); ++j)
-                        sel += ",\"" + oldCols[j] + "\"";
-                    sel += " FROM \"" + mSide + "\"";
+                if (columns > 1) {
                     auto snap = mRepo.store().withQuery(
-                        "sideSnap:" + mSide, sel, std::span<const BlockProp>(),
+                        "sideSnap:" + mSide, "SELECT * FROM \"" + mSide + "\"", std::span<const BlockProp>(),
                         [&](SQLite::Statement& stmt) {
                             BlockId id = stmt.getColumn(0).getInt64();
                             RowCells cells;
-                            for (std::size_t j = 1; j < oldCols.size(); ++j) {
+                            for (std::size_t j = 1; j < columns; ++j) {
                                 auto k = static_cast<PropKey>(j - 1);
                                 BlockProp p;
                                 p.key = k;
@@ -813,17 +809,17 @@ namespace LOICollection::data {
                 }
             }
 
-            auto dropped = mRepo.store().exec("DROP TABLE IF EXISTS \"" + mSide + "\"");
-            if (!dropped.has_value())
-                return ll::makeStringError(dropped.error().message());
-
-            auto made = mRepo.store().exec(sideDdl());
-            if (!made.has_value())
-                return ll::makeStringError(made.error().message());
-
             auto b = WriteBatch::begin(mRepo.store());
             if (!b.has_value())
                 return ll::makeStringError(b.error().message());
+
+            auto dropped = (*b)->exec("DROP TABLE IF EXISTS \"" + mSide + "\"");
+            if (!dropped.has_value())
+                return ll::makeStringError(dropped.error().message());
+
+            auto made = (*b)->exec(sideDdl());
+            if (!made.has_value())
+                return ll::makeStringError(made.error().message());
 
             std::string insert = "INSERT OR REPLACE INTO \"" + mSide + "\"(id";
             for (std::size_t i = 0; i < N; ++i)
@@ -881,13 +877,13 @@ namespace LOICollection::data {
                     return ll::makeStringError(r.error().message());
             }
 
-            auto c = (*b)->commit();
-            if (!c.has_value())
-                return ll::makeStringError(c.error().message());
-
             auto w = mRepo.metaSet("sidecol:" + mName, want);
             if (!w.has_value())
                 return ll::makeStringError(w.error().message());
+
+            auto c = (*b)->commit();
+            if (!c.has_value())
+                return ll::makeStringError(c.error().message());
 
             return {};
         }
