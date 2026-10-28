@@ -1,7 +1,7 @@
 # SQLite 层使用教程
 
 > [!NOTE]
-> 本文基于 LOICollectionA 1.17.0 的数据层代码（`src/LOICollectionA/data/sqlite/`），后续版本可能调整。示例沿用项目既有的块存储（BlockStore）与类型化表（TypedTable）约定，可直接照搬到模块开发中。
+> 本文基于 LOICollectionA 1.17.3 的数据层代码（`src/LOICollectionA/data/sqlite/`），后续版本可能调整。示例沿用项目既有的块存储（BlockStore）与类型化表（TypedTable）约定，可直接照搬到模块开发中。
 
 数据层是 LOICollectionA 全部持久化的底座。它在 SQLite 之上做了一层**块存储抽象**，再用模板把列名提升到**编译期**，让业务代码以类型安全的方式读写，而不必手写 SQL、也不必担心 schema 漂移。
 
@@ -36,7 +36,7 @@ ConnectionPool               # SQLite 连接池（WAL 模式）
 
 | 层 | 位置 | 职责 |
 | --- | --- | --- |
-| `ConnectionPool` | `data/sqlite/connection/` | SQLite 连接管理：`journal_mode=WAL` + `synchronous=NORMAL` + `temp_store=MEMORY` + `cache_size=8096` + `busy_timeout=5000` |
+| `ConnectionPool` | `data/sqlite/connection/` | SQLite 连接管理：`journal_mode=WAL` + `synchronous=NORMAL` + `temp_store=MEMORY` + `cache_size=8096` + `busy_timeout=5000`；连接以 `SQLITE_DBCONFIG_DEFENSIVE` 打开并关闭 `trusted_schema`，只读连接同样应用公共 PRAGMA（但不切 WAL） |
 | `BlockStore` | `data/sqlite/block/` | 把数据拆成可寻址的"块"，按 key 增量读写，五张系统表：`dict` / `block` / `prop` / `link` / `meta` |
 | `WriteBatch` | 同上 | 一批修改在一次 `commit()` 中原子落盘，失败 `rollback()` |
 | `BlockRepository` | 同上 | 对外只剩：`open` / `fromStore` / `store()` / `metaGet\|Set\|Del` / `exec` |
@@ -115,6 +115,8 @@ namespace LOICollection::data {
 
 业务不直接使用。每个库以 `WAL` 模式打开，`busy_timeout=5s` 让并发写自动等待而非立即失败。库文件是 `plugins/LOICollectionA/data/*.db`。
 
+每条连接内的预处理语句按名字缓存（上限 1024 条）：同一个名字不会被另一条 SQL 悄悄顶掉——SQL 对不上时 `ensure()` 直接返回空，调用方据此报准备失败。内部新增动态 SQL 时，请为每种 SQL 文本分配独立的名字。
+
 ### 4.2 BlockRepository（门面）
 
 ```cpp
@@ -171,10 +173,13 @@ if (!ok) { tx.rollback(); /* ... */ }
 | `append(parent, kind, name, payload)` | 追加子块，返回 `BlockId` |
 | `setProp(id, key, ...)` | 设置节点属性（三种重载：整型 / 浮点 / 文本） |
 | `control(id, lifecycle)` | 改变节点状态（如 `Deleted` 软删除） |
-| `commit()` / `rollback()` | 提交（返回 `Expected<bool>`）/ 回滚 |
+| `commit()` / `rollback()` | 提交（返回 `Expected<bool>`）/ 回滚；两者都会结束 batch |
 
 > [!WARNING]
 > `WriteBatch` **不可拷贝、不可移动**。它持有 `StorageTransaction`，只能以 `unique_ptr` 在作用域内使用。业务代码通常不需要直接创建它——`TypedTable` 的 `tx()` 已经替你包好了一层 `Batch`。
+
+> [!NOTE]
+> `commit()` / `rollback()` 各自只能生效一次，调用后 batch 立即结束，再写会返回 `write batch already finished`。若 `commit()` 是在提交事务这一步失败，连接与写锁已经归还、未提交内容已被回滚，此时再调 `rollback()` 只会拿到同一个"已结束"错误，属正常兜底；若失败发生在更早的写入步骤，batch 仍然打开，`rollback()` 才是真正需要的收尾。
 
 ### 4.4 TypedTable（业务入口）
 
@@ -312,12 +317,12 @@ auto justSet = b.get<std::string>(uuid, XxxCol::name, "");
 
 auto ok = b.commit();                 // 一次原子提交
 if (!ok) {
-    b.rollback();                     // 失败回滚
+    b.rollback();                     // 失败回滚（batch 已结束时返回 "已结束"，可忽略）
     return ll::makeStringError(ok.error().message());
 }
 ```
 
-`Batch` 支持 `set` / `get` / `has` / `del` / `commit` / `rollback`；`get` 优先读本事务的待提交缓冲，再回退到已落盘数据。
+`Batch` 支持 `set` / `get` / `has` / `del` / `commit` / `rollback`；`get` 优先读本事务的待提交缓冲，再回退到已落盘数据。`commit` / `rollback` 调用后 batch 即结束（见 4.3）。
 
 ## 9. 事务、DDL 与并发（重要）
 
@@ -355,7 +360,7 @@ repo->exec("DROP TABLE IF EXISTS t");   // 第二条连接 → 撞上本事务�
 ```
 
 > [!TIP]
-> 项目里 `TypedTable::ensureSide`、`ensureColumnIndex` 与 `BlockRepository` 的初始化都遵循这一约定：DDL 与 DML 分属两条路径，各自只用自己那条连接，互不交叉。**你自己的代码也请照此办理**。
+> 项目里 `TypedTable::ensureSide` 的重建（`DROP TABLE` / `CREATE TABLE` / 回填 / 写 side 指纹）整体放进同一个 `WriteBatch`：DDL 与 DML 共用一条连接、一次提交；`ensureColumnIndex` 与 `BlockRepository` 的初始化则走自动提交路径，只在没有事务时执行。两条路径各自只用自己那条连接，互不交叉。**你自己的代码也请照此办理**。
 >
 > `repo->exec("VACUUM;")`（在 `unregistry` 里回收空间）必须在没有打开事务的时候调用。
 
@@ -380,7 +385,7 @@ auto inner = WriteBatch::begin(repo->store());  // 同一线程已有活跃事�
 - 嵌套发生的前提是"同一线程已持有活跃事务"（活动事务是 `thread_local`，所以**不会**跨线程嵌套）。嵌套 batch 复用外层事务的连接与写锁，**不会**再申请写锁，因此不会与 9.1 的写串行化死锁。
 - 活动事务是**按池记录**的（每池一个栈），不是全局单槽：同一线程可同时持有两个不同库（如 `market.db` 与 `settings.db`）的事务而互不干扰——在一个池上开事务不会让另一个池的连接亲和（I1）或缓存门控（I3）失效。
 - 嵌套 batch 的 `commit()` 执行 `RELEASE SAVEPOINT`，`rollback()` 执行 `ROLLBACK TO SAVEPOINT`；两者都**不**结束外层事务。
-- 若外层事务在嵌套 batch 结束前被提前结束（连接已释放），该 savepoint 随之失效，嵌套 batch 再 `commit`/`rollback` 会安全跳过，不会凭空操作一条已不属于它的连接。
+- 若外层事务在嵌套 batch 结束前被提前结束（连接已释放），该 savepoint 随之失效：嵌套 batch 再 `commit()` 会返回 `savepoint is no longer owned by an open transaction`，而不是假装成功；`rollback()` 则静默跳过。两者都不会凭空操作一条已不属于它的连接。
 
 > [!TIP]
 > 事务内的读取会返回当前线程持有的事务连接（`activeTransaction()`），所以嵌套与外层始终共享同一条连接——这正是 SAVEPOINT 能生效的前提。不要在事务内用 `repo->exec()` 另开连接（见 9.2）。
@@ -392,6 +397,7 @@ auto inner = WriteBatch::begin(repo->store());  // 同一线程已有活跃事�
 - `mayCache()` 在**当前线程持有活跃事务**时为 `false`。因此事务内的读走事务自己的连接（能看到本事务的未提交写入），但**不会**回填进程缓存。
 - 事务**提交**后，线程不再持有事务，后续读正常回填缓存（此时数据已是持久化快照）。
 - 事务**回滚**后，未提交的写入**从未进入过缓存**，自然不会留下幽灵行。
+- 写路径同样只碰已提交状态：`WriteBatch` 的 `commit()` / `rollback()` 成功后，以及 `exec()` 执行成功后，都会清空 `mBlockCache` / `mNameCache`。因此批次写入或你直接 `exec` 改表都不会留下陈旧条目，之后的读会重新回填当前值。
 
 > [!IMPORTANT]
 > 代价：持有写事务的那个线程，在事务存续期间不享受缓存加速（每次读都直接走库）。这是用一点性能换取"进程缓存永不含未提交数据"的正确性。若你的代码在事务内反复读同一行，请把该读移出事务，或容忍这次未命中。
@@ -417,7 +423,7 @@ auto inner = WriteBatch::begin(repo->store());  // 同一线程已有活跃事�
 
 ## 11. 性能与最佳实践
 
-- **批量写用 `tx()`**：避免每行/每列一次事务提交。
+- **批量写用 `tx()`**：避免每行/每列一次事务提交；每次提交成功都会清空进程缓存，逐条提交的循环等于每写一行就丢一次缓存，写多读少时尤其明显。
 - **数值字段声明成 `long long` / `double`**：落 `INTEGER`/`REAL`，比 `TEXT` 更小、可比较、可建索引。
 - **被查询的列保持可索引**：默认全列索引；只在 `find` 里用到的列会自动建索引并缓存，无需手管。
 - **rowKey 用稳定标识**（玩家 uuid / xuid），不要用会变的名字作主键。
@@ -440,6 +446,14 @@ auto inner = WriteBatch::begin(repo->store());  // 同一线程已有活跃事�
 | 8 | `DuplicateName` | 父节点下重名 | 同一 rowKey 重复 upsert（一般用 upsert 不会出现） |
 | 9 | `InvalidState` | 块状态非法 | 对已删除块做非法操作 |
 | 10 | `SchemaMismatch` | 表结构版本/列不匹配 | 版本号或类型名与存量 `schema:<表名>` 不一致；切勿手改表结构 |
+
+除上表的 `BlockError` 错误码外，还有一类以字符串返回的校验错误，日志里同样是 `BlockError: <message>` 形式，例如：
+
+| 消息 | 含义 |
+| --- | --- |
+| `block payload exceeds the maximum size` | payload 超过 SQLite 单列上限（`INT_MAX` 字节），写块被拒绝 |
+| `write batch already finished` | 对同一个 `WriteBatch` 重复 `commit` / `rollback`，或提交后再写 |
+| `savepoint is no longer owned by an open transaction` | 嵌套 batch 的外层事务已结束（见 9.4） |
 
 ## 13. 完整示例（一个模块）
 

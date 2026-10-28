@@ -1,7 +1,7 @@
 # SQLite Layer Tutorial
 
 > [!NOTE]
-> This article is based on the LOICollectionA 1.17.0 data layer (`src/LOICollectionA/data/sqlite/`). Later versions may differ. The examples follow the project's existing block-storage (BlockStore) and typed-table (TypedTable) conventions and can be dropped straight into module development.
+> This article is based on the LOICollectionA 1.17.3 data layer (`src/LOICollectionA/data/sqlite/`). Later versions may differ. The examples follow the project's existing block-storage (BlockStore) and typed-table (TypedTable) conventions and can be dropped straight into module development.
 
 The data layer is the foundation of all persistence in LOICollectionA. It adds a **block-storage abstraction** on top of SQLite, then lifts column names to **compile time** with templates, so business code reads and writes in a type-safe way—without hand-writing SQL or worrying about schema drift.
 
@@ -36,7 +36,7 @@ ConnectionPool               # SQLite connection pool (WAL mode)
 
 | Layer | Location | Responsibility |
 | --- | --- | --- |
-| `ConnectionPool` | `data/sqlite/connection/` | SQLite connection management: `journal_mode=WAL` + `synchronous=NORMAL` + `temp_store=MEMORY` + `cache_size=8096` + `busy_timeout=5000` |
+| `ConnectionPool` | `data/sqlite/connection/` | SQLite connection management: `journal_mode=WAL` + `synchronous=NORMAL` + `temp_store=MEMORY` + `cache_size=8096` + `busy_timeout=5000`; connections open with `SQLITE_DBCONFIG_DEFENSIVE` and `trusted_schema` off, and read-only connections still get the common pragmas (but not WAL) |
 | `BlockStore` | `data/sqlite/block/` | Splits data into addressable "blocks", reads/writes by key; five system tables: `dict` / `block` / `prop` / `link` / `meta` |
 | `WriteBatch` | same | Flushes a batch of changes atomically in one `commit()`; `rollback()` on failure |
 | `BlockRepository` | same | Public surface is only: `open` / `fromStore` / `store()` / `metaGet\|Set\|Del` / `exec` |
@@ -115,6 +115,8 @@ The version number is your manual upgrade knob: when the structure changes, bump
 
 Not used directly by business code. Each database is opened in `WAL` mode with `busy_timeout=5s` so concurrent writes wait instead of failing immediately. Database files live at `plugins/LOICollectionA/data/*.db`.
 
+Prepared statements are cached per connection by name (up to 1024 entries): a name is never silently taken over by different SQL—when the SQL doesn't match, `ensure()` returns null and the caller reports a prepare failure. When adding dynamic SQL internally, give each distinct SQL text its own name.
+
 ### 4.2 BlockRepository (facade)
 
 ```cpp
@@ -171,10 +173,13 @@ if (!ok) { tx.rollback(); /* ... */ }
 | `append(parent, kind, name, payload)` | Append a child block, return `BlockId` |
 | `setProp(id, key, ...)` | Set a node attribute (three overloads: int / double / text) |
 | `control(id, lifecycle)` | Change node state (e.g. `Deleted` soft delete) |
-| `commit()` / `rollback()` | Commit (returns `Expected<bool>`) / rollback |
+| `commit()` / `rollback()` | Commit (returns `Expected<bool>`) / rollback; either one finishes the batch |
 
 > [!WARNING]
 > `WriteBatch` is **non-copyable and non-movable**. It owns a `StorageTransaction` and may only be used as a `unique_ptr` within a scope. Business code usually does not create it directly—`TypedTable::tx()` already wraps it in a `Batch`.
+
+> [!NOTE]
+> `commit()` / `rollback()` each take effect once: the batch is finished right after the call, and further writes return `write batch already finished`. If `commit()` fails at the transaction-commit step, the connection and write lock are already returned and the uncommitted work has been rolled back—calling `rollback()` then just yields the same "already finished" error, which is a harmless backstop. If it fails at an earlier write step, the batch is still open and `rollback()` is exactly what you need.
 
 ### 4.4 TypedTable (business entry)
 
@@ -312,12 +317,12 @@ auto justSet = b.get<std::string>(uuid, XxxCol::name, "");
 
 auto ok = b.commit();                 // one atomic commit
 if (!ok) {
-    b.rollback();                     // rollback on failure
+    b.rollback();                     // rollback on failure (returns "already finished" if the batch is done; safe to ignore)
     return ll::makeStringError(ok.error().message());
 }
 ```
 
-`Batch` supports `set` / `get` / `has` / `del` / `commit` / `rollback`; `get` prefers the pending buffer, then falls back to persisted data.
+`Batch` supports `set` / `get` / `has` / `del` / `commit` / `rollback`; `get` prefers the pending buffer, then falls back to persisted data. The batch finishes as soon as `commit` / `rollback` returns (see 4.3).
 
 ## 9. Transactions, DDL, and concurrency (important)
 
@@ -355,7 +360,7 @@ repo->exec("DROP TABLE IF EXISTS t");   // second connection → hits the write 
 ```
 
 > [!TIP]
-> Within the project, `TypedTable::ensureSide`, `ensureColumnIndex`, and `BlockRepository`'s initialization all follow this rule: DDL and DML stay on their own path, each using only its own connection, never crossing. **Follow it in your own code.**
+> Within the project, `TypedTable::ensureSide` performs its rebuild (`DROP TABLE` / `CREATE TABLE` / backfill / writing the side fingerprint) entirely inside one `WriteBatch`, so DDL and DML share a single connection and a single commit; `ensureColumnIndex` and `BlockRepository`'s initialization take the autocommit path and only run while no transaction is open. Each path uses only its own connection, never crossing. **Follow it in your own code.**
 >
 > `repo->exec("VACUUM;")` (reclaiming space in `unregistry`) must be called while no transaction is open on that repository.
 
@@ -380,7 +385,7 @@ Key points:
 - Nesting only happens when "the same thread already holds an active transaction" (the active transaction is `thread_local`, so it never nests across threads). The nested batch reuses the outer transaction's connection and write lock and **does not** request the write lock again, so it can't deadlock with the pool-level serialization in 9.1.
 - The active transaction is tracked **per pool** (a stack per pool), not as a single global slot: one thread can hold open transactions on two different databases at once (e.g. `market.db` and `settings.db`) without interfering—opening a transaction on one pool never breaks another pool's connection affinity (I1) or cache guard (I3).
 - A nested batch's `commit()` runs `RELEASE SAVEPOINT` and `rollback()` runs `ROLLBACK TO SAVEPOINT`; neither ends the outer transaction.
-- If the outer transaction is ended prematurely (connection released) before the nested batch closes, that savepoint is gone too; the nested batch's later `commit`/`rollback` safely skips rather than operating on a connection it no longer owns.
+- If the outer transaction is ended prematurely (connection released) before the nested batch closes, that savepoint is gone too: the nested batch's later `commit()` returns `savepoint is no longer owned by an open transaction` instead of pretending to succeed, while `rollback()` skips silently. Neither ever operates on a connection it no longer owns.
 
 > [!TIP]
 > A read inside a transaction returns the transaction connection the current thread holds (`activeTransaction()`), so the nested and outer batches always share one connection—that is exactly what makes SAVEPOINT work. Don't open a second connection with `repo->exec()` inside a transaction (see 9.2).
@@ -392,6 +397,7 @@ Key points:
 - `mayCache()` is `false` while the **current thread holds an active transaction**. So a read inside a transaction goes through the transaction's own connection (it sees the transaction's own uncommitted writes) but does **not** back-fill the process cache.
 - After the transaction **commits**, the thread no longer holds a transaction, and subsequent reads populate the cache normally (the data is now a persisted snapshot).
 - After the transaction **rolls back**, the uncommitted writes were **never in the cache** to begin with, so no ghost rows can linger.
+- Write paths likewise only touch committed state: after a `WriteBatch` `commit()` / `rollback()` succeeds, and after `exec()` succeeds, both `mBlockCache` and `mNameCache` are cleared. A committed batch—or a table you changed through `exec`—therefore leaves no stale entries, and later reads refill the current values.
 
 > [!IMPORTANT]
 > The cost: the thread holding a write transaction gets no cache acceleration for the duration of that transaction (every read goes straight to the database). This trades a little performance for the guarantee that the process cache never contains uncommitted data. If your code reads the same row repeatedly inside a transaction, move that read out of the transaction, or accept the miss.
@@ -417,7 +423,7 @@ The data layer uses no exceptions (build option `set_exceptions("none")`); every
 
 ## 11. Performance and best practices
 
-- **Batch writes with `tx()`**: avoid one transaction commit per row/column.
+- **Batch writes with `tx()`**: avoid one transaction commit per row/column; each successful commit clears the process cache, so a commit-per-row loop throws the cache away on every write—most visible when writes far outnumber reads.
 - **Declare numeric fields as `long long` / `double`**: they become `INTEGER`/`REAL`, smaller, comparable, and indexable—unlike `TEXT`.
 - **Keep queried columns indexable**: all columns are indexed by default; columns used only in `find` get indexed and cached automatically—no manual work.
 - **Use a stable rowKey** (player uuid / xuid); don't use a mutable name as the primary key.
@@ -440,6 +446,14 @@ Errors come from the `BlockError` category and appear in logs as `BlockError: <m
 | 8 | `DuplicateName` | Duplicate name under parent | Re-upserting the same rowKey (rare with upsert) |
 | 9 | `InvalidState` | Invalid block state | Illegal operation on a deleted block |
 | 10 | `SchemaMismatch` | Table schema version/columns mismatch | Version or type name disagrees with stored `schema:<table>`; never hand-edit the schema |
+
+Besides the `BlockError` codes above, some validation failures come back as plain strings and still show up in logs as `BlockError: <message>`, for example:
+
+| Message | Meaning |
+| --- | --- |
+| `block payload exceeds the maximum size` | The payload exceeds SQLite's per-column limit (`INT_MAX` bytes); the block write is rejected |
+| `write batch already finished` | `commit` / `rollback` called twice on one `WriteBatch`, or writing after it finished |
+| `savepoint is no longer owned by an open transaction` | The nested batch's outer transaction has ended (see 9.4) |
 
 ## 13. Complete example (a module)
 
