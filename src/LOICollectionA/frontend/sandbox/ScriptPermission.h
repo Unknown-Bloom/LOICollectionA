@@ -114,11 +114,11 @@ namespace LOICollection::frontend::sandbox {
         [[nodiscard]] bool isGuiNavigationTargetAllowed(
             const std::string& scriptId, const std::string& targetScript, const std::string& formId
         ) const {
-            if (targetScript == scriptId)
-                return true;
-
             if (!isScriptEnabled(targetScript))
                 return false;
+
+            if (targetScript == scriptId)
+                return true;
 
             const auto* entry = find(scriptId);
             if (!entry)

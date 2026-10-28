@@ -49,6 +49,10 @@ namespace LOICollection::frontend::runtime {
 
         bool cancel(TaskId id);
 
+        void cancelScript(const std::string& scriptId);
+
+        void cancelOwner(const std::string& ownerId);
+
         bool isCancelled(TaskId id) const {
             const Task* t = findTask(id);
             return t != nullptr && t->cancelled;
@@ -107,6 +111,8 @@ namespace LOICollection::frontend::runtime {
             CancelToken token;
             std::string errorMessage;
             std::string scriptId;
+            std::string ownerId;
+            CallbackTypePlaces placeholders;
         };
 
         Task* findTask(TaskId id) const;
@@ -114,6 +120,7 @@ namespace LOICollection::frontend::runtime {
         void reapDone();
         void completeTask(Task& task);
         void runSlice(Task& task);
+        void cancelMatching(const std::string& scriptId, const std::string& ownerId);
 
         using Sleeper = std::pair<std::chrono::steady_clock::time_point, TaskId>;
 

@@ -47,7 +47,8 @@ namespace ScriptDataBuiltin::detail {
         }
 
         const auto permission = ServiceProvider::getInstance().getService<sandbox::ScriptPermissionService>();
-        if (!permission || !permission->gate().hasCapability(scriptId, capability)) {
+        if (!permission || !permission->gate().isScriptEnabled(scriptId)
+            || !permission->gate().hasCapability(scriptId, capability)) {
             error = "Permission denied: " + std::string(label) + " is not allowed for script '" + scriptId +
                 "'. Grant " + capabilityName(capability) + " to its trust level in permission.json.";
             return false;

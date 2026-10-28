@@ -673,7 +673,8 @@ namespace LOICollection::frontend::ir {
         }
 
         const size_t captureCount = func->captures.size();
-        if (captureCount + static_cast<size_t>(func->argCount) > callee.localsSize) {
+        if (captureCount + static_cast<size_t>(func->argCount) > callee.localsSize
+            || func->captureSlots.size() != captureCount) {
             this->diagnostics.addError({}, "Lambda frame is too small for its parameters");
             return;
         }
@@ -689,7 +690,12 @@ namespace LOICollection::frontend::ir {
         this->frames.push_back(std::move(callee));
     }
 
-    VM::RunOutcome VM::runTask(const FunctionRefPtr& func, const CallbackTypeValues& args, size_t sliceInstructions) {
+    VM::RunOutcome VM::runTask(
+        const FunctionRefPtr& func,
+        const CallbackTypeValues& args,
+        size_t sliceInstructions,
+        const CallbackTypePlaces& placeholders
+    ) {
         if (!func || !func->owner) {
             mOutcome = RunOutcome::Failed;
             return mOutcome;
@@ -702,13 +708,15 @@ namespace LOICollection::frontend::ir {
         }
 
         if (this->frames.empty()) {
-            this->globals->clear();
             for (const auto& cls : func->owner->classes) {
                 for (size_t i = 0; i < cls.staticFieldNames.size(); ++i) {
-                    (*this->globals)[cls.name + "::" + cls.staticFieldNames[i]] =
-                        cls.staticHasDefault[i]
-                            ? VM::cloneValue(cls.staticDefaults[i])
-                            : ValueNode::ValueType{};
+                    const std::string key = cls.name + "::" + cls.staticFieldNames[i];
+                    if (this->globals->contains(key))
+                        continue;
+
+                    (*this->globals)[key] = cls.staticHasDefault[i]
+                        ? VM::cloneValue(cls.staticDefaults[i])
+                        : ValueNode::ValueType{};
                 }
             }
 
@@ -727,7 +735,7 @@ namespace LOICollection::frontend::ir {
 
         auto prevTlsBudget = tlsBudget;
         tlsBudget = this->mBudget;
-        const auto result = this->execute(func->owner, CallbackTypePlaces{});
+        const auto result = this->execute(func->owner, placeholders);
         tlsBudget = prevTlsBudget;
 
         mTaskResult = result;

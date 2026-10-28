@@ -1163,7 +1163,7 @@ namespace LOICollection::frontend {
 
         std::shared_ptr<NativeHandle> native;
 
-        sandbox::SandboxBudget* budgetOwner = nullptr;
+        std::shared_ptr<sandbox::SandboxBudget> budgetOwner;
 
         ~Object() {
             if (budgetOwner)
@@ -1280,7 +1280,7 @@ namespace LOICollection::frontend {
     struct ArrayValue {
         std::vector<ValueNode::ValueType> elements;
 
-        sandbox::SandboxBudget* budgetOwner = nullptr;
+        std::shared_ptr<sandbox::SandboxBudget> budgetOwner;
         std::size_t budgetBytes = 0;
 
         std::int32_t heapIndex = -1;

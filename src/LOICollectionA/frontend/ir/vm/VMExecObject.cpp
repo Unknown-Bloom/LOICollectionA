@@ -178,8 +178,13 @@ namespace LOICollection::frontend::ir {
                 const ValueNode::ValueType& iterable = this->regOf(frame, instr.src1);
 
                 if (std::holds_alternative<ArrayRef>(iterable)) {
-                    this->setReg(frame, instr.dst,
-                        static_cast<int>(std::get<ArrayRef>(iterable)->elements.size()));
+                    const auto& array = std::get<ArrayRef>(iterable);
+                    if (!array) {
+                        this->diagnostics.addError(this->currentLoc, "Cannot take length of a null array");
+                        break;
+                    }
+
+                    this->setReg(frame, instr.dst, static_cast<int>(array->elements.size()));
                     break;
                 }
 
@@ -214,7 +219,7 @@ namespace LOICollection::frontend::ir {
 
                 const std::size_t arrayBytes = static_cast<std::size_t>(count) * 16;
                 auto arr = std::make_shared<ArrayValue>();
-                arr->budgetOwner = this->mBudget.get();
+                arr->budgetOwner = this->mBudget;
                 arr->budgetBytes = arrayBytes;
                 arr->elements.resize(count);
 
@@ -262,6 +267,11 @@ namespace LOICollection::frontend::ir {
                 }
 
                 auto arr = std::get<ArrayRef>(targetValue);
+                if (!arr) {
+                    this->diagnostics.addError(this->currentLoc, "Cannot index a null array");
+                    break;
+                }
+
                 if (index < 0 || index >= static_cast<int>(arr->elements.size())) {
                     this->diagnostics.addError(this->currentLoc, "Array index out of range");
                     break;
@@ -284,6 +294,11 @@ namespace LOICollection::frontend::ir {
                 }
 
                 auto arr = std::get<ArrayRef>(targetValue);
+                if (!arr) {
+                    this->diagnostics.addError(this->currentLoc, "Cannot index a null array");
+                    break;
+                }
+
                 int index = std::get<int>(indexValue);
                 if (index < 0 || index > static_cast<int>(arr->elements.size())) {
                     this->diagnostics.addError(this->currentLoc, "Array index out of range");
@@ -308,6 +323,14 @@ namespace LOICollection::frontend::ir {
                         break;
                     }
 
+                    if (const auto violation = this->mBudget->accountArray(1);
+                        violation != sandbox::SandboxBudget::Violation::None) {
+                        this->failBudget(violation, "Array size budget exhausted");
+                        break;
+                    }
+
+                    if (arr->budgetOwner.get() == this->mBudget.get())
+                        arr->budgetBytes += 16;
                     arr->elements.push_back(value);
                 } else {
                     arr->elements[index] = value;
@@ -441,7 +464,7 @@ namespace LOICollection::frontend::ir {
                 const auto& cls = chunk.classes[instr.operand];
 
                 auto obj = std::make_shared<Object>();
-                obj->budgetOwner = this->mBudget.get();
+                obj->budgetOwner = this->mBudget;
                 obj->className = cls.name;
                 obj->classIndex = instr.operand;
                 obj->layout = this->classLayout(chunk, instr.operand);

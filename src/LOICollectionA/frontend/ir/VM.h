@@ -56,7 +56,8 @@ namespace LOICollection::frontend::ir {
         LOICOLLECTION_A_NDAPI RunOutcome runTask(
             const FunctionRefPtr& func,
             const CallbackTypeValues& args,
-            size_t sliceInstructions
+            size_t sliceInstructions,
+            const CallbackTypePlaces& placeholders = {}
         );
 
         LOICOLLECTION_A_API   void setSchedulerManaged(bool managed) { mSchedulerManaged = managed; }
@@ -79,6 +80,7 @@ namespace LOICollection::frontend::ir {
         LOICOLLECTION_A_API   void setBudget(const sandbox::SandboxBudget& budget) { *mBudget = budget; }
         LOICOLLECTION_A_NDAPI const sandbox::SandboxBudget& budget() const { return *mBudget; }
         LOICOLLECTION_A_API   sandbox::SandboxBudget& mutableBudget() { return *mBudget; }
+        LOICOLLECTION_A_API   std::shared_ptr<sandbox::SandboxBudget> budgetHandle() const { return mBudget; }
         LOICOLLECTION_A_NDAPI const sandbox::SandboxReport& report() const { return mReport; }
 
         LOICOLLECTION_A_API void reset();

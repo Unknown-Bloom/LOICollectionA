@@ -10,6 +10,8 @@
 
 #include "LOICollectionA/frontend/Callback.h"
 
+#include "LOICollectionA/frontend/ir/VM.h"
+
 #include "LOICollectionA/frontend/stdlib/MapClass.h"
 
 using namespace LOICollection::frontend;
@@ -66,10 +68,38 @@ namespace MapClass::detail {
         std::vector<std::pair<TypedValue, TypedValue>> entries;
         std::unordered_map<TypedValue, std::size_t, KeyHash, KeyEqual> positions;
         ArrayRef keys;
+
+        std::shared_ptr<sandbox::SandboxBudget> budgetOwner;
+        std::size_t budgetBytes = 0;
+
+        ~MapHandle() override {
+            if (budgetOwner)
+                budgetOwner->releaseBytes(budgetBytes);
+        }
     };
 
     MapHandle& handleOf(const ObjectRef& self) {
         return *static_cast<MapHandle*>(self->native.get());
+    }
+
+    bool accountGrowth(const ObjectRef& self) {
+        ir::VM* vm = ir::VM::current();
+        if (!vm)
+            return true;
+
+        auto& handle = handleOf(self);
+        auto& budget = vm->mutableBudget();
+        if (handle.entries.size() + 1 > budget.maxArrayElements)
+            return false;
+
+        if (budget.accountArray(2) != sandbox::SandboxBudget::Violation::None)
+            return false;
+
+        if (!handle.budgetOwner)
+            handle.budgetOwner = vm->budgetHandle();
+        if (handle.budgetOwner.get() == &budget)
+            handle.budgetBytes += 32;
+        return true;
     }
 
     void bindKeys(const ObjectRef& self) {
@@ -117,6 +147,9 @@ namespace MapClass {
             handle.entries[it->second].second = args[1];
             return args[1];
         }
+
+        if (!accountGrowth(self))
+            return ll::makeStringError("Map exceeds the element budget");
 
         if (!handle.keys || handle.keys->elements.size() != handle.entries.size())
             rebuildKeys(self);

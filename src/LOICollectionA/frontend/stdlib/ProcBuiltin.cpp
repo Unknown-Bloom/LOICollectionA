@@ -4,6 +4,7 @@
 #include <ll/api/Expected.h>
 
 #include "LOICollectionA/frontend/Callback.h"
+#include "LOICollectionA/frontend/Context.h"
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
 #include "LOICollectionA/frontend/ir/VM.h"
 #include "LOICollectionA/frontend/runtime/Scheduler.h"
@@ -19,7 +20,7 @@ namespace ProcBuiltin {
         return 0;
     }
 
-    ll::Expected<TypedValue> spawn(const CallbackTypeValues& args) {
+    ll::Expected<TypedValue> spawn(const CallbackTypeValues& args, const CallbackTypePlaces& placeholders) {
         if (args.empty() || !std::holds_alternative<FunctionRefPtr>(args[0]))
             return ll::makeStringError("Proc::spawn requires a function as its first argument");
 
@@ -28,7 +29,10 @@ namespace ProcBuiltin {
         if (static_cast<int>(spawnArgs.size()) != fn->argCount)
             return ll::makeStringError("Proc::spawn argument count does not match the function");
 
-        const TaskId id = ProcScheduler::getInstance().spawn(fn, spawnArgs);
+        const TaskId id = ProcScheduler::getInstance().spawn(
+            fn, spawnArgs,
+            Context::scriptIdOf(placeholders), Context::ownerIdOf(placeholders)
+        );
         if (!id)
             return ll::makeStringError("Proc::spawn failed to create the task");
 

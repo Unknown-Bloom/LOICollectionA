@@ -45,6 +45,7 @@
 #include "LOICollectionA/frontend/ir/ChunkCache.h"
 #include "LOICollectionA/frontend/runtime/ScriptHeap.h"
 #include "LOICollectionA/frontend/runtime/ScriptVMRegistry.h"
+#include "LOICollectionA/frontend/runtime/Scheduler.h"
 
 namespace LOICollection::form::detail {
     constexpr std::uintmax_t kMaxScriptFileBytes = 64 << 20;
@@ -124,6 +125,7 @@ namespace LOICollection::form {
         for (auto& [_, byPlayer] : this->mImpl->globals)
             byPlayer.erase(uuid);
 
+        frontend::runtime::ProcScheduler::getInstance().cancelOwner(uuid);
         frontend::runtime::ScriptVMRegistry::getInstance().releaseOwner(uuid);
     }
 
@@ -224,6 +226,7 @@ namespace LOICollection::form {
                     frontend::ir::ChunkCacheRegistry::getInstance().release(old->second.get());
                 this->mImpl->cache.insert_or_assign(id, std::make_shared<frontend::ir::MirChunk>(std::move(*chunk)));
                 this->mImpl->globals.insert_or_assign(id, std::unordered_map<std::string, std::shared_ptr<frontend::GlobalsTable>>{});
+                frontend::runtime::ProcScheduler::getInstance().cancelScript(id);
                 frontend::runtime::ScriptVMRegistry::getInstance().releaseScript(id);
                 frontend::runtime::ScriptHeapRegistry::getInstance().release(id);
                 warnIfMissingPermission(id);
@@ -253,6 +256,7 @@ namespace LOICollection::form {
             frontend::ir::ChunkCacheRegistry::getInstance().release(old->second.get());
         this->mImpl->cache.insert_or_assign(id, compiled);
         this->mImpl->globals.insert_or_assign(id, std::unordered_map<std::string, std::shared_ptr<frontend::GlobalsTable>>{});
+        frontend::runtime::ProcScheduler::getInstance().cancelScript(id);
         frontend::runtime::ScriptVMRegistry::getInstance().releaseScript(id);
         warnIfMissingPermission(id);
 
@@ -695,6 +699,7 @@ namespace LOICollection::form {
         this->mImpl->cache.clear();
         this->mImpl->globals.clear();
 
+        frontend::runtime::ProcScheduler::getInstance().reset();
         frontend::runtime::ScriptVMRegistry::getInstance().releaseAll();
         frontend::runtime::ScriptHeapRegistry::getInstance().releaseAll();
         frontend::ir::ChunkCacheRegistry::getInstance().releaseAll();

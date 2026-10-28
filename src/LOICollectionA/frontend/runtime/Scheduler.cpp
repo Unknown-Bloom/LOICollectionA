@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "LOICollectionA/frontend/runtime/ScriptHeap.h"
+
 namespace LOICollection::frontend::runtime {
 
     using namespace std::chrono_literals;
@@ -49,7 +51,7 @@ namespace LOICollection::frontend::runtime {
     }
 
     void ProcScheduler::runSlice(Task& task) {
-        const auto outcome = task.vm->runTask(task.fn, task.args, config_.sliceInstructions);
+        const auto outcome = task.vm->runTask(task.fn, task.args, config_.sliceInstructions, task.placeholders);
         switch (outcome) {
             case ir::VM::RunOutcome::Completed:
                 task.result = task.vm->taskResult();
@@ -98,13 +100,17 @@ namespace LOICollection::frontend::runtime {
     }
 
     TaskId ProcScheduler::spawn(const FunctionRefPtr& fn, const CallbackTypeValues& args,
-                               const std::string& scriptId, const std::string& ) {
+                               const std::string& scriptId, const std::string& ownerId) {
         if (!fn || !fn->owner)
             return 0;
         if (fn->bodyIndex < 0 ||
             fn->bodyIndex >= static_cast<int>(fn->owner->methodBodies.size()))
             return 0;
         if (static_cast<int>(args.size()) != fn->argCount)
+            return 0;
+
+        auto globals = fn->globals.lock();
+        if (!globals)
             return 0;
 
         if (tasks_.size() >= config_.maxTasks) {
@@ -116,13 +122,17 @@ namespace LOICollection::frontend::runtime {
         auto task = std::make_unique<Task>();
         task->id = nextId_++;
         task->diag = std::make_shared<DiagnosticEngine>();
-        task->vm = std::make_shared<ir::VM>(*task->diag);
+        task->vm = std::make_shared<ir::VM>(*task->diag, std::move(globals));
         task->vm->setSchedulerManaged(true);
         task->vm->setCancelToken(task->token);
         task->vm->setBudget(config_.taskBudget);
+        if (!scriptId.empty())
+            task->vm->setHeap(ScriptHeapRegistry::getInstance().forScript(scriptId));
         task->fn = fn;
         task->args = args;
         task->scriptId = scriptId;
+        task->ownerId = ownerId;
+        task->placeholders = Context::withOwnerId(Context::withScriptId({}, scriptId), ownerId);
         task->state = TaskState::Ready;
 
         const TaskId id = task->id;
@@ -158,6 +168,33 @@ namespace LOICollection::frontend::runtime {
             completeTask(*t);
 
         return true;
+    }
+
+    void ProcScheduler::cancelScript(const std::string& scriptId) {
+        cancelMatching(scriptId, {});
+    }
+
+    void ProcScheduler::cancelOwner(const std::string& ownerId) {
+        cancelMatching({}, ownerId);
+    }
+
+    void ProcScheduler::cancelMatching(const std::string& scriptId, const std::string& ownerId) {
+        if (scriptId.empty() && ownerId.empty())
+            return;
+
+        for (auto& task : tasks_) {
+            if (!task || task->state == TaskState::Done)
+                continue;
+            if (!((!scriptId.empty() && task->scriptId == scriptId)
+                || (!ownerId.empty() && task->ownerId == ownerId)))
+                continue;
+
+            task->cancelled = true;
+            task->token.cancel();
+            completeTask(*task);
+        }
+
+        reapDone();
     }
 
     bool ProcScheduler::recvCurrent(ValueNode::ValueType& out) {

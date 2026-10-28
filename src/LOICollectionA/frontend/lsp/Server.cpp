@@ -6,6 +6,7 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <thread>
 
 #include <asio.hpp>
@@ -46,6 +47,9 @@ namespace LOICollection::frontend::lsp::detail {
 
 namespace LOICollection::frontend::lsp {
     std::error_code LspServer::start(std::uint16_t port) {
+        if (worker_.joinable() || running_.load())
+            return std::make_error_code(std::errc::device_or_resource_busy);
+
         asio::error_code ec;
         const asio::ip::tcp::endpoint endpoint(asio::ip::address_v4::loopback(), port);
 

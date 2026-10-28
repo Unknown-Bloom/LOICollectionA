@@ -55,7 +55,12 @@ namespace ArrayClass::detail {
         if (arr->elements.size() + count > budget.maxArrayElements)
             return false;
 
-        return budget.accountArray(count) == sandbox::SandboxBudget::Violation::None;
+        if (budget.accountArray(count) != sandbox::SandboxBudget::Violation::None)
+            return false;
+
+        if (arr->budgetOwner.get() == &budget)
+            arr->budgetBytes += count * 16;
+        return true;
     }
 
     ll::Expected<TypedValue> sortByComparator(const ArrayRef& arr, const FunctionRefPtr& comparator) {
@@ -200,6 +205,9 @@ namespace ArrayClass {
         end = std::clamp(end, 0, length);
 
         auto result = std::make_shared<ArrayValue>();
+        if (ir::VM* vm = ir::VM::current())
+            result->budgetOwner = vm->budgetHandle();
+
         if (start < end) {
             const std::size_t count = static_cast<std::size_t>(end - start);
             if (!accountGrowth(result, count))
