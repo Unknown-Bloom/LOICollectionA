@@ -6,7 +6,7 @@ hero:
   text: 开箱即用的 LeviLamina 多功能插件集
   tagline: Minecraft 基岩版服务端 · 源于 LOICollection 的完整重构
   image:
-    src: https://socialify.git.ci/loitietu/LOICollectionA/image?description=1&font=Raleway&forks=1&issues=1&name=1&owner=1&pattern=Circuit%20Board&pulls=1&stargazers=1&theme=Auto
+    src: https://socialify.git.ci/Unknown-Bloom/LOICollectionA/image?description=1&font=Raleway&forks=1&issues=1&name=1&owner=1&pattern=Circuit%20Board&pulls=1&stargazers=1&theme=Auto
     alt: LOICollectionA
   actions:
     - theme: brand
@@ -17,7 +17,7 @@ hero:
       link: /md/command
     - theme: alt
       text: GitHub
-      link: https://github.com/loitietu/LOICollectionA
+      link: https://github.com/Unknown-Bloom/LOICollectionA
 
 features:
   - icon: 🎮

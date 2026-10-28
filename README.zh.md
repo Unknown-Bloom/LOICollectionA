@@ -7,10 +7,10 @@
 
 > **开箱即用的 LeviLamina 多功能插件集。**
 
-![Release](https://img.shields.io/github/v/release/loitietu/LOICollectionA?style=flat-square)
-![Stars](https://img.shields.io/github/stars/loitietu/LOICollectionA?style=social)
-![Downloads](https://img.shields.io/github/downloads/loitietu/LOICollectionA/total?style=flat-square)
-[![License](https://img.shields.io/github/license/loitietu/LOICollectionA)](LICENSE)
+![Release](https://img.shields.io/github/v/release/Unknown-Bloom/LOICollectionA?style=flat-square)
+![Stars](https://img.shields.io/github/stars/Unknown-Bloom/LOICollectionA?style=social)
+![Downloads](https://img.shields.io/github/downloads/Unknown-Bloom/LOICollectionA/total?style=flat-square)
+[![License](https://img.shields.io/github/license/Unknown-Bloom/LOICollectionA)](LICENSE)
 
 [![English](https://img.shields.io/badge/English-inactive?style=for-the-badge)](README.md)
 [![简体中文](https://img.shields.io/badge/简体中文-informational?style=for-the-badge)](README.zh.md)
@@ -82,7 +82,7 @@ LOICollectionA 是运行在 [LeviLamina](https://github.com/LiteLDev/LeviLamina)
 1. 在服务端根目录执行以下命令：
 
     ```cmd
-    lip install github.com/loitietu/LOICollectionA
+    lip install github.com/Unknown-Bloom/LOICollectionA
     ```
 
 2. 启动服务器（`bedrock_server_mod.exe`）。
@@ -95,10 +95,10 @@ LOICollectionA 是运行在 [LeviLamina](https://github.com/LiteLDev/LeviLamina)
 <details>
 <summary><strong>开发者文档</strong></summary>
 
-`.lcui` 是插件的原生 UI 层。它封装了 LeviLamina 的表单与界面能力，包括 `CustomForm`、`MessageBox`、`PaginatedForm`、`MenuForm` 与 `ShopForm` 等，开发者无需重新编译即可用脚本构建游戏内界面。这五类表单同样可以在 [LCUI Studio](https://loitietu.github.io/LOICollectionA/lcui-studio/) 中可视化编辑。
+`.lcui` 是插件的原生 UI 层。它封装了 LeviLamina 的表单与界面能力，包括 `CustomForm`、`MessageBox`、`PaginatedForm`、`MenuForm` 与 `ShopForm` 等，开发者无需重新编译即可用脚本构建游戏内界面。这五类表单同样可以在 [LCUI Studio](https://unknown-bloom.github.io/LOICollectionA/lcui-studio/) 中可视化编辑。
 
 - [LCUI 脚本语法](docs/md/lcui.md)
-- [LCUI Studio 可视化编辑器](https://loitietu.github.io/LOICollectionA/lcui-studio/)
+- [LCUI Studio 可视化编辑器](https://unknown-bloom.github.io/LOICollectionA/lcui-studio/)
 - [LOICollectionAPI 参考](docs/md/api.md)
 - [开发环境配置](docs/dev/config.md)
 
@@ -113,7 +113,7 @@ LOICollectionA 是运行在 [LeviLamina](https://github.com/LiteLDev/LeviLamina)
 打开命令提示符（`cmd`）并执行：
 
 ```cmd
-git clone https://github.com/loitietu/LOICollectionA.git
+git clone https://github.com/Unknown-Bloom/LOICollectionA.git
 cd LOICollectionA
 xmake repo -u
 xmake
@@ -124,8 +124,8 @@ xmake
 ## 社区与贡献
 
 - 加入 QQ 群：[1018233878](https://qm.qq.com/cgi-bin/qm/qr?k=l7XBaItHiNLnFKX7YiI7uqsEIZHaxjq3&jump_from=webapi&authKey=G3/2El1RPyAVYP4NYTJ2ytKRL6hSYfDNQXbrOlKBy/P0FEUjQSnXF8c7TWNkGbCC)
-- 完整文档：[GitHub Pages](https://loitietu.github.io/LOICollectionA/)
-- 遇到问题或有新想法？欢迎提交 [Issue](https://github.com/loitietu/LOICollectionA/issues) 或 [PR](https://github.com/loitietu/LOICollectionA/pulls)。
+- 完整文档：[GitHub Pages](https://unknown-bloom.github.io/LOICollectionA/)
+- 遇到问题或有新想法？欢迎提交 [Issue](https://github.com/Unknown-Bloom/LOICollectionA/issues) 或 [PR](https://github.com/Unknown-Bloom/LOICollectionA/pulls)。
 
 ## LICENSE
 

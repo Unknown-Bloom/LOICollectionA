@@ -65,16 +65,16 @@ export default withMermaid(
         nav: [
           { text: '首页', link: '/' },
           { text: '快速开始', link: '/md/start' },
-          { text: 'GitHub', link: 'https://github.com/loitietu/LOICollectionA' },
+          { text: 'GitHub', link: 'https://github.com/Unknown-Bloom/LOICollectionA' },
         ],
 
-        socialLinks: [{ icon: 'github', link: 'https://github.com/loitietu/LOICollectionA' }],
+        socialLinks: [{ icon: 'github', link: 'https://github.com/Unknown-Bloom/LOICollectionA' }],
 
         sidebar: [
           {
             text: 'LCUI Studio',
             items: [
-              { text: '可视化编辑器', link: 'https://loitietu.github.io/LOICollectionA/lcui-studio/' },
+              { text: '可视化编辑器', link: 'https://unknown-bloom.github.io/LOICollectionA/lcui-studio/' },
             ],
           },
           {
@@ -128,7 +128,7 @@ export default withMermaid(
         },
 
         editLink: {
-          pattern: 'https://github.com/loitietu/LOICollectionA/edit/master/docs/:path',
+          pattern: 'https://github.com/Unknown-Bloom/LOICollectionA/edit/master/docs/:path',
           text: '在 GitHub 上编辑此页',
         },
 
@@ -156,16 +156,16 @@ export default withMermaid(
         nav: [
           { text: 'Home', link: '/en/' },
           { text: 'Quick Start', link: '/en/md/start' },
-          { text: 'GitHub', link: 'https://github.com/loitietu/LOICollectionA' },
+          { text: 'GitHub', link: 'https://github.com/Unknown-Bloom/LOICollectionA' },
         ],
 
-        socialLinks: [{ icon: 'github', link: 'https://github.com/loitietu/LOICollectionA' }],
+        socialLinks: [{ icon: 'github', link: 'https://github.com/Unknown-Bloom/LOICollectionA' }],
 
         sidebar: [
           {
             text: 'LCUI Studio',
             items: [
-              { text: 'Visual Editor', link: 'https://loitietu.github.io/LOICollectionA/lcui-studio/' },
+              { text: 'Visual Editor', link: 'https://unknown-bloom.github.io/LOICollectionA/lcui-studio/' },
             ],
           },
           {
@@ -216,7 +216,7 @@ export default withMermaid(
         },
 
         editLink: {
-          pattern: 'https://github.com/loitietu/LOICollectionA/edit/master/docs/:path',
+          pattern: 'https://github.com/Unknown-Bloom/LOICollectionA/edit/master/docs/:path',
           text: 'Edit this page on GitHub',
         },
 

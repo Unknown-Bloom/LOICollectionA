@@ -33,7 +33,7 @@ xmake repo -u
 
 ```bash
 # 克隆并进入仓库
-git clone https://github.com/loitietu/LOICollectionA.git
+git clone https://github.com/Unknown-Bloom/LOICollectionA.git
 cd LOICollectionA
 
 # 默认配置构建（release，服务端）
@@ -90,14 +90,14 @@ xmake -y
 
 发布清单 `tooth.json` 定义插件元数据与安装方式：
 
-- `tooth`：发布地址（`github.com/loitietu/LOICollectionA`）
+- `tooth`：发布地址（`github.com/Unknown-Bloom/LOICollectionA`）
 - `version`：插件版本（需与 `xmake.lua` 的 `set_version` 一致）
 - `variants`：平台变体与依赖（如 `win-x64` + LeviLamina 26.51.*）
 - `assets`：发布资源（Release 中的 zip 包）
 
 ### Release 流程
 
-`.github/workflows/release.yml` 在 GitHub Release 发布（published）后自动执行：构建 → 打包 zip → 追加发布说明并上传 `lip` 安装资源。用户通过 `lip install github.com/loitietu/LOICollectionA` 安装。
+`.github/workflows/release.yml` 在 GitHub Release 发布（published）后自动执行：构建 → 打包 zip → 追加发布说明并上传 `lip` 安装资源。用户通过 `lip install github.com/Unknown-Bloom/LOICollectionA` 安装。
 
 ## 代码规范
 

@@ -14,19 +14,19 @@
 - 请在服务端根目录下执行以下命令安装 LOICollectionA
 
 ```bash
-lip install github.com/loitietu/LOICollectionA
+lip install github.com/Unknown-Bloom/LOICollectionA
 ```
 
 - 对于安装指定版本的可以执行以下命令
 
 ```bash
-lip install github.com/loitietu/LOICollectionA@v1.18.0
+lip install github.com/Unknown-Bloom/LOICollectionA@v1.18.0
 ```
 
 - 对于进行版本更新的可以执行以下命令
 
 ```bash
-lip install --upgrade github.com/loitietu/LOICollectionA
+lip install --upgrade github.com/Unknown-Bloom/LOICollectionA
 ```
 
 > [!TIP]
@@ -70,19 +70,19 @@ lip install --upgrade github.com/loitietu/LOICollectionA
 - 请在服务端根目录下执行以下命令安装 LOICollectionA
 
 ```bash
-lip install github.com/loitietu/LOICollectionA-Expand
+lip install github.com/Unknown-Bloom/LOICollectionA-Expand
 ```
 
 - 对于安装指定版本的可以执行以下命令
 
 ```bash
-lip install github.com/loitietu/LOICollectionA-Expand@v1.0.1
+lip install github.com/Unknown-Bloom/LOICollectionA-Expand@v1.0.1
 ```
 
 - 对于进行版本更新的可以执行以下命令
 
 ```bash
-lip install --upgrade github.com/loitietu/LOICollectionA-Expand
+lip install --upgrade github.com/Unknown-Bloom/LOICollectionA-Expand
 ```
 
 > [!TIP]

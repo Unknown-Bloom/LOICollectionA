@@ -7,10 +7,10 @@
 
 > **A ready-to-use, multifunctional plugin set for LeviLamina.**
 
-![Release](https://img.shields.io/github/v/release/loitietu/LOICollectionA?style=flat-square)
-![Stars](https://img.shields.io/github/stars/loitietu/LOICollectionA?style=social)
-![Downloads](https://img.shields.io/github/downloads/loitietu/LOICollectionA/total?style=flat-square)
-[![License](https://img.shields.io/github/license/loitietu/LOICollectionA)](LICENSE)
+![Release](https://img.shields.io/github/v/release/Unknown-Bloom/LOICollectionA?style=flat-square)
+![Stars](https://img.shields.io/github/stars/Unknown-Bloom/LOICollectionA?style=social)
+![Downloads](https://img.shields.io/github/downloads/Unknown-Bloom/LOICollectionA/total?style=flat-square)
+[![License](https://img.shields.io/github/license/Unknown-Bloom/LOICollectionA)](LICENSE)
 
 [![English](https://img.shields.io/badge/English-inactive?style=for-the-badge)](README.md)
 [![简体中文](https://img.shields.io/badge/简体中文-informational?style=for-the-badge)](README.zh.md)
@@ -82,7 +82,7 @@ The client target also ships two client-only modules, configured under `ClientCo
 1. Run the following command in your server directory:
 
     ```cmd
-    lip install github.com/loitietu/LOICollectionA
+    lip install github.com/Unknown-Bloom/LOICollectionA
     ```
 
 2. Start the server (`bedrock_server_mod.exe`).
@@ -95,10 +95,10 @@ Need more? Read the [quick start guide](docs/en/md/start.md) (manual installatio
 <details>
 <summary><strong>Developer docs</strong></summary>
 
-`.lcui` is the plugin's native UI layer. It wraps LeviLamina's form and UI capabilities — including `CustomForm`, `MessageBox`, `PaginatedForm`, `MenuForm`, and `ShopForm` — so you can build in-game interfaces with scripts instead of recompiling the plugin. All five form kinds can also be edited visually in [LCUI Studio](https://loitietu.github.io/LOICollectionA/lcui-studio/).
+`.lcui` is the plugin's native UI layer. It wraps LeviLamina's form and UI capabilities — including `CustomForm`, `MessageBox`, `PaginatedForm`, `MenuForm`, and `ShopForm` — so you can build in-game interfaces with scripts instead of recompiling the plugin. All five form kinds can also be edited visually in [LCUI Studio](https://unknown-bloom.github.io/LOICollectionA/lcui-studio/).
 
 - [LCUI scripting guide](docs/en/md/lcui.md)
-- [LCUI Studio visual editor](https://loitietu.github.io/LOICollectionA/lcui-studio/)
+- [LCUI Studio visual editor](https://unknown-bloom.github.io/LOICollectionA/lcui-studio/)
 - [LOICollectionAPI reference](docs/en/md/api.md)
 - [Development environment setup](docs/en/dev/config.md)
 
@@ -113,7 +113,7 @@ Requirements: [xmake](https://github.com/xmake-io/xmake) and a `clang-cl` toolch
 Open Command Prompt (`cmd`) and execute:
 
 ```cmd
-git clone https://github.com/loitietu/LOICollectionA.git
+git clone https://github.com/Unknown-Bloom/LOICollectionA.git
 cd LOICollectionA
 xmake repo -u
 xmake
@@ -124,8 +124,8 @@ See the [development environment guide](docs/en/dev/config.md) for details.
 ## Community & Contributing
 
 - Join the QQ group: [1018233878](https://qm.qq.com/cgi-bin/qm/qr?k=l7XBaItHiNLnFKX7YiI7uqsEIZHaxjq3&jump_from=webapi&authKey=G3/2El1RPyAVYP4NYTJ2ytKRL6hSYfDNQXbrOlKBy/P0FEUjQSnXF8c7TWNkGbCC)
-- Full documentation: [GitHub Pages](https://loitietu.github.io/LOICollectionA/)
-- Found a bug or want a feature? Open an [issue](https://github.com/loitietu/LOICollectionA/issues) or submit a [pull request](https://github.com/loitietu/LOICollectionA/pulls).
+- Full documentation: [GitHub Pages](https://unknown-bloom.github.io/LOICollectionA/)
+- Found a bug or want a feature? Open an [issue](https://github.com/Unknown-Bloom/LOICollectionA/issues) or submit a [pull request](https://github.com/Unknown-Bloom/LOICollectionA/pulls).
 
 ## License
 

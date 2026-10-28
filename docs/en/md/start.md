@@ -14,19 +14,19 @@ However, in some special cases, `manual installation` is quicker than `lip insta
 - Run the following command in the server root directory to install LOICollectionA
 
 ```bash
-lip install github.com/loitietu/LOICollectionA
+lip install github.com/Unknown-Bloom/LOICollectionA
 ```
 
 - To install a specific version, run the following command
 
 ```bash
-lip install github.com/loitietu/LOICollectionA@v1.18.0
+lip install github.com/Unknown-Bloom/LOICollectionA@v1.18.0
 ```
 
 - To update the version, run the following command
 
 ```bash
-lip install --upgrade github.com/loitietu/LOICollectionA
+lip install --upgrade github.com/Unknown-Bloom/LOICollectionA
 ```
 
 > [!TIP]
@@ -70,19 +70,19 @@ lip install --upgrade github.com/loitietu/LOICollectionA
 - Run the following command in the server root directory to install LOICollectionA
 
 ```bash
-lip install github.com/loitietu/LOICollectionA-Expand
+lip install github.com/Unknown-Bloom/LOICollectionA-Expand
 ```
 
 - To install a specific version, run the following command
 
 ```bash
-lip install github.com/loitietu/LOICollectionA-Expand@v1.0.1
+lip install github.com/Unknown-Bloom/LOICollectionA-Expand@v1.0.1
 ```
 
 - To update the version, run the following command
 
 ```bash
-lip install --upgrade github.com/loitietu/LOICollectionA-Expand
+lip install --upgrade github.com/Unknown-Bloom/LOICollectionA-Expand
 ```
 
 > [!TIP]

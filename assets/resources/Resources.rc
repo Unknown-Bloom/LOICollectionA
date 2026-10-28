@@ -21,7 +21,7 @@ BEGIN
             VALUE "FileDescription", FILE_DESCRIPTION
             VALUE "FileVersion", VERSION_STRING
             VALUE "InternalName", "LOICollectionA.dll"
-            VALUE "LegalCopyright", "Copyright (C) 2026 github.com/loitietu"
+            VALUE "LegalCopyright", "Copyright (C) 2026 github.com/Unknown-Bloom"
             VALUE "OriginalFilename", "LOICollectionA.dll"
             VALUE "ProductName", "LOICollectionA"
             VALUE "ProductVersion", VERSION_STRING

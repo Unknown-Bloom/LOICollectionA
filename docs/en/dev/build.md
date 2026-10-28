@@ -33,7 +33,7 @@ Project dependencies (automatically downloaded by xmake):
 
 ```bash
 # Clone and enter the repository
-git clone https://github.com/loitietu/LOICollectionA.git
+git clone https://github.com/Unknown-Bloom/LOICollectionA.git
 cd LOICollectionA
 
 # Build with default configuration (release, server)
@@ -90,14 +90,14 @@ For the full testing guide — directory layout and the responsibility of each l
 
 The release manifest `tooth.json` defines the plugin metadata and installation method:
 
-- `tooth`: release address (`github.com/loitietu/LOICollectionA`)
+- `tooth`: release address (`github.com/Unknown-Bloom/LOICollectionA`)
 - `version`: plugin version (must match `set_version` in `xmake.lua`)
 - `variants`: platform variants and dependencies (e.g. `win-x64` + LeviLamina 26.51.*)
 - `assets`: release assets (zip packages in the Release)
 
 ### Release Workflow
 
-`.github/workflows/release.yml` runs automatically after a GitHub Release is published: build → package zip → append release notes and upload `lip` install assets. Users install via `lip install github.com/loitietu/LOICollectionA`.
+`.github/workflows/release.yml` runs automatically after a GitHub Release is published: build → package zip → append release notes and upload `lip` install assets. Users install via `lip install github.com/Unknown-Bloom/LOICollectionA`.
 
 ## Code Standards
 
