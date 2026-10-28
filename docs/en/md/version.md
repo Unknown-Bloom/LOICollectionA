@@ -1,10 +1,11 @@
 # Version Compatibility
 
 > [!NOTE]
-> The following content is taken from the version structure of LOICollectionA 1.17.3 and may differ for subsequent versions.
+> The following content is taken from the version structure of LOICollectionA 1.18.0 and may differ for subsequent versions.
 
 | Version | Release Date | Compatible LeviLamina Version | Corresponding Minecraft Server Version | Corresponding Minecraft Client Version |
 | ---- | ---- | ---------- | ------------------ | ------------------ |
+| 1.18.0 | 2026.10.28 | 26.51.x | 26.51.1 | 26.51.1 |
 | 1.17.3 | 2026.10.10 | 26.51.x | 26.51.1 | 26.51.1 |
 | 1.17.2 | 2026.10.2 | 26.51.x | 26.51.1 | 26.51.1 |
 | 1.17.1 | 2026.10.1 | 26.51.x | 26.51.1 | 26.51.1 |

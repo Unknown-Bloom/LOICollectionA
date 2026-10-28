@@ -1,7 +1,7 @@
 # SQLite Layer Tutorial
 
 > [!NOTE]
-> This article is based on the LOICollectionA 1.17.3 data layer (`src/LOICollectionA/data/sqlite/`). Later versions may differ. The examples follow the project's existing block-storage (BlockStore) and typed-table (TypedTable) conventions and can be dropped straight into module development.
+> This article is based on the LOICollectionA 1.18.0 data layer (`src/LOICollectionA/data/sqlite/`). Later versions may differ. The examples follow the project's existing block-storage (BlockStore) and typed-table (TypedTable) conventions and can be dropped straight into module development.
 
 The data layer is the foundation of all persistence in LOICollectionA. It adds a **block-storage abstraction** on top of SQLite, then lifts column names to **compile time** with templates, so business code reads and writes in a type-safe way—without hand-writing SQL or worrying about schema drift.
 

@@ -3,7 +3,7 @@
 Every built-in plugin in LOICollectionA exports a set of C++ APIs that other plugins or extensions can call directly. This page documents the **calling conventions** of those interfaces and illustrates them with four plugins: Chat, Wallet, Market and BehaviorEvent.
 
 > [!NOTE]
-> The following content is taken from the code structure of LOICollectionA 1.17.3 and may differ in later versions.
+> The following content is taken from the code structure of LOICollectionA 1.18.0 and may differ in later versions.
 
 > [!TIP]
 > If what you want to extend is the set of variables and functions available to LCUI scripts, read the [LOICollectionAPI Extension Guide](./api-extension.md); this page covers the **C++ interfaces between modules**.

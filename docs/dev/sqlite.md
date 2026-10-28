@@ -1,7 +1,7 @@
 # SQLite 层使用教程
 
 > [!NOTE]
-> 本文基于 LOICollectionA 1.17.3 的数据层代码（`src/LOICollectionA/data/sqlite/`），后续版本可能调整。示例沿用项目既有的块存储（BlockStore）与类型化表（TypedTable）约定，可直接照搬到模块开发中。
+> 本文基于 LOICollectionA 1.18.0 的数据层代码（`src/LOICollectionA/data/sqlite/`），后续版本可能调整。示例沿用项目既有的块存储（BlockStore）与类型化表（TypedTable）约定，可直接照搬到模块开发中。
 
 数据层是 LOICollectionA 全部持久化的底座。它在 SQLite 之上做了一层**块存储抽象**，再用模板把列名提升到**编译期**，让业务代码以类型安全的方式读写，而不必手写 SQL、也不必担心 schema 漂移。
 
