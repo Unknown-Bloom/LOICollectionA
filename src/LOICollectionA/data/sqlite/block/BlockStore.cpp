@@ -1099,12 +1099,27 @@ ll::Expected<std::vector<std::pair<BlockId, std::string>>> BlockStore::queryText
 
     std::size_t const n = conds.size();
 
-    std::string sql = "SELECT b.id, b.name FROM block b WHERE b.parent=? AND b.state < 8";
+    std::string sql = "SELECT b.id, b.name FROM prop p0";
 
-    for (std::size_t i = 0; i < n; ++i)
-        sql += " AND EXISTS(SELECT 1 FROM prop p WHERE p.block_id=b.id AND p.key=? AND p.tval=?)";
+    for (std::size_t i = 1; i < n; ++i) {
+        sql += " JOIN prop p";
+        sql += std::to_string(i);
+        sql += " ON p";
+        sql += std::to_string(i);
+        sql += ".block_id=p0.block_id";
+    }
 
-    sql += " ORDER BY b.id LIMIT ?";
+    sql += " JOIN block b ON b.id=p0.block_id WHERE p0.key=? AND p0.tval=?";
+
+    for (std::size_t i = 1; i < n; ++i) {
+        sql += " AND p";
+        sql += std::to_string(i);
+        sql += ".key=? AND p";
+        sql += std::to_string(i);
+        sql += ".tval=?";
+    }
+
+    sql += " AND b.parent=? AND b.state < 8 ORDER BY b.id LIMIT ?";
 
     auto stmt = (*guard).statements().ensure("queryTextNamesAll" + std::to_string(n), sql);
     if (!stmt)
@@ -1113,11 +1128,11 @@ ll::Expected<std::vector<std::pair<BlockId, std::string>>> BlockStore::queryText
     stmt->reset();
 
     int idx = 1;
-    stmt->bind(idx++, static_cast<std::int64_t>(parent));
     for (auto const& c : conds) {
         stmt->bind(idx++, static_cast<int>(c.key));
         stmt->bind(idx++, c.value);
     }
+    stmt->bind(idx++, static_cast<std::int64_t>(parent));
     stmt->bind(idx++, liveLimit(limit));
 
     std::vector<std::pair<BlockId, std::string>> out;
