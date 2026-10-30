@@ -584,6 +584,13 @@ namespace LOICollection::frontend {
         if (id < 0)
             return;
 
+        if (this->bindings[id].global && this->functionDepth > 0 &&
+            this->bindings[id].type.ownership != Ownership::Value) {
+            this->diagnostics.addError(node.loc,
+                "Cannot assign to global '" + var.name + "' inside a function");
+            return;
+        }
+
         if (this->bindings[id].type.ownership == Ownership::Borrowed) {
             this->releaseLoans(id);
             this->acquireLoans(id, node.value.get());
@@ -593,6 +600,14 @@ namespace LOICollection::frontend {
         if (this->isBorrowed(id)) {
             this->diagnostics.addError(node.loc,
                 "Cannot assign to '" + var.name + "' because it is borrowed");
+            return;
+        }
+
+        if (this->bindings[id].type.ownership == Ownership::Owned && node.value &&
+            node.value->type.ownership != Ownership::Owned && isPlaceExpr(*node.value)) {
+            this->diagnostics.addError(node.loc,
+                "Cannot reassign own<T> '" + var.name +
+                "' from an existing value; assign a temporary or move an own<T> value");
             return;
         }
 

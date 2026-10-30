@@ -153,3 +153,28 @@ TEST(OwnershipTest, SelfMoveRejected) {
         "let p: own<Point> = new Point(1); p = p;"),
         std::runtime_error);
 }
+
+TEST(OwnershipTest, OwnedReassignmentFromExistingValueRejected) {
+    EXPECT_THROW(eval(kPoint +
+        "let p: own<Point> = new Point(1); "
+        "let q = new Point(2); "
+        "p = q;"),
+        std::runtime_error);
+}
+
+TEST(OwnershipTest, GlobalOwnedAssignmentInsideFunctionRejected) {
+    EXPECT_THROW(eval(kPoint +
+        "let cache: own<Point> = new Point(1); "
+        "func reset() -> int { cache = new Point(2); return 0; } "
+        "reset()"),
+        std::runtime_error);
+}
+
+TEST(OwnershipTest, GlobalRefAssignmentInsideFunctionRejected) {
+    EXPECT_THROW(eval(kPoint + kPeek +
+        "let p: own<Point> = new Point(1); "
+        "let g: ref<Point> = &p; "
+        "func steal(r: ref<Point>) -> int { g = r; return 0; } "
+        "steal(&p)"),
+        std::runtime_error);
+}

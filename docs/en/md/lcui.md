@@ -258,10 +258,10 @@ While a value is borrowed it cannot be moved or reassigned; the borrow ends when
 Rules:
 
 - `own<T>` / `ref<T>` may only wrap object, array, function, enum, trait, or generic types — never value types such as `int` — and cannot be nested;
-- `own<T>` cannot be copied into a plain variable, field, array element, `optional` / `variant` / generic argument, nor moved out of a field or element;
+- `own<T>` cannot be copied into a plain variable, field, array element, `optional` / `variant` / generic argument, nor moved out of a field or element; reassignment only accepts a temporary or another `own<T>` value;
 - `ref<T>` cannot be returned, stored in a field or container, and closures cannot capture local `own<T>` / `ref<T>` variables;
 - native class methods/constructors, dynamic dispatch, and enum construction reject `own<T>` / `ref<T>` arguments, and function value calls reject `own<T>`;
-- top-level `own` variables may be moved, but a function body cannot move a global `own` variable, only read or borrow it;
+- top-level `own` / `ref` variables may be moved or rebound, but a function body cannot move or assign them, only read or borrow them;
 - moving an `own` variable inside a loop is a compile-time error so the next iteration cannot move it again.
 
 ### Built-in Types
