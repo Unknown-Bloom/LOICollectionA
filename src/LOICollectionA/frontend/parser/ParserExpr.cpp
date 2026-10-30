@@ -306,6 +306,23 @@ namespace LOICollection::frontend {
             );
         }
 
+        if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "&") {
+            SourceLocation loc = currentToken.loc;
+
+            if (!eat(TokenType::TOKEN_OP)) return nullptr;
+
+            auto operand = parseUnaryExpression();
+            if (!operand)
+                return nullptr;
+
+            if (!isAssignableExpr(operand.get())) {
+                diagnostics.addError(loc, "Operand of '&' must be a variable, field or index");
+                return nullptr;
+            }
+
+            return std::make_unique<UnaryNode>(loc, std::move(operand), "&");
+        }
+
         if ((currentToken.type == TokenType::TOKEN_OP && currentToken.value == "!") ||
             currentToken.type == TokenType::TOKEN_PLUS || currentToken.type == TokenType::TOKEN_MINUS) {
             SourceLocation loc = currentToken.loc;

@@ -223,6 +223,47 @@ let score: float = 1.5;
 
 Type annotations are checked on assignment; assigning a value of a mismatched type, or assigning a value of another type after declaration, raises an error.
 
+### Ownership and Borrowing (own / ref)
+
+`own<T>` and `ref<T>` are optional static ownership annotations that constrain how objects, arrays, functions, enums, and trait objects may be used at compile time. Without them, the language behaves exactly as described above.
+
+`own<T>` is a unique owning handle. Assignment, argument passing, and returning all move ownership to the receiver, after which the original variable can no longer be used; fresh temporaries such as `new` expressions and call results can be adopted directly:
+
+```lcui
+class Session {
+public:
+    id = 0;
+    Session(id) { this.id = id; }
+}
+
+func close(s: own<Session>) -> int { return s.id; }
+
+let s: own<Session> = new Session(7);
+close(s);       // ownership moves into close, s is unusable afterwards
+```
+
+`ref<T>` is a non-owning shared borrow. It can only be created with `&place` and is only allowed for local variables and function parameters:
+
+```lcui
+func peek(s: ref<Session>) -> int { return s.id; }
+
+let s: own<Session> = new Session(7);
+let r: ref<Session> = &s;
+peek(r);
+peek(&s);
+```
+
+While a value is borrowed it cannot be moved or reassigned; the borrow ends when the reference leaves its scope. Multiple `ref<T>` values may coexist.
+
+Rules:
+
+- `own<T>` / `ref<T>` may only wrap object, array, function, enum, trait, or generic types — never value types such as `int` — and cannot be nested;
+- `own<T>` cannot be copied into a plain variable, field, array element, `optional` / `variant` / generic argument, nor moved out of a field or element;
+- `ref<T>` cannot be returned, stored in a field or container, and closures cannot capture local `own<T>` / `ref<T>` variables;
+- native class methods/constructors, dynamic dispatch, and enum construction reject `own<T>` / `ref<T>` arguments, and function value calls reject `own<T>`;
+- top-level `own` variables may be moved, but a function body cannot move a global `own` variable, only read or borrow it;
+- moving an `own` variable inside a loop is a compile-time error so the next iteration cannot move it again.
+
 ### Built-in Types
 
 | Type | Description |
@@ -235,6 +276,8 @@ Type annotations are checked on assignment; assigning a value of a mismatched ty
 | `ClassName` | A custom class or native class type |
 | `optional<T>` | Optional value; may be empty |
 | `variant<T1, T2, ...>` | Union value; can only hold one of the declared types |
+| `own<T>` | Unique owning handle with move semantics |
+| `ref<T>` | Non-owning borrow view created with `&place` |
 
 Function parameters, return values, and variables without type annotations are all dynamically typed. `None` is a null literal, not a writable type name (when `optional` is empty, its `.type` returns `none`).
 
@@ -1405,6 +1448,7 @@ The current package format version is v2.
 - Every script execution is bound by the execution budget (1,000,000 instructions / 256 call frames by default); exceeding it aborts the execution. The budget is tunable per script via `budget` in `permission.json` — see [Execution Budget and Call Depth](#execution-budget-and-call-depth).
 - `return` can only be used inside a function; `break`/`continue` can only be used inside a loop.
 - A type declaration (`let x: int = 0;`) must also provide an initial value; class fields without a default value must be assigned in the constructor.
+- `own<T>` / `ref<T>` only affect compile-time checks; runtime values still use reference counting. An `own` variable cannot be used after it is moved, and a borrowed value cannot be moved or reassigned.
 - `None` can only be used in an `optional` context; directly reading, performing arithmetic on, or comparing an empty `optional` raises an error.
 - `%` only supports integers; division by zero and integer overflow raise errors.
 - Array indices must be `int`; out-of-bounds reads and negative indices raise errors; an index equal to the length appends an element.

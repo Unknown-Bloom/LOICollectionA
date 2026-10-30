@@ -12,6 +12,7 @@
 #include "LOICollectionA/frontend/SemanticAnalyzer.h"
 
 #include "LOICollectionA/frontend/semantic/Helpers.h"
+#include "LOICollectionA/frontend/semantic/OwnershipChecker.h"
 
 namespace LOICollection::frontend {
 
@@ -90,6 +91,11 @@ namespace LOICollection::frontend {
         checkFunctionBodies();
         validateConstructors();
         validateMemberInitialization();
+
+        if (!this->diagnostics.hasErrors()) {
+            OwnershipChecker ownership(this->diagnostics);
+            ownership.check(root);
+        }
     }
 
 }

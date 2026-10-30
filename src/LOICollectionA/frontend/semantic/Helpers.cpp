@@ -115,12 +115,20 @@ namespace LOICollection::frontend {
         }
 
         bool isReservedTypeName(const std::string& name) {
-            return basicTypes().contains(name) || name == "variant" || name == "optional";
+            return basicTypes().contains(name) || name == "variant" ||
+                   name == "optional" || name == "own" || name == "ref";
         }
 
         bool isWhitelistedFormClass(const std::string& name) {
             return name == "CustomForm" || name == "MessageBox" ||
                    name == "PaginatedForm" || name == "ScriptForm";
+        }
+
+        bool isPlaceExpr(const ExprNode& node) {
+            const ASTNode::Type type = node.getType();
+            return type == ASTNode::Type::Variable ||
+                   type == ASTNode::Type::MemberAccess ||
+                   type == ASTNode::Type::Index;
         }
 
 }

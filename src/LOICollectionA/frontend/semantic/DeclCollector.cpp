@@ -369,6 +369,31 @@ namespace LOICollection::frontend {
             return result;
         }
 
+        if (expr.name == "own" || expr.name == "ref") {
+            if (expr.args.size() != 1) {
+                if (reportError)
+                    this->diagnostics.addError(loc, expr.name + " requires exactly one type argument");
+                return {};
+            }
+
+            TypeInfo inner = this->resolveTypeExpr(expr.args[0], loc, reportError);
+            if (inner.ownership != Ownership::Value) {
+                if (reportError)
+                    this->diagnostics.addError(loc, "Ownership qualifiers cannot be nested");
+                return {};
+            }
+
+            if (!isReferenceType(inner)) {
+                if (reportError)
+                    this->diagnostics.addError(loc,
+                        "'" + expr.name + "' requires an object, array, function, enum or trait type");
+                return {};
+            }
+
+            inner.ownership = expr.name == "own" ? Ownership::Owned : Ownership::Borrowed;
+            return inner;
+        }
+
         if (expr.name == "variant") {
             if (expr.args.size() < 2) {
                 if (reportError)
@@ -379,8 +404,13 @@ namespace LOICollection::frontend {
             TypeInfo result;
             result.kind = TypeKind::Variant;
             result.variantOptions.reserve(expr.args.size());
-            for (const auto& arg : expr.args)
-                result.variantOptions.push_back(this->resolveTypeExpr(arg, loc, reportError));
+            for (const auto& arg : expr.args) {
+                TypeInfo option = this->resolveTypeExpr(arg, loc, reportError);
+                if (option.ownership != Ownership::Value && reportError)
+                    this->diagnostics.addError(loc,
+                        "Ownership qualifiers are not allowed inside variant types");
+                result.variantOptions.push_back(withoutOwnership(option));
+            }
 
             return result;
         }
@@ -393,6 +423,11 @@ namespace LOICollection::frontend {
             }
 
             TypeInfo inner = this->resolveTypeExpr(expr.args[0], loc, reportError);
+            if (inner.ownership != Ownership::Value && reportError)
+                this->diagnostics.addError(loc,
+                    "Ownership qualifiers are not allowed inside optional types");
+            inner = withoutOwnership(inner);
+
             if (inner.kind == TypeKind::Optional) {
                 if (reportError)
                     this->diagnostics.addError(loc, "optional cannot be nested inside optional");
@@ -422,8 +457,13 @@ namespace LOICollection::frontend {
                 result.kind = TypeKind::Object;
                 result.className = expr.name;
                 result.typeArgs.reserve(expr.args.size());
-                for (const auto& arg : expr.args)
-                    result.typeArgs.push_back(this->resolveTypeExpr(arg, loc, reportError));
+                for (const auto& arg : expr.args) {
+                    TypeInfo argument = this->resolveTypeExpr(arg, loc, reportError);
+                    if (argument.ownership != Ownership::Value && reportError)
+                        this->diagnostics.addError(loc,
+                            "Ownership qualifiers are not allowed inside type arguments");
+                    result.typeArgs.push_back(withoutOwnership(argument));
+                }
                 return result;
             }
 
@@ -483,6 +523,13 @@ namespace LOICollection::frontend {
                 if (member.hasTypeExpr)
                     member.type = this->resolveTypeExpr(member.typeExpr, member.loc, true);
 
+                if (member.type.ownership != Ownership::Value) {
+                    this->diagnostics.addError(member.loc,
+                        "Ownership qualifiers are not allowed on class members ('" +
+                        member.name + "')");
+                    member.type.ownership = Ownership::Value;
+                }
+
                 if (member.hasDefault && member.defaultExpr) {
                     MethodScope emptyScope;
                     TypeInfo defaultType = this->checkExpr(*member.defaultExpr, emptyScope);
@@ -515,6 +562,11 @@ namespace LOICollection::frontend {
                 if (method.hasReturnType)
                     method.returnType = this->resolveTypeExpr(
                         method.returnTypeExpr, method.loc, true);
+
+                if (method.returnType.ownership == Ownership::Borrowed)
+                    this->diagnostics.addError(method.loc,
+                        "Function '" + method.name +
+                        "' cannot return ref<T>; return a value or own<T>");
             }
         }
 
@@ -544,6 +596,11 @@ namespace LOICollection::frontend {
 
             if (decl.hasReturnType)
                 decl.returnType = this->resolveTypeExpr(decl.returnTypeExpr, decl.loc, true);
+
+            if (decl.returnType.ownership == Ownership::Borrowed)
+                this->diagnostics.addError(decl.loc,
+                    "Function '" + decl.name +
+                    "' cannot return ref<T>; return a value or own<T>");
 
             this->activeTypeParams.clear();
         }

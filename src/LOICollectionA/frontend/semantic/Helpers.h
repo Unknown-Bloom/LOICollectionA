@@ -19,4 +19,5 @@ namespace LOICollection::frontend {
     const std::unordered_map<std::string, TypeKind>& basicTypes();
     bool isReservedTypeName(const std::string& name);
     bool isWhitelistedFormClass(const std::string& name);
+    bool isPlaceExpr(const ExprNode& node);
 }

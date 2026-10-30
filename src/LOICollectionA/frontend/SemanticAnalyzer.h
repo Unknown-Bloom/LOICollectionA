@@ -117,6 +117,9 @@ namespace LOICollection::frontend {
         [[nodiscard]] std::string receiverVariable(MethodCallNode& node) const;
         void reportReceiverCaptures(const std::string& name);
         void requireLet(AssignmentNode& node, const VariableNode& var);
+        bool assignTypedBinding(TypeInfo& target, const TypeInfo& from, SourceLocation loc, const std::string& name);
+        void checkOwnershipArguments(
+            const std::vector<TypeInfo>& argTypes, SourceLocation loc, const std::string& callee);
 
         void registerClass(ClassNode& node);
         void registerEnum(EnumDeclNode& node);

@@ -1233,6 +1233,8 @@ namespace LOICollection::frontend::ir {
             this->lastResultReg = dst;
         } else if (node.op == "+") {
             this->lastResultReg = src;
+        } else if (node.op == "&") {
+            this->lastResultReg = src;
         } else {
             this->diagnostics.addError(node.loc, "Unknown unary op: " + node.op);
         }

@@ -114,6 +114,8 @@ src/LOICollectionA/
 │                            #   BlockRepository）、JsonStorage
 ├─ frontend/                 # LCUI 脚本引擎：Lexer、Parser、SemanticAnalyzer、
 │   │                        #   AST、Callback（原生绑定注册表）、ir/（编译器、VM、优化器）
+│   ├─ semantic/             # 语义检查：类型解析、声明/表达式/调用/语句检查，
+│   │                        #   OwnershipChecker（own/ref 移动与借用分析）
 │   ├─ sandbox/              # 脚本沙箱：ScriptPermission（权限与执行预算配置）、
 │   │                        #   SandboxBudget（燃料计量）、SandboxReport；权限采用信任级 + 能力两层模型
 │   ├─ storage/              # 脚本持久化存储：storage（按脚本隔离）与 playerdata
