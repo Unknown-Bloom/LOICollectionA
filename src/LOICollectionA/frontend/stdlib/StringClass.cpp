@@ -292,8 +292,14 @@ namespace StringClass {
 
             const std::optional<std::string> text = stringOperand(right);
             const std::string rendered = text ? *text : ir::VM::valueToString(right);
-            if (l->size() + rendered.size() > stringLimit())
+            if (l->size() + rendered.size() > stringLimit()) {
+                if (ir::VM* vm = ir::VM::current())
+                    vm->reportBudgetViolation(
+                        sandbox::SandboxBudget::Violation::StringByteLimit, "String '+' exceeds the string budget"
+                    );
+
                 return ll::makeStringError("String '+' exceeds the string budget");
+            }
 
             return *l + rendered;
         });

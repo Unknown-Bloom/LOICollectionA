@@ -36,8 +36,8 @@ namespace LOICollection::frontend::ir {
     }
 
     ChunkCacheRegistry& ChunkCacheRegistry::getInstance() {
-        static ChunkCacheRegistry instance;
-        return instance;
+        static ChunkCacheRegistry* instance = new ChunkCacheRegistry();
+        return *instance;
     }
 
     std::shared_ptr<ChunkCache> ChunkCacheRegistry::forChunk(const MirChunk* chunk) {

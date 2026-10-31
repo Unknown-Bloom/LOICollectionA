@@ -109,8 +109,17 @@ namespace LOICollection::frontend::detail {
         const std::string& from, const std::string& importPath, const std::string& root
     ) {
         const std::filesystem::path target(importPath);
-        if (target.is_absolute() || target.has_root_name() || target.has_root_directory())
-            return std::nullopt;
+        if (target.has_root_name() || target.has_root_directory()) {
+            if (!target.is_absolute())
+                return std::nullopt;
+
+            const auto resolved = target.lexically_normal();
+            const auto relative = resolved.lexically_relative(root);
+            if (relative.empty() || *relative.begin() == "..")
+                return std::nullopt;
+
+            return resolved.generic_string();
+        }
 
         const auto resolved = (std::filesystem::path(from).parent_path() / target).lexically_normal();
         const auto relative = resolved.lexically_relative(root);

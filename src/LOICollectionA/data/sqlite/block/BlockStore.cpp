@@ -490,8 +490,10 @@ ll::Expected<BlockId> BlockStore::implUpsertRow(
 }
 
 ll::Expected<BlockRecord> BlockStore::load(BlockId id) {
-    if (auto cached = mBlockCache.get(id); cached.has_value())
-        return **cached;
+    if (this->mayCache()) {
+        if (auto cached = mBlockCache.get(id); cached.has_value())
+            return **cached;
+    }
 
     auto guard = acquireConnection(this->mPool);
     if (!guard.has_value())
@@ -512,14 +514,16 @@ ll::Expected<BlockRecord> BlockStore::load(BlockId id) {
 
 ll::Expected<BlockRecord> BlockStore::load(BlockId parent, std::string_view name) {
     std::string key = nameKey(parent, name);
-    if (auto cached = mNameCache.get(key); cached.has_value()) {
-        auto rec = this->load(*cached.value());
-        if (rec.has_value()) {
-            if (static_cast<std::uint32_t>(rec.value().state) < 8u)
-                return rec.value();
-            mNameCache.erase(key);
-        } else {
-            mNameCache.erase(key);
+    if (this->mayCache()) {
+        if (auto cached = mNameCache.get(key); cached.has_value()) {
+            auto rec = this->load(*cached.value());
+            if (rec.has_value()) {
+                if (static_cast<std::uint32_t>(rec.value().state) < 8u)
+                    return rec.value();
+                mNameCache.erase(key);
+            } else {
+                mNameCache.erase(key);
+            }
         }
     }
 

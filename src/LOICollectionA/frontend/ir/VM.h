@@ -83,6 +83,10 @@ namespace LOICollection::frontend::ir {
         LOICOLLECTION_A_API   std::shared_ptr<sandbox::SandboxBudget> budgetHandle() const { return mBudget; }
         LOICOLLECTION_A_NDAPI const sandbox::SandboxReport& report() const { return mReport; }
 
+        LOICOLLECTION_A_API void reportBudgetViolation(
+            sandbox::SandboxBudget::Violation violation, const std::string& message
+        );
+
         LOICOLLECTION_A_API void reset();
 
         LOICOLLECTION_A_API void setGlobals(std::shared_ptr<GlobalsTable> globalsTable) {

@@ -45,8 +45,8 @@ namespace LOICollection::data::detail {
 using namespace LOICollection::data::detail;
 
 StorageTransaction::StorageTransaction(
-    std::shared_ptr<SQLiteConnection> conn, observer<ConnectionPool> pool, bool ownsWrite
-) : mConnection(std::move(conn)), mPool(pool), mOwnsWrite(ownsWrite) {
+    std::shared_ptr<SQLiteConnection> conn, observer<ConnectionPool> pool, WriteOwnership ownership
+) : mConnection(std::move(conn)), mPool(pool), mOwnsWrite(ownership == WriteOwnership::Owned) {
     mTransaction = std::make_unique<SQLite::Transaction>(this->mConnection->database());
     if (this->mPool)
         this->mPool->bindTransaction(this->mConnection.get());

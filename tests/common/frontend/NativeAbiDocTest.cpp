@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -292,7 +293,9 @@ namespace {
 
     std::string readDocument(const std::filesystem::path& path) {
         std::ifstream file(path, std::ios::binary);
-        return { std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
+        std::string content{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
+        content.erase(std::remove(content.begin(), content.end(), '\r'), content.end());
+        return content;
     }
 }
 

@@ -89,8 +89,25 @@ PreparedStatements::~PreparedStatements() = default;
 
 observer<SQLite::Statement> PreparedStatements::ensure(std::string_view name, std::string_view sql) noexcept {
     auto it = mStatements.find(name);
-    if (it != mStatements.end())
-        return it->second.sql == sql ? it->second.statement.get() : nullptr;
+    if (it != mStatements.end()) {
+        if (it->second.sql == sql)
+            return it->second.statement.get();
+
+        std::unique_ptr<SQLite::Statement> stmt;
+        std::string replacement;
+        try {
+            stmt = std::make_unique<SQLite::Statement>(mDb, std::string(sql));
+            replacement.assign(sql);
+        } catch (...) {
+            return nullptr;
+        }
+
+        auto* ref = stmt.get();
+        it->second.statement = std::move(stmt);
+        it->second.sql = std::move(replacement);
+
+        return ref;
+    }
 
     if (mStatements.size() >= kMaxDynamicStatements)
         return nullptr;

@@ -17,8 +17,14 @@ namespace SQLite {
 
 class StorageTransaction {
 public:
+    enum class WriteOwnership {
+        External,
+        Owned,
+    };
+
     LOICOLLECTION_A_API explicit StorageTransaction(
-        std::shared_ptr<SQLiteConnection> conn, observer<ConnectionPool> pool, bool ownsWrite = false
+        std::shared_ptr<SQLiteConnection> conn, observer<ConnectionPool> pool,
+        WriteOwnership ownership = WriteOwnership::External
     );
 
     LOICOLLECTION_A_API StorageTransaction(

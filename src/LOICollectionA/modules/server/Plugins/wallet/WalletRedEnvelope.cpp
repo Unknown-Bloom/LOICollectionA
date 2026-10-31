@@ -262,16 +262,16 @@ namespace LOICollection::server::Plugins {
                 return ll::Unexpected(delEnv.error());
         }
 
-        auto commitEnvelope = envelopeTx.commit();
-        if (!commitEnvelope.has_value()) {
-            [[maybe_unused]] auto rolledBack = grabTx.rollback();
+        auto commitGrab = grabTx.commit();
+        if (!commitGrab.has_value()) {
+            [[maybe_unused]] auto rolledBack = envelopeTx.rollback();
 
-            return ll::Unexpected(commitEnvelope.error());
+            return ll::Unexpected(commitGrab.error());
         }
 
-        auto commitGrab = grabTx.commit();
-        if (!commitGrab.has_value())
-            return ll::Unexpected(commitGrab.error());
+        auto commitEnvelope = envelopeTx.commit();
+        if (!commitEnvelope.has_value())
+            return ll::Unexpected(commitEnvelope.error());
 
         ScoreboardUtils::addScore(player, this->mImpl->options.TargetScoreboard, detail::toScore(amount));
 
@@ -419,16 +419,16 @@ namespace LOICollection::server::Plugins {
             }
         }
 
-        auto commitEnvelope = envelopeTx.commit();
-        if (!commitEnvelope.has_value()) {
-            [[maybe_unused]] auto rolledBack = grabTx.rollback();
+        auto commitGrab = grabTx.commit();
+        if (!commitGrab.has_value()) {
+            [[maybe_unused]] auto rolledBack = envelopeTx.rollback();
 
-            return ll::Unexpected(commitEnvelope.error());
+            return ll::Unexpected(commitGrab.error());
         }
 
-        auto commitGrab = grabTx.commit();
-        if (!commitGrab.has_value())
-            return ll::Unexpected(commitGrab.error());
+        auto commitEnvelope = envelopeTx.commit();
+        if (!commitEnvelope.has_value())
+            return ll::Unexpected(commitEnvelope.error());
 
         return {};
     }

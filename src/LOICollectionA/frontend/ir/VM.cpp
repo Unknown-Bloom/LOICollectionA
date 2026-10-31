@@ -450,6 +450,10 @@ namespace LOICollection::frontend::ir {
         this->diagnostics.addError(this->currentLoc, message);
     }
 
+    void VM::reportBudgetViolation(sandbox::SandboxBudget::Violation violation, const std::string& message) {
+        this->failBudget(violation, message);
+    }
+
     bool VM::adoptArray(ArrayValue& arr) {
         if (arr.budgetOwner && arr.budgetOwner.get() != this->mBudget.get())
             return true;

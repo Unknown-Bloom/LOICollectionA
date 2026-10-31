@@ -66,6 +66,27 @@ TEST(ScriptLoaderTest, ResolvesAndMergesNestedImports) {
     EXPECT_EQ(evalFiles(files, "/main.lcui"), "42");
 }
 
+TEST(ScriptLoaderTest, ResolvesAbsoluteImportsWithinRoot) {
+    FileMap files = {
+        {"/main.lcui", "import \"/lib.lcui\";\nlet result = helper();"},
+        {"/lib.lcui", "func helper() -> int {\n    return 7;\n}"},
+    };
+
+    EXPECT_EQ(evalFiles(files, "/main.lcui"), "7");
+}
+
+TEST(ScriptLoaderTest, RejectsAbsoluteImportsOutsideRoot) {
+    FileMap files = {
+        {"/root/main.lcui", "import \"/outside.lcui\";"},
+        {"/outside.lcui", "func helper() -> int {\n    return 1;\n}"},
+    };
+
+    DiagnosticEngine diagnostics;
+    auto loaded = ScriptLoader::load("/root/main.lcui", "/root", readerFor(files), diagnostics);
+
+    EXPECT_FALSE(loaded.has_value());
+}
+
 TEST(ScriptLoaderTest, DiamondImportsMergeDefinitionsOnce) {
     FileMap files = {
         {"/main.lcui", "import \"a.lcui\";\nimport \"b.lcui\";\nlet result = aVal() + bVal();"},

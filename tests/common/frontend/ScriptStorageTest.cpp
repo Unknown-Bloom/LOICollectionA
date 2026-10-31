@@ -23,6 +23,7 @@ namespace {
             "writer": ["StorageRead", "StorageWrite", "PlayerDataRead", "PlayerDataWrite"]
         },
         "scripts": {
+            "reader": { "enabled": true, "trust": "reader" },
             "writer": { "enabled": true, "trust": "writer" }
         }
     })json";

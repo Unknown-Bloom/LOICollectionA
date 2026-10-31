@@ -54,7 +54,9 @@ ll::Expected<std::unique_ptr<WriteBatch>> WriteBatch::begin(BlockStore& store) {
 
     auto held = *conn;
     try {
-        batch->mTxn = std::make_unique<StorageTransaction>(std::move(*conn), pool, true);
+        batch->mTxn = std::make_unique<StorageTransaction>(
+            std::move(*conn), pool, StorageTransaction::WriteOwnership::Owned
+        );
     } catch (...) {
         pool->unbindTransaction(held.get());
         pool->releaseWrite();
