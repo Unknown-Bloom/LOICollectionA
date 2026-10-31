@@ -1482,7 +1482,7 @@ namespace LOICollection::frontend::lsp {
             return {};
 
         const std::string method = message.value("method", std::string{});
-        const nlohmann::ordered_json& id = message.contains("id") ? message.at("id") : nlohmann::ordered_json(nullptr);
+        const nlohmann::ordered_json& id = message.value("id", nlohmann::ordered_json(nullptr));
         const nlohmann::ordered_json params = message.value("params", nlohmann::ordered_json::object());
 
         if (method == "initialize")

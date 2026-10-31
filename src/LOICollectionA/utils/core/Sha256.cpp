@@ -1,3 +1,4 @@
+#include <bit>
 #include <cstring>
 
 #include "LOICollectionA/utils/core/Sha256.h"
@@ -13,10 +14,6 @@ namespace LOICollection::utils::detail {
         0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
         0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
     };
-
-    constexpr uint32_t rotateRight(uint32_t value, uint32_t bits) {
-        return (value >> bits) | (value << (32 - bits));
-    }
 }
 
 namespace LOICollection::utils {
@@ -35,15 +32,15 @@ namespace LOICollection::utils {
 
     void Sha256::processBlock(const uint8_t* block) {
         uint32_t w[64];
-        for (size_t i = 0; i < 16; ++i)
-            w[i] = (static_cast<uint32_t>(block[i * 4]) << 24)
-                 | (static_cast<uint32_t>(block[i * 4 + 1]) << 16)
-                 | (static_cast<uint32_t>(block[i * 4 + 2]) << 8)
-                 | static_cast<uint32_t>(block[i * 4 + 3]);
+        std::memcpy(w, block, 16 * sizeof(uint32_t));
+        if constexpr (std::endian::native == std::endian::little) {
+            for (uint32_t& word : w)
+                word = std::byteswap(word);
+        }
 
         for (size_t i = 16; i < 64; ++i) {
-            uint32_t s0 = rotateRight(w[i - 15], 7) ^ rotateRight(w[i - 15], 18) ^ (w[i - 15] >> 3);
-            uint32_t s1 = rotateRight(w[i - 2], 17) ^ rotateRight(w[i - 2], 19) ^ (w[i - 2] >> 10);
+            uint32_t s0 = std::rotr(w[i - 15], 7) ^ std::rotr(w[i - 15], 18) ^ (w[i - 15] >> 3);
+            uint32_t s1 = std::rotr(w[i - 2], 17) ^ std::rotr(w[i - 2], 19) ^ (w[i - 2] >> 10);
             w[i] = w[i - 16] + s0 + w[i - 7] + s1;
         }
 
@@ -57,10 +54,10 @@ namespace LOICollection::utils {
         uint32_t h = this->mState[7];
 
         for (size_t i = 0; i < 64; ++i) {
-            uint32_t s1 = rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25);
+            uint32_t s1 = std::rotr(e, 6) ^ std::rotr(e, 11) ^ std::rotr(e, 25);
             uint32_t ch = (e & f) ^ (~e & g);
             uint32_t temp1 = h + s1 + ch + K[i] + w[i];
-            uint32_t s0 = rotateRight(a, 2) ^ rotateRight(a, 13) ^ rotateRight(a, 22);
+            uint32_t s0 = std::rotr(a, 2) ^ std::rotr(a, 13) ^ std::rotr(a, 22);
             uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
             uint32_t temp2 = s0 + maj;
 
@@ -122,21 +119,22 @@ namespace LOICollection::utils {
         while (this->mBuffered != 56)
             this->update(&zero, 1);
 
-        uint8_t lengthBytes[8];
+        uint64_t lengthBits = bitLength;
+        if constexpr (std::endian::native == std::endian::little)
+            lengthBits = std::byteswap(lengthBits);
+
+        this->update(&lengthBits, sizeof(lengthBits));
+
+        uint32_t words[8];
         for (size_t i = 0; i < 8; ++i)
-            lengthBytes[i] = static_cast<uint8_t>(bitLength >> (56 - i * 8));
+            words[i] = this->mState[i];
 
-        this->update(lengthBytes, sizeof(lengthBytes));
-
-        std::string out(32, '\0');
-        for (size_t i = 0; i < 8; ++i) {
-            out[i * 4] = static_cast<char>(this->mState[i] >> 24);
-            out[i * 4 + 1] = static_cast<char>(this->mState[i] >> 16);
-            out[i * 4 + 2] = static_cast<char>(this->mState[i] >> 8);
-            out[i * 4 + 3] = static_cast<char>(this->mState[i]);
+        if constexpr (std::endian::native == std::endian::little) {
+            for (uint32_t& word : words)
+                word = std::byteswap(word);
         }
 
-        return out;
+        return std::string(reinterpret_cast<const char*>(words), sizeof(words));
     }
 
     std::string Sha256::compute(const std::string& data) {

@@ -149,7 +149,7 @@ namespace LOICollection::server::Plugins {
                 return;
 
             std::string langcode = event.self().getLocaleCode();
-            if (auto data = I18nUtils::getInstance()->data; data.find(langcode) == data.end())
+            if (const auto& data = I18nUtils::getInstance()->data; data.find(langcode) == data.end())
                 langcode = I18nUtils::getInstance()->defaultLocale;
 
             if (!this->mImpl->language->has(event.self().getUuid().asString())) {

@@ -212,3 +212,40 @@ TEST_F(LRUKCacheTest, ClearAll) {
 TEST_F(LRUKCacheTest, InvalidKThrows) {
     EXPECT_THROW((LRUKCache<int, std::string>(1, 1, 1)), std::invalid_argument);
 }
+
+TEST(LRUCacheTest, ZeroCapacityStoresNothing) {
+    LRUCache<int, std::string> cache(0);
+
+    cache.put(1, std::string("x"));
+
+    EXPECT_TRUE(cache.empty());
+    EXPECT_FALSE(cache.contains(1));
+    EXPECT_FALSE(cache.get(1).has_value());
+}
+
+TEST(LRUCacheTest, UpdateAcceptsConstReferenceModifier) {
+    LRUCache<int, std::string> cache(1);
+
+    cache.put(1, std::string("old"));
+
+    const bool updated = cache.update(1, [](const std::shared_ptr<std::string>& value) {
+        *value = "new";
+    });
+
+    EXPECT_TRUE(updated);
+    EXPECT_EQ(*cache.get(1).value(), "new");
+}
+
+TEST_F(LRUKCacheTest, ZeroCapacityNeverPromotes) {
+    LRUKCache<int, std::string> cache(0, 2, 2);
+
+    cache.put(1, std::string("x"));
+    EXPECT_TRUE(cache.caches().empty());
+
+    const auto value = cache.get(1);
+    ASSERT_TRUE(value.has_value());
+    EXPECT_EQ(**value, "x");
+
+    EXPECT_TRUE(cache.caches().empty());
+    EXPECT_TRUE(cache.historys().empty());
+}

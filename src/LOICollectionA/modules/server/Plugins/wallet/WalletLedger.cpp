@@ -35,6 +35,18 @@
 
 using I18nUtilsTools::tr;
 
+namespace {
+    std::string fieldOf(
+        const std::unordered_map<std::string, std::string>& fields,
+        const std::string& key,
+        const char* fallback = ""
+    ) {
+        if (const auto it = fields.find(key); it != fields.end())
+            return it->second;
+        return fallback;
+    }
+}
+
 namespace LOICollection::server::Plugins {
     using LOICollection::data::FindMode;
     using LOICollection::data::TimeBucket;
@@ -193,15 +205,15 @@ namespace LOICollection::server::Plugins {
 
                 const auto& fields = row.value();
 
-                std::string type = fields.contains("type") ? fields.at("type") : "";
-                std::string fromName = fields.contains("from_name") ? fields.at("from_name") : "";
-                std::string toName = fields.contains("to_name") ? fields.at("to_name") : "";
-                std::string amount = fields.contains("amount") ? fields.at("amount") : "0";
-                std::string fee = fields.contains("fee") ? fields.at("fee") : "0";
-                std::string timeNs = fields.contains("time_ns") ? fields.at("time_ns") : "";
-                std::string timeStr = fields.contains("time") ? fields.at("time") : "";
+                std::string type = fieldOf(fields, "type");
+                std::string fromName = fieldOf(fields, "from_name");
+                std::string toName = fieldOf(fields, "to_name");
+                std::string amount = fieldOf(fields, "amount", "0");
+                std::string fee = fieldOf(fields, "fee", "0");
+                std::string timeNs = fieldOf(fields, "time_ns");
+                std::string timeStr = fieldOf(fields, "time");
 
-                bool isOut = fields.contains("from_uuid") && fields.at("from_uuid") == uuid;
+                bool isOut = fieldOf(fields, "from_uuid") == uuid;
                 std::string direction = tr({}, isOut ? "wallet.history.type.out" : "wallet.history.type.in");
 
                 std::string display = fmt::format(fmt::runtime(tr({}, "wallet.history.row")),
@@ -366,16 +378,16 @@ namespace LOICollection::server::Plugins {
                 return ll::Unexpected(row.error());
 
             auto const& fields = row.value();
-            std::string type = fields.contains("type") ? fields.at("type") : "";
-            long long amount = SystemUtils::toLongLong(fields.contains("amount") ? fields.at("amount") : "", 0);
-            long long fee = SystemUtils::toLongLong(fields.contains("fee") ? fields.at("fee") : "", 0);
+            std::string type = fieldOf(fields, "type");
+            long long amount = SystemUtils::toLongLong(fieldOf(fields, "amount"), 0);
+            long long fee = SystemUtils::toLongLong(fieldOf(fields, "fee"), 0);
 
             if (type == "transfer") {
-                accumulate(outgoing, fields.contains("from_uuid") ? fields.at("from_uuid") : "", amount + fee);
+                accumulate(outgoing, fieldOf(fields, "from_uuid"), amount + fee);
             } else if (type == "redenvelope_send") {
-                accumulate(sent, fields.contains("from_name") ? fields.at("from_name") : "?", amount);
+                accumulate(sent, fieldOf(fields, "from_name", "?"), amount);
             } else if (type == "redenvelope_grab") {
-                accumulate(grabbed, fields.contains("to_name") ? fields.at("to_name") : "?", amount);
+                accumulate(grabbed, fieldOf(fields, "to_name", "?"), amount);
             }
         }
 

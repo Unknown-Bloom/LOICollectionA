@@ -28,7 +28,7 @@ TEST(CycleCollectorVmTest, ReclaimsArraysAbandonedByAFunction) {
     ASSERT_TRUE(chunk) << diagnostics.getErrorMessage();
 
     VM vm(diagnostics);
-    vm.run(chunk, Context{});
+    static_cast<void>(vm.run(chunk, Context{}));
 
     ASSERT_FALSE(diagnostics.hasErrors()) << diagnostics.getErrorMessage();
     EXPECT_EQ(vm.report().collectedObjects, 2u);
@@ -48,7 +48,7 @@ TEST(CycleCollectorVmTest, KeepsArraysReachableFromGlobals) {
     ASSERT_TRUE(chunk) << diagnostics.getErrorMessage();
 
     VM vm(diagnostics);
-    vm.run(chunk, Context{});
+    static_cast<void>(vm.run(chunk, Context{}));
 
     ASSERT_FALSE(diagnostics.hasErrors()) << diagnostics.getErrorMessage();
     EXPECT_EQ(vm.report().collectedObjects, 0u);
@@ -69,7 +69,7 @@ TEST(CycleCollectorVmTest, SkipsTrackingWhenAScriptNeverStoresReferences) {
     EXPECT_FALSE(chunk->hasRefStores);
 
     VM vm(diagnostics);
-    vm.run(chunk, Context{});
+    static_cast<void>(vm.run(chunk, Context{}));
 
     ASSERT_FALSE(diagnostics.hasErrors()) << diagnostics.getErrorMessage();
     EXPECT_EQ(vm.heap().tracked(), 0u);
@@ -115,7 +115,7 @@ TEST(CycleCollectorVmTest, ReclaimsAFieldCycleAtTheEndOfARunOnASharedHeap) {
 
     VM vm(diagnostics);
     vm.setHeap(heap);
-    vm.run(chunk, Context{});
+    static_cast<void>(vm.run(chunk, Context{}));
 
     ASSERT_FALSE(diagnostics.hasErrors()) << diagnostics.getErrorMessage();
     EXPECT_EQ(vm.report().collectedObjects, 2u);
@@ -148,7 +148,7 @@ TEST(CycleCollectorVmTest, KeepsTheTrackedGraphFlatAcrossRepeatedRuns) {
     vm.setHeap(heap);
 
     for (int i = 0; i < 200; ++i)
-        vm.run(chunk, Context{});
+        static_cast<void>(vm.run(chunk, Context{}));
 
     ASSERT_FALSE(diagnostics.hasErrors()) << diagnostics.getErrorMessage();
     EXPECT_LT(heap->tracked(), 4u);

@@ -4,6 +4,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <utility>
 #include <vector>
@@ -312,8 +313,8 @@ namespace LOICollection::server::Plugins {
 
                 this->mImpl->mRankOf.clear();
                 this->mImpl->mRankOf.reserve(this->mImpl->mWealthRank.size());
-                for (size_t i = 0; i < this->mImpl->mWealthRank.size(); ++i)
-                    this->mImpl->mRankOf[this->mImpl->mWealthRank[i].uuid] = i;
+                for (const auto& [index, entry] : this->mImpl->mWealthRank | std::views::enumerate)
+                    this->mImpl->mRankOf[entry.uuid] = static_cast<size_t>(index);
             });
     }
 
