@@ -20,7 +20,7 @@
 using namespace LOICollection::frontend;
 
 /* Runs entry "/main.lcui" against an in-memory file map that already
- * contains the real std modules (assets/common/std/*.lcui) under "/".
+ * contains the real std modules (the .lcui files under assets/common/std) under "/".
  * Std modules import each other by file-relative paths, which resolve
  * to "/iter.lcui" etc. — this exercises the ScriptLoader resolution the
  * shipped assets rely on. */

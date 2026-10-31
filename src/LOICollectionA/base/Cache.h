@@ -1,12 +1,16 @@
 #pragma once
 
+#include <concepts>
+#include <cstddef>
 #include <list>
-#include <mutex>
 #include <memory>
+#include <mutex>
 #include <optional>
-#include <functional>
 #include <shared_mutex>
+#include <stdexcept>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 template<typename Key, typename Value>
 class LRUCache {
@@ -25,17 +29,6 @@ private:
     size_t mCacheCapacity;
 
     mutable std::shared_mutex mMutex;
-
-    void promote(const Key& key, std::pair<EntryPtr, ListIterator>& entryPair) {
-        if (mCaches.size() >= mCacheCapacity) {
-            Key mLastKey = mCaches.back();
-            mCacheMap.erase(mLastKey);
-            mCaches.pop_back();
-        }
-
-        mCaches.push_front(key);
-        mCacheMap[key] = { entryPair.first, mCaches.begin() };
-    }
 
 public:
     explicit LRUCache(size_t cacheCapacity) : mCacheCapacity(cacheCapacity) {
@@ -60,7 +53,10 @@ public:
 
     void put(const Key& key, std::shared_ptr<Value> value) {
         std::unique_lock lock(mMutex);
-        
+
+        if (mCacheCapacity == 0)
+            return;
+
         auto mCacheIt = mCacheMap.find(key);
         if (mCacheIt != mCacheMap.end()) {
             mCacheIt->second.first->mValue =std::move(value);
@@ -88,7 +84,9 @@ public:
         put(key, std::make_shared<Value>(std::move(value)));
     }
     
-    bool update(const Key& key, std::function<void(std::shared_ptr<Value>)> modifier) {
+    template <typename Modifier>
+        requires std::invocable<Modifier&, std::shared_ptr<Value>&>
+    bool update(const Key& key, Modifier&& modifier) {
         std::unique_lock lock(mMutex);
 
         auto mCacheIt = mCacheMap.find(key);
@@ -273,7 +271,9 @@ public:
         put(key, std::make_shared<Value>(std::move(value)));
     }
     
-    bool update(const Key& key, std::function<void(std::shared_ptr<Value>)> modifier) {
+    template <typename Modifier>
+        requires std::invocable<Modifier&, std::shared_ptr<Value>&>
+    bool update(const Key& key, Modifier&& modifier) {
         std::unique_lock lock(mMutex);
 
         auto mCacheIt = mCacheMap.find(key);
@@ -370,8 +370,11 @@ public:
         return std::vector<Key>(mHistorys.begin(), mHistorys.end());
     }
 
-public:
+private:
     void promote(const Key& key, std::pair<EntryPtr, ListIterator>& entryPair) {
+        if (mCacheCapacity == 0)
+            return;
+
         if (mCaches.size() >= mCacheCapacity) {
             Key mLastKey = mCaches.back();
             mCacheMap.erase(mLastKey);

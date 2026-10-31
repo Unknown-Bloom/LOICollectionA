@@ -1,9 +1,10 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdint>
 #include <optional>
-#include <set>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -14,15 +15,25 @@
 #include "LOICollectionA/frontend/sandbox/ScriptBudget.h"
 
 namespace LOICollection::frontend::sandbox {
-    enum class Capability {
-        GuiRead,
-        GuiWrite,
-        ServerCommand,
-        PlayerDataRead,
-        PlayerDataWrite,
-        StorageRead,
-        StorageWrite,
+    enum class Capability : std::uint8_t {
+        GuiRead = 1u << 0,
+        GuiWrite = 1u << 1,
+        ServerCommand = 1u << 2,
+        PlayerDataRead = 1u << 3,
+        PlayerDataWrite = 1u << 4,
+        StorageRead = 1u << 5,
+        StorageWrite = 1u << 6,
     };
+
+    using CapabilityMask = std::underlying_type_t<Capability>;
+
+    [[nodiscard]] constexpr CapabilityMask maskOf(Capability capability) noexcept {
+        return std::to_underlying(capability);
+    }
+
+    [[nodiscard]] constexpr bool maskHas(CapabilityMask mask, Capability capability) noexcept {
+        return (mask & maskOf(capability)) != 0;
+    }
 
     namespace Config {
         struct C_ScriptCommandPermission {
@@ -142,9 +153,9 @@ namespace LOICollection::frontend::sandbox {
 
         [[nodiscard]] bool hasCapability(const std::string& scriptId, Capability capability) const {
             if (const auto it = mCaps.find(scriptId); it != mCaps.end())
-                return it->second.contains(capability);
+                return maskHas(it->second, capability);
 
-            return mDefaultCaps.contains(capability);
+            return maskHas(mDefaultCaps, capability);
         }
 
     private:
@@ -152,8 +163,8 @@ namespace LOICollection::frontend::sandbox {
 
         Config::C_ScriptPermission mConfig;
         BudgetPolicy mBudget;
-        std::unordered_map<std::string, std::set<Capability>> mCaps;
-        std::set<Capability> mDefaultCaps;
+        std::unordered_map<std::string, CapabilityMask> mCaps;
+        CapabilityMask mDefaultCaps = 0;
 
         [[nodiscard]] const Config::C_ScriptPermissionEntry* find(const std::string& scriptId) const {
             const auto it = mConfig.scripts.find(scriptId);
@@ -162,15 +173,15 @@ namespace LOICollection::frontend::sandbox {
 
         [[nodiscard]] bool fallbackAllowed() const { return mConfig.defaultPolicy == "allow"; }
 
-        [[nodiscard]] std::set<Capability> resolveCaps(const std::string& trustName) const {
-            std::set<Capability> caps;
+        [[nodiscard]] CapabilityMask resolveCaps(const std::string& trustName) const {
+            CapabilityMask caps = 0;
             const auto it = mConfig.trustLevels.find(trustName);
             if (it == mConfig.trustLevels.end())
                 return caps;
 
             for (const auto& name : it->second)
                 if (const auto cap = capabilityFromName(name))
-                    caps.insert(*cap);
+                    caps |= maskOf(*cap);
 
             return caps;
         }

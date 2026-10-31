@@ -127,22 +127,34 @@ namespace LOICollection::frontend {
         Signature sig{ function, args.size(), args, isCombination };
 
         if (isCombination) {
-            this->mImpl->mFunctionCombinations[namespaces].erase(sig);
+            if (const auto it = this->mImpl->mFunctionCombinations.find(namespaces);
+                it != this->mImpl->mFunctionCombinations.end())
+                it->second.erase(sig);
+
             ++this->mImpl->epoch;
 
             return;
         }
 
-        this->mImpl->mFunctions[namespaces].erase(sig);
+        if (const auto it = this->mImpl->mFunctions.find(namespaces); it != this->mImpl->mFunctions.end())
+            it->second.erase(sig);
+
         ++this->mImpl->epoch;
     }
 
     bool FunctionCall::isRegistered(const std::string& namespaces, const std::string& function, const CallbackTypeArgs& args) const {
         Signature sig{ function, args.size(), args, false };
-        bool result = this->mImpl->mFunctions[namespaces].find(sig) != this->mImpl->mFunctions[namespaces].end();
+
+        if (const auto funcsIt = this->mImpl->mFunctions.find(namespaces); funcsIt != this->mImpl->mFunctions.end())
+            if (funcsIt->second.contains(sig))
+                return true;
 
         sig.isCombination = true;
-        return result || this->mImpl->mFunctionCombinations[namespaces].find(sig) != this->mImpl->mFunctionCombinations[namespaces].end();
+        if (const auto combosIt = this->mImpl->mFunctionCombinations.find(namespaces);
+            combosIt != this->mImpl->mFunctionCombinations.end())
+            return combosIt->second.contains(sig);
+
+        return false;
     }
 
     std::vector<std::string> FunctionCall::getNamespaces() const {
@@ -211,29 +223,29 @@ namespace LOICollection::frontend {
    ll::Expected<TypedValue> FunctionCall::callFunction(const std::string& namespaces, const std::string& function, const CallbackTypeValues& args, const CallbackTypePlaces& placeholders, DiagnosticEngine& diagnostics, const SourceLocation& loc) {
         std::vector<ParamType> argTypes = valuesToTypes(args, diagnostics, loc);
 
-        if (!this->isRegistered(namespaces, function, argTypes)) {
-            diagnostics.addError(loc, "Function not registered: " + namespaces + "::" + function);
-            return TypedValue{};
-        }
-
         Signature sig{ function, argTypes.size(), std::move(argTypes), false };
-        if (this->mImpl->mFunctions[namespaces].find(sig) != this->mImpl->mFunctions[namespaces].end()) {
-            auto result = this->mImpl->mFunctions[namespaces][sig](args);
-            if (!result.has_value())
-                return ll::makeStringError("Function callback threw: " + result.error().message());
 
-            return result;
-        }
+        if (const auto funcsIt = this->mImpl->mFunctions.find(namespaces); funcsIt != this->mImpl->mFunctions.end())
+            if (const auto cbIt = funcsIt->second.find(sig); cbIt != funcsIt->second.end()) {
+                auto result = cbIt->second(args);
+                if (!result.has_value())
+                    return ll::makeStringError("Function callback threw: " + result.error().message());
+
+                return result;
+            }
 
         sig.isCombination = true;
-        if (this->mImpl->mFunctionCombinations[namespaces].find(sig) != this->mImpl->mFunctionCombinations[namespaces].end()) {
-            auto result = this->mImpl->mFunctionCombinations[namespaces][sig](args, placeholders);
-            if (!result.has_value())
-                return ll::makeStringError("Function callback threw: " + result.error().message());
+        if (const auto combosIt = this->mImpl->mFunctionCombinations.find(namespaces);
+            combosIt != this->mImpl->mFunctionCombinations.end())
+            if (const auto cbIt = combosIt->second.find(sig); cbIt != combosIt->second.end()) {
+                auto result = cbIt->second(args, placeholders);
+                if (!result.has_value())
+                    return ll::makeStringError("Function callback threw: " + result.error().message());
 
-            return result;
-        }
+                return result;
+            }
 
+        diagnostics.addError(loc, "Function not registered: " + namespaces + "::" + function);
         return TypedValue{};
     }
 
@@ -324,13 +336,13 @@ namespace LOICollection::frontend {
     void MacroCall::registerMacro(const std::string& name, CallbackFunc callback, const CallbackTypeArgs& args) {
         Signature sig{ name, args.size(), args, false };
 
-        this->mImpl->mMacros[sig] = callback;
+        this->mImpl->mMacros[sig] = std::move(callback);
     }
 
     void MacroCall::registerMacro(const std::string& name, CallbackFuncCombination callback, const CallbackTypeArgs& args) {
         Signature sig{ name, args.size(), args, true };
 
-        this->mImpl->mMacroCombinations[sig] = callback;
+        this->mImpl->mMacroCombinations[sig] = std::move(callback);
     }
 
     void MacroCall::unregisterMacro(const std::string& name, const CallbackTypeArgs& args, bool isCombination) {

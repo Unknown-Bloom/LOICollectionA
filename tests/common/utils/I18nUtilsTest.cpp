@@ -9,7 +9,7 @@
 
 class I18nUtilsTest : public testing::Test {
 protected:
-    std::unique_ptr<I18nUtils> i18n;
+    I18nUtils* i18n = nullptr;
     std::filesystem::path tempDir;
 
     void SetUp() override {
@@ -31,17 +31,18 @@ protected:
         dummy << "ignore me";
         dummy.close();
 
-        this->i18n = std::make_unique<I18nUtils>(tempDir.string());
+        I18nUtils::getInstance() = std::make_unique<I18nUtils>(tempDir.string());
+        this->i18n = I18nUtils::getInstance().get();
     }
 
     void TearDown() override {
-        std::filesystem::remove_all(tempDir);
+        I18nUtils::getInstance().reset();
 
-        this->i18n.reset();
+        std::filesystem::remove_all(tempDir);
     }
 
-    inline std::string tr(const std::string& local, const std::string& key) {
-        return this->i18n->get(this->i18n->has(local) ? local : this->i18n->defaultLocale, key);
+    inline std::string tr(std::string_view local, std::string_view key) {
+        return I18nUtilsTools::tr(local, key);
     }
 };
 
@@ -86,4 +87,20 @@ TEST_F(I18nUtilsTest, SetAddsTranslation) {
     EXPECT_EQ(this->i18n->get("fr-FR", "greeting"), "Bonjour");
 
     EXPECT_EQ(this->i18n->get("zh-CN", "greeting"), "你好");
+}
+
+TEST_F(I18nUtilsTest, TrDoesNotFallBackWhenLocaleExists) {
+    this->i18n->defaultLocale = "en-US";
+    this->i18n->set("en-US", "onlyEn", "only");
+
+    EXPECT_EQ(this->tr("zh-CN", "onlyEn"), "onlyEn");
+    EXPECT_EQ(this->tr("fr-FR", "onlyEn"), "only");
+}
+
+TEST_F(I18nUtilsTest, FindTableExposesLocale) {
+    const I18nUtils::Translations* zh = this->i18n->findTable("zh-CN");
+    ASSERT_NE(zh, nullptr);
+    EXPECT_EQ(zh->at("greeting"), "你好");
+
+    EXPECT_EQ(this->i18n->findTable("fr-FR"), nullptr);
 }
