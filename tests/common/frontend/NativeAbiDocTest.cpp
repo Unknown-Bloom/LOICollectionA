@@ -284,11 +284,15 @@ namespace {
     }
 
     std::filesystem::path documentPath(const char* name) {
+#ifdef LOICOLLECTION_A_REPO_DIR
+        return std::filesystem::path(LOICOLLECTION_A_REPO_DIR) / "docs" / name;
+#else
         const std::filesystem::path source = __FILE__;
         if (source.is_absolute())
             return (source.parent_path() / "../../../docs" / name).lexically_normal();
 
         return std::filesystem::path("docs") / name;
+#endif
     }
 
     std::string readDocument(const std::filesystem::path& path) {
