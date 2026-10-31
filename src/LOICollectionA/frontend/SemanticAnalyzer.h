@@ -80,6 +80,7 @@ namespace LOICollection::frontend {
             int tag = -1;
             int arity = 0;
             std::string enumName;
+            std::vector<TypeExpr> fieldTypes;
         };
         std::unordered_map<std::string, int> enumByName;
         std::unordered_map<std::string, EnumVariantInfo> enumVariant;
@@ -118,8 +119,6 @@ namespace LOICollection::frontend {
         void reportReceiverCaptures(const std::string& name);
         void requireLet(AssignmentNode& node, const VariableNode& var);
         bool assignTypedBinding(TypeInfo& target, const TypeInfo& from, SourceLocation loc, const std::string& name);
-        void checkOwnershipArguments(
-            const std::vector<TypeInfo>& argTypes, SourceLocation loc, const std::string& callee);
 
         void registerClass(ClassNode& node);
         void registerEnum(EnumDeclNode& node);

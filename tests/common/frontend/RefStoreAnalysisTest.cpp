@@ -54,7 +54,8 @@ TEST(RefStoreAnalysisTest, LeavesReferenceStoresUnmarked) {
         "    x = 0;\n"
         "}\n"
         "let p = new Point();\n"
-        "p.x = p;\n",
+        "let q = new Point();\n"
+        "p.x = q;\n",
         diagnostics
     );
     ASSERT_TRUE(chunk) << diagnostics.getErrorMessage();

@@ -19,6 +19,7 @@ namespace LOICollection::frontend {
         this->borrows.clear();
         this->loanTarget.clear();
         this->temporaries.clear();
+        this->captures.clear();
         this->lambdaDepth = 0;
         this->functionDepth = 0;
         this->reachable = true;
@@ -228,16 +229,10 @@ namespace LOICollection::frontend {
                     return;
                 }
 
-                if (this->bindings[id].type.ownership == Ownership::Owned)
+                if (effectiveOwnership(this->bindings[id].type) == Ownership::Owned)
                     this->moveBinding(id, loc);
                 return;
             }
-            case ASTNode::Type::MemberAccess:
-            case ASTNode::Type::Index:
-                if (expr.type.ownership == Ownership::Owned)
-                    this->diagnostics.addError(loc,
-                        "Cannot move an own<T> value out of a field or element");
-                return;
             default:
                 return;
         }
@@ -298,7 +293,7 @@ namespace LOICollection::frontend {
             if (binding.loopReported || !binding.moved)
                 continue;
 
-            if (i < before.moved.size() && before.moved[i])
+            if (i >= before.moved.size() || before.moved[i])
                 continue;
 
             this->diagnostics.addError(binding.moveLoc,
@@ -326,7 +321,7 @@ namespace LOICollection::frontend {
                 auto& ret = static_cast<ReturnNode&>(node);
                 if (ret.value) {
                     this->checkExpr(*ret.value);
-                    if (ret.value->type.ownership == Ownership::Owned &&
+                    if (effectiveOwnership(ret.value->type) == Ownership::Owned &&
                         isPlaceExpr(*ret.value))
                         this->movePlace(*ret.value, ret.loc);
                 }
@@ -552,11 +547,21 @@ namespace LOICollection::frontend {
             this->checkExpr(*node.value);
 
         const bool variableTarget = node.target->getType() == ASTNode::Type::Variable;
-        if (!variableTarget)
+        if (!variableTarget) {
             this->checkExpr(*node.target);
+            if (node.value && effectiveOwnership(node.value->type) == Ownership::Owned &&
+                node.value->getType() == ASTNode::Type::Variable) {
+                const int targetRoot = this->rootBinding(*node.target);
+                if (targetRoot >= 0 && targetRoot == this->rootBinding(*node.value)) {
+                    this->diagnostics.addError(node.loc,
+                        "Cannot move '" + this->bindings[targetRoot].name + "' into itself");
+                    return;
+                }
 
-        if (!variableTarget)
+                this->movePlace(*node.value, node.loc);
+            }
             return;
+        }
 
         auto& var = static_cast<VariableNode&>(*node.target);
 
@@ -568,13 +573,13 @@ namespace LOICollection::frontend {
             const bool global = this->scopes.empty();
             const int id = this->declare(var.name, type, node.loc, global);
 
-            if (type.ownership == Ownership::Borrowed) {
+            if (effectiveOwnership(type) == Ownership::Borrowed) {
                 this->acquireLoans(id, node.value.get());
                 return;
             }
 
-            if (type.ownership == Ownership::Owned && node.value &&
-                node.value->type.ownership == Ownership::Owned &&
+            if (effectiveOwnership(type) == Ownership::Owned && node.value &&
+                effectiveOwnership(node.value->type) == Ownership::Owned &&
                 isPlaceExpr(*node.value))
                 this->movePlace(*node.value, node.loc);
             return;
@@ -585,7 +590,7 @@ namespace LOICollection::frontend {
             return;
 
         if (this->bindings[id].global && this->functionDepth > 0 &&
-            this->bindings[id].type.ownership != Ownership::Value) {
+            effectiveOwnership(this->bindings[id].type) == Ownership::Borrowed) {
             this->diagnostics.addError(node.loc,
                 "Cannot assign to global '" + var.name + "' inside a function");
             return;
@@ -603,17 +608,10 @@ namespace LOICollection::frontend {
             return;
         }
 
-        if (this->bindings[id].type.ownership == Ownership::Owned && node.value &&
-            node.value->type.ownership != Ownership::Owned && isPlaceExpr(*node.value)) {
-            this->diagnostics.addError(node.loc,
-                "Cannot reassign own<T> '" + var.name +
-                "' from an existing value; assign a temporary or move an own<T> value");
-            return;
-        }
-
-        if (node.value && node.value->type.ownership == Ownership::Owned &&
+        if (node.value && effectiveOwnership(node.value->type) == Ownership::Owned &&
             isPlaceExpr(*node.value)) {
-            if (this->rootBinding(*node.value) == id) {
+            if (node.value->getType() == ASTNode::Type::Variable &&
+                this->rootBinding(*node.value) == id) {
                 this->diagnostics.addError(node.loc,
                     "Cannot move '" + var.name + "' into itself");
                 return;
@@ -622,7 +620,7 @@ namespace LOICollection::frontend {
             this->movePlace(*node.value, node.loc);
         }
 
-        if (this->bindings[id].type.ownership == Ownership::Owned) {
+        if (effectiveOwnership(this->bindings[id].type) == Ownership::Owned) {
             this->bindings[id].moved = false;
             this->bindings[id].loopReported = false;
         }
@@ -635,7 +633,7 @@ namespace LOICollection::frontend {
         const std::string& callee) {
         const size_t count = std::min(paramTypes.size(), args.size());
         for (size_t i = 0; i < count; ++i) {
-            const Ownership expected = paramTypes[i].ownership;
+            const Ownership expected = effectiveOwnership(paramTypes[i]);
             ExprNode& arg = *args[i];
 
             if (expected == Ownership::Borrowed) {
@@ -658,24 +656,13 @@ namespace LOICollection::frontend {
             if (expected != Ownership::Owned)
                 continue;
 
-            if (arg.type.ownership == Ownership::Owned) {
-                if (isPlaceExpr(arg))
-                    this->movePlace(arg, loc);
-                continue;
-            }
-
-            if (isPlaceExpr(arg)) {
-                const std::string name = arg.getType() == ASTNode::Type::Variable
-                    ? static_cast<VariableNode&>(arg).name
-                    : std::string("value");
-                this->diagnostics.addError(loc,
-                    "Call to " + callee + " cannot take ownership of existing " + name +
-                    "; declare it as own<T> and move it");
-            }
+            if (effectiveOwnership(arg.type) == Ownership::Owned && isPlaceExpr(arg))
+                this->movePlace(arg, loc);
         }
     }
 
     void OwnershipChecker::checkFunction(MethodDecl& method) {
+        const size_t captureMark = this->captures.size();
         this->pushScope();
         ++this->functionDepth;
 
@@ -695,6 +682,14 @@ namespace LOICollection::frontend {
         this->popScope();
         --this->functionDepth;
         this->reachable = savedReachable;
+
+        for (size_t i = captureMark; i < this->captures.size(); ++i) {
+            const int id = this->captures[i];
+            if (id >= 0 && static_cast<size_t>(id) < this->borrows.size() && this->borrows[id] > 0)
+                --this->borrows[id];
+        }
+
+        this->captures.resize(captureMark);
     }
 
     void OwnershipChecker::checkClass(ClassNode& cls) {
@@ -716,12 +711,16 @@ namespace LOICollection::frontend {
                 if (binding.global || this->lambdaDepth <= binding.lambdaDepth)
                     return;
 
-                if (binding.type.ownership == Ownership::Owned)
-                    this->diagnostics.addError(var.loc,
-                        "Owned value '" + var.name + "' cannot be captured by a closure");
-                else if (binding.type.ownership == Ownership::Borrowed)
+                if (binding.type.ownership == Ownership::Borrowed) {
                     this->diagnostics.addError(var.loc,
                         "Ref '" + var.name + "' cannot be captured by a closure");
+                    return;
+                }
+
+                if (effectiveOwnership(binding.type) == Ownership::Owned) {
+                    ++this->borrows[id];
+                    this->captures.push_back(id);
+                }
                 return;
             }
             case ASTNode::Type::Unary: {
@@ -793,8 +792,12 @@ namespace LOICollection::frontend {
             }
             case ASTNode::Type::Array: {
                 auto& array = static_cast<ArrayNode&>(expr);
-                for (auto& element : array.elements)
+                for (auto& element : array.elements) {
                     this->checkExpr(*element);
+                    if (effectiveOwnership(element->type) == Ownership::Owned &&
+                        isPlaceExpr(*element))
+                        this->movePlace(*element, array.loc);
+                }
                 return;
             }
             case ASTNode::Type::Index: {

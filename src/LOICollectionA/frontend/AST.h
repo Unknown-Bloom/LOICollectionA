@@ -86,6 +86,28 @@ namespace LOICollection::frontend {
         }
     }
 
+    inline bool isCopyType(const TypeInfo& type) {
+        switch (type.kind) {
+            case TypeKind::Optional:
+                return type.optionalInner && isCopyType(*type.optionalInner);
+            case TypeKind::Variant:
+                return std::all_of(type.variantOptions.begin(), type.variantOptions.end(), isCopyType);
+            case TypeKind::Object:
+            case TypeKind::Array:
+            case TypeKind::Function:
+            case TypeKind::Enum:
+            case TypeKind::Trait:
+            case TypeKind::Generic:
+                return false;
+            default:
+                return true;
+        }
+    }
+
+    inline Ownership effectiveOwnership(const TypeInfo& type) {
+        return type.ownership == Ownership::Value && !isCopyType(type) ? Ownership::Owned : type.ownership;
+    }
+
     inline bool sameTypeIgnoringOwnership(const TypeInfo& left, const TypeInfo& right) {
         return left.kind == right.kind &&
                left.className == right.className &&
@@ -100,10 +122,6 @@ namespace LOICollection::frontend {
         TypeInfo result = type;
         result.ownership = Ownership::Value;
         return result;
-    }
-
-    inline bool ownershipAssignable(Ownership target, Ownership from) {
-        return target == from || (target == Ownership::Owned && from == Ownership::Value);
     }
 
     struct TypeParam {
@@ -166,9 +184,6 @@ namespace LOICollection::frontend {
 
             return "unknown";
         }();
-
-        if (type.ownership == Ownership::Owned)
-            return "own<" + result + ">";
 
         if (type.ownership == Ownership::Borrowed)
             return "ref<" + result + ">";

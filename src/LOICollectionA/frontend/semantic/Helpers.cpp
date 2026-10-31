@@ -116,7 +116,7 @@ namespace LOICollection::frontend {
 
         bool isReservedTypeName(const std::string& name) {
             return basicTypes().contains(name) || name == "variant" ||
-                   name == "optional" || name == "own" || name == "ref";
+                   name == "optional" || name == "ref";
         }
 
         bool isWhitelistedFormClass(const std::string& name) {

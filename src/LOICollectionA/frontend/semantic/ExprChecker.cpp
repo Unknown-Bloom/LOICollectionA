@@ -195,9 +195,9 @@ namespace LOICollection::frontend {
                 auto& array = static_cast<ArrayNode&>(node);
                 for (auto& element : array.elements) {
                     TypeInfo elementType = checkExpr(*element, scope);
-                    if (elementType.ownership != Ownership::Value)
+                    if (elementType.ownership == Ownership::Borrowed)
                         diagnostics.addError(array.loc,
-                            "Ownership qualifiers cannot be stored in an array literal");
+                            "A reference cannot be stored in an array literal; move a value in instead");
                 }
 
                 return { TypeKind::Array };
@@ -412,12 +412,11 @@ namespace LOICollection::frontend {
                 node.value->preserveOptional = true;
         };
 
-        if (rhs.ownership != Ownership::Value) {
+        if (rhs.ownership == Ownership::Borrowed) {
             const ASTNode::Type targetKind = node.target->getType();
             if (targetKind == ASTNode::Type::MemberAccess || targetKind == ASTNode::Type::Index) {
                 diagnostics.addError(node.loc,
-                    "Cannot store " + typeToString(rhs) +
-                    " in a field or element");
+                    "Cannot store " + typeToString(rhs) + " in a field or element");
                 return rhs;
             }
         }
@@ -506,12 +505,6 @@ namespace LOICollection::frontend {
 
                         TypeInfo declared = this->resolveTypeExpr(node.declaredType, node.loc, true);
                         node.declaredTypeInfo = declared;
-                        if (declared.ownership == Ownership::Owned && node.value &&
-                            isPlaceExpr(*node.value) && rhs.ownership != Ownership::Owned) {
-                            this->diagnostics.addError(node.loc,
-                                "Cannot take ownership of existing value '" +
-                                typeToString(rhs) + "'; declare the source as own<T> and move it");
-                        }
                         this->unify(declared, rhs, node.loc, "variable '" + var.name + "'");
                         if (declared.kind == TypeKind::Optional &&
                             rhs.kind == TypeKind::Optional && node.value) {
@@ -584,12 +577,6 @@ namespace LOICollection::frontend {
                         return rhs;
 
                     TypeInfo& target = declaredIt->second;
-                    if (target.ownership == Ownership::Owned && node.value &&
-                        isPlaceExpr(*node.value) && rhs.ownership != Ownership::Owned) {
-                        this->diagnostics.addError(node.loc,
-                            "Cannot take ownership of existing value '" +
-                            typeToString(rhs) + "'; declare the source as own<T> and move it");
-                    }
                     this->unify(target, rhs, node.loc, "variable '" + var.name + "'");
                     if (target.kind == TypeKind::Optional &&
                         rhs.kind == TypeKind::Optional && node.value) {
@@ -795,7 +782,7 @@ namespace LOICollection::frontend {
             return true;
 
         const bool known = target.kind != TypeKind::Unknown;
-        if (known && !ownershipAssignable(target.ownership, from.ownership)) {
+        if (known && effectiveOwnership(target) != effectiveOwnership(from)) {
             this->diagnostics.addError(loc,
                 "Cannot assign " + this->typeToString(from) + " to '" + name +
                 "' of type " + this->typeToString(target));

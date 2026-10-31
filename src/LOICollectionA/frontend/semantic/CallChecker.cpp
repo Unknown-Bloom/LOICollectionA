@@ -42,19 +42,6 @@ namespace LOICollection::frontend {
         this->receiverCaptures = std::move(remaining);
     }
 
-    void SemanticAnalyzer::checkOwnershipArguments(
-        const std::vector<TypeInfo>& argTypes, SourceLocation loc, const std::string& callee) {
-        for (const auto& type : argTypes) {
-            if (type.ownership == Ownership::Value)
-                continue;
-
-            this->diagnostics.addError(loc,
-                "Call to " + callee + " cannot receive " + this->typeToString(type) +
-                "; move the value or pass a plain value");
-            return;
-        }
-    }
-
     TypeInfo SemanticAnalyzer::checkMethodCall(MethodCallNode& node, MethodScope& scope) {
         size_t argCount = node.args.size();
 
@@ -116,8 +103,6 @@ namespace LOICollection::frontend {
                 }
 
                 std::vector<TypeInfo> argTypes = checkArgs();
-                this->checkOwnershipArguments(
-                    argTypes, node.loc, "native static method '" + node.methodName + "'");
 
                 std::vector<CallbackTypeArgs> signatures =
                     ClassCall::getInstance().getStaticMethodSignatures(var.name, node.methodName);
@@ -160,8 +145,6 @@ namespace LOICollection::frontend {
 
         if (targetType.kind == TypeKind::Array || targetType.kind == TypeKind::String) {
             const std::string& className = targetType.kind == TypeKind::Array ? "Array" : "String";
-            this->checkOwnershipArguments(
-                argTypes, node.loc, "'" + className + "." + node.methodName + "'");
             std::vector<CallbackTypeArgs> signatures =
                 ClassCall::getInstance().getValueMethodSignatures(className, node.methodName);
 
@@ -186,9 +169,6 @@ namespace LOICollection::frontend {
                 return {};
             }
 
-            this->checkOwnershipArguments(
-                argTypes, node.loc, "trait method '" + node.methodName + "'");
-
             for (const auto& m : traitIt->second) {
                 if (m.name != node.methodName || m.paramCount != argCount)
                     continue;
@@ -207,8 +187,6 @@ namespace LOICollection::frontend {
         }
 
         if (targetType.kind == TypeKind::Generic) {
-            this->checkOwnershipArguments(
-                argTypes, node.loc, "dynamic method '" + node.methodName + "'");
             auto boundIt = this->activeTypeParamBounds.find(targetType.typeVar);
             if (boundIt != this->activeTypeParamBounds.end()) {
                 for (const auto& traitName : boundIt->second) {
@@ -235,8 +213,6 @@ namespace LOICollection::frontend {
         }
 
         if (targetType.kind == TypeKind::Unknown) {
-            this->checkOwnershipArguments(
-                argTypes, node.loc, "method '" + node.methodName + "'");
             ClassCall& classCall = ClassCall::getInstance();
             for (const auto& className : classCall.getClassNames()) {
                 std::vector<CallbackTypeArgs> signatures =
@@ -257,8 +233,6 @@ namespace LOICollection::frontend {
 
         if (targetType.kind == TypeKind::Function) {
             if (node.methodName == "call") {
-                this->checkOwnershipArguments(
-                    argTypes, node.loc, "a function value");
                 return {};
             }
 
@@ -274,8 +248,6 @@ namespace LOICollection::frontend {
         auto clsOpt = findClass(targetType.className);
         if (!clsOpt) {
             if (isNativeClass(targetType.className)) {
-                this->checkOwnershipArguments(
-                    argTypes, node.loc, "native method '" + node.methodName + "'");
                 std::vector<CallbackTypeArgs> signatures =
                     ClassCall::getInstance().getMethodSignatures(targetType.className, node.methodName);
 
@@ -417,8 +389,10 @@ namespace LOICollection::frontend {
         if (variantIt != this->enumVariant.end()) {
             const EnumVariantInfo& info = variantIt->second;
             node.isEnumConstruction = true;
-            this->checkOwnershipArguments(
-                argTypes, node.loc, "enum variant '" + node.name + "'");
+            node.paramTypes.clear();
+            for (const auto& fieldType : info.fieldTypes)
+                node.paramTypes.push_back(this->resolveTypeExpr(fieldType, node.loc, false));
+
             if (static_cast<int>(argCount) != info.arity) {
                 diagnostics.addError(node.loc,
                     "Enum variant '" + node.name + "' expects " +
@@ -434,8 +408,6 @@ namespace LOICollection::frontend {
 
         if (node.isFormReceiverCall && !this->formReceivers.empty()) {
             const std::string& receiverClass = this->formReceivers.back();
-            this->checkOwnershipArguments(
-                argTypes, node.loc, "form receiver '" + receiverClass + "." + node.name + "'");
             std::vector<CallbackTypeArgs> signatures =
                 ClassCall::getInstance().getMethodSignatures(receiverClass, node.name);
 
@@ -485,15 +457,6 @@ namespace LOICollection::frontend {
 
                 node.isCallable = true;
                 node.resolvedName = node.name;
-
-                for (const auto& type : argTypes) {
-                    if (type.ownership == Ownership::Owned) {
-                        diagnostics.addError(node.loc,
-                            "A function value cannot receive " + this->typeToString(type) +
-                            "; move the value explicitly");
-                        break;
-                    }
-                }
 
                 return {};
             }
@@ -603,8 +566,6 @@ namespace LOICollection::frontend {
         auto clsOpt = findClass(node.className);
         if (!clsOpt) {
             if (isNativeClass(node.className)) {
-                this->checkOwnershipArguments(
-                    argTypes, node.loc, "constructor of native class '" + node.className + "'");
                 std::vector<CallbackTypeArgs> signatures =
                     ClassCall::getInstance().getConstructorSignatures(node.className);
 

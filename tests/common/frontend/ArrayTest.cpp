@@ -40,7 +40,7 @@ TEST(ArrayTest, MixedTypes) {
 TEST(ArrayTest, IdentityEquality) {
     EXPECT_EQ(eval("let a = [1]; a == a"), "true");
     EXPECT_EQ(eval("let a = [1]; let b = [1]; a == b"), "false");
-    EXPECT_EQ(eval("let a = [1]; let b = a; a == b"), "true");
+    EXPECT_EQ(eval("func alias(x) { return x; } let a = [1]; let b = alias(a); a == b"), "true");
 }
 
 TEST(ArrayTest, Truthiness) {

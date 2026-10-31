@@ -223,11 +223,9 @@ let score: float = 1.5;
 
 Type annotations are checked on assignment; assigning a value of a mismatched type, or assigning a value of another type after declaration, raises an error.
 
-### Ownership and Borrowing (own / ref)
+### Ownership and Borrowing
 
-`own<T>` and `ref<T>` are optional static ownership annotations that constrain how objects, arrays, functions, enums, and trait objects may be used at compile time. Without them, the language behaves exactly as described above.
-
-`own<T>` is a unique owning handle. Assignment, argument passing, and returning all move ownership to the receiver, after which the original variable can no longer be used; fresh temporaries such as `new` expressions and call results can be adopted directly:
+Objects, arrays, functions, enums, and trait objects are reference types and own themselves by default; value types such as `int`, `float`, `string`, and `bool` are copied freely. Using an owning variable to initialize another variable, pass it to a typed parameter, return it, write it into a field/element/enum payload, or place it in an array literal moves the value, and the original variable becomes unusable:
 
 ```lcui
 class Session {
@@ -236,33 +234,42 @@ public:
     Session(id) { this.id = id; }
 }
 
-func close(s: own<Session>) -> int { return s.id; }
+func close(s: Session) -> int { return s.id; }
 
-let s: own<Session> = new Session(7);
+let s = new Session(7);
 close(s);       // ownership moves into close, s is unusable afterwards
+let again = close(s);   // compile error: use of a moved value
 ```
 
-`ref<T>` is a non-owning shared borrow. It can only be created with `&place` and is only allowed for local variables and function parameters:
+Temporaries such as `new` expressions and call results bind directly and are not moved. Untyped variables, parameters, and return values are dynamic and behave as borrows, so they never trigger a move; native methods and constructors, dynamic dispatch, and function value calls borrow as well and keep accepting any object.
+
+Reading a field or an array element yields a shared view: it can initialize a variable or be returned without moving the container:
+
+```lcui
+let next = this.child.value;   // reads the field, child stays usable
+return this.child.value;       // returning a field read is fine too
+```
+
+`ref<T>` is an explicit non-owning borrow. It can only be created with `&place` and is only allowed for local variables and function parameters:
 
 ```lcui
 func peek(s: ref<Session>) -> int { return s.id; }
 
-let s: own<Session> = new Session(7);
+let s = new Session(7);
 let r: ref<Session> = &s;
 peek(r);
 peek(&s);
 ```
 
-While a value is borrowed it cannot be moved or reassigned; the borrow ends when the reference leaves its scope. Multiple `ref<T>` values may coexist.
+While a value is borrowed it cannot be moved or reassigned; the borrow ends when the reference leaves its scope. Multiple `ref<T>` values may coexist. Passing a `ref<T>` to an owning parameter is rejected.
 
 Rules:
 
-- `own<T>` / `ref<T>` may only wrap object, array, function, enum, trait, or generic types — never value types such as `int` — and cannot be nested;
-- `own<T>` cannot be copied into a plain variable, field, array element, `optional` / `variant` / generic argument, nor moved out of a field or element; reassignment only accepts a temporary or another `own<T>` value;
-- `ref<T>` cannot be returned, stored in a field or container, and closures cannot capture local `own<T>` / `ref<T>` variables;
-- native class methods/constructors, dynamic dispatch, and enum construction reject `own<T>` / `ref<T>` arguments, and function value calls reject `own<T>`;
-- top-level `own` / `ref` variables may be moved or rebound, but a function body cannot move or assign them, only read or borrow them;
-- moving an `own` variable inside a loop is a compile-time error so the next iteration cannot move it again.
+- `ref<T>` may only wrap object, array, function, enum, trait, or generic types — never value types such as `int` — and cannot be nested;
+- `ref<T>` cannot be returned, stored in a field, container, or array literal, and closures cannot capture local `ref<T>` variables;
+- a function body cannot move a global owning variable, but it may assign a local or a temporary into a global; a global `ref<T>` cannot be rebound inside a function;
+- moving an outer variable inside a loop is a compile-time error so the next iteration cannot move it again; variables declared inside the loop are unaffected;
+- a closure reading an outer owning variable holds a borrow until the current function ends, so that variable cannot be moved afterwards.
 
 ### Built-in Types
 
@@ -276,8 +283,7 @@ Rules:
 | `ClassName` | A custom class or native class type |
 | `optional<T>` | Optional value; may be empty |
 | `variant<T1, T2, ...>` | Union value; can only hold one of the declared types |
-| `own<T>` | Unique owning handle with move semantics |
-| `ref<T>` | Non-owning borrow view created with `&place` |
+| `ref<T>` | Explicit non-owning borrow view created with `&place` |
 
 Function parameters, return values, and variables without type annotations are all dynamically typed. `None` is a null literal, not a writable type name (when `optional` is empty, its `.type` returns `none`).
 
@@ -1448,7 +1454,7 @@ The current package format version is v2.
 - Every script execution is bound by the execution budget (1,000,000 instructions / 256 call frames by default); exceeding it aborts the execution. The budget is tunable per script via `budget` in `permission.json` — see [Execution Budget and Call Depth](#execution-budget-and-call-depth).
 - `return` can only be used inside a function; `break`/`continue` can only be used inside a loop.
 - A type declaration (`let x: int = 0;`) must also provide an initial value; class fields without a default value must be assigned in the constructor.
-- `own<T>` / `ref<T>` only affect compile-time checks; runtime values still use reference counting. An `own` variable cannot be used after it is moved, and a borrowed value cannot be moved or reassigned.
+- Ownership and borrowing only affect compile-time checks; runtime values still use reference counting. A moved variable cannot be used again and a borrowed value cannot be moved or reassigned, but the underlying slot keeps its reference until it is overwritten or the frame ends.
 - `None` can only be used in an `optional` context; directly reading, performing arithmetic on, or comparing an empty `optional` raises an error.
 - `%` only supports integers; division by zero and integer overflow raise errors.
 - Array indices must be `int`; out-of-bounds reads and negative indices raise errors; an index equal to the length appends an element.

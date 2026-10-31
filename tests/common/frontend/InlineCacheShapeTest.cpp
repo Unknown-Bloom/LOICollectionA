@@ -93,9 +93,9 @@ TEST(InlineCacheShapeTest, PolymorphicCacheReusedAcrossCalls) {
         "class Base { public: x = 0; } "
         "class A extends Base { public: x = 1; } "
         "class B extends Base { public: x = 2; } "
-        "func getX(o: Base) -> int { return o.x; } "
+        "func getX(o: ref<Base>) -> int { return o.x; } "
         "let a = new A(); let b = new B(); "
-        "getX(a) + getX(b) + getX(a) + getX(b)"), "6");
+        "getX(&a) + getX(&b) + getX(&a) + getX(&b)"), "6");
 }
 
 TEST(InlineCacheShapeTest, MissingFieldStillErrors) {

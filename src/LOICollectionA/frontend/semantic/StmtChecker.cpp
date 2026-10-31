@@ -259,13 +259,6 @@ namespace LOICollection::frontend {
                     ", got " + typeToString(valueType));
             }
 
-            if (method.returnType.ownership == Ownership::Owned &&
-                isPlaceExpr(*node.value) && valueType.ownership != Ownership::Owned) {
-                diagnostics.addError(node.loc,
-                    "Cannot return an existing value as " + typeToString(method.returnType) +
-                    " in function '" + method.name + "'; move an own<T> value or return a temporary");
-            }
-
             if (method.returnType.kind == TypeKind::Optional &&
                 valueType.kind == TypeKind::Optional) {
                 node.value->preserveOptional = true;
@@ -289,9 +282,9 @@ namespace LOICollection::frontend {
             decl.returnType = this->resolveTypeExpr(
                 decl.returnTypeExpr, decl.loc, true);
 
-        if (decl.returnType.ownership != Ownership::Value)
+        if (decl.returnType.ownership == Ownership::Borrowed)
             this->diagnostics.addError(decl.loc,
-                "Anonymous functions cannot return " + typeToString(decl.returnType));
+                "Anonymous functions cannot return ref<T>");
 
         MethodScope lambdaScope;
         if (scope.hasClass())
@@ -399,27 +392,30 @@ namespace LOICollection::frontend {
             return;
         }
 
-        if (target.ownership == Ownership::Value && from.ownership == Ownership::Owned) {
+        const Ownership targetOwnership = effectiveOwnership(target);
+        const Ownership fromOwnership = effectiveOwnership(from);
+
+        if (targetOwnership == Ownership::Value && fromOwnership == Ownership::Owned) {
             diagnostics.addError(loc,
                 "Cannot copy " + typeToString(from) + " into " + what +
                 "; move it or borrow it with '&'");
             return;
         }
 
-        if (target.ownership == Ownership::Value && from.ownership == Ownership::Borrowed) {
+        if (targetOwnership == Ownership::Value && fromOwnership == Ownership::Borrowed) {
             diagnostics.addError(loc,
                 typeToString(from) + " cannot be stored in " + what +
                 "; a borrow may only be passed as a ref<T> parameter or held in a local ref<T>");
             return;
         }
 
-        if (target.ownership == Ownership::Borrowed && from.ownership != Ownership::Borrowed) {
+        if (targetOwnership == Ownership::Borrowed && fromOwnership != Ownership::Borrowed) {
             diagnostics.addError(loc,
                 "A ref<T> binding (" + what + ") must be initialized from '&value'");
             return;
         }
 
-        if (target.ownership == Ownership::Owned && from.ownership == Ownership::Borrowed) {
+        if (targetOwnership == Ownership::Owned && fromOwnership == Ownership::Borrowed) {
             diagnostics.addError(loc,
                 "Cannot take ownership of " + typeToString(from) + " for " + what);
             return;

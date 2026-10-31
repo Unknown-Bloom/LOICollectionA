@@ -174,10 +174,8 @@ namespace LOICollection::frontend {
         if (from.kind == TypeKind::None)
             return target.kind == TypeKind::Optional;
 
-        if (target.ownership != from.ownership &&
-            !(target.ownership == Ownership::Owned && from.ownership == Ownership::Value)) {
+        if (effectiveOwnership(target) != effectiveOwnership(from))
             return false;
-        }
 
         if (from.kind == TypeKind::Optional) {
             if (target.kind == TypeKind::Optional)

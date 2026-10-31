@@ -39,6 +39,7 @@ namespace LOICollection::frontend {
         std::vector<int> borrows;
         std::unordered_map<int, int> loanTarget;
         std::vector<int> temporaries;
+        std::vector<int> captures;
         int lambdaDepth = 0;
         int functionDepth = 0;
         bool reachable = true;
