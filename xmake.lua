@@ -6,8 +6,6 @@ set_xmakever("3.0.0")
 
 local is_server = is_config("target_type", "server")
 
-local repo_dir = os.scriptdir():gsub("\\", "/")
-
 option("target_type")
     set_default("server")
     set_showmenu(true)
@@ -89,8 +87,6 @@ target("LOICollectionA")
         add_defines("DEBUG")
 
         add_defines('LOICOLLECTION_A_STD_DIR="std"')
-
-        add_defines('LOICOLLECTION_A_REPO_DIR="' .. repo_dir .. '"')
 
         add_packages("gtest")
 
