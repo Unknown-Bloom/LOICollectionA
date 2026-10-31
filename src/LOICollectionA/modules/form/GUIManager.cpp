@@ -286,7 +286,7 @@ namespace LOICollection::form {
 
         if (!frontend::runtime::ScriptVMSession::holds(pooled.get())) {
             frontend::runtime::ScriptVMSession session(*pooled, std::move(globals), budget);
-            session.vm().run(cached, context);
+            [[maybe_unused]] auto sessionResult = session.vm().run(cached, context);
             if (session.diagnostics().hasErrors())
                 return ll::makeStringError(session.diagnostics().getErrorMessage());
             return {};
@@ -296,7 +296,7 @@ namespace LOICollection::form {
         frontend::ir::VM vm(diagnostics, std::move(globals));
         vm.setHeap(frontend::runtime::ScriptHeapRegistry::getInstance().forScript(id));
         vm.setBudget(budget);
-        vm.run(cached, context);
+        [[maybe_unused]] auto vmResult = vm.run(cached, context);
         if (diagnostics.hasErrors())
             return ll::makeStringError(diagnostics.getErrorMessage());
         return {};

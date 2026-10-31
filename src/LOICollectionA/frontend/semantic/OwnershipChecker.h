@@ -76,8 +76,7 @@ namespace LOICollection::frontend {
         void checkCallParams(
             const std::vector<TypeInfo>& paramTypes,
             std::vector<std::unique_ptr<ExprNode>>& args,
-            SourceLocation loc,
-            const std::string& callee);
+            SourceLocation loc);
         void checkFunction(MethodDecl& method);
         void checkClass(ClassNode& cls);
     };

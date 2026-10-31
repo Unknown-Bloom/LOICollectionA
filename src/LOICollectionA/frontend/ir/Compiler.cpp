@@ -768,7 +768,7 @@ namespace LOICollection::frontend::ir {
         if (protocol->shape == IterableShape::Counter)
             this->compileForInCounter(node, uid);
         else if (protocol->shape == IterableShape::Lazy)
-            this->compileForInLazy(node, uid, *protocol);
+            this->compileForInLazy(node, uid);
         else
             this->compileForInIterable(node, uid, *protocol);
     }

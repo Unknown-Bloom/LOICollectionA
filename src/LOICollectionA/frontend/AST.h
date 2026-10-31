@@ -180,6 +180,8 @@ namespace LOICollection::frontend {
                     return "dyn " + type.className;
                 case TypeKind::Enum:
                     return "enum " + type.className;
+                case TypeKind::COUNT:
+                    break;
             }
 
             return "unknown";
