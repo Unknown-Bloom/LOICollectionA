@@ -10,6 +10,7 @@
 class I18nUtilsTest : public testing::Test {
 protected:
     I18nUtils* i18n = nullptr;
+    std::unique_ptr<I18nUtils> previous;
     std::filesystem::path tempDir;
 
     void SetUp() override {
@@ -31,12 +32,13 @@ protected:
         dummy << "ignore me";
         dummy.close();
 
+        this->previous = std::move(I18nUtils::getInstance());
         I18nUtils::getInstance() = std::make_unique<I18nUtils>(tempDir.string());
         this->i18n = I18nUtils::getInstance().get();
     }
 
     void TearDown() override {
-        I18nUtils::getInstance().reset();
+        I18nUtils::getInstance() = std::move(this->previous);
 
         std::filesystem::remove_all(tempDir);
     }
