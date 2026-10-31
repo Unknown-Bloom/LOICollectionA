@@ -1320,6 +1320,53 @@ namespace LOICollection::data {
             return out;
         }
 
+        template <class T>
+        [[nodiscard]] ll::Expected<std::vector<std::string>> range(
+            Key col, T const& low, T const& high) {
+            auto rid = root();
+            if (!rid.has_value())
+                return ll::makeStringError(rid.error().message());
+
+            auto slot = static_cast<std::size_t>(colKey(col.value));
+
+            auto lower = makeCell(static_cast<PropKey>(slot), low);
+            if (!lower.has_value())
+                return ll::makeStringError(lower.error().message());
+
+            auto upper = makeCell(static_cast<PropKey>(slot), high);
+            if (!upper.has_value())
+                return ll::makeStringError(upper.error().message());
+
+            BlockProp params[] = {
+                serializeCell(lower.value(), kAffinity[slot]),
+                serializeCell(upper.value(), kAffinity[slot])
+            };
+
+            std::string sql = "SELECT b.name FROM \"" + mSide + "\" s JOIN block b ON b.id=s.id"
+                            + " WHERE b.state<8 AND s." + quoted(slot) + " BETWEEN ? AND ?"
+                            + " ORDER BY s." + quoted(slot) + ", b.id";
+
+            ensureColumnIndex(slot);
+
+            std::vector<std::string> out;
+
+            auto r = mRepo.store().withQuery(
+                "sideRange:" + mSide + ":" + std::to_string(slot), sql, params,
+                [&](SQLite::Statement& stmt) { out.emplace_back(columnToString(stmt.getColumn(0))); }
+            );
+
+            if (!r.has_value())
+                return ll::makeStringError(r.error().message());
+
+            return out;
+        }
+
+        template <class T>
+        [[nodiscard]] ll::Expected<std::vector<std::string>> range(
+            E col, T const& low, T const& high) {
+            return range(Key{col}, low, high);
+        }
+
         [[nodiscard]] ll::Expected<std::unordered_map<std::string, std::string>> getRow(std::string_view rowKey) {
             auto rid = root();
             if (!rid.has_value())
@@ -1529,6 +1576,8 @@ namespace LOICollection::data {
                 mPending.erase(key);
                 return {};
             }
+
+            [[nodiscard]] WriteBatch& writeBatch() noexcept { return *mTx; }
 
             [[nodiscard]] ll::Expected<bool> commit() {
                 for (auto& [rowKey, cells] : mPending) {

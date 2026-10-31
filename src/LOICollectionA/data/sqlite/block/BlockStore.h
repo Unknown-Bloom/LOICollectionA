@@ -156,6 +156,8 @@ public:
 
     LOICOLLECTION_A_NDAPI ll::Expected<void> controlChildren(BlockId parent, BlockLifecycle to);
 
+    LOICOLLECTION_A_API void invalidateAll();
+
     LOICOLLECTION_A_NDAPI ll::Expected<void> withQuery(
         std::string_view key,
         std::string_view sql,
@@ -200,8 +202,6 @@ private:
     ll::Expected<std::int32_t> resolveKey(SQLiteConnection& conn, std::string_view name);
 
     bool mayCache() const noexcept;
-
-    void invalidateAll();
 
     std::shared_ptr<ConnectionPool> mPool;
     LRUCache<BlockId, BlockRecord> mBlockCache{2048};

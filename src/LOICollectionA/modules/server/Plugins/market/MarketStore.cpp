@@ -285,19 +285,35 @@ func smooth(average, reviews, globalAverage, prior) {
         if (auto cached = this->mImpl->rankCache.get("global"); cached.has_value())
             return *cached.value();
 
-        auto loadAll = [](auto& table) -> ll::Expected<std::unordered_map<std::string, std::unordered_map<std::string, std::string>>> {
-            auto keys = table.list();
-            if (!keys.has_value())
-                return ll::makeStringError(keys.error().message());
+        constexpr long long kSecondsPerDay = 86'400LL;
+
+        const Config::C_Market& options = this->mImpl->options;
+        std::string nowTime = SystemUtils::getNowTime();
+        long long txWindow = static_cast<long long>(std::max(0, options.StoreTransactionWindowDays)) * kSecondsPerDay;
+        std::string saleCutoff = SystemUtils::toFormatEpoch(
+            std::to_string(SystemUtils::getEpochSeconds() - txWindow));
+
+        auto saleKeys = this->mImpl->sale->range(StoreSaleCol::time, saleCutoff, nowTime);
+        if (!saleKeys.has_value())
+            return ll::Unexpected(saleKeys.error());
+
+        auto loadKeys = [](auto& table, std::vector<std::string> keys) -> ll::Expected<std::unordered_map<std::string, std::unordered_map<std::string, std::string>>> {
             std::unordered_map<std::string, std::unordered_map<std::string, std::string>> out;
-            out.reserve(keys.value().size());
-            for (const auto& k : keys.value()) {
+            out.reserve(keys.size());
+            for (const auto& k : keys) {
                 auto row = table.getRow(k);
                 if (!row.has_value())
                     return ll::makeStringError(row.error().message());
                 out.emplace(k, std::move(row.value()));
             }
             return out;
+        };
+
+        auto loadAll = [&loadKeys](auto& table) -> ll::Expected<std::unordered_map<std::string, std::unordered_map<std::string, std::string>>> {
+            auto keys = table.list();
+            if (!keys.has_value())
+                return ll::makeStringError(keys.error().message());
+            return loadKeys(table, std::move(keys.value()));
         };
 
         return loadAll(*this->mImpl->store)
@@ -309,11 +325,12 @@ func smooth(average, reviews, globalAverage, prior) {
                     return data;
                 });
             })
-            .and_then([this, &loadAll](RankData data) -> ll::Expected<RankData> {
-                return loadAll(*this->mImpl->sale).transform([data](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> sales) mutable -> RankData {
-                    data.sales = std::move(sales);
-                    return data;
-                });
+            .and_then([this, &loadKeys, keys = std::move(saleKeys.value())](RankData data) mutable -> ll::Expected<RankData> {
+                auto loaded = loadKeys(*this->mImpl->sale, std::move(keys));
+                if (!loaded.has_value())
+                    return ll::makeStringError(loaded.error().message());
+                data.sales = std::move(loaded.value());
+                return data;
             })
             .and_then([this, &loadAll](RankData data) -> ll::Expected<RankData> {
                 return loadAll(*this->mImpl->review).transform([data](std::unordered_map<std::string, std::unordered_map<std::string, std::string>> reviews) mutable -> RankData {
@@ -321,13 +338,12 @@ func smooth(average, reviews, globalAverage, prior) {
                     return data;
                 });
             })
-            .transform([this](RankData data) -> std::vector<std::string> {
+            .transform([this, nowTime](RankData data) -> std::vector<std::string> {
                 const Config::C_Market& options = this->mImpl->options;
                 static constexpr long long DAY_SECONDS = 86'400LL;
 
                 auto rankExpression = getMarketRankExpression(options.StoreRankExpression);
 
-                std::string nowTime = SystemUtils::getNowTime();
                 long long txWindow = static_cast<long long>(std::max(0, options.StoreTransactionWindowDays)) * DAY_SECONDS;
                 long long ratingWindow = static_cast<long long>(std::max(0, options.StoreRatingWindowDays)) * DAY_SECONDS;
                 long long riskWindow = static_cast<long long>(std::max(0, options.StoreRiskWindowDays)) * DAY_SECONDS;

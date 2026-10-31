@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -23,6 +24,7 @@
 #include "LOICollectionA/utils/core/SystemUtils.h"
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+#include "LOICollectionA/data/sqlite/block/TimeFold.h"
 
 #include "LOICollectionA/ConfigPlugin.h"
 
@@ -35,6 +37,9 @@ using I18nUtilsTools::tr;
 
 namespace LOICollection::server::Plugins {
     using LOICollection::data::FindMode;
+    using LOICollection::data::TimeBucket;
+    using LOICollection::data::TimeFold;
+    using LOICollection::data::TimeFoldValue;
 
     struct WalletLedger::Impl {
         std::shared_ptr<BlockRepository> db;
@@ -44,6 +49,9 @@ namespace LOICollection::server::Plugins {
 
         std::optional<WalletLedgerTable> ledger;
         std::optional<WalletFeeTable> fee;
+        std::optional<TimeFold> outDaily;
+        std::optional<TimeFold> sendDaily;
+        std::optional<TimeFold> grabDaily;
 
         std::atomic<uint64_t> mLedgerSeq{ 0 };
 
@@ -70,7 +78,10 @@ namespace LOICollection::server::Plugins {
     bool WalletLedger::isValid() const {
         return this->mImpl->db != nullptr
             && this->mImpl->ledger.has_value()
-            && this->mImpl->fee.has_value();
+            && this->mImpl->fee.has_value()
+            && this->mImpl->outDaily.has_value()
+            && this->mImpl->sendDaily.has_value()
+            && this->mImpl->grabDaily.has_value();
     }
 
     ll::Expected<void> WalletLedger::createTables() {
@@ -81,7 +92,22 @@ namespace LOICollection::server::Plugins {
             })
             .and_then([this](WalletFeeTable t) -> ll::Expected<void> {
                 this->mImpl->fee.emplace(std::move(t));
-                return {};
+
+                return TimeFold::open(*this->mImpl->db, "WalletOutDaily", TimeBucket::Day)
+                    .and_then([this](TimeFold fold) {
+                        this->mImpl->outDaily.emplace(std::move(fold));
+                        return TimeFold::open(*this->mImpl->db, "WalletEnvelopeSendDaily", TimeBucket::Day);
+                    })
+                    .and_then([this](TimeFold fold) {
+                        this->mImpl->sendDaily.emplace(std::move(fold));
+                        return TimeFold::open(*this->mImpl->db, "WalletEnvelopeGrabDaily", TimeBucket::Day);
+                    })
+                    .transform([this](TimeFold fold) -> void {
+                        this->mImpl->grabDaily.emplace(std::move(fold));
+                    });
+            })
+            .and_then([this]() -> ll::Expected<void> {
+                return this->reconcileToday();
             });
     }
 
@@ -126,6 +152,18 @@ namespace LOICollection::server::Plugins {
             .and_then([&]() { return batch.set(id, WalletLedgerCol::type, type); })
             .and_then([&]() { return batch.set(id, WalletLedgerCol::time_ns, nowNs); })
             .and_then([&]() { return batch.set(id, WalletLedgerCol::time, SystemUtils::getNowTime()); })
+            .and_then([&]() -> ll::Expected<void> {
+                if (type == "transfer")
+                    return this->mImpl->outDaily->add(batch.writeBatch(), fromUuid, nowNs, amount + fee);
+
+                if (type == "redenvelope_send")
+                    return this->mImpl->sendDaily->add(batch.writeBatch(), fromName, nowNs, amount);
+
+                if (type == "redenvelope_grab")
+                    return this->mImpl->grabDaily->add(batch.writeBatch(), toName, nowNs, amount);
+
+                return {};
+            })
             .and_then([&]() { return batch.commit().transform([](bool) {}); })
             .or_else([this](ll::Error e) -> ll::Expected<void> {
                 e.log(*this->mImpl->logger);
@@ -227,116 +265,55 @@ namespace LOICollection::server::Plugins {
         if (!this->isValid())
             return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
-        constexpr long long NS_PER_DAY = 86400LL * 1000000000LL;
+        auto nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
 
-        auto nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        long long todayStartNs = (nowNs / NS_PER_DAY) * NS_PER_DAY;
-
-        auto ids = this->mImpl->ledger->find(FindMode::And, {
-            { WalletLedgerCol::from_uuid, uuid }
-        });
-        if (!ids.has_value())
-            return ll::Unexpected(ids.error());
-
-        long long total = 0;
-        for (const auto& id : ids.value()) {
-            auto row = this->mImpl->ledger->getRow(id);
-            if (!row.has_value())
-                return ll::Unexpected(row.error());
-
-            const auto& fields = row.value();
-
-            if (fields.contains("type") && fields.at("type") != "transfer")
-                continue;
-
-            if (SystemUtils::toLongLong(fields.contains("time_ns") ? fields.at("time_ns") : "", 0) < todayStartNs)
-                continue;
-
-            long long amount = SystemUtils::toLongLong(fields.contains("amount") ? fields.at("amount") : "", 0);
-            long long fee = SystemUtils::toLongLong(fields.contains("fee") ? fields.at("fee") : "", 0);
-
-            total += amount + fee;
-        }
-
-        return total;
+        return this->mImpl->outDaily->get(uuid, nowNs)
+            .transform([](TimeFoldValue const& value) -> long long {
+                return value.sum;
+            });
     }
 
     ll::Expected<std::vector<std::string>> WalletLedger::getRedEnvelopeDailyStats() {
         if (!this->isValid())
             return ll::makeErrorCodeError(WalletPlugin::makeErrorCode(WalletPluginErrorCode::Invalid));
 
-        constexpr long long NS_PER_DAY = 86400LL * 1000000000LL;
-
-        long long nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        auto nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
-        long long todayStartNs = (nowNs / NS_PER_DAY) * NS_PER_DAY;
 
-        auto sendIds = this->mImpl->ledger->find(FindMode::And, {
-            { WalletLedgerCol::type, "redenvelope_send" }
-        });
-        if (!sendIds.has_value())
-            return ll::Unexpected(sendIds.error());
+        auto sends = this->mImpl->sendDaily->groups(nowNs);
+        if (!sends.has_value())
+            return ll::Unexpected(sends.error());
+
+        auto grabs = this->mImpl->grabDaily->groups(nowNs);
+        if (!grabs.has_value())
+            return ll::Unexpected(grabs.error());
 
         long long sendCount = 0;
         long long sendTotal = 0;
-        std::unordered_map<std::string, long long> senderTotal;
+        std::string topSender;
+        long long topSenderAmount = 0;
 
-        for (const auto& id : sendIds.value()) {
-            auto row = this->mImpl->ledger->getRow(id);
-            if (!row.has_value())
-                return ll::Unexpected(row.error());
+        for (auto const& [name, value] : sends.value()) {
+            sendCount += value.count;
+            sendTotal += value.sum;
 
-            const auto& fields = row.value();
-
-            if (SystemUtils::toLongLong(fields.contains("time_ns") ? fields.at("time_ns") : "", 0) < todayStartNs)
-                continue;
-
-            long long amount = SystemUtils::toLongLong(fields.contains("amount") ? fields.at("amount") : "", 0);
-
-            sendCount += 1;
-            sendTotal += amount;
-
-            std::string sender = fields.contains("from_name") ? fields.at("from_name") : "?";
-            senderTotal[sender] += amount;
+            if (value.sum > topSenderAmount) {
+                topSenderAmount = value.sum;
+                topSender = name;
+            }
         }
 
-        auto grabIds = this->mImpl->ledger->find(FindMode::And, {
-            { WalletLedgerCol::type, "redenvelope_grab" }
-        });
-        if (!grabIds.has_value())
-            return ll::Unexpected(grabIds.error());
+        std::vector<std::pair<std::string, long long>> topGrabbers;
+        topGrabbers.reserve(grabs.value().size());
+        for (auto const& [name, value] : grabs.value())
+            topGrabbers.emplace_back(name, value.sum);
 
-        std::unordered_map<std::string, long long> grabTotal;
-        for (const auto& id : grabIds.value()) {
-            auto row = this->mImpl->ledger->getRow(id);
-            if (!row.has_value())
-                return ll::Unexpected(row.error());
-
-            const auto& fields = row.value();
-
-            if (SystemUtils::toLongLong(fields.contains("time_ns") ? fields.at("time_ns") : "", 0) < todayStartNs)
-                continue;
-
-            long long amount = SystemUtils::toLongLong(fields.contains("amount") ? fields.at("amount") : "", 0);
-
-            std::string grabber = fields.contains("to_name") ? fields.at("to_name") : "?";
-            grabTotal[grabber] += amount;
-        }
-
-        std::vector<std::pair<std::string, long long>> topGrabbers(grabTotal.begin(), grabTotal.end());
-        std::sort(topGrabbers.begin(), topGrabbers.end(), [](const auto& a, const auto& b) {
-            return a.second > b.second;
+        std::sort(topGrabbers.begin(), topGrabbers.end(), [](auto const& left, auto const& right) {
+            return left.second > right.second;
         });
         if (topGrabbers.size() > 5)
             topGrabbers.resize(5);
-
-        std::string topSender;
-        long long topSenderAmount = 0;
-        for (const auto& [name, amount] : senderTotal)
-            if (amount > topSenderAmount) {
-                topSenderAmount = amount;
-                topSender = name;
-            }
 
         std::vector<std::string> result;
         result.emplace_back(tr({}, "wallet.rstat.header"));
@@ -349,6 +326,75 @@ namespace LOICollection::server::Plugins {
                 i + 1, topGrabbers.at(i).first, topGrabbers.at(i).second));
 
         return result;
+    }
+
+    ll::Expected<void> WalletLedger::reconcileToday() {
+        constexpr long long NS_PER_DAY = 86400LL * 1000000000LL;
+
+        long long nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        long long todayStartNs = (nowNs / NS_PER_DAY) * NS_PER_DAY;
+
+        auto keys = this->mImpl->ledger->range(
+            WalletLedgerCol::time_ns, todayStartNs, todayStartNs + NS_PER_DAY - 1
+        );
+        if (!keys.has_value())
+            return ll::Unexpected(keys.error());
+
+        std::unordered_map<std::string, TimeFoldValue> outgoing;
+        std::unordered_map<std::string, TimeFoldValue> sent;
+        std::unordered_map<std::string, TimeFoldValue> grabbed;
+
+        auto accumulate = [](std::unordered_map<std::string, TimeFoldValue>& target,
+                             const std::string& group, long long value) -> void {
+            TimeFoldValue& stat = target[group];
+            if (stat.count == 0) {
+                stat.min = value;
+                stat.max = value;
+            } else {
+                stat.min = std::min(stat.min, value);
+                stat.max = std::max(stat.max, value);
+            }
+
+            stat.count += 1;
+            stat.sum += value;
+        };
+
+        for (auto const& key : keys.value()) {
+            auto row = this->mImpl->ledger->getRow(key);
+            if (!row.has_value())
+                return ll::Unexpected(row.error());
+
+            auto const& fields = row.value();
+            std::string type = fields.contains("type") ? fields.at("type") : "";
+            long long amount = SystemUtils::toLongLong(fields.contains("amount") ? fields.at("amount") : "", 0);
+            long long fee = SystemUtils::toLongLong(fields.contains("fee") ? fields.at("fee") : "", 0);
+
+            if (type == "transfer") {
+                accumulate(outgoing, fields.contains("from_uuid") ? fields.at("from_uuid") : "", amount + fee);
+            } else if (type == "redenvelope_send") {
+                accumulate(sent, fields.contains("from_name") ? fields.at("from_name") : "?", amount);
+            } else if (type == "redenvelope_grab") {
+                accumulate(grabbed, fields.contains("to_name") ? fields.at("to_name") : "?", amount);
+            }
+        }
+
+        auto toEntries = [](auto const& values) {
+            std::vector<std::pair<std::string, TimeFoldValue>> entries;
+            entries.reserve(values.size());
+            for (auto const& [group, value] : values)
+                entries.emplace_back(group, value);
+
+            return entries;
+        };
+
+        return this->mImpl->outDaily->replace(todayStartNs, toEntries(outgoing))
+            .and_then([this, todayStartNs, &toEntries, &sent]() -> ll::Expected<void> {
+                return this->mImpl->sendDaily->replace(todayStartNs, toEntries(sent));
+            })
+            .and_then([this, todayStartNs, &toEntries, &grabbed]() -> ll::Expected<void> {
+                return this->mImpl->grabDaily->replace(todayStartNs, toEntries(grabbed));
+            });
     }
 
     void WalletLedger::startCleanupSchedule() {
@@ -369,9 +415,11 @@ namespace LOICollection::server::Plugins {
             std::chrono::system_clock::now().time_since_epoch()).count()
             - static_cast<long long>(this->mImpl->options.WalletHistoryRetentionDays) * 86400LL * 1000000000LL;
 
-        auto ids = this->mImpl->ledger->list();
-        if (!ids.has_value()) {
-            ids.error().log(*this->mImpl->logger);
+        auto expired = this->mImpl->ledger->range(
+            WalletLedgerCol::time_ns, std::numeric_limits<long long>::min(), cutoff - 1
+        );
+        if (!expired.has_value()) {
+            expired.error().log(*this->mImpl->logger);
             this->scheduleCleanup();
             return;
         }
@@ -385,20 +433,7 @@ namespace LOICollection::server::Plugins {
 
         auto& batch = tx.value();
 
-        std::vector<std::string> expired;
-        expired.reserve(ids.value().size());
-
-        for (const auto& id : ids.value()) {
-            auto timeNs = this->mImpl->ledger->get<long long>(id, WalletLedgerCol::time_ns, 0);
-            if (!timeNs.has_value()) {
-                timeNs.error().log(*this->mImpl->logger);
-                continue;
-            }
-            if (timeNs.value() < cutoff)
-                expired.push_back(id);
-        }
-
-        for (const auto& id : expired) {
+        for (const auto& id : expired.value()) {
             auto r = batch.del(id);
             if (!r.has_value())
                 r.error().log(*this->mImpl->logger);
@@ -407,6 +442,18 @@ namespace LOICollection::server::Plugins {
         auto committed = batch.commit();
         if (!committed.has_value())
             committed.error().log(*this->mImpl->logger);
+
+        for (TimeFold* fold : {
+            &*this->mImpl->outDaily,
+            &*this->mImpl->sendDaily,
+            &*this->mImpl->grabDaily
+        }) {
+            fold->trim(cutoff).or_else([this](ll::Error e) -> ll::Expected<void> {
+                e.log(*this->mImpl->logger);
+
+                return {};
+            });
+        }
 
         this->mImpl->db->exec("VACUUM;")
             .or_else([this](ll::Error e) -> ll::Expected<void> {

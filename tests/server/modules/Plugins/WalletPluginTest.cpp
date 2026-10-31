@@ -19,6 +19,7 @@
 
 #include "LOICollectionA/data/sqlite/block/BlockRepository.h"
 #include "LOICollectionA/data/sqlite/block/TypedTable.h"
+#include "LOICollectionA/data/sqlite/block/TimeFold.h"
 #include "LOICollectionA/include/server/Plugins/types/wallet/WalletSchema.h"
 
 #include "LOICollectionA/utils/mc-server/ScoreboardUtils.h"
@@ -37,6 +38,7 @@
 #include "server/TestSimulatedPlayer.h"
 
 using namespace LOICollection::server::Plugins;
+using LOICollection::data::clearTimeFold;
 using LOICollection::data::clearTypedTable;
 using LOICollection::data::FindMode;
 
@@ -64,6 +66,15 @@ protected:
         }) {
             auto result = clearTypedTable(*storage, table);
             EXPECT_TRUE(result.has_value()) << "Unable to clear data";
+        }
+
+        for (const char* fold : {
+            "WalletOutDaily",
+            "WalletEnvelopeSendDaily",
+            "WalletEnvelopeGrabDaily"
+        }) {
+            auto result = clearTimeFold(*storage, fold);
+            EXPECT_TRUE(result.has_value()) << "Unable to clear time fold";
         }
     }
 

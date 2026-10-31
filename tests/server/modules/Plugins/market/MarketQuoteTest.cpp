@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -7,6 +8,7 @@
 #include <optional>
 
 #include <ll/api/Expected.h>
+#include <ll/api/io/LoggerRegistry.h>
 
 #include "LOICollectionA/coro/TimerManager.h"
 
@@ -15,9 +17,15 @@
 
 #include "LOICollectionA/ConfigPlugin.h"
 
+#include "LOICollectionA/data/sqlite/block/BlockRepository.h"
+
 #include "LOICollectionA/include/server/Plugins/market/MarketPlugin.h"
+#include "LOICollectionA/include/server/Plugins/types/market/MarketSchema.h"
+
+#include "LOICollectionA/utils/core/SystemUtils.h"
 
 #include "common/coro/MockExecutor.h"
+#include "common/data/StorageTestSupport.h"
 
 using namespace LOICollection::server::Plugins;
 
@@ -303,4 +311,88 @@ TEST_F(MarketQuoteComponentTest, DayWindowNormalisationGroupsDaysIntoSevenOrThir
     ASSERT_TRUE(monthTurnover.has_value());
 
     EXPECT_EQ(weekTurnover.value(), monthTurnover.value());
+}
+
+namespace market_quote_window_support {
+    constexpr long long kDaySeconds = 86'400LL;
+
+    long long nsOf(long long seconds) {
+        return seconds * 1'000'000'000LL;
+    }
+
+    bool insertSale(StoreSaleTable& sales, const std::string& item, long long secondsAgo, long long price, long long offset) {
+        long long at = SystemUtils::getEpochSeconds() - secondsAgo;
+        std::string key = std::to_string(nsOf(at) + offset);
+        std::string time = SystemUtils::toFormatEpoch(std::to_string(at));
+
+        return sales.set(key, StoreSaleCol::store_id, std::string("store")).has_value()
+            && sales.set(key, StoreSaleCol::item_name, item).has_value()
+            && sales.set(key, StoreSaleCol::price, price).has_value()
+            && sales.set(key, StoreSaleCol::tax, 0LL).has_value()
+            && sales.set(key, StoreSaleCol::buyer_uuid, std::string("buyer")).has_value()
+            && sales.set(key, StoreSaleCol::seller_uuid, std::string("seller")).has_value()
+            && sales.set(key, StoreSaleCol::time, time).has_value();
+    }
+}
+
+class MarketQuoteWindowTest : public testing::Test {
+protected:
+    void SetUp() override {
+        this->mTimerManager = std::make_shared<TimerManager>(this->mExecutor);
+        this->mPath = storage_test_support::tempDb("market-quote", "window");
+
+        auto repo = BlockRepository::open(this->mPath.string(), 2);
+        ASSERT_TRUE(repo.has_value()) << repo.error().message();
+        this->mRepo = repo.value();
+    }
+
+    void TearDown() override {
+        this->mRepo.reset();
+        storage_test_support::dropDb(this->mPath);
+    }
+
+    MockExecutor mExecutor;
+    std::shared_ptr<TimerManager> mTimerManager;
+    std::filesystem::path mPath;
+    std::shared_ptr<BlockRepository> mRepo;
+};
+
+TEST_F(MarketQuoteWindowTest, RebuildKeepsThirtyDayWindow) {
+    auto sales = StoreSaleTable::open(*this->mRepo, "StoreSale");
+    ASSERT_TRUE(sales.has_value()) << sales.error().message();
+
+    ASSERT_TRUE(market_quote_window_support::insertSale(sales.value(), "widget", 0, 100, 1));
+    ASSERT_TRUE(market_quote_window_support::insertSale(
+        sales.value(), "widget", 29 * market_quote_window_support::kDaySeconds, 200, 2));
+    ASSERT_TRUE(market_quote_window_support::insertSale(
+        sales.value(), "widget", 31 * market_quote_window_support::kDaySeconds, 300, 3));
+    ASSERT_TRUE(market_quote_window_support::insertSale(
+        sales.value(), "widget", 40 * market_quote_window_support::kDaySeconds, 400, 4));
+    ASSERT_TRUE(market_quote_window_support::insertSale(sales.value(), "widget", -3600, 900, 5));
+
+    auto logger = ll::io::LoggerRegistry::getInstance().getOrCreate("LOICollectionA");
+    ASSERT_NE(logger, nullptr);
+
+    Config::C_Market options{};
+    options.StorePriceOutlierRatio = 2.0;
+
+    MarketQuote quote(this->mRepo, options, logger, *this->mTimerManager);
+
+    auto rebuilt = quote.rebuild();
+    ASSERT_TRUE(rebuilt.has_value()) << rebuilt.error().message();
+
+    auto info = quote.getQuote("widget");
+    ASSERT_TRUE(info.has_value()) << info.error().message();
+    ASSERT_TRUE(info.value().has_value());
+    EXPECT_EQ(info.value()->count30d, 2);
+    EXPECT_EQ(info.value()->avg30d, 150);
+    EXPECT_EQ(info.value()->min30d, 100);
+    EXPECT_EQ(info.value()->max30d, 200);
+    EXPECT_EQ(info.value()->lastPrice, 100);
+
+    auto report = quote.getReport(30);
+    ASSERT_TRUE(report.has_value()) << report.error().message();
+    EXPECT_EQ(report->count, 2);
+    EXPECT_EQ(report->turnover, 300);
+    EXPECT_EQ(report->activeSellers, 1);
 }

@@ -61,6 +61,8 @@ namespace LOICollection::server::Plugins {
     private:
         bool isValid() const;
 
+        ll::Expected<void> reconcileToday();
+
         void scheduleCleanup();
         void cleanup();
 

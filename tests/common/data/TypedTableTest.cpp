@@ -473,6 +473,41 @@ TEST(TypedTableTest, FindValuesProjectsTheRequestedColumn) {
     dropDb(path);
 }
 
+TEST(TypedTableTest, RangeSelectsRowsInsideBounds) {
+    auto path = tempDb("typed", "range");
+
+    {
+        auto repo = BlockRepository::open(path.string(), 2);
+        ASSERT_TRUE(repo.has_value()) << repo.error().message();
+
+        auto opened = Table::open(**repo, "players");
+        ASSERT_TRUE(opened.has_value()) << opened.error().message();
+        Table& table = *opened;
+
+        ASSERT_TRUE(table.set("r1", ModelCol::name, std::string("alice")).has_value());
+        ASSERT_TRUE(table.set("r1", ModelCol::level, 10).has_value());
+        ASSERT_TRUE(table.set("r2", ModelCol::name, std::string("bob")).has_value());
+        ASSERT_TRUE(table.set("r2", ModelCol::level, 20).has_value());
+        ASSERT_TRUE(table.set("r3", ModelCol::name, std::string("carol")).has_value());
+        ASSERT_TRUE(table.set("r3", ModelCol::level, 30).has_value());
+
+        auto texts = table.range(ModelCol::name, std::string("b"), std::string("d"));
+        ASSERT_TRUE(texts.has_value()) << texts.error().message();
+        EXPECT_EQ(texts.value(), (std::vector<std::string>{"r2", "r3"}));
+
+        auto ints = table.range(ModelCol::level, 10, 20);
+        ASSERT_TRUE(ints.has_value()) << ints.error().message();
+        EXPECT_EQ(ints.value(), (std::vector<std::string>{"r1", "r2"}));
+
+        ASSERT_TRUE(table.del("r2").has_value());
+
+        auto after = table.range(ModelCol::level, 10, 20);
+        ASSERT_TRUE(after.has_value()) << after.error().message();
+        EXPECT_EQ(after.value(), (std::vector<std::string>{"r1"}));
+    }
+    dropDb(path);
+}
+
 TEST(TypedTableTest, GetRowAndSetRowRoundTripCells) {
     auto path = tempDb("typed", "row-map");
 

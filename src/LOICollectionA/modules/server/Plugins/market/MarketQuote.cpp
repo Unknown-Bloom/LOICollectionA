@@ -145,15 +145,17 @@ namespace LOICollection::server::Plugins {
             owners[key] = row->contains("owner_uuid") ? row->at("owner_uuid") : "";
         }
 
-        auto saleKeys = saleT->list();
+        std::string nowTime = SystemUtils::getNowTime();
+        std::string cutoff = SystemUtils::toFormatEpoch(
+            std::to_string(SystemUtils::getEpochSeconds() - WINDOW_30D));
+
+        auto saleKeys = saleT->range(StoreSaleCol::time, cutoff, nowTime);
         if (!saleKeys.has_value())
             return ll::Unexpected(saleKeys.error());
 
         std::unordered_map<std::string, QuoteStat> rebuilt;
         std::unordered_set<std::string> sellers7d;
         std::unordered_set<std::string> sellers30d;
-
-        std::string nowTime = SystemUtils::getNowTime();
 
         for (auto const& key : *saleKeys) {
             auto row = saleT->getRow(key);
