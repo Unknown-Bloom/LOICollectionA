@@ -141,7 +141,7 @@ namespace LOICollection::server::Plugins {
                         return {};
                     });
             })
-            .or_else([this, &player, amount, mScoreboard](ll::Error e) -> ll::Expected<void> {
+            .or_else([&player, amount, mScoreboard](ll::Error e) -> ll::Expected<void> {
                 ScoreboardUtils::addScore(player, mScoreboard, detail::toScore(amount));
 
                 return ll::Unexpected(std::move(e));

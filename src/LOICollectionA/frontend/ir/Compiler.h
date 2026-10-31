@@ -167,7 +167,7 @@ namespace LOICollection::frontend::ir {
 
         void compileForInCounter(ForInNode& node, size_t uid);
         void compileForInIterable(ForInNode& node, size_t uid, const IterableProtocol& protocol);
-        void compileForInLazy(ForInNode& node, size_t uid, const IterableProtocol& protocol);
+        void compileForInLazy(ForInNode& node, size_t uid);
         int emitIterableLength(const IterableProtocol& protocol, int seqSlot, const SourceLocation& loc);
         int emitIterableElement(const IterableProtocol& protocol, int seqSlot, int idxSlot, const SourceLocation& loc);
         int emitArithmeticOp(

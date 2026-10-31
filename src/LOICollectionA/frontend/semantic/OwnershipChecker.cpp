@@ -629,8 +629,7 @@ namespace LOICollection::frontend {
     void OwnershipChecker::checkCallParams(
         const std::vector<TypeInfo>& paramTypes,
         std::vector<std::unique_ptr<ExprNode>>& args,
-        SourceLocation loc,
-        const std::string& callee) {
+        SourceLocation loc) {
         const size_t count = std::min(paramTypes.size(), args.size());
         for (size_t i = 0; i < count; ++i) {
             const Ownership expected = effectiveOwnership(paramTypes[i]);
@@ -781,7 +780,7 @@ namespace LOICollection::frontend {
                 auto& fn = static_cast<FunctionNode&>(expr);
                 for (auto& arg : fn.args)
                     this->checkExpr(*arg);
-                this->checkCallParams(fn.paramTypes, fn.args, fn.loc, "static method '" + fn.name + "'");
+                this->checkCallParams(fn.paramTypes, fn.args, fn.loc);
                 return;
             }
             case ASTNode::Type::Macro: {
@@ -814,26 +813,21 @@ namespace LOICollection::frontend {
                 this->checkExpr(*call.target);
                 for (auto& arg : call.args)
                     this->checkExpr(*arg);
-                this->checkCallParams(call.paramTypes, call.args, call.loc,
-                    "method '" + call.methodName + "'");
+                this->checkCallParams(call.paramTypes, call.args, call.loc);
                 return;
             }
             case ASTNode::Type::FuncCall: {
                 auto& call = static_cast<FuncCallNode&>(expr);
                 for (auto& arg : call.args)
                     this->checkExpr(*arg);
-                this->checkCallParams(call.paramTypes, call.args, call.loc,
-                    call.isEnumConstruction
-                        ? "enum variant '" + call.name + "'"
-                        : "function '" + call.name + "'");
+                this->checkCallParams(call.paramTypes, call.args, call.loc);
                 return;
             }
             case ASTNode::Type::New: {
                 auto& newNode = static_cast<NewNode&>(expr);
                 for (auto& arg : newNode.args)
                     this->checkExpr(*arg);
-                this->checkCallParams(newNode.paramTypes, newNode.args, newNode.loc,
-                    "constructor of '" + newNode.className + "'");
+                this->checkCallParams(newNode.paramTypes, newNode.args, newNode.loc);
 
                 if (newNode.declarativeBlock) {
                     this->pushScope();
@@ -846,7 +840,7 @@ namespace LOICollection::frontend {
                 auto& call = static_cast<SuperCallNode&>(expr);
                 for (auto& arg : call.args)
                     this->checkExpr(*arg);
-                this->checkCallParams(call.paramTypes, call.args, call.loc, "base constructor");
+                this->checkCallParams(call.paramTypes, call.args, call.loc);
                 return;
             }
             case ASTNode::Type::Lambda:

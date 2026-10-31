@@ -136,7 +136,7 @@ namespace LOICollection::frontend::ir {
         this->lastResultReg = this->finishHint(-1, -1, node.loc);
     }
 
-    void Compiler::compileForInLazy(ForInNode& node, size_t uid, const IterableProtocol& protocol) {
+    void Compiler::compileForInLazy(ForInNode& node, size_t uid) {
         const int seqSlot = this->declareSlot("__forin_seq_" + std::to_string(uid));
         const int idxSlot = this->declareSlot("__forin_idx_" + std::to_string(uid));
         const int elemSlot = this->declareSlot(node.elementVar);
