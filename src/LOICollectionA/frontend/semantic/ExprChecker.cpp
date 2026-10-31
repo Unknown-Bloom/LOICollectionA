@@ -193,8 +193,12 @@ namespace LOICollection::frontend {
 
             case ASTNode::Type::Array: {
                 auto& array = static_cast<ArrayNode&>(node);
-                for (auto& element : array.elements)
-                    checkExpr(*element, scope);
+                for (auto& element : array.elements) {
+                    TypeInfo elementType = checkExpr(*element, scope);
+                    if (elementType.ownership == Ownership::Borrowed)
+                        diagnostics.addError(array.loc,
+                            "A reference cannot be stored in an array literal; move a value in instead");
+                }
 
                 return { TypeKind::Array };
             }
@@ -286,6 +290,18 @@ namespace LOICollection::frontend {
                 auto& unary = static_cast<UnaryNode&>(node);
                 TypeInfo operand = checkExpr(*unary.operand, scope);
 
+                if (unary.op == "&") {
+                    if (!isReferenceType(operand)) {
+                        diagnostics.addError(unary.loc,
+                            "'&' requires an object, array, function, enum or trait value");
+                        return {};
+                    }
+
+                    TypeInfo result = withoutOwnership(operand);
+                    result.ownership = Ownership::Borrowed;
+                    return result;
+                }
+
                 if (unary.op == "-") {
                     if (auto overload = resolveOperatorOverload("neg", operand)) {
                         unary.overload = overload;
@@ -323,6 +339,7 @@ namespace LOICollection::frontend {
                     fn.staticClassName = fn.namespaces;
                     fn.methodOrdinal = this->staticMethodOrdinal(
                         fn.namespaces, this->methodSignature(method));
+                    fn.paramTypes = method.paramTypes;
                     for (size_t j = 0; j < argCount; ++j) {
                         if (method.paramTypes[j].kind == TypeKind::Optional &&
                             argTypes[j].kind == TypeKind::Optional)
@@ -394,6 +411,15 @@ namespace LOICollection::frontend {
             if (node.value && rhs.kind == TypeKind::Optional)
                 node.value->preserveOptional = true;
         };
+
+        if (rhs.ownership == Ownership::Borrowed) {
+            const ASTNode::Type targetKind = node.target->getType();
+            if (targetKind == ASTNode::Type::MemberAccess || targetKind == ASTNode::Type::Index) {
+                diagnostics.addError(node.loc,
+                    "Cannot store " + typeToString(rhs) + " in a field or element");
+                return rhs;
+            }
+        }
 
         switch (node.target->getType()) {
             case ASTNode::Type::Variable: {
@@ -478,6 +504,7 @@ namespace LOICollection::frontend {
                         }
 
                         TypeInfo declared = this->resolveTypeExpr(node.declaredType, node.loc, true);
+                        node.declaredTypeInfo = declared;
                         this->unify(declared, rhs, node.loc, "variable '" + var.name + "'");
                         if (declared.kind == TypeKind::Optional &&
                             rhs.kind == TypeKind::Optional && node.value) {
@@ -504,8 +531,8 @@ namespace LOICollection::frontend {
                     for (auto it = this->blockScopes.rbegin(); it != this->blockScopes.rend(); ++it) {
                         auto found = it->find(var.name);
                         if (found != it->end()) {
-                            if (rhs.kind != TypeKind::Unknown && rhs.kind != TypeKind::None)
-                                found->second = rhs;
+                            if (!this->assignTypedBinding(found->second, rhs, node.loc, var.name))
+                                return rhs;
                             if (found->second.kind == TypeKind::Unknown ||
                                 found->second.kind == TypeKind::Optional)
                                 keepOptionalRhs();
@@ -523,6 +550,7 @@ namespace LOICollection::frontend {
 
                 if (node.hasDeclaredType) {
                     TypeInfo declared = this->resolveTypeExpr(node.declaredType, node.loc, true);
+                    node.declaredTypeInfo = declared;
 
                     if (auto existing = this->declaredGlobals.find(var.name);
                         existing != this->declaredGlobals.end()) {
@@ -746,6 +774,28 @@ namespace LOICollection::frontend {
                 diagnostics.addError(node.loc, "Invalid assignment target");
                 return rhs;
         }
+    }
+
+    bool SemanticAnalyzer::assignTypedBinding(
+        TypeInfo& target, const TypeInfo& from, SourceLocation loc, const std::string& name) {
+        if (from.kind == TypeKind::Unknown || from.kind == TypeKind::Void)
+            return true;
+
+        const bool known = target.kind != TypeKind::Unknown;
+        if (known && effectiveOwnership(target) != effectiveOwnership(from)) {
+            this->diagnostics.addError(loc,
+                "Cannot assign " + this->typeToString(from) + " to '" + name +
+                "' of type " + this->typeToString(target));
+            return false;
+        }
+
+        if (from.kind != TypeKind::None) {
+            const Ownership kept = known ? target.ownership : from.ownership;
+            target = from;
+            target.ownership = kept;
+        }
+
+        return true;
     }
 
     void SemanticAnalyzer::requireLet(AssignmentNode& node, const VariableNode& var) {

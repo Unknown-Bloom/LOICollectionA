@@ -82,6 +82,7 @@ namespace LOICollection::frontend {
                 node.methodOrdinal = this->staticMethodOrdinal(
                     clsOpt->get().name, this->methodSignature(method)
                 );
+                node.paramTypes = method.paramTypes;
 
                 for (size_t j = 0; j < argCount; ++j) {
                     if (method.paramTypes[j].kind == TypeKind::Optional &&
@@ -231,8 +232,9 @@ namespace LOICollection::frontend {
             return {};
 
         if (targetType.kind == TypeKind::Function) {
-            if (node.methodName == "call")
+            if (node.methodName == "call") {
                 return {};
+            }
 
             diagnostics.addError(node.loc, "Method call target is not an object");
             return {};
@@ -360,6 +362,7 @@ namespace LOICollection::frontend {
 
         node.className = cls.name;
         node.methodOrdinal = this->methodOrdinal(cls.name, this->methodSignature(method));
+        node.paramTypes = method.paramTypes;
 
         for (size_t j = 0; j < argCount; ++j) {
             const TypeInfo& param = this->substituteType(method.paramTypes[j], subst);
@@ -385,6 +388,11 @@ namespace LOICollection::frontend {
         auto variantIt = this->enumVariant.find(node.name);
         if (variantIt != this->enumVariant.end()) {
             const EnumVariantInfo& info = variantIt->second;
+            node.isEnumConstruction = true;
+            node.paramTypes.clear();
+            for (const auto& fieldType : info.fieldTypes)
+                node.paramTypes.push_back(this->resolveTypeExpr(fieldType, node.loc, false));
+
             if (static_cast<int>(argCount) != info.arity) {
                 diagnostics.addError(node.loc,
                     "Enum variant '" + node.name + "' expects " +
@@ -424,6 +432,7 @@ namespace LOICollection::frontend {
                     node.methodOrdinal = this->staticMethodOrdinal(
                         scope.classRef().name, this->methodSignature(method)
                     );
+                    node.paramTypes = method.paramTypes;
 
                     for (size_t j = 0; j < argCount; ++j) {
                         if (method.paramTypes[j].kind == TypeKind::Optional &&
@@ -448,6 +457,7 @@ namespace LOICollection::frontend {
 
                 node.isCallable = true;
                 node.resolvedName = node.name;
+
                 return {};
             }
 
@@ -530,6 +540,7 @@ namespace LOICollection::frontend {
 
         node.resolvedName = node.name;
         node.functionOrdinal = static_cast<int>(bestIndex);
+        node.paramTypes = decl.paramTypes;
 
         for (size_t j = 0; j < argCount; ++j) {
             if (decl.paramTypes[j].kind == TypeKind::Optional &&
@@ -634,6 +645,8 @@ namespace LOICollection::frontend {
             return type;
         }
 
+        node.paramTypes = ctor->paramTypes;
+
         if (ctor->params.size() != argCount) {
             diagnostics.addError(node.loc,
                 "Constructor of class '" + cls.name + "' expects " +
@@ -718,6 +731,7 @@ namespace LOICollection::frontend {
                 break;
             }
         }
+        node.paramTypes = ctor.paramTypes;
 
         if (ctor.params.size() != argCount) {
             diagnostics.addError(node.loc,

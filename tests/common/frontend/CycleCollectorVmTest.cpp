@@ -14,11 +14,12 @@ using namespace LOICollection::frontend::ir;
 TEST(CycleCollectorVmTest, ReclaimsArraysAbandonedByAFunction) {
     DiagnosticEngine diagnostics;
     auto chunk = compile(
+        "func link(a, b) -> int { a[0] = b; return 0; }\n"
         "func build(n: int) -> int {\n"
         "    let first = [n];\n"
         "    let second = [n];\n"
-        "    first[0] = second;\n"
-        "    second[0] = first;\n"
+        "    link(first, second);\n"
+        "    link(second, first);\n"
         "    return n;\n"
         "}\n"
         "build(1);\n",
@@ -39,8 +40,9 @@ TEST(CycleCollectorVmTest, KeepsArraysReachableFromGlobals) {
     auto chunk = compile(
         "let first = [1];\n"
         "let second = [2];\n"
-        "first[0] = second;\n"
-        "second[0] = first;\n",
+        "func link(a, b) -> int { a[0] = b; return 0; }\n"
+        "link(first, second);\n"
+        "link(second, first);\n",
         diagnostics
     );
     ASSERT_TRUE(chunk) << diagnostics.getErrorMessage();
@@ -79,8 +81,7 @@ TEST(CycleCollectorVmTest, TracksChunksThatStoreReferences) {
     auto chunk = compile(
         "let first = [1];\n"
         "let second = [2];\n"
-        "first[0] = second;\n"
-        "second[0] = first;\n",
+        "first[0] = second;\n",
         diagnostics
     );
     ASSERT_TRUE(chunk) << diagnostics.getErrorMessage();
@@ -90,6 +91,7 @@ TEST(CycleCollectorVmTest, TracksChunksThatStoreReferences) {
 TEST(CycleCollectorVmTest, ReclaimsAFieldCycleAtTheEndOfARunOnASharedHeap) {
     DiagnosticEngine diagnostics;
     auto chunk = compile(
+        "func link(a, b) -> int { a.next = b; return 0; }\n"
         "class Node {\n"
         "public:\n"
         "    value = 0;\n"
@@ -98,8 +100,8 @@ TEST(CycleCollectorVmTest, ReclaimsAFieldCycleAtTheEndOfARunOnASharedHeap) {
         "func build() -> int {\n"
         "    let first = new Node();\n"
         "    let second = new Node();\n"
-        "    first.next = second;\n"
-        "    second.next = first;\n"
+        "    link(first, second);\n"
+        "    link(second, first);\n"
         "    return 0;\n"
         "}\n"
         "build();\n",
@@ -123,6 +125,7 @@ TEST(CycleCollectorVmTest, ReclaimsAFieldCycleAtTheEndOfARunOnASharedHeap) {
 TEST(CycleCollectorVmTest, KeepsTheTrackedGraphFlatAcrossRepeatedRuns) {
     DiagnosticEngine diagnostics;
     auto chunk = compile(
+        "func link(a, b) -> int { a.next = b; return 0; }\n"
         "class Node {\n"
         "public:\n"
         "    next = 0;\n"
@@ -130,8 +133,8 @@ TEST(CycleCollectorVmTest, KeepsTheTrackedGraphFlatAcrossRepeatedRuns) {
         "func build() -> int {\n"
         "    let first = new Node();\n"
         "    let second = new Node();\n"
-        "    first.next = second;\n"
-        "    second.next = first;\n"
+        "    link(first, second);\n"
+        "    link(second, first);\n"
         "    return 0;\n"
         "}\n"
         "build();\n",

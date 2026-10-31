@@ -72,8 +72,12 @@ namespace LOICollection::frontend {
         if (type.kind == TypeKind::Generic) {
             auto it = subst.find(type.typeVar);
             if (it != subst.end() && it->second.kind != TypeKind::Unknown &&
-                it->second.kind != TypeKind::None)
-                return it->second;
+                it->second.kind != TypeKind::None) {
+                TypeInfo resolved = it->second;
+                if (type.ownership != Ownership::Value && isReferenceType(resolved))
+                    resolved.ownership = type.ownership;
+                return resolved;
+            }
             return type;
         }
 
@@ -104,8 +108,8 @@ namespace LOICollection::frontend {
                 continue;
 
             if (it->second.kind == TypeKind::Unknown)
-                it->second = argTypes[j];
-            else if (it->second != argTypes[j])
+                it->second = withoutOwnership(argTypes[j]);
+            else if (it->second != withoutOwnership(argTypes[j]))
                 it->second = {};
         }
 
@@ -170,6 +174,9 @@ namespace LOICollection::frontend {
         if (from.kind == TypeKind::None)
             return target.kind == TypeKind::Optional;
 
+        if (effectiveOwnership(target) != effectiveOwnership(from))
+            return false;
+
         if (from.kind == TypeKind::Optional) {
             if (target.kind == TypeKind::Optional)
                 return this->isAssignableTo(*target.optionalInner, *from.optionalInner);
@@ -200,7 +207,7 @@ namespace LOICollection::frontend {
     }
 
     bool SemanticAnalyzer::isTypeCompatible(const TypeInfo& target, const TypeInfo& from) const {
-        if (target == from)
+        if (sameTypeIgnoringOwnership(target, from))
             return true;
 
         if (target.kind == TypeKind::Trait) {

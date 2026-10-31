@@ -250,6 +250,7 @@ namespace LOICollection::frontend {
 
             if (method.hasReturnType &&
                 method.returnType.kind != TypeKind::Unknown &&
+                method.returnType.ownership != Ownership::Borrowed &&
                 valueType.kind != TypeKind::Unknown &&
                 !this->isAssignableTo(method.returnType, valueType)) {
                 diagnostics.addError(node.loc,
@@ -280,6 +281,10 @@ namespace LOICollection::frontend {
         if (decl.hasReturnType)
             decl.returnType = this->resolveTypeExpr(
                 decl.returnTypeExpr, decl.loc, true);
+
+        if (decl.returnType.ownership == Ownership::Borrowed)
+            this->diagnostics.addError(decl.loc,
+                "Anonymous functions cannot return ref<T>");
 
         MethodScope lambdaScope;
         if (scope.hasClass())
@@ -384,6 +389,35 @@ namespace LOICollection::frontend {
         if (from.kind == TypeKind::None && target.kind != TypeKind::Optional) {
             diagnostics.addError(loc,
                 "'None' is only allowed when assigning to an optional value (" + what + ")");
+            return;
+        }
+
+        const Ownership targetOwnership = effectiveOwnership(target);
+        const Ownership fromOwnership = effectiveOwnership(from);
+
+        if (targetOwnership == Ownership::Value && fromOwnership == Ownership::Owned) {
+            diagnostics.addError(loc,
+                "Cannot copy " + typeToString(from) + " into " + what +
+                "; move it or borrow it with '&'");
+            return;
+        }
+
+        if (targetOwnership == Ownership::Value && fromOwnership == Ownership::Borrowed) {
+            diagnostics.addError(loc,
+                typeToString(from) + " cannot be stored in " + what +
+                "; a borrow may only be passed as a ref<T> parameter or held in a local ref<T>");
+            return;
+        }
+
+        if (targetOwnership == Ownership::Borrowed && fromOwnership != Ownership::Borrowed) {
+            diagnostics.addError(loc,
+                "A ref<T> binding (" + what + ") must be initialized from '&value'");
+            return;
+        }
+
+        if (targetOwnership == Ownership::Owned && fromOwnership == Ownership::Borrowed) {
+            diagnostics.addError(loc,
+                "Cannot take ownership of " + typeToString(from) + " for " + what);
             return;
         }
 

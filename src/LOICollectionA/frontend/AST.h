@@ -45,6 +45,12 @@ namespace LOICollection::frontend {
         COUNT
     };
 
+    enum class Ownership {
+        Value,
+        Owned,
+        Borrowed
+    };
+
     struct TypeInfo {
         TypeKind kind = TypeKind::Unknown;
         std::string className{};
@@ -52,6 +58,7 @@ namespace LOICollection::frontend {
         std::shared_ptr<TypeInfo> optionalInner{};
         std::string typeVar{};
         std::vector<TypeInfo> typeArgs{};
+        Ownership ownership = Ownership::Value;
 
         bool operator==(const TypeInfo& other) const {
             return kind == other.kind &&
@@ -59,10 +66,63 @@ namespace LOICollection::frontend {
                    typeVar == other.typeVar &&
                    variantOptions == other.variantOptions &&
                    typeArgs == other.typeArgs &&
+                   ownership == other.ownership &&
                    ((!optionalInner && !other.optionalInner) ||
                     (optionalInner && other.optionalInner && *optionalInner == *other.optionalInner));
         }
     };
+
+    inline bool isReferenceType(const TypeInfo& type) {
+        switch (type.kind) {
+            case TypeKind::Object:
+            case TypeKind::Array:
+            case TypeKind::Function:
+            case TypeKind::Enum:
+            case TypeKind::Trait:
+            case TypeKind::Generic:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    inline bool isCopyType(const TypeInfo& type) {
+        switch (type.kind) {
+            case TypeKind::Optional:
+                return type.optionalInner && isCopyType(*type.optionalInner);
+            case TypeKind::Variant:
+                return std::all_of(type.variantOptions.begin(), type.variantOptions.end(), isCopyType);
+            case TypeKind::Object:
+            case TypeKind::Array:
+            case TypeKind::Function:
+            case TypeKind::Enum:
+            case TypeKind::Trait:
+            case TypeKind::Generic:
+                return false;
+            default:
+                return true;
+        }
+    }
+
+    inline Ownership effectiveOwnership(const TypeInfo& type) {
+        return type.ownership == Ownership::Value && !isCopyType(type) ? Ownership::Owned : type.ownership;
+    }
+
+    inline bool sameTypeIgnoringOwnership(const TypeInfo& left, const TypeInfo& right) {
+        return left.kind == right.kind &&
+               left.className == right.className &&
+               left.typeVar == right.typeVar &&
+               left.variantOptions == right.variantOptions &&
+               left.typeArgs == right.typeArgs &&
+               ((!left.optionalInner && !right.optionalInner) ||
+                (left.optionalInner && right.optionalInner && *left.optionalInner == *right.optionalInner));
+    }
+
+    inline TypeInfo withoutOwnership(const TypeInfo& type) {
+        TypeInfo result = type;
+        result.ownership = Ownership::Value;
+        return result;
+    }
 
     struct TypeParam {
         std::string name;
@@ -77,51 +137,58 @@ namespace LOICollection::frontend {
     };
 
     inline std::string typeInfoToString(const TypeInfo& type) {
-        switch (type.kind) {
-            case TypeKind::Unknown: return "unknown";
-            case TypeKind::Int: return "int";
-            case TypeKind::Float: return "float";
-            case TypeKind::String: return "string";
-            case TypeKind::Bool: return "bool";
-            case TypeKind::Object: {
-                std::string result = "class " + type.className;
-                if (!type.typeArgs.empty()) {
-                    result += "<";
-                    for (size_t i = 0; i < type.typeArgs.size(); ++i) {
-                        if (i != 0)
-                            result += ", ";
-                        result += typeInfoToString(type.typeArgs[i]);
+        std::string result = [&type]() -> std::string {
+            switch (type.kind) {
+                case TypeKind::Unknown: return "unknown";
+                case TypeKind::Int: return "int";
+                case TypeKind::Float: return "float";
+                case TypeKind::String: return "string";
+                case TypeKind::Bool: return "bool";
+                case TypeKind::Object: {
+                    std::string object = "class " + type.className;
+                    if (!type.typeArgs.empty()) {
+                        object += "<";
+                        for (size_t i = 0; i < type.typeArgs.size(); ++i) {
+                            if (i != 0)
+                                object += ", ";
+                            object += typeInfoToString(type.typeArgs[i]);
+                        }
+                        object += ">";
                     }
-                    result += ">";
+                    return object;
                 }
-                return result;
-            }
-            case TypeKind::Function: return "function";
-            case TypeKind::Void: return "void";
-            case TypeKind::Array: return "array";
-            case TypeKind::None: return "none";
-            case TypeKind::Variant: {
-                std::string result = "variant<";
-                for (size_t i = 0; i < type.variantOptions.size(); ++i) {
-                    if (i != 0)
-                        result += ",";
-                    result += typeInfoToString(type.variantOptions[i]);
+                case TypeKind::Function: return "function";
+                case TypeKind::Void: return "void";
+                case TypeKind::Array: return "array";
+                case TypeKind::None: return "none";
+                case TypeKind::Variant: {
+                    std::string variant = "variant<";
+                    for (size_t i = 0; i < type.variantOptions.size(); ++i) {
+                        if (i != 0)
+                            variant += ",";
+                        variant += typeInfoToString(type.variantOptions[i]);
+                    }
+                    variant += ">";
+                    return variant;
                 }
-                result += ">";
-                return result;
+                case TypeKind::Optional:
+                    return "optional<" +
+                        (type.optionalInner ? typeInfoToString(*type.optionalInner) : std::string("unknown")) + ">";
+                case TypeKind::Generic:
+                    return type.typeVar.empty() ? "generic" : type.typeVar;
+                case TypeKind::Trait:
+                    return "dyn " + type.className;
+                case TypeKind::Enum:
+                    return "enum " + type.className;
             }
-            case TypeKind::Optional:
-                return "optional<" +
-                    (type.optionalInner ? typeInfoToString(*type.optionalInner) : std::string("unknown")) + ">";
-            case TypeKind::Generic:
-                return type.typeVar.empty() ? "generic" : type.typeVar;
-            case TypeKind::Trait:
-                return "dyn " + type.className;
-            case TypeKind::Enum:
-                return "enum " + type.className;
-        }
 
-        return "unknown";
+            return "unknown";
+        }();
+
+        if (type.ownership == Ownership::Borrowed)
+            return "ref<" + result + ">";
+
+        return result;
     };
 
     struct ASTNode {
@@ -263,6 +330,7 @@ namespace LOICollection::frontend {
         std::unique_ptr<ExprNode> target;
         std::unique_ptr<ExprNode> value;
         TypeExpr declaredType;
+        TypeInfo declaredTypeInfo;
         bool hasDeclaredType = false;
         bool isDeclaration = false;
 
@@ -597,6 +665,7 @@ namespace LOICollection::frontend {
         bool isStaticClassCall = false;
         std::string staticClassName;
         int methodOrdinal = -1;
+        std::vector<TypeInfo> paramTypes;
 
         FunctionNode(auto&& a, std::string ns, std::string n)
             : args(std::forward<decltype(a)>(a)),
@@ -838,6 +907,7 @@ namespace LOICollection::frontend {
         std::unique_ptr<BlockNode> declarativeBlock;
         std::string receiverName;
         std::vector<TypeExpr> typeArgs;
+        std::vector<TypeInfo> paramTypes;
 
         NewNode(SourceLocation location, std::string name, auto&& a)
             : loc(location), className(std::move(name)), args(std::forward<decltype(a)>(a)) {}
@@ -888,6 +958,7 @@ namespace LOICollection::frontend {
         bool isStaticCall = false;
         bool isColonColon = false;
         std::string staticClassName;
+        std::vector<TypeInfo> paramTypes;
 
         MethodCallNode(SourceLocation location, auto&& t, std::string name, auto&& a)
             : loc(location),
@@ -983,6 +1054,7 @@ namespace LOICollection::frontend {
 
         std::string className;
         int constructorIndex = -1;
+        std::vector<TypeInfo> paramTypes;
 
         SuperCallNode(SourceLocation location, auto&& a)
             : loc(location), args(std::forward<decltype(a)>(a)) {}
@@ -1051,6 +1123,8 @@ namespace LOICollection::frontend {
 
         bool isFormReceiverCall = false;
         std::string receiverClassName;
+        bool isEnumConstruction = false;
+        std::vector<TypeInfo> paramTypes;
 
         FuncCallNode(SourceLocation location, std::string n, auto&& a)
             : loc(location), name(std::move(n)), args(std::forward<decltype(a)>(a)) {}
