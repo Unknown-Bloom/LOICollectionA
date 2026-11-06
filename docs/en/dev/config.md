@@ -14,7 +14,7 @@ Before you begin, please make sure you have installed `xmake` and the `C++` comp
     ```lua
     package("LOICollectionA")
         add_urls("https://github.com/Unknown-Bloom/LOICollectionA.git")
-        add_versions("1.17.3", "5ef98c43b24624f376f28a1b8495732df4afa724")
+        add_versions("1.18.0", "bd2237938eb1f9e5b3e6fd9c8da483fa6f9a20a9")
 
         on_install(function (package)
             import("package.tools.xmake").install(package)
@@ -23,7 +23,7 @@ Before you begin, please make sure you have installed `xmake` and the `C++` comp
     ```
 
     > [!WARNING]
-    > The commit hash in `add_versions` must match the actual commit in the `add_urls` repository. Please use the commit hash corresponding to the tag (such as `v1.17.3`) of the [GitHub repository](https://github.com/Unknown-Bloom/LOICollectionA) as the reference; the hash in the example comes from the v1.17.3 tag.
+    > The commit hash in `add_versions` must match the actual commit in the `add_urls` repository. Please use the commit hash corresponding to the tag (such as `v1.18.0`) of the [GitHub repository](https://github.com/Unknown-Bloom/LOICollectionA) as the reference; the hash in the example comes from the commit that v1.18.0 points to.
 
 2. Save and close the `xmake.lua` file.
 

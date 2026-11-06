@@ -186,14 +186,14 @@ tests/
 生成器带固定种子（如 `0x5DEECE66D`），失败必然可复现。默认轮数由 `FuzzTest.cpp` 中的 `constexpr auto kFuzzRounds = std::size_t{2000};` 决定；想临时加大迭代次数，直接修改该常量后重新构建即可。
 
 > [!NOTE]
-> 模糊测试刻意使用确定性生成而非覆盖率引导：整套测试被编译进插件并由 `/test all` 驱动，无法使用 libFuzzer 这类依赖 sanitizer 与独立进程的方案。
+> 模糊测试刻意使用确定性生成而非覆盖率引导：整套测试被编译进插件并由 `ServerStartedEvent` 事件驱动，无法使用 libFuzzer 这类依赖 sanitizer 与独立进程的方案。
 
 > [!WARNING]
 > 现有的模糊测试只覆盖 `tests/common/frontend/FuzzTest.cpp` 一个文件，且轮数固定。它**不**读取任何环境变量——修改迭代次数需要改动源码常量。
 
 ## 持续集成现状
 
-> [!WARNING]
-> **没有任何 CI 任务会执行测试套件。** `.github/workflows/build.yml` 只在 `server` / `client` × `debug` / `release` 四种组合下执行 `xmake f` 与 `xmake -y`，也就是**只做编译**（debug 组合会连带编译 `tests/**`，因此能挡住编译错误，但不会运行任何用例）。测试目前完全依赖开发者在本地的测试服务端上手动执行 `/test all`。
+> [!NOTE]
+> `.github/workflows/runtime-test.yml` 会在真实的 LeviLamina 服务端上自动运行整套测试：先用默认配置跑一轮，再用全模块启用配置跑一轮，并从 `[TestMain] done:` 汇总解析结果判定成败；`build.yml` 只负责 `server` / `client` × `debug` / `release` 四种组合的编译。
 
-因此，提交与测试有关的改动时，请自行在本地完成一次 debug 构建并运行 `/test all`，并在 PR 描述中贴出结果。
+因此，提交与测试有关的改动时，请在本地完成一次 debug 构建并启动测试服务端，确认 `[TestMain] done:` 汇总中没有 `failed`，并在 PR 描述中贴出结果。

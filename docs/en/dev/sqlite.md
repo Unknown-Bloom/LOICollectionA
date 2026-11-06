@@ -210,6 +210,23 @@ XxxTable t = std::move(table.value());
 | `parseColumn(s)` | Resolve a runtime string to an enum column (static) |
 | `clearTypedTable(repo, name)` | Clear all rows of a table (free function) |
 
+### 4.5 TimeFold (time-window aggregation)
+
+`TimeFold` (`data/sqlite/block/TimeFold.h`) folds grouped aggregates into time buckets, so "totals per hour / day" queries do not need to scan raw rows. The bucket size is `TimeBucket::Hour` or `TimeBucket::Day`; an aggregate is the `count` / `sum` / `min` / `max` tuple (`TimeFoldValue`).
+
+| Method | Description |
+| --- | --- |
+| `open(repo, name, bucket)` | Opens (or creates) a fold table |
+| `add(batch, group, atNs, value)` | Accumulates one sample into its bucket; committed with the caller's `WriteBatch` |
+| `put(batch, group, atNs, value)` | Writes an aggregate value for a bucket directly |
+| `get(group, atNs)` | Reads one group's aggregate in that bucket |
+| `groups(atNs)` | Lists every group and its aggregate in that bucket |
+| `replace(atNs, values)` | Replaces a whole bucket with a set of values |
+| `trim(beforeNs)` / `clear()` | Drops stale buckets / clears every bucket |
+| `bucketStart(atNs)` | Returns the start of the bucket containing the timestamp (nanoseconds) |
+
+`add` / `put` join the caller's transaction; the other methods return `ll::Expected`. All timestamps are nanoseconds (`std::int64_t`).
+
 ## 5. Declaring a table (Schema)
 
 All columns are declared centrally in `src/LOICollectionA/include/server/Plugins/types/<module>/<Module>Schema.h`, in three parts: **enum + type specialization + alias**.

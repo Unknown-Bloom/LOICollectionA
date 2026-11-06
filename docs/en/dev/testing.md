@@ -185,14 +185,14 @@ Every input must terminate, never crash, and stay inside a per-input time budget
 The generators are seeded (for example `0x5DEECE66D`), so a failure is always reproducible. The default round count comes from `constexpr auto kFuzzRounds = std::size_t{2000};` in `FuzzTest.cpp`; to raise the iteration count temporarily, edit that constant and rebuild.
 
 > [!NOTE]
-> The harness is intentionally deterministic rather than coverage-guided: the whole suite is compiled into the plugin and driven by `/test all`, which rules out sanitizer/process-based fuzzers such as libFuzzer.
+> The harness is intentionally deterministic rather than coverage-guided: the whole suite is compiled into the plugin and driven by the `ServerStartedEvent` listener, which rules out sanitizer/process-based fuzzers such as libFuzzer.
 
 > [!WARNING]
 > The existing fuzz harness covers only the single file `tests/common/frontend/FuzzTest.cpp` and its round count is fixed. It does **not** read any environment variable — changing the iteration count requires editing the source constant.
 
 ## CI status
 
-> [!WARNING]
-> **No CI job executes the test suite.** `.github/workflows/build.yml` only runs `xmake f` and `xmake -y` across the four `server` / `client` × `debug` / `release` combinations, i.e. it **only builds** (the debug combinations do compile `tests/**`, so they catch compilation errors, but they run no test case). The suite currently depends entirely on a developer running `/test all` by hand on a local test server.
+> [!NOTE]
+> `.github/workflows/runtime-test.yml` runs the whole suite automatically on a real LeviLamina server: once with the default configuration and once with every module enabled. It parses the `[TestMain] done:` summary to decide the outcome; `build.yml` only compiles the four `server` / `client` × `debug` / `release` combinations.
 
-So when you submit a test-related change, run a debug build and `/test all` locally yourself and paste the result into the pull request description.
+So when you submit a test-related change, build in debug mode, start the test server locally, confirm the `[TestMain] done:` summary has no `failed`, and paste the result into the pull request description.

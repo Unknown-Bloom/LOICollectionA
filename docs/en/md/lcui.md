@@ -1086,6 +1086,8 @@ Counter::total;  // 1
 
 Static fields are shared across all instances; `this` cannot be used in a static method, and instance objects cannot call static methods directly. Static members support inheritance and overriding.
 
+Static members must be accessed with `::`; using `.` on a static member is rejected during semantic analysis with `must be accessed with '::'`.
+
 ### Inheritance
 
 `extends` inherits from a base class:
@@ -1296,6 +1298,8 @@ Proc::send(worker, "ping");
 Proc::join(worker);
 ```
 
+`cancel` works through a shared token: the scheduler checks it on every time slice, so a cancellation request stops the target task on the next slice.
+
 > [!WARNING]
 > Calling `yield` / `sleep` / `recv` from an ordinary script (not a `spawn` task) raises an error. `join` inside a task does not bring back the target task's result; pass results through `send` / `recv` instead.
 
@@ -1428,7 +1432,7 @@ After compilation and before execution, the bytecode passes through an optimizer
 | Function inlining | A call to a small function | Expands the body and removes call overhead |
 | Dead-code elimination | `while (false) [...]`, `if (false) [...]` | Unreachable branches are removed wholesale |
 
-The optimizer iterates propagation, folding, dead-store/dead-value elimination, and CSE until the bytecode stops changing (a fixed point), so opportunities exposed by one rewrite are picked up by the next round; loop-invariant code motion and branch fusion run after convergence.
+The optimizer iterates propagation, folding, dead-store/dead-value elimination, and CSE until the bytecode stops changing (a fixed point), so opportunities exposed by one rewrite are picked up by the next round. After convergence, loop-invariant code motion runs first, followed by another fixed-point round; branch fusion finishes the pipeline and reference-store analysis runs last.
 
 At runtime there is an additional layer of **inline caching**: when a script calls the same native function or native method repeatedly (e.g. `math::sqrt(...)` or `arr.push(...)` inside a loop), the VM remembers the previous resolution and skips signature matching and registry lookups on a hit. This affects speed only, never behavior — on invalidation (e.g. a plugin reload mutating the registry) the VM falls back to the full lookup.
 
@@ -1443,7 +1447,7 @@ After compiling a script, `GUIManager::load` serializes the bytecode to a `<scri
 - A package is self-contained: with the `.lcui` source removed, the script still loads as long as the ABI fingerprint matches. This is how closed-source scripts are distributed.
 - Debug information lives in a separate `.lcp.dbg` file; when it is missing the bytecode still executes, only line/column information is lost.
 
-The current package format version is v2.
+The current package format version is v6.
 
 ## Common Constraints and Pitfalls
 
@@ -1458,7 +1462,8 @@ The current package format version is v2.
 - `None` can only be used in an `optional` context; directly reading, performing arithmetic on, or comparing an empty `optional` raises an error.
 - `%` only supports integers; division by zero and integer overflow raise errors.
 - Array indices must be `int`; out-of-bounds reads and negative indices raise errors; an index equal to the length appends an element.
-- Strings have no escape characters; use the other kind of quote to include a quote character.
+- Unknown escapes (such as `\x`) are kept literally and produce a warning; use the other kind of quote to include a quote character.
+- `??` only fires on `None` / empty `optional`; `0`, `""`, `false` do not; mixing `??` with `&&`/`||` requires parentheses.
 - A function call supports at most 100 arguments; exceeding this fails to parse.
 - The `GUIManager::value` / `request` / `callback` IDs registered by different modules differ; refer to the `.lcui` file of the corresponding module.
 

@@ -68,7 +68,7 @@ The artifact is a `shared` library (`LOICollectionA.dll` on Windows), packaged w
 
 ## Testing
 
-Tests are based on gtest and **run inside the game server**: a debug build compiles `tests/**` into the plugin, and after deploying it to a LeviLamina server you trigger the whole suite by running `/test all` in the console.
+Tests are based on gtest and **run inside the game server**: a debug build compiles `tests/**` into the plugin, and once it is deployed and the LeviLamina server starts, the suite runs automatically when `ServerStartedEvent` fires — no console command is needed.
 
 ```bash
 xmake f -m debug --target_type=server -y

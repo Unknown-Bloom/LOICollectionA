@@ -97,7 +97,7 @@
 
 ```log
 [Server] cdk:
-[Server] LOICollection -> 总换码
+[Server] LOICollection -> 兑换码
 [Server] Usage:
 [Server] - /cdk convert <Id: string>
 [Server] - /cdk edit
@@ -109,17 +109,17 @@
 > 其中 `cdk` 为 Cdk 的顶层命令（权限等级: Any）。
 
 - `/cdk convert <Id: string>`
-  - 总换CDK。
-  - 其中 `<Id: string>` 为要总换的CDK。
+  - 兑换CDK。
+  - 其中 `<Id: string>` 为要兑换的CDK。
 
 - `/cdk edit`
-  - 打开总换CDK设置（权限等级: GameDirectors）。
+  - 打开兑换CDK设置（权限等级: GameDirectors）。
 
 - `/cdk gui`
-  - 打开总换CDK GUI。
+  - 打开兑换CDK GUI。
 
 - `/cdk reload`
-  - 重新加载（重新编译）总换CDK GUI（权限等级: GameDirectors）。
+  - 重新加载（重新编译）兑换CDK GUI（权限等级: GameDirectors）。
 
 ## Menu
 
@@ -423,7 +423,7 @@
 > [!TIP]
 > 你看到我了吗？( •̀ ω •́ )✧
 
-## BehaviourEvent
+## BehaviorEvent
 
 ```log
 [Server] behaviorevent:
@@ -445,7 +445,7 @@
 ```
 
 > [!TIP]
-> 其中 `behaviorevent` 为 BehaviourEvent 的顶层命令（权限等级: GameDirectors）。
+> 其中 `behaviorevent` 为 BehaviorEvent 的顶层命令（权限等级: GameDirectors）。
 
 - `/behaviorevent back position <PositionOrigin: x y z> <PositionTarget: x y z> <Time: int>`
   - 向指定区域内执行行为事件回溯。
@@ -541,4 +541,4 @@
   - 重新加载（重新编译）玩家数据统计 GUI（权限等级: GameDirectors）。
 
 > [!NOTE]
-> 以上内容均属于 LOICollectionA 1.17.0 版本的命令列表，对于后续版本的命令列表可能会有所不同。
+> 以上内容均属于 LOICollectionA 1.18.0 版本的命令列表，对于后续版本的命令列表可能会有所不同。
