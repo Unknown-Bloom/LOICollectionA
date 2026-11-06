@@ -119,7 +119,7 @@
             },
             "Chat": { // 聊天强化配置
                 "ModuleEnabled": false, // 是否启用聊天强化
-                "FormatText": "<{player}> ${0}", // 聊天消息格式，其中 ${0} 为玩家聊天内容，支持 LOICollectionA API 变量
+                "FormatText": "'<' + {player} + '> ' + ${0}", // 聊天消息格式，其中 ${0} 为玩家聊天内容，支持 LOICollectionA API 变量
                 "BlacklistUpload": 10 // 黑名单目标最大上传数量
             },
             "Notice": false, // 是否启用公告栏
@@ -398,16 +398,16 @@
                 "values": [],
                 "requests": [],
                 "callbacks": [],
-                "navigations": ["wallet", "market"]
+                "navigations": []
             }
         },
         "wallet": {
             "enabled": true,
             "commands": { "allow": false, "templates": [] },
             "gui": {
-                "values": ["wallet.players.online", "wallet.rank"],
-                "requests": ["wallet.info", "wallet.transfer.submit"],
-                "callbacks": ["wallet.wealth", "wallet.transfer.confirm"],
+                "values": ["wallet.history", "wallet.players.offline", "wallet.players.online", "wallet.rank"],
+                "requests": ["wallet.bank.deposit", "wallet.bank.info", "wallet.bank.withdraw", "wallet.info", "wallet.rank.self", "wallet.redenvelope.submit", "wallet.transfer.info", "wallet.transfer.submit"],
+                "callbacks": ["wallet.transfer.confirm", "wallet.wealth"],
                 "navigations": []
             }
         }
@@ -589,8 +589,8 @@ form.show(func (result) -> void {
 ```json
 {
     "cdk": { // CDK ID（不可重复）
-        "personal": false, // 是否只能被总换一次
-        "player": [], // 总换 CDK 的玩家列表
+        "personal": false, // 是否只能被兑换一次
+        "player": [], // 兑换 CDK 的玩家列表
         "scores": { // CDK 给予的Score（可选）
             "money": 100 // CDK 给予的 Score 分数
         },

@@ -1090,6 +1090,8 @@ Counter::total;  // 1
 
 静态字段在所有实例之间共享；静态方法中不能使用 `this`，实例对象也不能直接调用静态方法。静态成员支持继承与重写。
 
+静态成员必须用 `::` 访问：用 `.` 访问静态成员会在语义检查阶段报 `must be accessed with '::'`。
+
 ### 继承
 
 使用 `extends` 继承基类：
@@ -1234,6 +1236,9 @@ let text = std::format({tr("example.gui.info")}, [ 1, "two" ]);
 > `GUIManager::open` 与 `GUIManager::switchTo` 中的 `type` 为整数：`1` 为 CustomForm，`2` 为 MessageBox，`3` 为 PaginatedForm，`4` 为 ScriptForm。内置表单脚本从 `generic.lcui` 导入 `FORM_CUSTOM`、`FORM_MESSAGE`、`FORM_PAGINATED`、`FORM_SCRIPT` 来书写，避免散落的数字。
 
 > [!NOTE]
+> 早期文档提到的 `string::length` / `string::upper` 命名空间函数并不存在；字符串与数组是值类型，请使用成员方法（见「字符串方法」与「数组方法」）。`storage` / `playerdata` 的作用域、路径与限制见 [数据文件](./data.md#script-storage)。
+
+> [!NOTE]
 > `GUIManager::open` 跳转到其他脚本时，需要在 `gui/permission.json` 的 `scripts.<id>.gui.navigations` 中声明目标脚本 id，否则调用会被拒绝。打开自身表单无需声明。
 
 ### 宏 `{...}`
@@ -1296,6 +1301,8 @@ let worker = Proc::spawn(func (name) {
 Proc::send(worker, "ping");
 Proc::join(worker);
 ```
+
+`cancel` 通过共享取消令牌生效：调度器在每个时间片检查令牌，取消请求会在下一个时间片终止目标任务。
 
 > [!WARNING]
 > `yield` / `sleep` / `recv` 在普通脚本（非 `spawn` 任务）中调用会返回错误。`join` 在任务内不会把目标任务的结果带回，需要结果时请通过 `send` / `recv` 传递。
@@ -1429,7 +1436,7 @@ let form = new CustomForm("example.shop", {tr("example.shop.title")}) {
 | 函数内联 | 小型函数调用 | 展开函数体，消除调用开销 |
 | 死代码删除 | `while (false) [...]`、`if (false) [...]` | 不可达分支整体移除 |
 
-优化器会反复迭代常量传播、折叠、死存储/死值删除和 CSE，直到字节码不再变化（不动点），因此一条优化暴露出的新机会会在下一轮被继续吃掉；循环不变量外提与分支融合在迭代收敛后收尾。
+优化器会反复迭代常量传播、折叠、死存储/死值删除和 CSE，直到字节码不再变化（不动点），因此一条优化暴露出的新机会会在下一轮被继续吃掉；收敛后先做循环不变量外提，再跑一轮不动点迭代，最后由分支融合收尾并做引用存储分析。
 
 运行期还有一层**内联缓存**：脚本反复调用同一个原生函数或原生方法时（例如循环里的 `math::sqrt(...)`、`arr.push(...)`），VM 会记住上一次的解析结果，命中时跳过签名匹配与注册表查找。这只影响速度不影响行为——缓存失效（如插件重载导致注册表变化）时自动回退到完整查找。
 
@@ -1444,7 +1451,7 @@ let form = new CustomForm("example.shop", {tr("example.shop.title")}) {
 - 产物自包含：删除 `.lcui` 后，只要 ABI 指纹匹配，脚本依然可以加载——这是闭源脚本的发布方式；
 - 调试信息单独存放在 `.lcp.dbg`，缺失时字节码照常执行，仅丢失行列号信息。
 
-当前产物格式版本为 v2。
+当前产物格式版本为 v6。
 
 ## 常见约束与陷阱
 

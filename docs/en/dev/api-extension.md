@@ -155,7 +155,19 @@ void registerMyClass(const std::string&) {
 | `registerStaticField(className, field, defaultValue?)` | Appends a static field |
 
 > [!NOTE]
-> A native method returning `self` enables chained calls in scripts (such as `form.label(...).button(...)`). The `Object` structure contains `className`, `classIndex`, and `native` (`std::any`, which stores any native handle).
+> A native method returning `self` enables chained calls in scripts (such as `form.label(...).button(...)`). The `Object`'s `native` holds any native handle (`std::shared_ptr<NativeHandle>`).
+
+When a handle keeps script values (`ObjectRef`, `ArrayRef`, `FunctionRefPtr`), implement `NativeHandle::trace` so the cycle collector can see those references:
+
+```cpp
+struct MyClassHandle : NativeHandle {
+    FunctionRefPtr onSelect;
+
+    void trace(ValueVisitor& visitor) override { visitor.visitClosure(this->onSelect); }
+};
+```
+
+Handles that only keep `std::string`, numbers or host objects do not need it; the base implementation is empty.
 
 ## Registration Entry Point: the REGISTER_CALLBACK Macro
 

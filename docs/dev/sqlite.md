@@ -210,6 +210,23 @@ XxxTable t = std::move(table.value());
 | `parseColumn(s)` | 运行期把字符串解析成枚举列（静态方法） |
 | `clearTypedTable(repo, name)` | 清空一张表的所有行（独立函数） |
 
+### 4.5 TimeFold（时间窗口聚合）
+
+`TimeFold`（`data/sqlite/block/TimeFold.h`）按时间桶折叠分组聚合值，用于「按小时 / 天统计总量」这类查询，避免逐行扫描原始记录。桶长由 `TimeBucket::Hour` / `TimeBucket::Day` 选择，聚合值是 `count` / `sum` / `min` / `max` 四元组（`TimeFoldValue`）。
+
+| 方法 | 说明 |
+| --- | --- |
+| `open(repo, name, bucket)` | 打开（或新建）一个折叠表 |
+| `add(batch, group, atNs, value)` | 把一个样本累加进所在桶；随调用方的 `WriteBatch` 一起提交 |
+| `put(batch, group, atNs, value)` | 直接写入某个桶的聚合值 |
+| `get(group, atNs)` | 读取单个分组在该桶的聚合值 |
+| `groups(atNs)` | 列出该桶所有分组及其聚合值 |
+| `replace(atNs, values)` | 用一组值整体替换该桶 |
+| `trim(beforeNs)` / `clear()` | 丢弃过期桶 / 清空全部桶 |
+| `bucketStart(atNs)` | 返回时间戳所属桶的起点（纳秒） |
+
+`add` / `put` 复用调用方的事务，其余方法返回 `ll::Expected`；所有时间戳均为纳秒（`std::int64_t`）。
+
 ## 5. 定义一张表（Schema）
 
 所有表的列集中声明在 `src/LOICollectionA/include/server/Plugins/types/<模块>/<模块>Schema.h`，分三段：**枚举 + 类型特化 + 别名**。

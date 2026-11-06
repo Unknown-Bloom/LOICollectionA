@@ -167,7 +167,7 @@ ConnectionPool               # SQLite connection pool (WAL mode)
 | `BlockStore` | `data/sqlite/block/` | Splits data into addressable blocks with incremental key-based access over five system tables: `dict` / `block` / `prop` / `link` / `meta` |
 | `WriteBatch` | same | Flushes a batch of changes atomically in one `commit()`, `rollback()` on failure |
 | `BlockRepository` | same | Public surface is only: `open` / `fromStore` / `store()` / `metaGet\|Set\|Del` / `exec` |
-| `TypedTable` | same | Lifts columns to compile time (declared as an `enum class`); `open` writes `version + type name + column count` to `schema:<table>` and returns `SchemaMismatch` on disagreement |
+| `TypedTable` | same | Lifts columns to compile time (declared as an `enum class`); `open` writes `version + type name + column count + index mask` to `schema:<table>` and returns `SchemaMismatch` on disagreement |
 
 Every method returns `ll::Expected<T>` so errors compose via `and_then` / `transform` / `or_else`; no exceptions are used. See the "Data Layer" section of the [Module Development Guide](./module.md) for usage, and the complete [SQLite Layer Tutorial](./sqlite.md).
 

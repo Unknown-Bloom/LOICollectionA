@@ -68,7 +68,7 @@ xmake
 
 ## 测试
 
-测试基于 gtest 并**在游戏服务器内运行**：debug 模式构建会把 `tests/**` 一并编入插件，部署到 LeviLamina 服务端后，在控制台执行 `/test all` 即可触发整套测试。
+测试基于 gtest 并**在游戏服务器内运行**：debug 模式构建会把 `tests/**` 一并编入插件，部署到 LeviLamina 服务端并启动后，测试会在 `ServerStartedEvent` 触发时自动运行，无需手动输入命令。
 
 ```bash
 xmake f -m debug --target_type=server -y

@@ -43,7 +43,7 @@ Modules fall into three groups, and their configuration paths differ:
 
 ### Monitor sub-switches
 
-Once `Monitor` itself is enabled, it has five sub-features that can be toggled independently, all enabled by default:
+Once `Monitor` itself is enabled, it has six sub-features that can be toggled independently, all enabled by default:
 
 | Sub-feature | Config key | Description |
 | --- | --- | --- |

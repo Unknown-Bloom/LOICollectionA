@@ -97,7 +97,7 @@ And the plugins provide the following commands for simple interaction:
 
 ```log
 [Server] cdk:
-[Server] LOICollection -> Redemption Code
+[Server] LOICollection -> Redeem Code
 [Server] Usage:
 [Server] - /cdk convert <Id: string>
 [Server] - /cdk edit
@@ -363,7 +363,7 @@ And the plugins provide the following commands for simple interaction:
 
 ```log
 [Server] notice:
-[Server] LOICollection -> Notice system
+[Server] LOICollection -> Announcement System
 [Server] Usage:
 [Server] - /notice edit
 [Server] - /notice gui [Id: string]
@@ -423,7 +423,7 @@ And the plugins provide the following commands for simple interaction:
 > [!TIP]
 > Can you see me? ( •̀ ω •́ )✧
 
-## BehaviourEvent
+## BehaviorEvent
 
 ```log
 [Server] behaviorevent:
@@ -445,7 +445,7 @@ And the plugins provide the following commands for simple interaction:
 ```
 
 > [!TIP]
-> Here, `behaviorevent` is the top-level command of BehaviourEvent (permission level: GameDirectors).
+> Here, `behaviorevent` is the top-level command of BehaviorEvent (permission level: GameDirectors).
 
 - `/behaviorevent back position <PositionOrigin: x y z> <PositionTarget: x y z> <Time: int>`
   - Perform a behaviour event rollback within the specified area.
@@ -541,4 +541,4 @@ And the plugins provide the following commands for simple interaction:
   - Reload (recompile) the player data statistics GUI (permission level: GameDirectors).
 
 > [!NOTE]
-> All of the above is the command list for LOICollectionA version 1.17.0; the command list in later versions may differ.
+> All of the above is the command list for LOICollectionA version 1.18.0; the command list in later versions may differ.

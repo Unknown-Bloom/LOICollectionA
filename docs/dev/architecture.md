@@ -168,7 +168,7 @@ ConnectionPool               # SQLite 连接池（WAL 模式）
 | `BlockStore` | `data/sqlite/block/` | 把数据拆成可寻址的"块"，按 key 增量读写，五张系统表：`dict` / `block` / `prop` / `link` / `meta` |
 | `WriteBatch` | 同上 | 一批修改在一次 `commit()` 中原子落盘，失败 `rollback()` |
 | `BlockRepository` | 同上 | 对外只剩：`open` / `fromStore` / `store()` / `metaGet\|Set\|Del` / `exec` |
-| `TypedTable` | 同上 | 把列名提升到编译期（列由 `enum class` 定义）；`open` 时把 `版本 + 类型名 + 列数` 写入 `schema:<表名>`，不一致返回 `SchemaMismatch` |
+| `TypedTable` | 同上 | 把列名提升到编译期（列由 `enum class` 定义）；`open` 时把 `版本 + 类型名 + 列数 + 索引掩码` 写入 `schema:<表名>`，不一致返回 `SchemaMismatch` |
 
 所有方法统一返回 `ll::Expected<T>`，用 `and_then` / `transform` / `or_else` 链式处理，不使用异常。用法详见 [模块开发指南](./module.md) 的"数据层"章节，以及完整的 [SQLite 层使用教程](./sqlite.md)。
 

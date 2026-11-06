@@ -119,7 +119,7 @@ When you upgrade the plugin version, newly added configuration items are automat
             },
             "Chat": { // Chat enhancement configuration
                 "ModuleEnabled": false, // Whether to enable chat enhancement
-                "FormatText": "<{player}> ${0}", // Chat message format, where ${0} is the player's chat content, supports LOICollectionA API variables
+                "FormatText": "'<' + {player} + '> ' + ${0}", // Chat message format, where ${0} is the player's chat content, supports LOICollectionA API variables
                 "BlacklistUpload": 10 // Maximum number of blacklisted targets to upload
             },
             "Notice": false, // Whether to enable the notice board
@@ -397,16 +397,16 @@ Each sensitive call requires a capability up front; missing it is denied even if
                 "values": [],
                 "requests": [],
                 "callbacks": [],
-                "navigations": ["wallet", "market"]
+                "navigations": []
             }
         },
         "wallet": {
             "enabled": true,
             "commands": { "allow": false, "templates": [] },
             "gui": {
-                "values": ["wallet.players.online", "wallet.rank"],
-                "requests": ["wallet.info", "wallet.transfer.submit"],
-                "callbacks": ["wallet.wealth", "wallet.transfer.confirm"],
+                "values": ["wallet.history", "wallet.players.offline", "wallet.players.online", "wallet.rank"],
+                "requests": ["wallet.bank.deposit", "wallet.bank.info", "wallet.bank.withdraw", "wallet.info", "wallet.rank.self", "wallet.redenvelope.submit", "wallet.transfer.info", "wallet.transfer.submit"],
+                "callbacks": ["wallet.transfer.confirm", "wallet.wealth"],
                 "navigations": []
             }
         }

@@ -106,3 +106,15 @@ Here, `data migration` refers to migrating the specified lower-version data in `
 
 > [!TIP]
 > If the history does not matter, you can delete the `.db` files under `plugins/LOICollectionA/data` and let the plugin rebuild empty databases — back them up first.
+
+## For upgrading from version 1.17.3 to version 1.18.0
+
+> [!WARNING]
+> 1.18.0 makes ownership and borrowing the **default model** of the script language (it was opt-in before). Objects, arrays, functions, enums and trait objects have unique ownership by default: assigning them to another variable, passing them to a typed parameter, returning them, or storing them in a container moves the value and the original variable can no longer be used. Review your own `.lcui` scripts before upgrading.
+
+1. Find variables that are used again after a move: either move the later use before the move, or take an explicit borrow with `ref<T>` (`let r: ref<T> = &x;`) and keep it as a local variable or function parameter.
+2. Untyped variables, parameters and return values are still treated as borrows and do not move; native class methods and constructors, dynamic dispatch and function-value calls are also borrows and usually need no change.
+3. Static members must be reached with `ClassName::member`; using `.` on a static member is rejected during semantic analysis with `must be accessed with '::'`.
+4. 1.18.0 also adds enums, `match`, `if let` / `while let`, the `std` standard library, `Proc` cooperative tasks and trust-level + capability authorization. See the [LCUI Script Syntax](../md/lcui.md) guide.
+5. There is no need to delete `.lcp` caches by hand after editing a script — the plugin invalidates them from the source content and recompiles.
+

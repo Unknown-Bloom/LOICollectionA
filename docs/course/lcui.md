@@ -1,5 +1,8 @@
 # LOICollectionA Native UI 设计剖析：从 JSON 表单到声明式 GUI 系统  
 
+> [!NOTE]
+> 本教程以 LOICollectionA 1.14.0 / 1.15.0 的实现为剖析对象，用于讲解设计推演过程；当前语法与目录结构请以 [LCUI 脚本语法](../md/lcui.md) 与 [架构概览](../dev/architecture.md) 为准。
+
 没错，这是我的第一篇 《我的世界》 基岩版 C++ LeviLamina 模组开发教程(～￣▽￣)～
 
 在该篇教程里，我将详细讲解 LOICollectionA 中对于 frontend 的设计理念，并带你深入理解其具体的 `脚本语言` 解析器运行逻辑，最后我将带你看看在 LOICollectionA 中如何打通 C++ 原生层与脚本层面的互动，并从头实现一个自己的 `声明式` GUI

@@ -1436,6 +1436,9 @@ When calling a native function, method, constructor, or macro, an error was thro
   - `Method callback threw: <error content>`  
   - `Constructor callback threw: <error content>`  
   - `Macro callback threw: <error content>`  
+  - `Static method callback threw: <error content>`  
+  - `Value method callback threw: <error content>`  
+  - `Operator callback threw: <error content>`  
 - The specific content depends on the native implementation.
 
 **Typical Error Code**  

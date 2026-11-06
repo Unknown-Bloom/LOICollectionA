@@ -1438,6 +1438,9 @@ new ObservableString("x", true);   // 若构造参数错误
   - `Method callback threw: <错误内容>`  
   - `Constructor callback threw: <错误内容>`  
   - `Macro callback threw: <错误内容>`  
+  - `Static method callback threw: <错误内容>`  
+  - `Value method callback threw: <错误内容>`  
+  - `Operator callback threw: <错误内容>`  
 - 具体内容取决于原生实现。
 
 **典型错误代码**  
