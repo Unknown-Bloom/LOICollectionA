@@ -153,6 +153,7 @@ namespace LOICollection::frontend {
         TypeInfo checkInstanceOf(InstanceOfNode& node, MethodScope& scope);
         TypeInfo checkMatch(MatchNode& node, MethodScope& scope);
         TypeInfo checkLetPattern(LetPatternNode& node, MethodScope& scope);
+        void bindLetPatternTypes(LetPatternNode& node);
         TypeInfo checkReturn(ReturnNode& node, MethodScope& scope);
         TypeInfo checkLambda(LambdaNode& node, MethodScope& scope);
 
@@ -178,7 +179,7 @@ namespace LOICollection::frontend {
         [[nodiscard]] int methodOrdinal(const std::string& className, const std::string& signature) const;
         [[nodiscard]] bool isDerived(const std::string& derivedName, const std::string& baseName) const;
         [[nodiscard]] bool isTypeCompatible(const TypeInfo& target, const TypeInfo& from) const;
-        
+
         [[nodiscard]] std::optional<FieldRef> findField(ClassNode& cls, const std::string& name) const;
         [[nodiscard]] std::optional<FieldRef> findStaticField(ClassNode& cls, const std::string& name) const;
         [[nodiscard]] std::optional<ConstructorRef> findConstructor(ClassNode& cls) const;

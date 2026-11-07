@@ -19,21 +19,12 @@
 
 using namespace LOICollection::frontend;
 
-/* Runs entry "/main.lcui" against an in-memory file map that already
- * contains the real std modules (the .lcui files under assets/common/std) under "/".
- * Std modules import each other by file-relative paths, which resolve
- * to "/iter.lcui" etc. — this exercises the ScriptLoader resolution the
- * shipped assets rely on. */
-
 namespace {
     std::string evalStd(const std::string& program) {
         std::map<std::string, std::string> files = {
             {"/main.lcui", program},
         };
 
-        /* Std modules ship inside the plugin directory, exactly like
-         * `gui/permission.json`: resolve them against the mod dir first and
-         * only fall back to workspace-relative paths used for local runs. */
         static const std::string stdDir = [] {
             std::vector<std::filesystem::path> candidates;
 
@@ -499,4 +490,127 @@ TEST(StdlibScriptTest, NumberTheoryExtra) {
     EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsMersenne(5)"), "false");
     EXPECT_EQ(evalStd("import \"/num.lcui\"; numDigitalRoot(123)"), "6");
     EXPECT_EQ(evalStd("import \"/num.lcui\"; numDigitalRoot(999)"), "9");
+}
+
+TEST(StdlibScriptTest, JsonDocumentRoundTrip) {
+    EXPECT_EQ(evalStd(R"(import "/json.lcui";
+match (jsonParse("{\"a\":[1,2]}")) [ JsonOk(v) [ jsonStringify(v) ] JsonErr(e) [ "ERR" ] ])"),
+        "{\"a\":[1,2]}");
+    EXPECT_EQ(evalStd(R"(import "/json.lcui";
+match (jsonParse("{\"a\":[1,{\"b\":true}],\"c\":null}")) [ JsonOk(v) [ jsonStringify(v) ] JsonErr(e) [ "ERR" ] ])"),
+        "{\"a\":[1,{\"b\":true}],\"c\":null}");
+    EXPECT_EQ(evalStd(R"(import "/json.lcui";
+match (jsonParse("null")) [ JsonOk(v) [ jsonStringify(v) ] JsonErr(e) [ "ERR" ] ])"),
+        "null");
+    EXPECT_EQ(evalStd(R"(import "/json.lcui";
+match (jsonParse("1.5e2")) [ JsonOk(v) [ jsonStringify(v) ] JsonErr(e) [ "ERR" ] ])"),
+        "150");
+}
+
+TEST(StdlibScriptTest, JsonStringEscapes) {
+    EXPECT_EQ(evalStd(R"(import "/json.lcui";
+match (jsonParse("\"a\\u0041b\"")) [ JsonOk(v) [ jsonStringify(v) ] JsonErr(e) [ "ERR" ] ])"),
+        "\"aAb\"");
+    EXPECT_EQ(evalStd(R"(import "/json.lcui";
+match (jsonParse("\"a\\bb\"")) [ JsonOk(v) [ jsonStringify(v) ] JsonErr(e) [ "ERR" ] ])"),
+        "\"a\\u0008b\"");
+    EXPECT_EQ(evalStd(R"(import "/json.lcui";
+match (jsonParse("\"\\ud83d\\ude00\"")) [ JsonOk(v) [ jsonStringify(v) ] JsonErr(e) [ "ERR" ] ])"),
+        "\"" "\xF0\x9F\x98\x80" "\"");
+}
+
+TEST(StdlibScriptTest, JsonRejectsMalformedInput) {
+    EXPECT_EQ(evalStd(R"(import "/json.lcui";
+match (jsonParse("01")) [ JsonOk(v) [ "OK" ] JsonErr(e) [ "ERR" ] ])"), "ERR");
+    EXPECT_EQ(evalStd(R"(import "/json.lcui";
+match (jsonParse("")) [ JsonOk(v) [ "OK" ] JsonErr(e) [ "ERR" ] ])"), "ERR");
+    EXPECT_EQ(evalStd(R"(import "/json.lcui";
+match (jsonParse("[1,2")) [ JsonOk(v) [ "OK" ] JsonErr(e) [ "ERR" ] ])"), "ERR");
+    EXPECT_EQ(evalStd(R"(import "/json.lcui";
+match (jsonParse("[1,2]junk")) [ JsonOk(v) [ "OK" ] JsonErr(e) [ "ERR" ] ])"), "ERR");
+}
+
+TEST(StdlibScriptTest, EnumValuesTravelThroughContainers) {
+    EXPECT_EQ(evalStd(R"(
+enum J { JNull() JInt(int) JStr(string) }
+let items = [JNull(), JInt(2)];
+let m = new Map();
+m.set("k", JInt(7));
+match (m.get("k")) [ JInt(v) [ "" + v + "/" + items.length() ] _ [ "?" ] ])"),
+        "7/2");
+    EXPECT_EQ(evalStd(R"(
+enum J { JObj(Map) }
+func peek(doc: J) -> string { match (doc) [ JObj(o) [ "" + o.length() ] ] }
+let m = new Map();
+m.set("a", 1);
+peek(JObj(m)) )"), "1");
+    EXPECT_EQ(evalStd(R"(
+enum J { JInt(int) }
+func g(tag: int) -> optional<J> { if (tag > 0) [ return JInt(tag); ] return None; }
+let hit = g(3);
+let miss = g(0);
+"hit=" + (hit == None) + " miss=" + (miss == None) )"), "hit=false miss=true");
+}
+
+TEST(StdlibScriptTest, CharAndLiteralEdges) {
+    EXPECT_EQ(evalStd("String::fromCodePoint(65)"), "A");
+    EXPECT_EQ(evalStd("String::fromCodePoint(0x4E2D)"), "中");
+    EXPECT_EQ(evalStd("String::fromCodePoint(0xD800) == None"), "true");
+    EXPECT_EQ(evalStd("String::fromCodePoint(0x110000) == None"), "true");
+    EXPECT_EQ(evalStd("0xFF + 0x10"), "271");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numIsOdd(-3)"), "true");
+    EXPECT_EQ(evalStd("import \"/num.lcui\"; numToHex(-5)"), "-5");
+    EXPECT_EQ(evalStd("import \"/string.lcui\"; isLowerChar(\"bc\")"), "false");
+}
+
+TEST(StdlibScriptTest, ArrayModeKeepsElementIdentity) {
+    EXPECT_EQ(evalStd("import \"/array.lcui\"; arrMode([1, 1, 2])"), "1");
+    EXPECT_EQ(evalStd("import \"/array.lcui\"; arrMode([\"a\", \"a\", \"b\"])"), "a");
+    EXPECT_EQ(evalStd("import \"/array.lcui\"; arrMode([1.5, 1.5, 2.5])"), "1.5");
+    EXPECT_EQ(evalStd("import \"/array.lcui\"; arrMode([]) == None"), "true");
+}
+
+TEST(StdlibScriptTest, NegativeEpochFormatting) {
+    EXPECT_EQ(evalStd("import \"/time.lcui\"; formatDate(-86400)"), "1969-12-31");
+    EXPECT_EQ(evalStd("import \"/time.lcui\"; formatClock(-3661)"), "22:58:59");
+    EXPECT_EQ(evalStd("import \"/time.lcui\"; formatDateTime(-86400)"), "1969-12-31 00:00:00");
+    EXPECT_EQ(evalStd("import \"/time.lcui\"; weekday(-86400)"), "3");
+}
+
+TEST(StdlibScriptTest, RandomIsReproduciblePerSeed) {
+    EXPECT_EQ(evalStd(R"(import "/random.lcui";
+let g = new Rng(7);
+let a = randInt(&g, 1, 6);
+let b = randInt(&g, 1, 6);
+"a=" + a + " b=" + b)"), "a=3 b=4");
+    EXPECT_EQ(evalStd(R"(import "/random.lcui";
+let g = new Rng(7);
+let h = new Rng(7);
+randInt(&g, 1, 100) == randInt(&h, 1, 100))"), "true");
+}
+
+TEST(StdlibScriptTest, IteratorRangeFromZero) {
+    EXPECT_EQ(evalStd("import \"/iter.lcui\"; range(0, 3).collect().join(\",\")"), "0,1,2");
+    EXPECT_EQ(evalStd("import \"/iter.lcui\"; range(0, 0).collect().length()"), "0");
+}
+
+TEST(StdlibScriptTest, LambdasActAsCombinatorArguments) {
+    EXPECT_EQ(evalStd(
+        "import \"/iter.lcui\";"
+        "range(0, 4).map(func (x) { return x * 2; }).collect().join(\",\")"), "0,2,4,6");
+    EXPECT_EQ(evalStd(
+        "import \"/iter.lcui\";"
+        "range(0, 5).filter(func (x) { return x % 2 == 0; }).collect().join(\",\")"), "0,2,4");
+    EXPECT_EQ(evalStd(
+        "import \"/iter.lcui\";"
+        "range(1, 4).fold(1, func (a, b) { return a * b; })"), "6");
+    EXPECT_EQ(evalStd(
+        "let f = func (x) { return x * 3; };"
+        "f.call(4)"), "12");
+    EXPECT_EQ(evalStd(
+        "let fns = [];"
+        "for (i in [1, 2]) [ fns.push(func () -> int { return i * 10; }); ]"
+        "let s = \"\";"
+        "for (f in fns) [ s += f(); ]"
+        "s"), "1020");
 }

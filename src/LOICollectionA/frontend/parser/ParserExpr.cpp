@@ -65,7 +65,7 @@ namespace LOICollection::frontend {
                 synchronize({ delimiterToken, stopToken, TokenType::TOKEN_RBRACE });
                 if (currentToken.type == delimiterToken)
                     eat(delimiterToken);
-                
+
                 continue;
             }
 
@@ -134,7 +134,7 @@ namespace LOICollection::frontend {
 
             left = std::make_unique<LogicalNode>(loc, std::move(left), std::move(right), "||");
         }
-        
+
         return left;
     }
 
@@ -142,7 +142,7 @@ namespace LOICollection::frontend {
         auto left = parseComparison();
         if (!left)
             return nullptr;
-        
+
         while (currentToken.type == TokenType::TOKEN_BOOL_OP && currentToken.value == "&&") {
             SourceLocation loc = currentToken.loc;
 
@@ -177,11 +177,11 @@ namespace LOICollection::frontend {
 
             return std::make_unique<InstanceOfNode>(loc, std::move(left), std::move(className));
         }
-        
+
         static const std::unordered_set<std::string> comparisonOps = {
             "==", "!=", ">", "<", ">=", "<="
         };
-        
+
         if (currentToken.type == TokenType::TOKEN_OP && comparisonOps.find(currentToken.value) != comparisonOps.end()) {
             SourceLocation loc = currentToken.loc;
             std::string op = currentToken.value;
@@ -202,24 +202,24 @@ namespace LOICollection::frontend {
         auto left = parseMultiplicativeExpression();
         if (!left)
             return nullptr;
-        
+
         while (currentToken.type == TokenType::TOKEN_PLUS || currentToken.type == TokenType::TOKEN_MINUS) {
             SourceLocation loc = currentToken.loc;
             std::string op = currentToken.value;
-            
+
             if (currentToken.type == TokenType::TOKEN_PLUS) {
                 if (!eat(TokenType::TOKEN_PLUS))  return nullptr;
             } else {
                 if (!eat(TokenType::TOKEN_MINUS)) return nullptr;
             }
-            
+
             auto right = parseMultiplicativeExpression();
             if (!right)
                 return nullptr;
 
             left = std::make_unique<ArithmeticNode>(loc, std::move(left), std::move(right), op);
         }
-        
+
         return left;
     }
 
@@ -227,11 +227,11 @@ namespace LOICollection::frontend {
         auto left = parsePowerExpression();
         if (!left)
             return nullptr;
-        
+
         while (currentToken.type == TokenType::TOKEN_MULTIPLY || currentToken.type == TokenType::TOKEN_DIVIDE || currentToken.type == TokenType::TOKEN_MOD) {
             SourceLocation loc = currentToken.loc;
             std::string op = currentToken.value;
-            
+
             if (currentToken.type == TokenType::TOKEN_MULTIPLY) {
                 if (!eat(TokenType::TOKEN_MULTIPLY)) return nullptr;
             } else if (currentToken.type == TokenType::TOKEN_DIVIDE) {
@@ -239,14 +239,14 @@ namespace LOICollection::frontend {
             } else {
                 if (!eat(TokenType::TOKEN_MOD)) return nullptr;
             }
-            
+
             auto right = parsePowerExpression();
             if (!right)
                 return nullptr;
 
             left = std::make_unique<ArithmeticNode>(loc, std::move(left), std::move(right), op);
         }
-        
+
         return left;
     }
 
@@ -261,7 +261,7 @@ namespace LOICollection::frontend {
         auto left = parseUnaryExpression();
         if (!left)
             return nullptr;
-        
+
         if (currentToken.type == TokenType::TOKEN_POWER) {
             SourceLocation loc = currentToken.loc;
             std::string op = currentToken.value;
@@ -274,7 +274,7 @@ namespace LOICollection::frontend {
 
             return std::make_unique<ArithmeticNode>(loc, std::move(left), std::move(right), op);
         }
-        
+
         return left;
     }
 
@@ -327,7 +327,7 @@ namespace LOICollection::frontend {
             currentToken.type == TokenType::TOKEN_PLUS || currentToken.type == TokenType::TOKEN_MINUS) {
             SourceLocation loc = currentToken.loc;
             std::string op = currentToken.value;
-            
+
             if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "!") {
                 if (!eat(TokenType::TOKEN_OP)) return nullptr;
             } else if (currentToken.type == TokenType::TOKEN_PLUS) {
@@ -335,14 +335,14 @@ namespace LOICollection::frontend {
             } else {
                 if (!eat(TokenType::TOKEN_MINUS)) return nullptr;
             }
-            
+
             auto operand = parseUnaryExpression();
             if (!operand)
                 return nullptr;
 
             return std::make_unique<UnaryNode>(loc, std::move(operand), op);
         }
-        
+
         return parsePostfix();
     }
 
@@ -633,7 +633,11 @@ namespace LOICollection::frontend {
         switch (currentToken.type) {
             case TokenType::TOKEN_INT: {
                 int value;
-                auto [ptr, ec] = std::from_chars(currentToken.value.data(), currentToken.value.data() + currentToken.value.size(), value);
+                const bool hexadecimal = currentToken.value.size() > 2 &&
+                    currentToken.value[0] == '0' && (currentToken.value[1] == 'x' || currentToken.value[1] == 'X');
+                const char* begin = currentToken.value.data() + (hexadecimal ? 2 : 0);
+
+                auto [ptr, ec] = std::from_chars(begin, currentToken.value.data() + currentToken.value.size(), value, hexadecimal ? 16 : 10);
 
                 if (ec != std::errc() || ptr != currentToken.value.data() + currentToken.value.size()) {
                     diagnostics.addError(currentToken.loc, "Invalid integer literal: " + currentToken.value);
@@ -651,7 +655,7 @@ namespace LOICollection::frontend {
 
                 if (ec != std::errc() || ptr != currentToken.value.data() + currentToken.value.size()) {
                     diagnostics.addError(currentToken.loc, "Invalid float literal: " + currentToken.value);
-                    
+
                     eat(TokenType::TOKEN_FLOAT);
                     return std::make_unique<ValueNode>(loc, 0.0f);
                 }
@@ -667,7 +671,7 @@ namespace LOICollection::frontend {
             }
             case TokenType::TOKEN_BOOL_LIT: {
                 bool val = (currentToken.value == "true");
-                
+
                 eat(TokenType::TOKEN_BOOL_LIT);
                 return std::make_unique<ValueNode>(loc, val);
             }

@@ -420,6 +420,7 @@ namespace LOICollection::frontend::lsp::detail {
             case ParamType::OBJECT: return "object";
             case ParamType::FUNCTION: return "function";
             case ParamType::ARRAY: return "array";
+            case ParamType::ENUM: return "enum";
         }
 
         return "object";

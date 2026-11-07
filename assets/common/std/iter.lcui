@@ -2,7 +2,7 @@
  *
  * Everything is built on the next() iteration protocol of the language:
  * `for (v in it)` works out of the box, and manual pulls keep the optional
- * semantics (`let v = it.next(); if (v) [...]`).
+ * semantics (`let v = it.next(); if (v != None) [...]`).
  *
  * Combinators are methods on Iter so they chain:
  *
@@ -10,12 +10,7 @@
  *
  *     let squares = range(1, 10).map(new Square()).filter(new Big()).collect();
  *
- * Mappers and predicates may be closures, which is the shortest form now that a
- * closure satisfies a single-method interface:
- *
- *     range(1, 10).map(func (x) { return x * x; }).collect();
- *
- * Fn1/Fn2 subclasses still work and answer the same call(...) protocol:
+ * Mappers and predicates are Fn1/Fn2 subclasses answering the call(...) protocol:
  *
  *     class Square extends Fn1 {
  *         func call(x) { return x * x; }
@@ -92,7 +87,7 @@ class Iter {
         let out = [];
         while (true) [
             let cval = this.next();
-            if (!cval) [ break; ]
+            if (cval == None) [ break; ]
             out.push(cval);
         ]
         return out;
@@ -103,7 +98,7 @@ class Iter {
         let acc = seed;
         while (true) [
             let fdval = this.next();
-            if (!fdval) [ break; ]
+            if (fdval == None) [ break; ]
             acc = f.call(acc, fdval);
         ]
         return acc;
@@ -114,7 +109,7 @@ class Iter {
         let total = 0;
         while (true) [
             let smval = this.next();
-            if (!smval) [ break; ]
+            if (smval == None) [ break; ]
             total = total + smval;
         ]
         return total;
@@ -125,7 +120,7 @@ class Iter {
         let num = 0;
         while (true) [
             let cnval = this.next();
-            if (!cnval) [ break; ]
+            if (cnval == None) [ break; ]
             num = num + 1;
         ]
         return num;
@@ -135,7 +130,7 @@ class Iter {
     func forEach(f: Fn1) {
         while (true) [
             let feval = this.next();
-            if (!feval) [ break; ]
+            if (feval == None) [ break; ]
             f.call(feval);
         ]
     }
@@ -144,7 +139,7 @@ class Iter {
     func any(pred: Fn1) -> bool {
         while (true) [
             let anval = this.next();
-            if (!anval) [ return false; ]
+            if (anval == None) [ return false; ]
             if (pred.call(anval)) [ return true; ]
         ]
         return false;
@@ -154,7 +149,7 @@ class Iter {
     func all(pred: Fn1) -> bool {
         while (true) [
             let alval = this.next();
-            if (!alval) [ return true; ]
+            if (alval == None) [ return true; ]
             if (!pred.call(alval)) [ return false; ]
         ]
         return true;
@@ -164,7 +159,7 @@ class Iter {
     func find(pred: Fn1) {
         while (true) [
             let fval = this.next();
-            if (!fval) [ return None; ]
+            if (fval == None) [ return None; ]
             if (pred.call(fval)) [ return fval; ]
         ]
         return None;
@@ -175,7 +170,7 @@ class Iter {
         let idx = 0;
         while (true) [
             let pval = this.next();
-            if (!pval) [ return -1; ]
+            if (pval == None) [ return -1; ]
             if (pred.call(pval)) [ return idx; ]
             idx = idx + 1;
         ]
@@ -187,7 +182,7 @@ class Iter {
         let ltail = None;
         while (true) [
             let laval = this.next();
-            if (!laval) [ break; ]
+            if (laval == None) [ break; ]
             ltail = laval;
         ]
         return ltail;
@@ -199,7 +194,7 @@ class Iter {
         let mxcur = 0;
         while (true) [
             let mxval = this.next();
-            if (!mxval) [ break; ]
+            if (mxval == None) [ break; ]
             if (!mxseen) [ mxcur = mxval; mxseen = true; ]
             if (mxval > mxcur) [ mxcur = mxval; ]
         ]
@@ -213,7 +208,7 @@ class Iter {
         let mncur = 0;
         while (true) [
             let mnval = this.next();
-            if (!mnval) [ break; ]
+            if (mnval == None) [ break; ]
             if (!mnseen) [ mncur = mnval; mnseen = true; ]
             if (mnval < mncur) [ mncur = mnval; ]
         ]
@@ -239,7 +234,7 @@ class MapIter extends Iter {
     MapIter(s: Iter, m: Fn1) { this.src = s; this.f = m; }
     func next() {
         let mval = this.src.next();
-        if (mval) [ return this.f.call(mval); ]
+        if (mval != None) [ return this.f.call(mval); ]
         return None;
     }
 }
@@ -250,7 +245,7 @@ class FilterIter extends Iter {
     FilterIter(s: Iter, p: Fn1) { this.src = s; this.pred = p; }
     func next() {
         let fv = this.src.next();
-        while (fv && !this.pred.call(fv)) [
+        while (fv != None && !this.pred.call(fv)) [
             fv = this.src.next();
         ]
         return fv;
@@ -275,7 +270,7 @@ class TakeWhileIter extends Iter {
     func next() {
         if (this.done) [ return None; ]
         let tv = this.src.next();
-        if (tv && this.pred.call(tv)) [ return tv; ]
+        if (tv != None && this.pred.call(tv)) [ return tv; ]
         this.done = true;
         return None;
     }
@@ -289,7 +284,7 @@ class SkipIter extends Iter {
         while (this.skipped < this.n) [
             this.skipped = this.skipped + 1;
             let sv = this.src.next();
-            if (!sv) [ return None; ]
+            if (sv == None) [ return None; ]
         ]
         return this.src.next();
     }
@@ -301,9 +296,9 @@ class ZipIter extends Iter {
     ZipIter(x: Iter, y: Iter) { this.a = x; this.b = y; }
     func next() {
         let zx = this.a.next();
-        if (!zx) [ return None; ]
+        if (zx == None) [ return None; ]
         let zy = this.b.next();
-        if (!zy) [ return None; ]
+        if (zy == None) [ return None; ]
         return [zx, zy];
     }
 }
@@ -315,7 +310,7 @@ class ChainIter extends Iter {
     func next() {
         if (this.first) [
             let cv = this.a.next();
-            if (cv) [ return cv; ]
+            if (cv != None) [ return cv; ]
             this.first = false;
         ]
         return this.b.next();
@@ -328,7 +323,7 @@ class StepByIter extends Iter {
     StepByIter(s: Iter, n: int) { this.src = s; this.step = n; }
     func next() {
         let stv = this.src.next();
-        while (stv) [
+        while (stv != None) [
             if (this.pos % this.step == 0) [
                 this.pos = this.pos + 1;
                 return stv;
@@ -379,7 +374,7 @@ class EnumerateIter extends Iter {
     EnumerateIter(s: Iter) { this.src = s; }
     func next() {
         let v = this.src.next();
-        if (!v) [ return None; ]
+        if (v == None) [ return None; ]
         let idx = this.i;
         this.i = this.i + 1;
         return [idx, v];
@@ -396,7 +391,7 @@ class ChunkIter extends Iter {
         let i = 0;
         while (i < this.n) [
             let v = this.src.next();
-            if (!v) [ break; ]
+            if (v == None) [ break; ]
             chunk.push(v);
             i = i + 1;
         ]
@@ -412,9 +407,9 @@ class DedupIter extends Iter {
     func next() {
         while (true) [
             let v = this.src.next();
-            if (!v) [ return None; ]
+            if (v == None) [ return None; ]
             if (this.seen.has("" + v)) [ v = None; ]
-            if (v) [ this.seen.set("" + v, true); return v; ]
+            if (v != None) [ this.seen.set("" + v, true); return v; ]
         ]
     }
 }
@@ -425,7 +420,7 @@ class CycleIter extends Iter {
     CycleIter(s: Iter) { this.src = s; this.buf = new Map(); }
     func next() {
         let v = this.src.next();
-        if (v) [ this.buf.set("" + this.buf.length(), v); return v; ]
+        if (v != None) [ this.buf.set("" + this.buf.length(), v); return v; ]
         if (this.buf.length() == 0) [ return None; ]
         let bv = this.buf.get("" + this.i);
         this.i = this.i + 1;
@@ -440,7 +435,7 @@ class InspectIter extends Iter {
     InspectIter(s: Iter, fn: Fn1) { this.src = s; this.f = fn; }
     func next() {
         let v = this.src.next();
-        if (!v) [ return None; ]
+        if (v == None) [ return None; ]
         this.f.call(v);
         return v;
     }

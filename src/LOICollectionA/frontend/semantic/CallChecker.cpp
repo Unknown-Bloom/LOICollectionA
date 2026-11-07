@@ -383,8 +383,6 @@ namespace LOICollection::frontend {
         for (auto& arg : node.args)
             argTypes.push_back(checkExpr(*arg, scope));
 
-        
-        
         auto variantIt = this->enumVariant.find(node.name);
         if (variantIt != this->enumVariant.end()) {
             const EnumVariantInfo& info = variantIt->second;
@@ -800,7 +798,6 @@ namespace LOICollection::frontend {
         if (target.kind == TypeKind::Bool && coversTrue && coversFalse)
             covered = true;
 
-        
         if (target.kind == TypeKind::Enum && !covered && !enumVariantsCovered.empty()) {
             std::unordered_set<std::string> declaredVariants;
             for (const auto& [name, info] : this->enumVariant) {
@@ -817,6 +814,8 @@ namespace LOICollection::frontend {
                 "match must be exhaustive; add a binding or '_' arm");
 
         for (auto& arm : node.arms) {
+            std::vector<TypeInfo> binderTypes;
+
             switch (arm->pattern) {
                 case MatchArm::Pattern::Literal: {
                     if (std::holds_alternative<std::monostate>(arm->literal)) {
@@ -882,6 +881,10 @@ namespace LOICollection::frontend {
                             std::to_string(info.arity) + " payload slot(s), but the pattern binds " +
                             std::to_string(arm->binders.size()));
                     }
+
+                    for (const auto& fieldType : info.fieldTypes)
+                        binderTypes.push_back(this->resolveTypeExpr(fieldType, arm->loc, false));
+
                     break;
                 }
                 case MatchArm::Pattern::Bind:
@@ -897,8 +900,9 @@ namespace LOICollection::frontend {
                     ? TypeInfo{ TypeKind::Object, arm->className }
                     : target;
 
-            for (const auto& binder : arm->binders)
-                this->blockScopes.back()[binder] = TypeInfo{ TypeKind::Unknown };
+            for (size_t i = 0; i < arm->binders.size(); ++i)
+                this->blockScopes.back()[arm->binders[i]] =
+                    i < binderTypes.size() ? binderTypes[i] : TypeInfo{ TypeKind::Unknown };
 
             if (arm->guard)
                 this->checkExpr(*arm->guard, scope);
@@ -916,11 +920,9 @@ namespace LOICollection::frontend {
 
         TypeInfo value = this->checkExpr(*node.value, scope);
 
-        
         if (!node.isEnumPattern)
             return { TypeKind::Bool };
 
-        
         if (value.kind != TypeKind::Enum && value.kind != TypeKind::Unknown) {
             this->diagnostics.addError(node.loc,
                 "Enum variant pattern '" + node.variantName +
@@ -953,6 +955,16 @@ namespace LOICollection::frontend {
         }
 
         return { TypeKind::Bool };
+    }
+
+    void SemanticAnalyzer::bindLetPatternTypes(LetPatternNode& node) {
+        const auto variantIt = node.isEnumPattern ? this->enumVariant.find(node.variantName) : this->enumVariant.end();
+
+        for (size_t i = 0; i < node.binders.size(); ++i)
+            this->blockScopes.back()[node.binders[i]] =
+                variantIt != this->enumVariant.end() && i < variantIt->second.fieldTypes.size()
+                    ? this->resolveTypeExpr(variantIt->second.fieldTypes[i], node.loc, false)
+                    : TypeInfo{ TypeKind::Unknown };
     }
 
     std::optional<OperatorOverload> SemanticAnalyzer::resolveOperatorOverload(

@@ -38,7 +38,7 @@ class Rng {
 }
 
 /* randInt returns an integer in the inclusive range [lo, hi]. */
-func randInt(rng: Rng, lo: int, hi: int) -> int {
+func randInt(rng: ref<Rng>, lo: int, hi: int) -> int {
     let span = hi - lo + 1;
     let r = rng.nextU16() % span;
     if (r < 0) [ r = r + span; ]
@@ -46,30 +46,30 @@ func randInt(rng: Rng, lo: int, hi: int) -> int {
 }
 
 /* randFloat returns a float in [lo, hi). */
-func randFloat(rng: Rng, lo: float, hi: float) -> float {
+func randFloat(rng: ref<Rng>, lo: float, hi: float) -> float {
     return lo + rng.nextUnit() * (hi - lo);
 }
 
 /* randBool returns true with probability 0.5. */
-func randBool(rng: Rng) -> bool {
+func randBool(rng: ref<Rng>) -> bool {
     return rng.nextU16() % 2 == 0;
 }
 
 /* randSign returns 1 or -1 with equal probability. */
-func randSign(rng: Rng) -> int {
+func randSign(rng: ref<Rng>) -> int {
     if (randBool(rng)) [ return 1; ]
     return -1;
 }
 
 /* randChoice returns a uniformly chosen element of a (None for empty). */
-func randChoice(rng: Rng, a) {
+func randChoice(rng: ref<Rng>, a) {
     if (a.length() == 0) [ return None; ]
     return a[randInt(rng, 0, a.length() - 1)];
 }
 
 /* randShuffle returns a new array with the elements of a in random order
  * (Fisher-Yates), leaving a unchanged. */
-func randShuffle(rng: Rng, a) {
+func randShuffle(rng: ref<Rng>, a) {
     let out = [];
     for (v in a) [ out.push(v); ]
     let n = out.length();
@@ -85,7 +85,7 @@ func randShuffle(rng: Rng, a) {
 }
 
 /* randSample returns up to n distinct elements chosen without replacement. */
-func randSample(rng: Rng, a, n: int) {
+func randSample(rng: ref<Rng>, a, n: int) {
     let pool = randShuffle(rng, a);
     let out = [];
     let count = 0;
@@ -97,7 +97,7 @@ func randSample(rng: Rng, a, n: int) {
 }
 
 /* randWeighted picks an index of weights proportional to its value. */
-func randWeighted(rng: Rng, weights) -> int {
+func randWeighted(rng: ref<Rng>, weights) -> int {
     let total = 0;
     for (w in weights) [ total = total + w; ]
     if (total <= 0) [ return 0; ]
@@ -113,7 +113,7 @@ func randWeighted(rng: Rng, weights) -> int {
 }
 
 /* randDice rolls `count` dice with `sides` faces and returns the sum. */
-func randDice(rng: Rng, count: int, sides: int) -> int {
+func randDice(rng: ref<Rng>, count: int, sides: int) -> int {
     let total = 0;
     let i = 0;
     while (i < count) [
@@ -124,7 +124,7 @@ func randDice(rng: Rng, count: int, sides: int) -> int {
 }
 
 /* randInts returns an array of n integers drawn from [lo, hi]. */
-func randInts(rng: Rng, lo: int, hi: int, n: int) {
+func randInts(rng: ref<Rng>, lo: int, hi: int, n: int) {
     let out = [];
     let i = 0;
     while (i < n) [
@@ -136,7 +136,7 @@ func randInts(rng: Rng, lo: int, hi: int, n: int) {
 
 /* randGaussian returns a sample from a normal distribution (mean 0, sd 1)
  * using the Box-Muller transform. */
-func randGaussian(rng: Rng) -> float {
+func randGaussian(rng: ref<Rng>) -> float {
     let u1 = rng.nextUnit();
     let u2 = rng.nextUnit();
     if (u1 < 0.000000001) [ u1 = 0.000000001; ]
@@ -145,7 +145,7 @@ func randGaussian(rng: Rng) -> float {
 }
 
 /* randId returns a random lowercase hex identifier of the given length. */
-func randId(rng: Rng, len: int) -> string {
+func randId(rng: ref<Rng>, len: int) -> string {
     let hex = "0123456789abcdef";
     let out = "";
     let i = 0;

@@ -1,184 +1,416 @@
-/* Std: JSON reader plus the quoting helpers needed to write JSON by hand.
+/* Std: JSON reader and writer built on a tagged union.
  *
- * `jsonParse` turns JSON text into plain script values: objects become Maps,
- * arrays become arrays, numbers become int or float, and booleans become
- * bools. Parsing is driven entirely by the input text, so it needs no
- * runtime type checks.
+ * Json mirrors a JSON document the way serde_json::Value does: JNull, JBool,
+ * JInt, JFloat, JStr, JArr and JObj. Objects are Maps and arrays are arrays,
+ * so a document is walked with `match` and the native container methods:
  *
- * A JSON null becomes an empty string: the language cannot store an empty
- * optional inside a native container, and `null` at the top level is
- * reported by `jsonParse` as an empty string too.
+ *     match (jsonParse(text)) [
+ *         JsonOk(document) [ match (document) [ JObj(fields) [ fields.get("name") ] _ [ None ] ] ]
+ *         JsonErr(reason) [ println(reason) ]
+ *     ]
  *
- * The language cannot inspect a value's type at runtime, so there is no
- * general `jsonStringify` that accepts anything; use `jsonQuote` (and the
- * Map/Array walkers) to build JSON text from values you already know the
- * shape of.
+ * jsonStringify accepts any Json and renders compact text; jsonQuote and
+ * jsonEscape are the string helpers it is built on.
  */
 
-import "map.lcui" { mapNew, mapSet, mapKeys, mapGet };
-import "string.lcui" { charAt };
-
-/* jsonIsSpace reports whether c is JSON whitespace. */
-func jsonIsSpace(c) -> bool {
-    return c == " " || c == "\t" || c == "\n" || c == "\r";
+enum Json {
+    JNull()
+    JBool(bool)
+    JInt(int)
+    JFloat(float)
+    JStr(string)
+    JArr(array)
+    JObj(Map)
 }
 
-/* jsonSkipWs returns the first index at or after i holding non-whitespace. */
-func jsonSkipWs(s, i: int) -> int {
-    while (i < s.length()) [
-        if (!jsonIsSpace(charAt(s, i))) [ return i; ]
-        i = i + 1;
+enum JsonResult {
+    JsonOk(Json)
+    JsonErr(string)
+}
+
+/* jsonHexValue returns the value of a hexadecimal digit, or -1. */
+func jsonHexValue(c: string) -> int {
+    return "0123456789abcdef".indexOf(c.lower());
+}
+
+/* jsonHexDigit returns the lowercase hexadecimal digit of a nibble. */
+func jsonHexDigit(value: int) -> string {
+    return "0123456789abcdef".charAt(value);
+}
+
+/* jsonControlTable returns the 32 C0 control characters in order. */
+func jsonControlTable() -> string {
+    let table = "";
+    let index = 0;
+
+    while (index < 32) [
+        let character = String::fromCodePoint(index);
+        table = table + character;
+        index = index + 1;
     ]
-    return i;
+
+    return table;
 }
 
-/* jsonIsNumberChar reports whether c may appear inside a JSON number. */
-func jsonIsNumberChar(c) -> bool {
-    if (c >= "0" && c <= "9") [ return true; ]
-    return c == "-" || c == "+" || c == "." || c == "e" || c == "E";
+class JsonParser {
+    public:
+        source: string = "";
+        offset: int = 0;
+        message: string = "";
+
+        JsonParser(input: string) {
+            this.source = input;
+        }
+
+        func fail(reason: string) -> optional<Json> {
+            this.message = reason;
+            return None;
+        }
+
+        func failText(reason: string) -> optional<string> {
+            this.message = reason;
+            return None;
+        }
+
+        func peek() -> string {
+            if (this.offset >= this.source.length()) [ return ""; ]
+            return this.source.charAt(this.offset);
+        }
+
+        func skipSpace() {
+            while (this.offset < this.source.length()) [
+                let c = this.source.charAt(this.offset);
+                if (c != " " && c != "\t" && c != "\n" && c != "\r") [ return; ]
+                this.offset = this.offset + 1;
+            ]
+        }
+
+        func parse() -> optional<Json> {
+            let value = this.parseValue()?;
+            this.skipSpace();
+
+            if (this.offset != this.source.length())
+                [ return this.fail("unexpected trailing text at " + this.offset); ]
+
+            return value;
+        }
+
+        func parseValue() -> optional<Json> {
+            this.skipSpace();
+
+            let c = this.peek();
+            if (c == "") [ return this.fail("unexpected end of input"); ]
+            if (c == "{") [ return this.parseObject(); ]
+            if (c == "[") [ return this.parseArray(); ]
+            if (c == "\"") [
+                let decoded = this.parseString()?;
+                return JStr(decoded);
+            ]
+            if (c == "t") [ return this.parseKeyword("true", JBool(true)); ]
+            if (c == "f") [ return this.parseKeyword("false", JBool(false)); ]
+            if (c == "n") [ return this.parseKeyword("null", JNull()); ]
+
+            return this.parseNumber();
+        }
+
+        func parseKeyword(word: string, value: Json) -> optional<Json> {
+            if (this.offset + word.length() > this.source.length())
+                [ return this.fail("unexpected end of input"); ]
+
+            if (this.source.substring(this.offset, this.offset + word.length()) != word)
+                [ return this.fail("invalid literal at " + this.offset); ]
+
+            this.offset = this.offset + word.length();
+            return value;
+        }
+
+        func parseString() -> optional<string> {
+            let out = "";
+            this.offset = this.offset + 1;
+
+            while (this.offset < this.source.length()) [
+                let c = this.source.charAt(this.offset);
+
+                if (c == "\"") [
+                    this.offset = this.offset + 1;
+                    return out;
+                ]
+
+                if (c == "\\") [
+                    let decoded = this.parseEscape()?;
+                    out = out + decoded;
+                :
+                    out = out + c;
+                    this.offset = this.offset + 1;
+                ]
+            ]
+
+            return this.failText("unterminated string");
+        }
+
+        func parseEscape() -> optional<string> {
+            this.offset = this.offset + 1;
+            if (this.offset >= this.source.length()) [ return this.failText("unterminated escape"); ]
+
+            let c = this.source.charAt(this.offset);
+            this.offset = this.offset + 1;
+
+            if (c == "\"") [ return "\""; ]
+            if (c == "\\") [ return "\\"; ]
+            if (c == "/") [ return "/"; ]
+            if (c == "b") [ return String::fromCodePoint(8); ]
+            if (c == "f") [ return String::fromCodePoint(12); ]
+            if (c == "n") [ return "\n"; ]
+            if (c == "r") [ return "\r"; ]
+            if (c == "t") [ return "\t"; ]
+            if (c == "u") [ return this.parseUnicode(); ]
+
+            return this.failText("invalid escape at " + (this.offset - 1));
+        }
+
+        func parseUnicode() -> optional<string> {
+            if (this.offset + 4 > this.source.length()) [ return this.failText("incomplete \\u escape"); ]
+
+            let high = this.parseHex4();
+            if (high < 0) [ return this.failText("invalid \\u escape at " + this.offset); ]
+
+            if (high >= 0xD800 && high <= 0xDBFF) [
+                if (this.offset + 2 > this.source.length()) [ return this.failText("unpaired surrogate"); ]
+                if (this.source.charAt(this.offset) != "\\" || this.source.charAt(this.offset + 1) != "u")
+                    [ return this.failText("unpaired surrogate"); ]
+
+                this.offset = this.offset + 2;
+                let low = this.parseHex4();
+                if (low < 0xDC00 || low > 0xDFFF) [ return this.failText("invalid surrogate pair"); ]
+
+                let character = String::fromCodePoint(0x10000 + (high - 0xD800) * 0x400 + (low - 0xDC00));
+                if (character == None) [ return this.failText("invalid code point"); ]
+                return character;
+            ]
+
+            if (high >= 0xDC00 && high <= 0xDFFF) [ return this.failText("unpaired surrogate"); ]
+
+            let single = String::fromCodePoint(high);
+            if (single == None) [ return this.failText("invalid code point"); ]
+            return single;
+        }
+
+        func parseHex4() -> int {
+            let value = 0;
+            let index = 0;
+
+            while (index < 4) [
+                let digit = jsonHexValue(this.source.charAt(this.offset + index));
+                if (digit < 0) [ return -1; ]
+                value = value * 16 + digit;
+                index = index + 1;
+            ]
+
+            this.offset = this.offset + 4;
+            return value;
+        }
+
+        func skipDigits() -> bool {
+            let start = this.offset;
+
+            while (this.offset < this.source.length()) [
+                let c = this.source.charAt(this.offset);
+                if (c < "0" || c > "9") [ break; ]
+                this.offset = this.offset + 1;
+            ]
+
+            return this.offset > start;
+        }
+
+        func parseNumber() -> optional<Json> {
+            let start = this.offset;
+
+            if (this.peek() == "-") [ this.offset = this.offset + 1; ]
+
+            if (this.peek() == "0") [
+                this.offset = this.offset + 1;
+
+                let next = this.peek();
+                if (next >= "0" && next <= "9") [ return this.fail("invalid number at " + start); ]
+            :
+                if (!this.skipDigits()) [ return this.fail("invalid number at " + start); ]
+            ]
+
+            let fractional = false;
+            if (this.peek() == ".") [
+                fractional = true;
+                this.offset = this.offset + 1;
+                if (!this.skipDigits()) [ return this.fail("invalid number at " + start); ]
+            ]
+
+            let c = this.peek();
+            if (c == "e" || c == "E") [
+                fractional = true;
+                this.offset = this.offset + 1;
+
+                let sign = this.peek();
+                if (sign == "+" || sign == "-") [ this.offset = this.offset + 1; ]
+                if (!this.skipDigits()) [ return this.fail("invalid number at " + start); ]
+            ]
+
+            let literal = this.source.substring(start, this.offset);
+
+            if (!fractional) [
+                let integer = literal.toInt();
+                if (integer != None) [ return JInt(integer); ]
+            ]
+
+            let real = literal.toFloat();
+            if (real == None) [ return this.fail("invalid number '" + literal + "'"); ]
+
+            return JFloat(real);
+        }
+
+        func parseArray() -> optional<Json> {
+            let items = [];
+            this.offset = this.offset + 1;
+            this.skipSpace();
+
+            if (this.peek() == "]") [
+                this.offset = this.offset + 1;
+                return JArr(items);
+            ]
+
+            while (true) [
+                let item = this.parseValue()?;
+                items.push(item);
+                this.skipSpace();
+
+                let c = this.peek();
+                if (c == ",") [ this.offset = this.offset + 1; continue; ]
+                if (c == "]") [
+                    this.offset = this.offset + 1;
+                    return JArr(items);
+                ]
+
+                return this.fail("expected ',' or ']' at " + this.offset);
+            ]
+        }
+
+        func parseObject() -> optional<Json> {
+            let fields = new Map();
+            this.offset = this.offset + 1;
+            this.skipSpace();
+
+            if (this.peek() == "}") [
+                this.offset = this.offset + 1;
+                return JObj(fields);
+            ]
+
+            while (true) [
+                this.skipSpace();
+                if (this.peek() != "\"") [ return this.fail("expected a string key at " + this.offset); ]
+
+                let key = this.parseString()?;
+                this.skipSpace();
+
+                if (this.peek() != ":") [ return this.fail("expected ':' at " + this.offset); ]
+                this.offset = this.offset + 1;
+
+                let value = this.parseValue()?;
+                fields.set(key, value);
+                this.skipSpace();
+
+                let c = this.peek();
+                if (c == ",") [ this.offset = this.offset + 1; continue; ]
+                if (c == "}") [
+                    this.offset = this.offset + 1;
+                    return JObj(fields);
+                ]
+
+                return this.fail("expected ',' or '}' at " + this.offset);
+            ]
+        }
 }
 
-/* jsonParseString reads the quoted string opening at i and returns
- * [text, indexAfterClosingQuote]. */
-func jsonParseString(s, i: int) {
+/* jsonParse decodes text into a Json document, reporting failures as JsonErr. */
+func jsonParse(text) -> JsonResult {
+    let parser = new JsonParser(text);
+    let value = parser.parse();
+
+    if (value == None) [ return JsonErr(parser.message); ]
+    return JsonOk(value);
+}
+
+/* jsonStringify renders a Json document as compact JSON text. */
+func jsonStringify(value: Json) -> string {
+    return match (value) [
+        JNull() [ "null" ]
+        JBool(flag) [ "" + flag ]
+        JInt(number) [ "" + number ]
+        JFloat(number) [ "" + number ]
+        JStr(text) [ jsonQuote(text) ]
+        JArr(items) [ jsonArrayText(items) ]
+        JObj(fields) [ jsonObjectText(fields) ]
+    ];
+}
+
+/* jsonArrayText renders the elements of a JSON array. */
+func jsonArrayText(items) -> string {
+    let out = "[";
+    let index = 0;
+
+    while (index < items.length()) [
+        if (index > 0) [ out = out + ","; ]
+        out = out + jsonStringify(items[index]);
+        index = index + 1;
+    ]
+
+    return out + "]";
+}
+
+/* jsonObjectText renders the entries of a JSON object. */
+func jsonObjectText(fields: Map) -> string {
+    let out = "{";
+    let first = true;
+
+    for (key in fields) [
+        if (!first) [ out = out + ","; ]
+        first = false;
+        out = out + jsonQuote(key) + ":" + jsonStringify(fields.get(key));
+    ]
+
+    return out + "}";
+}
+
+/* jsonEscape returns text with the characters JSON requires escaped. */
+func jsonEscape(text: string) -> string {
+    let controls = jsonControlTable();
     let out = "";
-    let p = i + 1;
+    let index = 0;
 
-    while (p < s.length()) [
-        let c = charAt(s, p);
-
-        if (c == "\"") [ return [out, p + 1, false]; ]
-
-        if (c == "\\") [
-            let e = charAt(s, p + 1);
-            let add = e;
-            let step = 2;
-
-            if (e == "n") [ add = "\n"; ]
-            if (e == "t") [ add = "\t"; ]
-            if (e == "r") [ add = "\r"; ]
-            if (e == "u") [ add = ""; step = 6; ]
-
-            out = out + add;
-            p = p + step;
-        :
-            out = out + c;
-            p = p + 1;
-        ]
+    while (index < text.length()) [
+        out = out + jsonEscapeChar(text.charAt(index), controls);
+        index = index + 1;
     ]
 
-    return [out, p, false];
-}
-
-/* jsonParseNumber reads the number starting at i, returning [value, end]. */
-func jsonParseNumber(s, i: int) {
-    let text = "";
-    let p = i;
-
-    while (p < s.length()) [
-        let c = charAt(s, p);
-        if (!jsonIsNumberChar(c)) [ return [jsonToNumber(text), p, false]; ]
-        text = text + c;
-        p = p + 1;
-    ]
-
-    return [jsonToNumber(text), p, false];
-}
-
-/* jsonToNumber converts a numeric literal to int or float. */
-func jsonToNumber(t) {
-    if (t.indexOf(".") >= 0 || t.indexOf("e") >= 0 || t.indexOf("E") >= 0) [
-        return t.toFloat();
-    ]
-    return t.toInt();
-}
-
-/* jsonParseArray reads the array opening at i, returning [array, end]. */
-func jsonParseArray(s, i: int) {
-    let out = [];
-    let p = jsonSkipWs(s, i + 1);
-
-    if (charAt(s, p) == "]") [ return [out, p + 1, false]; ]
-
-    while (p < s.length()) [
-        let item = jsonParseValue(s, p);
-        let val = item[0];
-        if (item[2]) [ val = ""; ]
-        out.push(val);
-        p = jsonSkipWs(s, item[1]);
-
-        if (charAt(s, p) == ",") [ p = jsonSkipWs(s, p + 1); : return [out, p + 1, false]; ]
-    ]
-
-    return [out, p, false];
-}
-
-/* jsonParseObject reads the object opening at i, returning [map, end]. */
-func jsonParseObject(s, i: int) {
-    let out = mapNew();
-    let p = jsonSkipWs(s, i + 1);
-
-    if (charAt(s, p) == "}") [ return [out, p + 1, false]; ]
-
-    while (p < s.length()) [
-        let kv = jsonParseString(s, jsonSkipWs(s, p));
-        let key = kv[0];
-        p = jsonSkipWs(s, kv[1]);
-        p = jsonSkipWs(s, p + 1);
-
-        let vr = jsonParseValue(s, p);
-        let val = vr[0];
-        if (vr[2]) [ val = ""; ]
-        mapSet(out, key, val);
-        p = jsonSkipWs(s, vr[1]);
-
-        if (charAt(s, p) == ",") [ p = jsonSkipWs(s, p + 1); : return [out, p + 1, false]; ]
-    ]
-
-    return [out, p, false];
-}
-
-/* jsonParseValue reads any JSON value at i, returning [value, end]. */
-func jsonParseValue(s, i: int) {
-    let p = jsonSkipWs(s, i);
-    let c = charAt(s, p);
-
-    if (c == "{") [ return jsonParseObject(s, p); ]
-    if (c == "[") [ return jsonParseArray(s, p); ]
-    if (c == "\"") [ return jsonParseString(s, p); ]
-    if (c == "t") [ return [true, p + 4, false]; ]
-    if (c == "f") [ return [false, p + 5, false]; ]
-    if (c == "n") [ return ["", p + 4, true]; ]
-
-    return jsonParseNumber(s, p);
-}
-
-/* jsonFirst returns the value half of a [value, end, isNull] triple. */
-func jsonFirst(triple) {
-    return triple[0];
-}
-
-/* jsonParse returns the value encoded by text. */
-func jsonParse(text) {
-    return jsonFirst(jsonParseValue(text, 0));
-}
-
-/* jsonEscape returns s with the characters JSON requires to be escaped. */
-func jsonEscape(s) {
-    let out = "";
-    for (c in s) [
-        let add = c;
-        if (c == "\"") [ add = "\\\""; ]
-        if (c == "\\") [ add = "\\\\"; ]
-        if (c == "\n") [ add = "\\n"; ]
-        if (c == "\t") [ add = "\\t"; ]
-        if (c == "\r") [ add = "\\r"; ]
-        out = out + add;
-    ]
     return out;
 }
 
-/* jsonQuote returns s as a quoted JSON string. */
-func jsonQuote(s) {
-    return "\"" + jsonEscape(s) + "\"";
+/* jsonEscapeChar escapes one character, using controls to name low code points. */
+func jsonEscapeChar(c: string, controls: string) -> string {
+    if (c == "\"") [ return "\\\""; ]
+    if (c == "\\") [ return "\\\\"; ]
+    if (c == "\n") [ return "\\n"; ]
+    if (c == "\r") [ return "\\r"; ]
+    if (c == "\t") [ return "\\t"; ]
+
+    let control = controls.indexOf(c);
+    if (control >= 0) [
+        let high = 0;
+        if (control >= 16) [ high = 1; ]
+        return "\\u00" + jsonHexDigit(high) + jsonHexDigit(control - high * 16);
+    ]
+
+    return c;
+}
+
+/* jsonQuote returns text as a quoted JSON string. */
+func jsonQuote(text: string) -> string {
+    return "\"" + jsonEscape(text) + "\"";
 }

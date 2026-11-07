@@ -395,10 +395,9 @@ func isAlnum(c) -> bool {
     return false;
 }
 
-/* isLowerChar reports whether c is a lowercase ASCII letter. */
+/* isLowerChar reports whether c is a single lowercase ASCII letter. */
 func isLowerChar(c) -> bool {
-    let low = "abcdefghijklmnopqrstuvwxyz";
-    return low.indexOf(c) >= 0;
+    return isLower(c);
 }
 
 /* levenshtein returns the edit distance between a and b. */

@@ -22,7 +22,8 @@ namespace LOICollection::frontend {
         BOOL,
         OBJECT,
         FUNCTION,
-        ARRAY
+        ARRAY,
+        ENUM
     };
 
     using TypedValue = ValueNode::ValueType;

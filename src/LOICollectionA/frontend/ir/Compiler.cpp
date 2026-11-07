@@ -103,15 +103,15 @@ namespace LOICollection::frontend::ir {
 
         this->current.get().emit(MirOp::HALT);
 
-        this->chunk.slotCount = this->closeScope();
+        this->chunk.slotCount = this->closeScope(false);
 
         return std::move(chunk);
     }
 
     int Compiler::compilePart(ASTNode& node) {
         node.accept(*this);
-        int reg = this->lastResultReg;
-        this->lastResultReg = -1;
+        int reg = std::exchange(this->lastResultReg, -1);
+        this->dstHint = -1;
         return reg;
     }
 
@@ -147,6 +147,7 @@ namespace LOICollection::frontend::ir {
 
         this->dstHint = hint;
         node.accept(*this);
+        this->dstHint = -1;
         int reg = this->lastResultReg;
         this->lastResultReg = -1;
 
@@ -240,9 +241,13 @@ namespace LOICollection::frontend::ir {
         this->scopes.push_back(std::move(scope));
     }
 
-    int Compiler::closeScope() {
+    int Compiler::closeScope(bool mergeIntoParent) {
         const int slotCount = this->scopes.back().next;
         this->scopes.pop_back();
+
+        if (mergeIntoParent && !this->scopes.empty() && slotCount > this->scopes.back().next)
+            this->scopes.back().next = slotCount;
+
         return slotCount;
     }
 
@@ -253,30 +258,6 @@ namespace LOICollection::frontend::ir {
             ++scope.next;
 
         return it->second;
-    }
-
-    void Compiler::predeclareLocals(ASTNode& body) {
-        auto* seq = dynamic_cast<SequenceNode*>(&body);
-        if (!seq)
-            return;
-
-        for (auto& part : seq->parts) {
-            if (!part || part->getType() != ASTNode::Type::Assignment)
-                continue;
-
-            auto& assign = static_cast<AssignmentNode&>(*part);
-            if (!assign.isDeclaration || !assign.target)
-                continue;
-
-            if (assign.target->getType() != ASTNode::Type::Variable)
-                continue;
-
-            auto& var = static_cast<VariableNode&>(*assign.target);
-            if (var.isStaticField)
-                continue;
-
-            this->declareSlot(qualifiedName(var));
-        }
     }
 
     std::optional<int> Compiler::resolveSlot(const std::string& name) const {
@@ -512,7 +493,12 @@ namespace LOICollection::frontend::ir {
         switch (node.target->getType()) {
             case ASTNode::Type::Variable: {
                 auto& var = static_cast<VariableNode&>(*node.target);
-                this->emitStore(qualifiedName(var), valReg, node.loc);
+                const std::string name = qualifiedName(var);
+
+                if (node.isDeclaration && !var.isStaticField && !this->atScriptTopLevel())
+                    this->declareSlot(name);
+
+                this->emitStore(name, valReg, node.loc);
                 break;
             }
             case ASTNode::Type::MemberAccess: {
@@ -689,7 +675,6 @@ namespace LOICollection::frontend::ir {
                     const int enumId = std::get<0>(it->second);
                     const int tag = std::get<1>(it->second);
 
-                    
                     patternFailIdx = this->current.get().emitCall(
                         MirOp::JMP_IF_TAG_NE, 0, -1, target, enumId, tag, arm.loc);
                     break;
@@ -709,7 +694,6 @@ namespace LOICollection::frontend::ir {
                 this->emitStore(arm.binder, target, arm.loc);
             }
 
-            
             for (size_t slot = 0; slot < arm.binders.size(); ++slot) {
                 const int payloadReg = this->allocReg();
                 this->current.get().emit(MirOp::LOAD_ENUM_PAYLOAD,
@@ -730,9 +714,7 @@ namespace LOICollection::frontend::ir {
 
             this->compileInto(dst, *arm.body, arm.loc);
 
-            const int armSlotCount = this->closeScope();
-            if (armSlotCount > this->scopes.back().next)
-                this->scopes.back().next = armSlotCount;
+            this->closeScope();
 
             endJumps.push_back(this->current.get().emit(MirOp::JMP, 0, arm.loc));
 
@@ -836,7 +818,6 @@ namespace LOICollection::frontend::ir {
         const int enumId = std::get<0>(it->second);
         const int tag = std::get<1>(it->second);
 
-        
         failIdx = this->current.get().emitCall(
             MirOp::JMP_IF_TAG_NE, 0, -1, valueReg, enumId, tag, node.loc);
 
@@ -866,7 +847,7 @@ namespace LOICollection::frontend::ir {
     }
 
     void Compiler::visit(LetPatternNode& node) {
-        
+
         this->diagnostics.addError(node.loc,
             "A 'let' pattern is only allowed as an if or while condition");
         this->lastResultReg = this->finishHint(-1, -1, node.loc);
@@ -889,9 +870,7 @@ namespace LOICollection::frontend::ir {
 
             this->compileInto(dst, *node.trueBranch, node.loc);
 
-            const int trueSlotCount = this->closeScope();
-            if (trueSlotCount > this->scopes.back().next)
-                this->scopes.back().next = trueSlotCount;
+            this->closeScope();
 
             const size_t jmpEndIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
 
@@ -955,9 +934,7 @@ namespace LOICollection::frontend::ir {
 
             node.body->accept(*this);
 
-            const int bodySlotCount = this->closeScope();
-            if (bodySlotCount > this->scopes.back().next)
-                this->scopes.back().next = bodySlotCount;
+            this->closeScope();
 
             const size_t jmpBackIdx = this->current.get().emit(MirOp::JMP, 0, node.loc);
             this->current.get().patchJump(jmpBackIdx,
@@ -1067,6 +1044,28 @@ namespace LOICollection::frontend::ir {
     }
 
     void Compiler::visit(CompareNode& node) {
+        const auto isNoneLiteral = [](const ExprNode& expr) {
+            return expr.getType() == ASTNode::Type::Value &&
+                std::holds_alternative<std::monostate>(
+                    static_cast<const ValueNode&>(expr).value);
+        };
+
+        if (node.op == "==" || node.op == "!=") {
+            const bool leftNone = isNoneLiteral(*node.left);
+            const bool rightNone = isNoneLiteral(*node.right);
+            if (leftNone || rightNone) {
+                const int dst = this->takeDst();
+                ExprNode& tested = leftNone ? *node.right : *node.left;
+                tested.preserveOptional = true;
+                const int value = this->compileValue(tested, node.loc);
+                this->current.get().emit(
+                    node.op == "==" ? MirOp::IS_NONE : MirOp::HAS_VALUE,
+                    0, dst, value, -1, node.loc);
+                this->lastResultReg = dst;
+                return;
+            }
+        }
+
         const int lhs = this->compileValue(*node.left, node.loc);
         const int rhs = this->compileValue(*node.right, node.loc);
 
@@ -1721,6 +1720,7 @@ namespace LOICollection::frontend::ir {
         std::reference_wrapper<MirChunk> saved = this->current;
         this->current = std::ref(bodyChunk);
         auto loops = this->suspendLoops();
+        auto state = this->suspendExprState();
 
         this->pushScope(false, 0);
         for (const auto& param : node.decl.params)
@@ -1728,7 +1728,6 @@ namespace LOICollection::frontend::ir {
 
         int lastReg = -1;
         if (node.decl.body) {
-            this->predeclareLocals(*node.decl.body);
             lastReg = this->compilePart(*node.decl.body);
             if (this->lastPartWasDeclaration)
                 lastReg = -1;
@@ -1737,7 +1736,7 @@ namespace LOICollection::frontend::ir {
         this->current.get().emit(MirOp::RETURN, 0, -1, lastReg, -1);
 
         this->current = saved;
-        bodyChunk.slotCount = this->closeScope();
+        bodyChunk.slotCount = this->closeScope(false);
 
         mm.bodyIndex = bodyIdx;
 
@@ -1747,7 +1746,6 @@ namespace LOICollection::frontend::ir {
     void Compiler::visit(FuncCallNode& node) {
         const int argCount = static_cast<int>(node.args.size());
 
-        
         auto variantIt = this->enumVariantInfo.find(node.name);
         if (variantIt != this->enumVariantInfo.end()) {
             const int enumId = std::get<0>(variantIt->second);
@@ -1845,38 +1843,44 @@ namespace LOICollection::frontend::ir {
         this->chunk.methodBodies.push_back(std::move(body));
 
         std::reference_wrapper<MirChunk> saved = this->current;
-        this->current = std::ref(bodyChunk);
-        auto loops = this->suspendLoops();
+        std::vector<LambdaCapture> captures;
+        int dst = -1;
 
-        this->pushScope(false, 0, false);
-        this->lambdaCtxs.emplace_back();
+        {
+            this->current = std::ref(bodyChunk);
+            auto loops = this->suspendLoops();
+            auto state = this->suspendExprState();
 
-        for (const auto& param : node.decl.params)
-            this->declareSlot(param.name);
+            this->pushScope(false, 0, false);
+            this->lambdaCtxs.emplace_back();
 
-        int lastReg = -1;
-        if (node.decl.body) {
-            this->predeclareLocals(*node.decl.body);
-            lastReg = this->compilePart(*node.decl.body);
-            if (this->lastPartWasDeclaration)
-                lastReg = -1;
+            for (const auto& param : node.decl.params)
+                this->declareSlot(param.name);
+
+            int lastReg = -1;
+            if (node.decl.body) {
+                lastReg = this->compilePart(*node.decl.body);
+                if (this->lastPartWasDeclaration)
+                    lastReg = -1;
+            }
+
+            this->current.get().emit(MirOp::RETURN, 0, -1, lastReg, -1);
+
+            bodyChunk.slotCount = this->closeScope(false);
+
+            captures = std::move(this->lambdaCtxs.back().captures);
+            this->lambdaCtxs.pop_back();
+            this->current = saved;
+
+            const int lambdaIdx = this->addLambda(
+                bodyIdx, static_cast<int>(node.decl.params.size()), captures);
+            dst = this->allocReg();
+
+            this->current.get().emitCall(
+                MirOp::MAKE_LAMBDA, lambdaIdx, dst, -1, -1,
+                static_cast<int>(captures.size()), node.loc);
         }
 
-        this->current.get().emit(MirOp::RETURN, 0, -1, lastReg, -1);
-
-        this->current = saved;
-        bodyChunk.slotCount = this->closeScope();
-
-        const std::vector<LambdaCapture> captures = std::move(this->lambdaCtxs.back().captures);
-        this->lambdaCtxs.pop_back();
-
-        const int lambdaIdx = this->addLambda(
-            bodyIdx, static_cast<int>(node.decl.params.size()), captures);
-        const int dst = this->allocReg();
-
-        this->current.get().emitCall(
-            MirOp::MAKE_LAMBDA, lambdaIdx, dst, -1, -1,
-            static_cast<int>(captures.size()), node.loc);
         this->lastResultReg = dst;
     }
 

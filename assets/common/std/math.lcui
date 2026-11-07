@@ -1,12 +1,9 @@
 /* Std: math helpers, replacing the former `math::abs/min/max` natives.
  *
- * Transcendental functions stay native (`math::sqrt/pow/log/sin/cos/random`)
- * because scripts cannot compute them; these helpers are the scriptable part.
+ * Transcendental and rounding functions stay native
+ * (`math::sqrt/pow/log/sin/cos/random/trunc/floor/ceil/round`) because scripts
+ * cannot compute them; these helpers are the scriptable part.
  * Parameters are dynamic so the same function serves int and float.
- *
- * The language has no float->int cast and `%` is integral-only, so the
- * rounding helpers go through the decimal text form of the number:
- * `trunc` cuts at the '.', and floor/ceil/round are expressed on top of it.
  */
 
 /* abs returns the absolute value of x. */
@@ -63,38 +60,22 @@ func sign(x) -> int {
 
 /* trunc drops the fractional part of x, rounding toward zero. */
 func trunc(x) -> int {
-    let text = "" + x;
-    let dot = text.indexOf(".");
-    if (dot < 0) [ return text.toInt(); ]
-
-    let whole = "";
-    let i = 0;
-    for (c in text) [
-        if (i >= dot) [ break; ]
-        whole = whole + c;
-        i = i + 1;
-    ]
-    return whole.toInt();
+    return math::trunc(x);
 }
 
 /* floor returns the greatest integer that is <= x. */
 func floor(x) -> int {
-    let whole = trunc(x);
-    if (x < whole) [ return whole - 1; ]
-    return whole;
+    return math::floor(x);
 }
 
 /* ceil returns the smallest integer that is >= x. */
 func ceil(x) -> int {
-    let whole = trunc(x);
-    if (x > whole) [ return whole + 1; ]
-    return whole;
+    return math::ceil(x);
 }
 
 /* round returns x rounded to the nearest integer, halves away from zero. */
 func round(x) -> int {
-    if (x >= 0) [ return floor(x + 0.5); ]
-    return ceil(x - 0.5);
+    return math::round(x);
 }
 
 /* roundTo rounds x to `digits` decimal places. */

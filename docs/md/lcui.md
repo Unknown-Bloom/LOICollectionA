@@ -359,6 +359,22 @@ let label = match (p) [
 
 枚举值按内容比较，不能参与算术运算；使用 `match`、`if let` 或 `while let` 解构（见「match（模式匹配）」）。变体属于声明它的枚举，跨枚举使用同名模式会在编译期报错。
 
+枚举值是一等值：可以直接放进数组、作为 `Map` 的值保存，也可以由函数返回成 `optional<enum>`。因此「带标签的文档树」这类结构不需要额外容器或运行时类型自省：
+
+```lcui
+enum Json {
+    JNull
+    JInt(int)
+    JStr(string)
+}
+
+let items = [JNull(), JInt(1), JStr("a")];
+let first: Json = items[0];
+
+let byName = new Map();
+byName.set("head", JStr("a"));
+```
+
 ### 类型别名 using
 
 使用 `using` 可以为类型定义别名，仅允许出现在脚本顶层：
@@ -904,14 +920,14 @@ import "std/array.lcui" { arrSum, arrZip };   // 只取需要的定义
 
 | 模块 | 内容 |
 | --- | --- |
-| `iter.lcui` | 惰性迭代器。`Fn1` / `Fn2` 是单方法接口（`call`），lambda 与子类都可以作为映射器 / 谓词。构造：`range(a, b)`（半开区间）、`repeat(v)`。`Iter` 组合子：`map`、`filter`、`take`、`takeWhile`、`skip`、`zip`、`chain`、`stepBy`、`enumerate`、`chunk`、`dedup`、`cycle`、`inspect`；终结操作：`collect`、`fold`、`sum`、`count`、`forEach`、`any`、`all`、`find`、`position`、`last`、`max`、`min`。`next()` 返回 `optional`，因此也可直接 `for-in`。 |
+| `iter.lcui` | 惰性迭代器。`Fn1` / `Fn2` 是单方法接口（`call`），lambda 与实现了该接口的类实例都可以作为映射器 / 谓词。构造：`range(a, b)`（半开区间）、`repeat(v)`。`Iter` 组合子：`map`、`filter`、`take`、`takeWhile`、`skip`、`zip`、`chain`、`stepBy`、`enumerate`、`chunk`、`dedup`、`cycle`、`inspect`；终结操作：`collect`、`fold`、`sum`、`count`、`forEach`、`any`、`all`、`find`、`position`、`last`、`max`、`min`。`next()` 返回 `optional`，因此也可直接 `for-in`。 |
 | `array.lcui` | 急切数组函数：`arrMap`、`arrFilter`、`arrReverse`、`arrSum`、`arrProduct`、`arrAny`、`arrAll`、`arrFind`、`arrFindIndex`、`arrFirst`、`arrLast`、`arrDedup`、`arrZip`、`arrChunk`、`arrFlatten`、`arrFlatMap`、`arrTake`、`arrSkip`、`arrConcat`、`arrCount`、`arrReduce`、`arrMin`、`arrMax`、`arrMean`、`arrSortBy`、`arrGroupBy`、`arrPartition`、`arrWindow`、`arrUnion`、`arrIntersect`、`arrDifference`、`arrFill`、`arrRange`、`arrEqual`、`arrIsEmpty`、`arrIndexOfValue`、`arrRotate`、`arrShuffle`、`arrInterleave`、`arrIntersperse`、`arrUniqueBy`、`arrZipWith`、`arrScan`、`arrRemoveAt`、`arrInsertAt`、`arrSwap`、`arrFrequencies`、`arrMode`、`arrVariance`、`arrStdDev`、`arrCartesian`、`arrSymmetricDifference`、`arrSorted`、`arrCompact`、`arrPad`；同文件还提供 `mapMapValues`、`mapMapKeys`、`mapFilter`、`mapFromArray`、`mapKeysWhere`、`mapForEach`、`mapUpdate` 与 `setMap`、`setFilter`、`setCount`。 |
 | `string.lcui` | 查询：`length`、`charAt`、`slice`、`substr`、`startsWith`、`endsWith`、`startsWithAt`、`contains`、`indexOf`、`lastIndexOf`、`count`、`isEmpty`、`isBlank`、`isSpace`、`isUpper`、`isLower`、`isDigit`、`isAlpha`、`isAlphaNum`、`isAlnum`、`isLowerChar`、`wordCount`；变换：`upper`、`lower`、`capitalize`、`swapCase`、`titleCase`、`trim`、`trimStart`、`trimEnd`、`reverse`、`reverseWords`、`snakeCase`、`kebabCase`、`normalizeSpaces`、`expandTabs`、`rotateStr`、`center`、`padLeft`、`padRight`、`truncate`、`truncateMiddle`、`mask`、`stripPrefix`、`stripSuffix`、`removeAt`、`insert`、`replace`、`repeat`、`repeatStr`；拆分与比较：`split`、`join`、`words`、`lines`、`initials`、`toCharArray`、`fromChars`、`commonPrefix`、`commonSuffix`、`equalsIgnoreCase`、`compare`、`levenshtein`、`hamming`、`isPalindrome`、`isTitle`。 |
 | `math.lcui` | 通用数学：`abs`、`min`、`max`、`clamp`、`lerp`、`sign`、`pi`、`tau`、`euler`、`sqrt`、`hypot`、`dist`、`trunc`、`floor`、`ceil`、`round`、`roundTo`、`roundHalfUp`、`mod`、`divmod`、`wrap`、`gcd`、`lcm`、`factorial`、`fib`、`isPrime`、`isEven`、`isOdd`、`isInteger`、`isPowerOfTwo`、`nextPow2`、`log10`、`log2`、`logn`、`exp`、`degToRad`、`radToDeg`、`mapRange`、`clamp01`、`approxEq`、`sum`、`product`、`mean`、`geometricMean`、`minOf`、`maxOf`、`median`、`lerpAngle`、`clampMagnitude`、`smoothstep`、`normalizeAngle`；超越函数仍在原生 `math::` 命名空间。 |
 | `num.lcui` | 整数工具（不依赖 `iter` / `string`）：取舍与基础 `numClamp`、`numSign`、`numAbs`、`numMin`、`numMax`、`numIntDiv`、`numPow`、`numLerp`、`numIsBetween`；数论 `numGcd`、`numGcd3`、`numLcm`、`numIsCoprime`、`numIsPrime`、`numPrimesUpTo`、`numFactorize`、`numDivisors`、`numCountDivisors`、`numSumOfDivisors`、`numSumOfProperDivisors`、`numTotient`、`numNextPrime`、`numPrevPrime`、`numIsPerfect`、`numIsAbundant`、`numIsDeficient`、`numIsEmirp`、`numIsMersenne`、`numIsHappy`；数字性质 `numIsEven`、`numIsOdd`、`numIsPowerOfTwo`、`numGreatestPowerOfTwoLe`、`numIsSquare`、`numIsTriangular`、`numTriangular`、`numIsArmstrong`、`numIsHarshad`、`numIsPalindromeNum`、`numDigitCount`、`numDigits`、`numSumDigits`、`numReverse`、`numDigitalRoot`；序列与进制 `numFactorial`、`numFib`、`numSumRange`、`numProductRange`、`numToBin`、`numToHex`、`numToRoman`、`numFromDigits`、`numManhattan`。 |
 | `map.lcui` | `Map` 与「Map 即集合」约定上的辅助函数：`mapNew`、`mapSet`、`mapGet`、`mapGetOr`、`mapHas`、`mapSize`、`mapIsEmpty`、`mapRemove`、`mapKeys`、`mapValues`、`mapEntries`、`mapMerge`、`mapFromEntries`、`mapInvert`、`mapToArray`、`mapHasAny`、`mapHasAll`、`mapPick`、`mapOmit`、`mapEquals`、`mapIsSubmap`；集合核心：`setNew`、`setAdd`、`setHas`、`setRemove`、`setSize`、`setToArray`、`setFromArray`、`setUnion`、`setIntersect`、`setDifference`。 |
 | `set.lcui` | 集合关系与变换：`setIsSubset`、`setIsSuperset`、`setContainsAll`、`setIsDisjoint`、`setEquals`、`setSymmetricDifference`、`setToggle`、`setClear`、`setIsEmpty`、`setCopy`、`setMin`、`setMax`、`setPop`。 |
-| `json.lcui` | 只读 JSON 解析与转义：`jsonParse(text)` 把对象转为 `Map`、数组转为数组、数字转为 `int` / `float`、布尔转为 `bool`；JSON `null` 转为空字符串（语言无法把空 `optional` 放进原生容器）。`jsonEscape(s)` 转义字符串内容，`jsonQuote(s)` 返回带引号的 JSON 字符串。 |
+| `json.lcui` | 基于枚举的 JSON 读写。文档用 `enum Json { JNull JBool(bool) JInt(int) JFloat(float) JStr(string) JArr(array) JObj(Map) }` 完整保留结构，`null` 就是 `JNull`；对象是 `Map`、数组是数组，容器可以直接存放枚举值。`jsonParse(text)` 返回 `JsonResult`（`JsonOk(Json)` / `JsonErr(string)`），失败时带位置与原因的文本；`jsonStringify(value)` 用穷尽 `match` 递归渲染为紧凑 JSON 文本；`jsonEscape(s)` 转义字符串内容，`jsonQuote(s)` 返回带引号的 JSON 字符串。 |
 | `random.lcui` | 可复现的 16 位 LCG（周期 65536），状态由 `Rng(seed)` 显式携带：`nextU16()`、`nextUnit()`、`randInt`、`randFloat`、`randBool`、`randSign`、`randChoice`、`randShuffle`、`randSample`、`randWeighted`、`randDice`、`randInts`、`randGaussian`、`randId`。不触碰原生随机数，因此相同种子在不同构建上结果一致。 |
 | `time.lcui` | 以整数秒为输入的纯函数：`secondsToHms`、`formatClock`、`formatClockShort`、`formatDuration`、`formatDurationShort`、`formatCountdown`、`parseClock`、`parseDuration`、`dateParts`、`formatDate`、`formatDateTime`、`weekday`、`startOfDay`、`addDays`，以及日历辅助 `isLeapYear`、`daysInYear`、`daysInMonth`。 |
 | `vec.lcui` | 二维向量，元素就是普通 `[x, y]` 数组：`vAdd`、`vSub`、`vScale`、`vNeg`、`vPerp`、`vDot`、`vDotSelf`、`vLen`、`vDist`、`vNorm`、`vCross`、`vLerp`、`vMidpoint`、`vDistanceSq`、`vManhattan`、`vComponentSum`、`vIsZero`、`vEq`、`vAbs`、`vProject`、`vReflect`、`vClampLen`、`vResize`、`vFromAngle`、`vScaleAdd`。 |

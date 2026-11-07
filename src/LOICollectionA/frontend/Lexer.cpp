@@ -89,7 +89,7 @@ namespace LOICollection::frontend {
                         return parseNumber();
 
                     if (peekChar() == '.') {
-                        
+
                         if (position + 2 < input.size() && input[position + 2] == '.') {
                             diagnostics.addError({line, column, position},
                                 "Unexpected '...' (a range uses exactly two dots: '..')");
@@ -112,7 +112,7 @@ namespace LOICollection::frontend {
             diagnostics.addError({line, column, position}, "Unexpected character");
             return makeToken(TokenType::TOKEN_OP);
         }
-        
+
         return { TokenType::TOKEN_EOF, "", {line, column, position} };
     }
 
@@ -234,6 +234,22 @@ namespace LOICollection::frontend {
 
         SourceLocation startLoc(line, column, start);
 
+        if (currentChar == '0' && (peekChar() == 'x' || peekChar() == 'X')) {
+            advance();
+            advance();
+
+            const size_t digitsBegin = position;
+            while (currentChar != 0 && std::isxdigit(static_cast<unsigned char>(currentChar)))
+                advance();
+
+            if (position == digitsBegin) {
+                diagnostics.addError(startLoc, "Invalid numeric literal: '" + input.substr(start, position - start) + "'");
+                return { TokenType::TOKEN_EOF, "", startLoc };
+            }
+
+            return { TokenType::TOKEN_INT, input.substr(start, position - start), startLoc };
+        }
+
         bool hasDot = false;
         while (currentChar != 0) {
             if (std::isdigit(static_cast<unsigned char>(currentChar))) {
@@ -245,13 +261,13 @@ namespace LOICollection::frontend {
                 break;
             }
         }
-        
+
         std::string num = input.substr(start, position - start);
         if (num.empty() || num == ".") {
             diagnostics.addError(startLoc, "Invalid numeric literal: '" + num + "'");
             return { TokenType::TOKEN_EOF, "", startLoc };
         }
-        
+
         if (hasDot)
             return { TokenType::TOKEN_FLOAT, num, startLoc };
 

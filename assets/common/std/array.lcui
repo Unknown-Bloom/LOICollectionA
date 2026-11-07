@@ -530,14 +530,19 @@ func arrFrequencies(a) -> Map {
 
 /* arrMode returns the most frequent element, or None when empty. */
 func arrMode(a) {
-    let m = arrFrequencies(a);
-    let best = None;
+    let counts = arrFrequencies(a);
+    let bestKey = "";
     let bestCount = 0;
-    for (k in m) [
-        let c = m.get(k);
-        if (c > bestCount) [ bestCount = c; best = k.toInt(); ]
+
+    for (k in counts) [
+        let count = counts.get(k);
+        if (count > bestCount) [ bestCount = count; bestKey = k; ]
     ]
-    return best;
+
+    for (v in a) [
+        if (("" + v) == bestKey) [ return v; ]
+    ]
+    return None;
 }
 
 /* arrVariance returns the population variance of a (0 for empty). */

@@ -228,7 +228,6 @@ namespace LOICollection::frontend {
                 if (ifNode.condition)
                     checkExpr(*ifNode.condition, scope);
 
-                
                 const bool bindsPattern = ifNode.condition &&
                     ifNode.condition->getType() == ASTNode::Type::LetPattern;
 
@@ -238,8 +237,7 @@ namespace LOICollection::frontend {
                     this->blockScopes.emplace_back();
                     auto popLetScope = make_scope_guard([this] { this->blockScopes.pop_back(); });
 
-                    for (const auto& binder : letPat.binders)
-                        this->blockScopes.back()[binder] = TypeInfo{ TypeKind::Unknown };
+                    this->bindLetPatternTypes(letPat);
 
                     if (ifNode.trueBranch)
                         checkStatement(*ifNode.trueBranch, scope);
@@ -320,9 +318,6 @@ namespace LOICollection::frontend {
                 for (auto& arg : fn.args)
                     argTypes.push_back(checkExpr(*arg, scope));
 
-                
-                
-                
                 if (auto clsOpt = this->findClass(fn.namespaces)) {
                     auto staticMethod = this->findStaticMethod(
                         clsOpt->get(), fn.name, argTypes, scope);
@@ -403,10 +398,6 @@ namespace LOICollection::frontend {
         if (node.value)
             rhs = checkExpr(*node.value, scope);
 
-        
-        
-        
-        
         const auto keepOptionalRhs = [&node, &rhs]() {
             if (node.value && rhs.kind == TypeKind::Optional)
                 node.value->preserveOptional = true;
