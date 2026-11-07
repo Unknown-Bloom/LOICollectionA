@@ -72,7 +72,7 @@ namespace LOICollection::frontend {
 
                 if constexpr (std::is_same_v<T, int>)
                     argTypes.push_back(ParamType::INT);
-                else if constexpr (std::is_same_v<T, float>)               
+                else if constexpr (std::is_same_v<T, float>)
                     argTypes.push_back(ParamType::FLOAT);
                 else if constexpr (std::is_same_v<T, std::string>)
                     argTypes.push_back(ParamType::STRING);
@@ -84,6 +84,8 @@ namespace LOICollection::frontend {
                     argTypes.push_back(ParamType::FUNCTION);
                 else if constexpr (std::is_same_v<T, ArrayRef>)
                     argTypes.push_back(ParamType::ARRAY);
+                else if constexpr (std::is_same_v<T, EnumValue>)
+                    argTypes.push_back(ParamType::ENUM);
                 else if constexpr (std::is_same_v<T, std::monostate>)
                     diagnostics.addError(loc, "Empty optional value cannot be passed to a native callback");
                 else
@@ -319,7 +321,7 @@ namespace LOICollection::frontend {
         diagnostics.addError(loc, "Function not registered: " + namespaces + "::" + function);
         return TypedValue{};
     }
-    
+
     struct MacroCall::Impl {
         std::unordered_map<Signature, CallbackFunc, SignatureHasher> mMacros;
         std::unordered_map<Signature, CallbackFuncCombination, SignatureHasher> mMacroCombinations;
@@ -353,7 +355,7 @@ namespace LOICollection::frontend {
 
             return;
         }
-        
+
         this->mImpl->mMacros.erase(sig);
     }
 
@@ -414,7 +416,7 @@ namespace LOICollection::frontend {
             diagnostics.addError(loc, "Macro not registered: " + name);
             return TypedValue{};
         }
-        
+
         Signature sig{ name, argTypes.size(), std::move(argTypes), false };
         if (this->mImpl->mMacros.find(sig) != this->mImpl->mMacros.end()) {
             auto result = this->mImpl->mMacros[sig](args);
@@ -677,7 +679,7 @@ namespace LOICollection::frontend {
             if (sig.name == method)
                 result.push_back(sig.args);
         }
-        
+
         for (const auto& [sig, callback] : it->second.methodCombinations) {
             if (sig.name == method)
                 result.push_back(sig.args);
@@ -843,18 +845,18 @@ namespace LOICollection::frontend {
 
         if (info.methods.find(sig) != info.methods.end()) {
             auto result = info.methods[sig](object, args);
-            if (!result.has_value()) 
+            if (!result.has_value())
                 return ll::makeStringError("Method callback threw: " + result.error().message());
-            
+
             return result;
         }
 
         sig.isCombination = true;
         if (info.methodCombinations.find(sig) != info.methodCombinations.end()) {
             auto result = info.methodCombinations[sig](object, args, placeholders);
-            if (!result.has_value()) 
+            if (!result.has_value())
                 return ll::makeStringError("Method callback threw: " + result.error().message());
-            
+
             return result;
         }
 

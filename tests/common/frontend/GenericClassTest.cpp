@@ -125,8 +125,6 @@ TEST(GenericClassTest, TypeArgumentsOnPlainClassError) {
 }
 
 TEST(GenericClassTest, ImplTypeParamPositionalRename) {
-    // impl<U> on class Box<T>: U maps onto T by position, so the old
-    // "type parameter name mismatch" error is gone and the call works.
     EXPECT_EQ(eval(R"(
         class Box<T> {
             public: value: T;

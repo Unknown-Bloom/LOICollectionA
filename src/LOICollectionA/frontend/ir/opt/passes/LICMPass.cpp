@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "LOICollectionA/frontend/ir/opt/analysis/OpTraits.h"
@@ -6,34 +7,17 @@
 #include "LOICollectionA/frontend/ir/opt/passes/LICMPass.h"
 
 namespace LOICollection::frontend::ir::opt::detail {
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+
     bool isInvariant(
         const MirInstr& instr,
         const std::unordered_set<int>& invariantRegs,
-        const std::unordered_set<int>& loopWritten
+        const std::unordered_map<int, int>& loopWrites
     ) {
         if (instr.op == MirOp::LOAD_CONST)
             return true;
 
-        
-        
-        
-        
-        
-        
         if (instr.op == MirOp::LOAD_SLOT)
-            return loopWritten.count(instr.operand) == 0;
+            return loopWrites.count(instr.operand) == 0;
 
         if (instr.op == MirOp::MOVE)
             return invariantRegs.count(instr.src1) > 0;
@@ -74,11 +58,7 @@ namespace LOICollection::frontend::ir::opt {
     }
 
     size_t LICMPass::hoist(const ControlFlowGraph& cfg, const NaturalLoop& loop) {
-        
-        
-        
-        
-        
+
         if (loop.entries.size() != 1 || loop.exits.size() != 1)
             return 0;
 
@@ -104,27 +84,21 @@ namespace LOICollection::frontend::ir::opt {
                     return 0;
         }
 
-        
-        
-        
-        std::unordered_set<int> loopWritten;
+        std::unordered_map<int, int> loopWrites;
         for (const int block : loop.blocks) {
             const auto& b = cfg.blocks()[block];
             for (int i = b.begin; i < b.end; ++i) {
                 const MirInstr& instr = mChunk.code[i];
-                if (instr.op == MirOp::STORE_SLOT || instr.op == MirOp::STORE_VAR)
-                    loopWritten.insert(instr.operand);
+                if (instr.dst >= 0)
+                    ++loopWrites[instr.dst];
+                if (instr.op == MirOp::STORE_SLOT)
+                    ++loopWrites[instr.operand];
+                if (instr.src1 >= 0 && instr.imm > 0 && canWriteVariables(instr.op))
+                    for (int arg = 0; arg < instr.imm; ++arg)
+                        ++loopWrites[instr.src1 + arg];
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
         int latch = -1;
         for (const int block : loop.blocks) {
             for (const int s : cfg.blocks()[block].successors)
@@ -200,36 +174,36 @@ namespace LOICollection::frontend::ir::opt {
             }
         }
 
-        
-        
-        
-        
+        std::vector<int> candidates;
+        for (const int block : safeBlocks) {
+            const auto& b = cfg.blocks()[block];
+            for (int i = b.begin; i < b.end; ++i)
+                candidates.push_back(i);
+        }
+        std::sort(candidates.begin(), candidates.end());
+
         std::vector<MirInstr> invariant;
         std::vector<int> hoistOrigIdx;
         std::unordered_set<int> invariantRegs;
 
-        for (const int block : safeBlocks) {
-            const auto& b = cfg.blocks()[block];
-            for (int i = b.begin; i < b.end; ++i) {
-                const MirInstr& instr = mChunk.code[i];
+        for (const int idx : candidates) {
+            const MirInstr& instr = mChunk.code[idx];
 
-                if (!isInvariant(instr, invariantRegs, loopWritten))
-                    break;
+            if (!isInvariant(instr, invariantRegs, loopWrites))
+                continue;
 
-                invariant.push_back(instr);
-                hoistOrigIdx.push_back(i);
-                if (instr.dst >= 0)
-                    invariantRegs.insert(instr.dst);
-            }
+            if (instr.dst >= 0 && loopWrites.at(instr.dst) > 1)
+                continue;
+
+            invariant.push_back(instr);
+            hoistOrigIdx.push_back(idx);
+            if (instr.dst >= 0)
+                invariantRegs.insert(instr.dst);
         }
 
         if (invariant.empty())
             return 0;
 
-        
-        
-        
-        
         const int insertAt = mChunk.code[entry.end - 1].op == MirOp::JMP
             ? entry.end - 1 : entry.end;
 
@@ -283,11 +257,15 @@ namespace LOICollection::frontend::ir::opt {
             if (origin[n] < 0 || !isJump(rewritten[n].op))
                 continue;
 
-            const int oldTarget = origin[n] + 1 + rewritten[n].operand;
+            const int oldTarget = std::max(0, origin[n] + 1 + rewritten[n].operand);
 
-            int newTarget = oldToNew[oldTarget];
-            for (int j = oldTarget; j <= last && newTarget < 0; ++j)
-                newTarget = oldToNew[j];
+            int newTarget = -1;
+            for (int j = oldTarget; j <= last; ++j) {
+                if (oldToNew[j] >= 0) {
+                    newTarget = oldToNew[j];
+                    break;
+                }
+            }
 
             if (newTarget < 0)
                 newTarget = static_cast<int>(rewritten.size());

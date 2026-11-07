@@ -24,7 +24,7 @@ func numIsEven(n) -> bool {
 
 /* numIsOdd reports whether n is not divisible by two. */
 func numIsOdd(n) -> bool {
-    return (n % 2) == 1;
+    return (n % 2) != 0;
 }
 
 /* numAbs returns the magnitude of x. */
@@ -182,8 +182,9 @@ func numToBin(n) {
     return out;
 }
 
-/* numToHex returns the hexadecimal (base-16) text form of n (>=0). */
+/* numToHex returns the hexadecimal (base-16) text form of n. */
 func numToHex(n) {
+    if (n < 0) [ return "-" + numToHex(-n); ]
     if (n == 0) [ return "0"; ]
     let hexd = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f"];
     let out = "";

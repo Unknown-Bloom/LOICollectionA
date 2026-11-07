@@ -64,19 +64,23 @@ func secondsToHms(total: int) {
     return [sign, days, h, m, s];
 }
 
+/* secondsOfDay wraps any offset into [0, 86400) so negative values still render. */
+func secondsOfDay(offset: int) -> int {
+    let rem = offset % 86400;
+    if (rem < 0) [ rem = rem + 86400; ]
+    return rem;
+}
+
 /* formatClock renders a seconds-of-day value as HH:MM:SS. */
 func formatClock(secOfDay: int) -> string {
-    let h = idiv(secOfDay, 3600) % 24;
-    let m = idiv(secOfDay % 3600, 60);
-    let s = secOfDay % 60;
-    return pad2(h) + ":" + pad2(m) + ":" + pad2(s);
+    let rem = secondsOfDay(secOfDay);
+    return pad2(idiv(rem, 3600)) + ":" + pad2(idiv(rem % 3600, 60)) + ":" + pad2(rem % 60);
 }
 
 /* formatClockShort renders a seconds-of-day value as H:MM. */
 func formatClockShort(secOfDay: int) -> string {
-    let h = idiv(secOfDay, 3600) % 24;
-    let m = idiv(secOfDay % 3600, 60);
-    return "" + h + ":" + pad2(m);
+    let rem = secondsOfDay(secOfDay);
+    return "" + idiv(rem, 3600) + ":" + pad2(idiv(rem % 3600, 60));
 }
 
 /* formatDuration renders a duration as compact "1d 2h 3m 4s" text. */
@@ -143,6 +147,12 @@ func parseDuration(text: string) -> int {
 func dateParts(epochSec: int) {
     let days = idiv(epochSec, 86400);
     let year = 1970;
+
+    while (days < 0) [
+        year = year - 1;
+        days = days + daysInYear(year);
+    ]
+
     while (days >= daysInYear(year)) [
         days = days - daysInYear(year);
         year = year + 1;
@@ -163,7 +173,7 @@ func formatDate(epochSec: int) -> string {
 
 /* formatDateTime renders an epoch as YYYY-MM-DD HH:MM:SS. */
 func formatDateTime(epochSec: int) -> string {
-    return formatDate(epochSec) + " " + formatClock(epochSec % 86400);
+    return formatDate(epochSec) + " " + formatClock(epochSec - startOfDay(epochSec));
 }
 
 /* weekday returns 0 (Sunday) through 6 for the epoch (1970-01-01 is Thursday). */

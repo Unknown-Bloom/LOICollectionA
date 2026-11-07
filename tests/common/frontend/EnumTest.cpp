@@ -19,9 +19,6 @@ using namespace LOICollection::frontend::ir;
 using LOICollection::utils::Sha256;
 
 namespace {
-    /* A realistic two-variant enum: one payload-carrying variant and one
-     * payload-free variant. Variants are separated by newlines (no commas
-     * required) to exercise the tolerant parser. */
     const std::string kOptionSource = R"(
         enum Option {
             Some(int)
@@ -42,8 +39,6 @@ namespace {
     }
 }
 
-/* The last expression of a program is returned by eval(); here it is the
- * bound enum value, so we can assert the exact valueToString() rendering. */
 TEST(EnumTest, ConstructorWithPayloadToString) {
     EXPECT_EQ(eval(kOptionSource + "\n let a = Some(42)\n a"), "enum#0[0](42)");
 }
@@ -52,9 +47,6 @@ TEST(EnumTest, PayloadFreeVariantToString) {
     EXPECT_EQ(eval(kOptionSource + "\n let a = Nothing()\n a"), "enum#0[1]");
 }
 
-/* Two separately constructed variant values must compare equal by *content*,
- * not by shared_ptr identity. Before the EnumValue::operator== fix two
- * independent Ok(1)-style values compared unequal. */
 TEST(EnumTest, EqualityComparesPayloadContents) {
     EXPECT_EQ(eval(kOptionSource + "\n Some(42) == Some(42)"), "true");
     EXPECT_EQ(eval(kOptionSource + "\n Some(42) == Some(43)"), "false");
@@ -62,14 +54,12 @@ TEST(EnumTest, EqualityComparesPayloadContents) {
     EXPECT_EQ(eval(kOptionSource + "\n Nothing() == Nothing()"), "true");
 }
 
-/* Multi-slot payloads exercise src1..src3 of MAKE_ENUM. */
 TEST(EnumTest, MultiplePayloadSlots) {
     EXPECT_EQ(eval("enum Pair { Pt(int, int) }\n let p = Pt(3, 4)\n p"), "enum#0[0](3, 4)");
     EXPECT_EQ(eval("enum Triple { T(int, int, int) }\n let t = T(1, 2, 3)\n t"),
               "enum#0[0](1, 2, 3)");
 }
 
-/* Arity must match the declared variant; a missing argument is a hard error. */
 TEST(EnumTest, ArityMismatchIsRejected) {
     DiagnosticEngine diagnostics;
     auto mir = compileEnum(kOptionSource + "\n let a = Some()\n a", diagnostics);
@@ -84,8 +74,6 @@ TEST(EnumTest, TooManyArgumentsIsRejected) {
     EXPECT_TRUE(diagnostics.hasErrors());
 }
 
-/* The enum metadata must survive serialize/deserialize intact, and a chunk
- * restored from the blob must still execute to the same value. */
 TEST(EnumTest, SerializationRoundTripsEnumMeta) {
     const std::string source = kOptionSource + "\n let a = Some(42)\n a";
 

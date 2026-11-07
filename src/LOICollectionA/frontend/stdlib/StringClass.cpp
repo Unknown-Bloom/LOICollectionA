@@ -262,11 +262,37 @@ namespace StringClass {
         return value;
     }
 
+    ll::Expected<TypedValue> fromCodePoint(const CallbackTypeValues& args) {
+        const int codepoint = std::get<int>(args[0]);
+        if (codepoint < 0 || codepoint > 0x10FFFF || (codepoint >= 0xD800 && codepoint <= 0xDFFF))
+            return TypedValue{ std::monostate{} };
+
+        std::string text;
+        if (codepoint < 0x80) {
+            text += static_cast<char>(codepoint);
+        } else if (codepoint < 0x800) {
+            text += static_cast<char>(0xC0 | (codepoint >> 6));
+            text += static_cast<char>(0x80 | (codepoint & 0x3F));
+        } else if (codepoint < 0x10000) {
+            text += static_cast<char>(0xE0 | (codepoint >> 12));
+            text += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+            text += static_cast<char>(0x80 | (codepoint & 0x3F));
+        } else {
+            text += static_cast<char>(0xF0 | (codepoint >> 18));
+            text += static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
+            text += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+            text += static_cast<char>(0x80 | (codepoint & 0x3F));
+        }
+
+        return text;
+    }
+
     void registerClasses(const std::string&) {
         ClassCall& classes = ClassCall::getInstance();
 
         classes.registerClass("String", {});
 
+        classes.registerStaticMethod("String", "fromCodePoint", fromCodePoint, { ParamType::INT });
         classes.registerValueMethod("String", "length", length, {});
         classes.registerValueMethod("String", "charAt", charAt, { ParamType::INT });
         classes.registerValueMethod("String", "substring", substring, { ParamType::INT, ParamType::INT });

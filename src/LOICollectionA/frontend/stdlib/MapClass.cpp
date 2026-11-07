@@ -246,7 +246,7 @@ namespace MapClass {
             classes.registerMethod("Map", "remove", remove, { key });
 
             for (ParamType value : { ParamType::INT, ParamType::FLOAT, ParamType::STRING, ParamType::BOOL,
-                                     ParamType::OBJECT, ParamType::FUNCTION, ParamType::ARRAY })
+                                     ParamType::OBJECT, ParamType::FUNCTION, ParamType::ARRAY, ParamType::ENUM })
                 classes.registerMethod("Map", "set", set, { key, value });
         }
     }

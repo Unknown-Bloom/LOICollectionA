@@ -415,7 +415,7 @@ TEST(OptimizerTest, PropagationInvalidatedAtBranchMerge) {
 
     bool bodyKeepsLoad = false;
     for (const auto& body : untaken.chunk->methodBodies)
-        if (containsOp(*body, MirOp::LOAD_VAR))
+        if (containsOp(*body, MirOp::LOAD_SLOT))
             bodyKeepsLoad = true;
 
     EXPECT_TRUE(bodyKeepsLoad);
@@ -898,10 +898,6 @@ TEST(OptimizerTest, CSEInsideLoopKeepsJumpOffsets) {
 }
 
 TEST(OptimizerTest, LICMHoistsInvariantAndMatchesBaseline) {
-    // A loop-invariant multiply must be safe to hoist: the optimized result
-    // must equal both the mathematically expected value and the result with
-    // LICM disabled. This guards the general correctness of hoisting, not just
-    // the microbenchmark speedup.
     const std::string source =
         "func f(a: int, b: int, n: int) -> int {\n"
         "  let s = 0;\n"
@@ -934,10 +930,6 @@ TEST(OptimizerTest, LICMHoistsInvariantAndMatchesBaseline) {
 }
 
 TEST(OptimizerTest, LICMDoesNotHoistFromConditionalArm) {
-    // Reproduces the regression where LICM hoisted a match-arm constant load
-    // out of a conditionally-executed block inside a loop. With the safe-block
-    // restriction, only code that runs on every iteration may be hoisted, so
-    // the per-iteration selection (match on the loop variable) is preserved.
     const std::string source =
         "let out = \"\"; "
         "for (n in [1, 2, 3]) [ "
@@ -954,12 +946,6 @@ TEST(OptimizerTest, LICMDoesNotHoistFromConditionalArm) {
 }
 
 TEST(OptimizerTest, EliminatesDeadPureArithmeticValue) {
-    // Generalizes the value-dead elimination that previously only removed
-    // LOAD_CONST: any side-effect-free value producer (pure binary arithmetic
-    // here) whose destination is never read must be deleted. A discarded
-    // arithmetic expression like `i * 7 + 3;` yields a multiply that the
-    // original implementation left in the bytecode; this guards the
-    // generalization end-to-end (compile -> optimize -> run).
     const std::string source =
         "let s = 0;\n"
         "let i = 0;\n"
@@ -979,14 +965,10 @@ TEST(OptimizerTest, EliminatesDeadPureArithmeticValue) {
     EXPECT_FALSE(withDeadValue.diagnostics.hasErrors());
     EXPECT_FALSE(withoutDeadValue.diagnostics.hasErrors());
 
-    // With dead-value elimination enabled, the discarded multiply vanishes.
     EXPECT_EQ(countOpEverywhere(*withDeadValue.chunk, MirOp::MUL), 0);
 
-    // With the DeadCode/DeadValue pass disabled, the multiply is retained.
     EXPECT_GT(countOpEverywhere(*withoutDeadValue.chunk, MirOp::MUL), 0);
 
-    // Correctness is preserved: the live accumulator still sums 0..4 == 10,
-    // and the two binaries agree on the result.
     VM vm(withDeadValue.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(withDeadValue.chunk, {})), "10");
     EXPECT_EQ(
@@ -995,54 +977,37 @@ TEST(OptimizerTest, EliminatesDeadPureArithmeticValue) {
 }
 
 TEST(OptimizerTest, EliminatesDeadArithmeticValueInChunk) {
-    // Deterministic low-level check that DeadValuePass removes pure-arithmetic
-    // instructions whose destination register is never read, while leaving the
-    // register that HALT observes untouched. This isolates the
-    // generalization from the rest of the optimizer pipeline.
-    //
-    // Encoding notes (MirInstr is {op, operand, dst, src1, src2, ...}):
-    //   LOAD_CONST reads constants[operand] (unchecked -> operand must be valid),
-    //   LOAD_SLOT copies reg[operand] into dst, and HALT returns reg 0, so r0 is
-    //   the live "pinned" register here.
     ir::MirChunk chunk;
     chunk.slotCount = 4;
-    chunk.constants.push_back(7);   // index 0
-    chunk.constants.push_back(3);   // index 1
+    chunk.constants.push_back(7);
+    chunk.constants.push_back(3);
 
     chunk.code = {
-        { MirOp::LOAD_SLOT, 0, 1, 0 },   // r1 = reg0
-        { MirOp::LOAD_CONST, 0, 2 },     // r2 = constants[0] == 7
-        { MirOp::MUL, 0, 3, 1, 2 },      // r3 = r1 * r2  (dead once ADD is gone)
-        { MirOp::LOAD_CONST, 1, 2 },     // r2 = constants[1] == 3
-        { MirOp::ADD, 0, 4, 3, 2 },      // r4 = r3 + r2  (dead: never read)
-        { MirOp::LOAD_SLOT, 0, 0, 0 },   // r0 = reg0     (live: HALT reads r0)
+        { MirOp::LOAD_SLOT, 0, 1, 0 },
+        { MirOp::LOAD_CONST, 0, 2 },
+        { MirOp::MUL, 0, 3, 1, 2 },
+        { MirOp::LOAD_CONST, 1, 2 },
+        { MirOp::ADD, 0, 4, 3, 2 },
+        { MirOp::LOAD_SLOT, 0, 0, 0 },
         { MirOp::HALT, 0 }
     };
 
     Optimizer optimizer;
     optimizer.optimize(chunk);
 
-    // ADD dies first, which then leaves r3 unread so MUL dies on a later
-    // fixed-point round; the r0 load is pinned by HALT and survives.
     EXPECT_FALSE(containsOpMir(chunk, MirOp::MUL));
     EXPECT_FALSE(containsOpMir(chunk, MirOp::ADD));
     EXPECT_TRUE(containsOpMir(chunk, MirOp::LOAD_SLOT));
 }
 
 TEST(OptimizerTest, KeepsLiveArithmeticValue) {
-    // Sanity counterpart: an arithmetic result that IS read must survive. This
-    // prevents an over-eager dead-value rule from stripping live computations.
-    // Operands are loaded from slots rather than constants: with two constant
-    // operands ConstantFoldPass legitimately folds the multiply away, which
-    // would leave this test asserting the wrong pass. HALT returns register 0,
-    // so the product feeds straight into the pinned r0.
     ir::MirChunk chunk;
     chunk.slotCount = 4;
 
     chunk.code = {
-        { MirOp::LOAD_SLOT, 1, 1, 1 },   // r1 = reg1  (unknown -> not foldable)
-        { MirOp::LOAD_SLOT, 2, 2, 2 },   // r2 = reg2  (unknown -> not foldable)
-        { MirOp::MUL, 0, 0, 1, 2 },      // r0 = r1 * r2  (live: HALT reads r0)
+        { MirOp::LOAD_SLOT, 1, 1, 1 },
+        { MirOp::LOAD_SLOT, 2, 2, 2 },
+        { MirOp::MUL, 0, 0, 1, 2 },
         { MirOp::HALT, 0 }
     };
 
@@ -1115,4 +1080,37 @@ TEST(OptimizerTest, ReducesNumericIdentitiesWithUnknownOperands) {
     VM vm(program.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "7");
     EXPECT_FALSE(program.diagnostics.hasErrors());
+}
+
+TEST(OptimizerTest, LICMKeepsHoistedSlotReadableAcrossCalls) {
+    const std::string source =
+        "func id(x: string) -> string { return x; }\n"
+        "func f(prefix: string) -> string {\n"
+        "  let out = \"\";\n"
+        "  let i = 0;\n"
+        "  while (i < 2) [ out = out + id(prefix); i = i + 1; ]\n"
+        "  return out;\n"
+        "}\n"
+        "f(\"ab\")";
+
+    auto program = compileAndOptimize(source, Optimizer::allPasses);
+
+    EXPECT_FALSE(program.diagnostics.hasErrors());
+
+    VM vm(program.diagnostics);
+    EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "abab");
+}
+
+TEST(OptimizerTest, LICMKeepsNestedForInElementsDistinct) {
+    const std::string source =
+        "let out = [];\n"
+        "for (a in [[1, 2], [3]]) [ for (b in a) [ out.push(b); ] ]\n"
+        "out.join(\",\")";
+
+    auto program = compileAndOptimize(source, Optimizer::allPasses);
+
+    EXPECT_FALSE(program.diagnostics.hasErrors());
+
+    VM vm(program.diagnostics);
+    EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "1,2,3");
 }

@@ -111,7 +111,6 @@ namespace LOICollection::frontend {
                 if (whileNode.condition)
                     checkExpr(*whileNode.condition, scope);
 
-                
                 const bool bindsPattern = whileNode.condition &&
                     whileNode.condition->getType() == ASTNode::Type::LetPattern;
 
@@ -121,8 +120,7 @@ namespace LOICollection::frontend {
                     this->blockScopes.emplace_back();
                     auto popLetScope = make_scope_guard([this] { this->blockScopes.pop_back(); });
 
-                    for (const auto& binder : letPat.binders)
-                        this->blockScopes.back()[binder] = TypeInfo{ TypeKind::Unknown };
+                    this->bindLetPatternTypes(letPat);
 
                     if (whileNode.body)
                         checkStatement(*whileNode.body, scope);

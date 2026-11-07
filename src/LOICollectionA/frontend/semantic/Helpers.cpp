@@ -24,6 +24,7 @@ namespace LOICollection::frontend {
             case ParamType::OBJECT: return { TypeKind::Object };
             case ParamType::FUNCTION: return { TypeKind::Function };
             case ParamType::ARRAY: return { TypeKind::Array };
+            case ParamType::ENUM: return { TypeKind::Enum };
         }
 
         return {};
@@ -45,6 +46,9 @@ namespace LOICollection::frontend {
         TypeInfo expected = typeFromParam(param);
         if (expected.kind == TypeKind::Object)
             return type.kind == TypeKind::Object;
+
+        if (expected.kind == TypeKind::Enum)
+            return type.kind == TypeKind::Enum;
 
         return type == expected;
     }

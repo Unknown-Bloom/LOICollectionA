@@ -27,7 +27,7 @@ namespace LOICollection::frontend::ir {
 
     private:
         MirChunk chunk;
-        
+
         std::reference_wrapper<MirChunk> current;
 
         DiagnosticEngine& diagnostics;
@@ -123,10 +123,8 @@ namespace LOICollection::frontend::ir {
         void registerClassMeta(ClassNode& node);
         void registerEnumMeta(EnumDeclNode& node);
 
-        
         int compileLetPatternValue(LetPatternNode& node, size_t& failIdx);
 
-        
         void bindLetPatternPayload(LetPatternNode& node, int valueReg);
         void compileClassBodies(ClassNode& node);
         void registerFunctionMeta(FunctionDefNode& node);
@@ -201,14 +199,25 @@ namespace LOICollection::frontend::ir {
             });
         }
 
+        [[nodiscard]] auto suspendExprState() {
+            auto savedHint = std::exchange(this->dstHint, -1);
+            auto savedReg = std::exchange(this->lastResultReg, -1);
+            auto savedDecl = std::exchange(this->lastPartWasDeclaration, false);
+            return make_scope_guard([this, savedHint, savedReg, savedDecl] {
+                this->dstHint = savedHint;
+                this->lastResultReg = savedReg;
+                this->lastPartWasDeclaration = savedDecl;
+            });
+        }
+
+        [[nodiscard]] bool atScriptTopLevel() const { return this->scopes.size() <= 1; }
+
         void pushScope(bool hasThis, int base, bool inherits = false);
-        int closeScope();
+        int closeScope(bool mergeIntoParent = true);
         int declareSlot(const std::string& name);
         [[nodiscard]] std::optional<int> resolveSlot(const std::string& name) const;
         [[nodiscard]] std::optional<int> resolveOrCapture(const std::string& name);
         int captureVariable(const std::string& name, int sourceSlot);
-
-        void predeclareLocals(ASTNode& body);
 
         int emitLoad(const std::string& name, const SourceLocation& loc);
         int emitLoadInto(int dst, const std::string& name, const SourceLocation& loc);

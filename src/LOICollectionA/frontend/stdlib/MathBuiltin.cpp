@@ -14,7 +14,6 @@
 using namespace LOICollection::frontend;
 
 namespace MathBuiltin {
-    
 
     TypedValue sqrt(const CallbackTypeValues& args) {
         return std::visit([](auto&& arg) -> TypedValue {
@@ -74,6 +73,38 @@ namespace MathBuiltin {
         }, args[0]);
     }
 
+    TypedValue rounding(const CallbackTypeValues& args, double (*fn)(double)) {
+        return std::visit([fn](auto&& arg) -> TypedValue {
+            using T = std::decay_t<decltype(arg)>;
+
+            if constexpr (std::is_same_v<T, int> || std::is_same_v<T, float>) {
+                const double result = fn(static_cast<double>(arg));
+                if (result >= static_cast<double>(std::numeric_limits<int>::min()) &&
+                    result <= static_cast<double>(std::numeric_limits<int>::max()))
+                    return static_cast<int>(result);
+                return static_cast<float>(result);
+            }
+
+            return {};
+        }, args[0]);
+    }
+
+    TypedValue trunc(const CallbackTypeValues& args) {
+        return rounding(args, [](double value) { return std::trunc(value); });
+    }
+
+    TypedValue floor(const CallbackTypeValues& args) {
+        return rounding(args, [](double value) { return std::floor(value); });
+    }
+
+    TypedValue ceil(const CallbackTypeValues& args) {
+        return rounding(args, [](double value) { return std::ceil(value); });
+    }
+
+    TypedValue round(const CallbackTypeValues& args) {
+        return rounding(args, [](double value) { return std::round(value); });
+    }
+
     ll::Expected<TypedValue> random(const CallbackTypeValues& args) {
         static std::random_device rd;
         static std::mt19937 gen(rd());
@@ -98,7 +129,7 @@ namespace MathBuiltin {
                 std::uniform_real_distribution<> dis(arg1, arg2);
                 return static_cast<float>(dis(gen));
             }
-                
+
             return ll::makeStringError("math::random: requires two numeric arguments of the same type");
         }, args[0], args[1]);
     }
@@ -116,6 +147,14 @@ namespace MathBuiltin {
         functions.registerFunction(namespaces, "sin", sin, { ParamType::FLOAT });
         functions.registerFunction(namespaces, "cos", cos, { ParamType::INT });
         functions.registerFunction(namespaces, "cos", cos, { ParamType::FLOAT });
+        functions.registerFunction(namespaces, "trunc", trunc, { ParamType::INT });
+        functions.registerFunction(namespaces, "trunc", trunc, { ParamType::FLOAT });
+        functions.registerFunction(namespaces, "floor", floor, { ParamType::INT });
+        functions.registerFunction(namespaces, "floor", floor, { ParamType::FLOAT });
+        functions.registerFunction(namespaces, "ceil", ceil, { ParamType::INT });
+        functions.registerFunction(namespaces, "ceil", ceil, { ParamType::FLOAT });
+        functions.registerFunction(namespaces, "round", round, { ParamType::INT });
+        functions.registerFunction(namespaces, "round", round, { ParamType::FLOAT });
         functions.registerFunction(namespaces, "random", random, { ParamType::INT, ParamType::INT });
         functions.registerFunction(namespaces, "random", random, { ParamType::FLOAT, ParamType::FLOAT });
     }

@@ -42,6 +42,10 @@ namespace ArrayClass::detail {
             if (auto ra = std::get_if<ArrayRef>(&right)) return *la == *ra;
             return false;
         }
+        if (auto le = std::get_if<EnumValue>(&left)) {
+            if (auto re = std::get_if<EnumValue>(&right)) return *le == *re;
+            return false;
+        }
 
         return false;
     }
@@ -279,7 +283,7 @@ namespace ArrayClass {
         classes.registerClass("Array", {});
 
         for (ParamType type : { ParamType::INT, ParamType::FLOAT, ParamType::STRING, ParamType::BOOL,
-                                ParamType::OBJECT, ParamType::FUNCTION, ParamType::ARRAY }) {
+                                ParamType::OBJECT, ParamType::FUNCTION, ParamType::ARRAY, ParamType::ENUM }) {
             classes.registerValueMethod("Array", "push", push, { type });
             classes.registerValueMethod("Array", "contains", contains, { type });
             classes.registerValueMethod("Array", "indexOf", indexOf, { type });
