@@ -42,6 +42,7 @@ namespace LOICollection::frontend::ir {
         std::unordered_map<std::string, int> enumIndexByName;
         std::unordered_map<std::string, std::tuple<int, int, int>> enumVariantInfo;
         std::vector<std::reference_wrapper<ASTNode>> bodyOrder;
+        std::unordered_set<const ASTNode*> hoistedConstants;
 
         struct LoopContext {
             std::vector<size_t> breakJumps;
@@ -53,6 +54,7 @@ namespace LOICollection::frontend::ir {
 
         struct Scope {
             std::unordered_map<std::string, int> slots;
+            std::unordered_map<std::string, ValueNode::ValueType> constants;
 
             int base = 0;
             int next = 0;
@@ -180,6 +182,9 @@ namespace LOICollection::frontend::ir {
         void compileDeclarativeBlock(BlockNode& block, const std::string& receiverName);
 
         [[nodiscard]] std::optional<ValueNode::ValueType> constantValue(ExprNode& node) const;
+        [[nodiscard]] std::optional<ValueNode::ValueType> resolveConstant(const std::string& name) const;
+        void declareConstant(const std::string& name, const ValueNode::ValueType& value, const SourceLocation& loc);
+        void collectTopLevelConstant(ASTNode& node);
 
         int addNativeCall(const std::string& className, const std::string& name, int argCount, bool isStatic = false);
         int addConstant(const ValueNode::ValueType& val);

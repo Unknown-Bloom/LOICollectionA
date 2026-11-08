@@ -206,7 +206,7 @@ namespace LOICollection::frontend {
                 if (first == "_") {
                     arm->pattern = MatchArm::Pattern::Wildcard;
                 } else if (currentToken.type == TokenType::TOKEN_LPAREN) {
-                    
+
                     arm->pattern = MatchArm::Pattern::EnumVariant;
                     arm->variantName = std::move(first);
 
@@ -371,7 +371,7 @@ namespace LOICollection::frontend {
         if (first == "_") {
             node->isEnumPattern = false;
         } else if (currentToken.type == TokenType::TOKEN_LPAREN) {
-            
+
             node->isEnumPattern = true;
             node->variantName = std::move(first);
 
@@ -405,7 +405,7 @@ namespace LOICollection::frontend {
                 return nullptr;
             }
         } else {
-            
+
             node->isEnumPattern = false;
             node->binders.push_back(std::move(first));
         }
@@ -786,14 +786,18 @@ namespace LOICollection::frontend {
 
     std::unique_ptr<AssignmentNode> Parser::parseVariableDeclaration() {
         const bool hasLet = currentToken.type == TokenType::TOKEN_LET;
+        const bool isConst = currentToken.type == TokenType::TOKEN_CONST;
         SourceLocation declLoc = currentToken.loc;
 
-        if (hasLet && !eat(TokenType::TOKEN_LET))
+        if ((hasLet && !eat(TokenType::TOKEN_LET)) ||
+            (isConst && !eat(TokenType::TOKEN_CONST)))
             return nullptr;
 
         if (currentToken.type != TokenType::TOKEN_IDENT) {
             this->diagnostics.addError(currentToken.loc,
-                hasLet ? "Expected a variable name after 'let'" : "Expected a variable name");
+                hasLet ? "Expected a variable name after 'let'"
+                       : isConst ? "Expected a constant name after 'const'"
+                                 : "Expected a variable name");
             return nullptr;
         }
 
@@ -829,7 +833,14 @@ namespace LOICollection::frontend {
             std::move(value)
         );
         this->bindDeclarativeReceiver(*decl);
-        decl->isDeclaration = hasLet;
+        decl->isDeclaration = hasLet || isConst;
+        decl->isConst = isConst;
+
+        if (isConst && !decl->value) {
+            this->diagnostics.addError(declLoc,
+                "Constant '" + static_cast<VariableNode&>(*decl->target).name + "' requires an initializer");
+            return nullptr;
+        }
 
         if (type) {
             decl->hasDeclaredType = true;
@@ -890,6 +901,7 @@ namespace LOICollection::frontend {
             return parseUsing();
 
         if (currentToken.type == TokenType::TOKEN_LET ||
+            currentToken.type == TokenType::TOKEN_CONST ||
             (currentToken.type == TokenType::TOKEN_IDENT && peek() == TokenType::TOKEN_COLON))
             return parseVariableDeclaration();
 

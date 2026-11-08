@@ -20,6 +20,8 @@ namespace LOICollection::frontend::detail {
             case ASTNode::Type::Component:
             case ASTNode::Type::Enum:
                 return true;
+            case ASTNode::Type::Assignment:
+                return static_cast<AssignmentNode&>(node).isConst;
             default:
                 return false;
         }
@@ -37,6 +39,13 @@ namespace LOICollection::frontend::detail {
                 return &static_cast<ComponentNode&>(node).name;
             case ASTNode::Type::Enum:
                 return &static_cast<EnumDeclNode&>(node).name;
+            case ASTNode::Type::Assignment: {
+                auto& decl = static_cast<AssignmentNode&>(node);
+                if (!decl.isConst || !decl.target || decl.target->getType() != ASTNode::Type::Variable)
+                    return nullptr;
+
+                return &static_cast<VariableNode&>(*decl.target).name;
+            }
             default:
                 return nullptr;
         }
@@ -54,6 +63,8 @@ namespace LOICollection::frontend::detail {
                 return static_cast<ComponentNode&>(node).loc;
             case ASTNode::Type::Enum:
                 return static_cast<EnumDeclNode&>(node).loc;
+            case ASTNode::Type::Assignment:
+                return static_cast<AssignmentNode&>(node).loc;
             default:
                 return {};
         }
@@ -215,7 +226,7 @@ namespace LOICollection::frontend {
                 if (!isTopLevelDefinition(*part)) {
                     diagnostics.addError({},
                         "Imported file '" + displayName(path, root) +
-                        "' must only contain top-level definitions (class/func/using/component/enum)");
+                        "' must only contain top-level definitions (class/func/using/component/enum/const)");
                     return std::nullopt;
                 }
             }
@@ -225,8 +236,6 @@ namespace LOICollection::frontend {
         std::unordered_set<std::string> merged;
         std::unordered_map<std::string, std::pair<std::string, size_t>> definedAt;
 
-        
-        
         std::unordered_map<std::string, std::unordered_set<std::string>> requested;
         for (auto& path : order) {
             for (auto& part : modules.at(path)->parts) {

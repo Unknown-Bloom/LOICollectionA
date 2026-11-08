@@ -92,6 +92,12 @@ namespace LOICollection::frontend {
             { TokenType::TOKEN_IMPORT, "IMPORT" },
             { TokenType::TOKEN_COMPONENT, "COMPONENT" },
             { TokenType::TOKEN_LET, "LET" },
+            { TokenType::TOKEN_CONST, "CONST" },
+            { TokenType::TOKEN_TRAIT, "TRAIT" },
+            { TokenType::TOKEN_IMPL, "IMPL" },
+            { TokenType::TOKEN_DYN, "DYN" },
+            { TokenType::TOKEN_PANIC, "PANIC" },
+            { TokenType::TOKEN_ENUM, "ENUM" },
             { TokenType::TOKEN_MATCH, "MATCH" },
         };
         auto it = names.find(type);

@@ -1114,3 +1114,26 @@ TEST(OptimizerTest, LICMKeepsNestedForInElementsDistinct) {
     VM vm(program.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "1,2,3");
 }
+
+TEST(OptimizerTest, ConstantsAreInlinedWithoutGlobalStorage) {
+    const std::string source =
+        "const A = 7;\n"
+        "const B: int = A * 2 + 1;\n"
+        "let x = A + B;\n"
+        "x";
+
+    auto program = compileAndOptimize(source, Optimizer::allPasses);
+
+    EXPECT_FALSE(program.diagnostics.hasErrors());
+    EXPECT_TRUE(containsOp(*program.chunk, MirOp::LOAD_CONST));
+    for (const auto& constant : program.chunk->constants) {
+        if (!std::holds_alternative<std::string>(constant))
+            continue;
+
+        EXPECT_NE(std::get<std::string>(constant), "A");
+        EXPECT_NE(std::get<std::string>(constant), "B");
+    }
+
+    VM vm(program.diagnostics);
+    EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "22");
+}

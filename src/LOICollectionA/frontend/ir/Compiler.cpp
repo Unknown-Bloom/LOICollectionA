@@ -1,5 +1,7 @@
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -37,6 +39,9 @@ namespace LOICollection::frontend::ir {
 
         if (root.getType() == ASTNode::Type::Program) {
             auto& program = static_cast<ProgramNode&>(root);
+
+            for (auto& part : program.parts)
+                this->collectTopLevelConstant(*part);
 
             for (auto& part : program.parts) {
                 if (part->getType() == ASTNode::Type::Class) {
@@ -200,13 +205,20 @@ namespace LOICollection::frontend::ir {
             }
             case ASTNode::Type::Variable: {
                 auto& var = static_cast<VariableNode&>(node);
-                if (auto slot = this->resolveSlot(qualifiedName(var))) {
+                const std::string name = qualifiedName(var);
+                if (auto constant = this->resolveConstant(name)) {
+                    this->current.get().emit(
+                        MirOp::LOAD_CONST, this->addConstant(*constant), dst, -1, -1, loc);
+                    return dst;
+                }
+
+                if (auto slot = this->resolveSlot(name)) {
                     this->current.get().emit(MirOp::LOAD_SLOT, *slot, dst, -1, -1, loc);
                     return dst;
                 }
 
                 this->current.get().emit(
-                    MirOp::LOAD_VAR, this->addConstant(qualifiedName(var)), dst, -1, -1, loc);
+                    MirOp::LOAD_VAR, this->addConstant(name), dst, -1, -1, loc);
                 return dst;
             }
             case ASTNode::Type::This:
@@ -300,6 +312,12 @@ namespace LOICollection::frontend::ir {
     }
 
     int Compiler::emitLoad(const std::string& name, const SourceLocation& loc) {
+        if (auto constant = this->resolveConstant(name)) {
+            const int dst = this->takeDst();
+            this->current.get().emit(MirOp::LOAD_CONST, this->addConstant(*constant), dst, -1, -1, loc);
+            return dst;
+        }
+
         if (auto slot = this->resolveOrCapture(name)) {
             const int dst = this->takeDst();
             this->current.get().emit(MirOp::LOAD_SLOT, *slot, dst, -1, -1, loc);
@@ -312,6 +330,11 @@ namespace LOICollection::frontend::ir {
     }
 
     int Compiler::emitLoadInto(int dst, const std::string& name, const SourceLocation& loc) {
+        if (auto constant = this->resolveConstant(name)) {
+            this->current.get().emit(MirOp::LOAD_CONST, this->addConstant(*constant), dst, -1, -1, loc);
+            return dst;
+        }
+
         if (auto slot = this->resolveOrCapture(name)) {
             this->current.get().emit(MirOp::LOAD_SLOT, *slot, dst, -1, -1, loc);
             return dst;
@@ -322,6 +345,11 @@ namespace LOICollection::frontend::ir {
     }
 
     void Compiler::emitStore(const std::string& name, int srcReg, const SourceLocation& loc) {
+        if (this->resolveConstant(name)) {
+            this->diagnostics.addError(loc, "Cannot assign to constant '" + name + "'");
+            return;
+        }
+
         if (auto slot = this->resolveOrCapture(name)) {
             this->current.get().emit(MirOp::STORE_SLOT, *slot, -1, srcReg, -1, loc);
             return;
@@ -405,7 +433,108 @@ namespace LOICollection::frontend::ir {
             return result;
         }
 
+        if (node.getType() == ASTNode::Type::Variable)
+            return this->resolveConstant(qualifiedName(static_cast<VariableNode&>(node)));
+
+        if (node.getType() == ASTNode::Type::Unary) {
+            auto& unary = static_cast<UnaryNode&>(node);
+            auto operand = this->constantValue(*unary.operand);
+            if (!operand || unary.op != "-")
+                return std::nullopt;
+
+            if (std::holds_alternative<int>(*operand))
+                return -std::get<int>(*operand);
+            if (std::holds_alternative<float>(*operand))
+                return -std::get<float>(*operand);
+
+            return std::nullopt;
+        }
+
+        if (node.getType() == ASTNode::Type::Arithmetic) {
+            auto& arithmetic = static_cast<ArithmeticNode&>(node);
+            auto left = this->constantValue(*arithmetic.left);
+            auto right = this->constantValue(*arithmetic.right);
+            if (!left || !right)
+                return std::nullopt;
+
+            if (arithmetic.op == "+" && std::holds_alternative<std::string>(*left) &&
+                std::holds_alternative<std::string>(*right))
+                return std::get<std::string>(*left) + std::get<std::string>(*right);
+
+            if (std::holds_alternative<int>(*left) && std::holds_alternative<int>(*right)) {
+                const std::int64_t a = std::get<int>(*left);
+                const std::int64_t b = std::get<int>(*right);
+                std::int64_t result = 0;
+                if (arithmetic.op == "+") result = a + b;
+                else if (arithmetic.op == "-") result = a - b;
+                else if (arithmetic.op == "*") result = a * b;
+                else if (arithmetic.op == "/" && b != 0) result = a / b;
+                else if (arithmetic.op == "%" && b != 0) result = a % b;
+                else return std::nullopt;
+
+                if (result < std::numeric_limits<int>::min() ||
+                    result > std::numeric_limits<int>::max())
+                    return std::nullopt;
+
+                return static_cast<int>(result);
+            }
+
+            if (std::holds_alternative<float>(*left) && std::holds_alternative<float>(*right)) {
+                const float a = std::get<float>(*left);
+                const float b = std::get<float>(*right);
+                if (arithmetic.op == "+") return a + b;
+                if (arithmetic.op == "-") return a - b;
+                if (arithmetic.op == "*") return a * b;
+                if (arithmetic.op == "/" && b != 0.0f) return a / b;
+                return std::nullopt;
+            }
+
+            return std::nullopt;
+        }
+
         return std::nullopt;
+    }
+
+    std::optional<ValueNode::ValueType> Compiler::resolveConstant(const std::string& name) const {
+        for (auto it = this->scopes.rbegin(); it != this->scopes.rend(); ++it) {
+            if (auto found = it->constants.find(name); found != it->constants.end())
+                return found->second;
+        }
+
+        return std::nullopt;
+    }
+
+    void Compiler::declareConstant(
+        const std::string& name, const ValueNode::ValueType& value, const SourceLocation& loc
+    ) {
+        auto& scope = this->scopes.back();
+        if (scope.constants.contains(name)) {
+            this->diagnostics.addError(loc, "Constant '" + name + "' is already defined");
+            return;
+        }
+
+        scope.constants.emplace(name, value);
+    }
+
+    void Compiler::collectTopLevelConstant(ASTNode& node) {
+        if (node.getType() != ASTNode::Type::Assignment)
+            return;
+
+        auto& decl = static_cast<AssignmentNode&>(node);
+        if (!decl.isConst || !decl.value || decl.target->getType() != ASTNode::Type::Variable)
+            return;
+
+        this->hoistedConstants.emplace(&decl);
+
+        const std::string name = qualifiedName(static_cast<VariableNode&>(*decl.target));
+        auto value = this->constantValue(*decl.value);
+        if (!value) {
+            this->diagnostics.addError(decl.loc,
+                "Constant '" + name + "' requires a constant expression");
+            return;
+        }
+
+        this->declareConstant(name, *value, decl.loc);
     }
 
     int Compiler::addNativeCall(const std::string& className, const std::string& name, int argCount, bool isStatic) {
@@ -486,6 +615,21 @@ namespace LOICollection::frontend::ir {
     }
 
     void Compiler::visit(AssignmentNode& node) {
+        if (node.isConst) {
+            if (!this->hoistedConstants.contains(&node) && node.value &&
+                node.target->getType() == ASTNode::Type::Variable) {
+                const std::string name = qualifiedName(static_cast<VariableNode&>(*node.target));
+                if (auto value = this->constantValue(*node.value))
+                    this->declareConstant(name, *value, node.loc);
+                else
+                    this->diagnostics.addError(node.loc,
+                        "Constant '" + name + "' requires a constant expression");
+            }
+
+            this->lastResultReg = -1;
+            return;
+        }
+
         int valReg = node.value
             ? this->compileValue(*node.value, node.loc)
             : this->compileNone(node.loc);

@@ -3,10 +3,10 @@
  * across every form. Definitions only — imported files must not carry
  * executable statements; the form type names below are constants, not logic. */
 
-let FORM_CUSTOM = 1;
-let FORM_MESSAGE = 2;
-let FORM_PAGINATED = 3;
-let FORM_SCRIPT = 4;
+const FORM_CUSTOM = 1;
+const FORM_MESSAGE = 2;
+const FORM_PAGINATED = 3;
+const FORM_SCRIPT = 4;
 
 component PageControls() {
     previousButton(pagePrevious());

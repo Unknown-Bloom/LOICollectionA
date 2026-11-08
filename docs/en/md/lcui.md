@@ -120,7 +120,7 @@ The shared control combinations of the built-in scripts are defined in `generic.
 
 `import` paths are resolved relative to the file that contains the `import` statement (for an entry script, that is its own directory); this also keeps `std/` modules stable when they reference each other.
 
-The top of a script may use `import` to pull in the top-level definitions (`class` / `func` / `using` / `component` / `enum`) of other `.lcui` files for cross-file reuse. The shared GUI vocabulary of the built-in scripts (pagination buttons, save/cancel labels, etc.) is extracted into `generic.lcui`:
+The top of a script may use `import` to pull in the top-level definitions (`class` / `func` / `using` / `component` / `enum` / `const`) of other `.lcui` files for cross-file reuse. The shared GUI vocabulary of the built-in scripts (pagination buttons, save/cancel labels, etc.) and the form type constants (declared with `const`) are extracted into `generic.lcui`:
 
 ```lcui
 import "generic.lcui";
@@ -146,8 +146,8 @@ Rules:
 | Path resolution | `import` paths are resolved relative to the directory of the **importing file**; `std/` modules follow the same rule when they reference each other |
 | Merge order | The import graph is expanded dependencies-first (topological order); each file's definitions are merged exactly once. Diamond imports (A and B both import C) are legal, and C appears once |
 | Selective imports | `import "path" { a, b };` merges only the listed definitions; multiple import sites union their symbols; omitting the list still imports everything |
-| Definition conflicts | Same-named `class` / `func` / `using` / `component` / `enum` in different files raise an error listing the file and line of both definitions |
-| Definitions only | Imported files may only contain `class` / `func` / `using` / `component` / `enum` / `import` — no executable statements (imports must not have side effects); the entry file is exempt |
+| Definition conflicts | Same-named `class` / `func` / `using` / `component` / `enum` / `const` in different files raise an error listing the file and line of both definitions |
+| Definitions only | Imported files may only contain `class` / `func` / `using` / `component` / `enum` / `const` / `import` — no executable statements (imports must not have side effects); the entry file is exempt |
 | Circular imports | Circular imports (e.g. A -> B -> A) raise an error with the full cycle path |
 | Missing files | An import whose file is missing or unreadable raises an error |
 
@@ -198,7 +198,24 @@ let a = 1;          // mutable variable, dynamically typed
 let count: int = 1; // mutable variable with a type annotation
 ```
 
-A `let` variable can be reassigned at any time and its type may still change dynamically. `const` is not a statement-level keyword — it only declares associated constants inside `trait` / `impl` bodies (for example `const G = 9.8;`). This rule only constrains local and global variable bindings — function parameters, class fields, and `optional`/`variant` members keep their original structural declaration syntax.
+A `let` variable can be reassigned at any time and its type may still change dynamically. This rule only constrains local and global variable bindings — function parameters, class fields, and `optional`/`variant` members keep their original structural declaration syntax.
+
+### Constant Declarations (const)
+
+`const` declares a compile-time constant and may appear at script top level, inside a function body, or in any block; its scope follows `let` (function-level). A top-level `const` is a top-level definition: it participates in `import` merging, selective imports, and cross-file name-conflict checks, while top-level `let` in an imported file is still rejected. Constants are evaluated at compile time and inlined at every reference, so they occupy neither a frame slot nor the global table at runtime, and they cannot be reassigned:
+
+```lcui
+const FORM_CUSTOM = 1;
+const FORM_MESSAGE: int = FORM_CUSTOM + 1;
+const LABELS = ["a", "b"];
+
+func label() -> string {
+    const PREFIX = "id:";
+    return PREFIX + LABELS[0];
+}
+```
+
+The initializer must be a constant expression: literals, array literals, references to previously declared constants, and arithmetic, negation, or string concatenation built from them. Calls, `new` expressions, and reads of ordinary variables have runtime behavior and are rejected. A `const` must have an initializer, and a duplicate definition in the same scope is an error; a function body may declare a same-named constant that shadows a top-level one. The type annotation is optional and follows the `let` syntax. Inside `trait` / `impl`, `const` still declares an associated constant — see "Classes and Inheritance".
 
 ### Dynamic Variables
 
@@ -1470,7 +1487,8 @@ The current package format version is v6.
 - Classes, named functions, `using`, and components can only appear at the top level of a script; they cannot be nested.
 - Declarative UI blocks are only allowed on form classes (`CustomForm` / `MessageBox` / `PaginatedForm` / `ScriptForm`); the `on:` named argument is only available inside a block.
 - Component calls may only appear as statements inside a declarative UI block; component recursion (direct or indirect) is a compile error.
-- Imported files may only contain top-level definitions (`class` / `func` / `using` / `component` / `enum` / `import`); same-named definitions in different files conflict and raise an error.
+- Imported files may only contain top-level definitions (`class` / `func` / `using` / `component` / `enum` / `const` / `import`); same-named definitions in different files conflict and raise an error.
+- A `const` must be initialized with a constant expression and cannot be reassigned; a non-constant initializer or a duplicate definition in the same scope raises an error.
 - Every script execution is bound by the execution budget (1,000,000 instructions / 256 call frames by default); exceeding it aborts the execution. The budget is tunable per script via `budget` in `permission.json` — see [Execution Budget and Call Depth](#execution-budget-and-call-depth).
 - `return` can only be used inside a function; `break`/`continue` can only be used inside a loop.
 - A type declaration (`let x: int = 0;`) must also provide an initial value; class fields without a default value must be assigned in the constructor.

@@ -67,3 +67,24 @@ class P {
 
 new P().f(1))"), "k1");
 }
+
+TEST(VariableTest, CompileTimeConstants) {
+    EXPECT_EQ(eval("const A = 1; A"), "1");
+    EXPECT_EQ(eval("const A = 2; const B: int = A * 3 + 1; B"), "7");
+    EXPECT_EQ(eval("const A = \"ab\"; const B = A + \"cd\"; B"), "abcd");
+    EXPECT_EQ(eval("const A = -5; A"), "-5");
+    EXPECT_EQ(eval("const ARR = [1, 2, 3]; ARR[1]"), "2");
+    EXPECT_EQ(eval("const A = 1; if (true) [ const B = A + 10; ] B"), "11");
+    EXPECT_EQ(eval("const L = [\"a\", \"b\"]; func f() -> string { const P = \"id:\"; return P + L[0]; } f()"), "id:a");
+    EXPECT_EQ(eval("const A = 1; func f() -> int { const A = 9; return A; } f() + A"), "10");
+}
+
+TEST(VariableTest, CompileTimeConstantsRejectInvalidUse) {
+    EXPECT_THROW(eval("const A = 1; A = 2; A"), std::runtime_error);
+    EXPECT_THROW(eval("const A = 1; A += 1; A"), std::runtime_error);
+    EXPECT_THROW(eval("let x = 1; const A = x; A"), std::runtime_error);
+    EXPECT_THROW(eval("const A; A"), std::runtime_error);
+    EXPECT_THROW(eval("const A = 1; const A = 2; A"), std::runtime_error);
+    EXPECT_THROW(eval("const A = 1 / 0; A"), std::runtime_error);
+    EXPECT_THROW(eval("const A = 2147483647 + 1; A"), std::runtime_error);
+}

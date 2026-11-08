@@ -206,7 +206,7 @@ namespace LOICollection::frontend {
             Trait, Impl, Match, Panic, Enum, LetPattern
         };
         [[nodiscard]] virtual Type getType() const = 0;
-        
+
         virtual ~ASTNode() = default;
 
         virtual void accept(ASTVisitor& visitor) = 0;
@@ -222,15 +222,13 @@ namespace LOICollection::frontend {
         }
     };
 
-    
     struct EnumPayload;
 
     struct EnumValue {
-        std::uint32_t enumId = 0;                 
-        std::uint32_t tag = 0;                    
-        std::shared_ptr<EnumPayload> payload{};   
+        std::uint32_t enumId = 0;
+        std::uint32_t tag = 0;
+        std::shared_ptr<EnumPayload> payload{};
 
-        
         bool operator==(const EnumValue& other) const;
     };
 
@@ -239,7 +237,7 @@ namespace LOICollection::frontend {
 
         SourceLocation loc;
         ValueType value;
-        
+
         explicit ValueNode(int v) : value(v) {}
         explicit ValueNode(float v) : value(v) {}
         explicit ValueNode(const std::string& v) : value(v) {}
@@ -260,7 +258,6 @@ namespace LOICollection::frontend {
         }
     };
 
-    
     struct EnumPayload {
         std::vector<ValueNode::ValueType> items{};
     };
@@ -335,6 +332,7 @@ namespace LOICollection::frontend {
         TypeInfo declaredTypeInfo;
         bool hasDeclaredType = false;
         bool isDeclaration = false;
+        bool isConst = false;
 
         AssignmentNode(SourceLocation location, auto&& t, auto&& val)
             : loc(location),
@@ -421,17 +419,17 @@ namespace LOICollection::frontend {
         std::unique_ptr<ExprNode> condition;
         std::unique_ptr<ASTNode> trueBranch;
         std::unique_ptr<ASTNode> falseBranch;
-        
+
         IfNode(auto&& c, auto&& t, auto&& f)
-            : condition(std::forward<decltype(c)>(c)), 
-              trueBranch(std::forward<decltype(t)>(t)), 
+            : condition(std::forward<decltype(c)>(c)),
+              trueBranch(std::forward<decltype(t)>(t)),
               falseBranch(std::forward<decltype(f)>(f)) {}
         IfNode(SourceLocation location, auto&& c, auto&& t, auto&& f)
             : loc(location),
               condition(std::forward<decltype(c)>(c)),
               trueBranch(std::forward<decltype(t)>(t)),
               falseBranch(std::forward<decltype(f)>(f)) {}
-        
+
         [[nodiscard]] Type getType() const override {
             return Type::If;
         }
@@ -505,7 +503,7 @@ namespace LOICollection::frontend {
         ValueNode::ValueType literal{};
         std::string className;
         std::string binder;
-        
+
         std::string variantName;
         std::vector<std::string> binders;
         std::unique_ptr<ExprNode> guard;
@@ -532,7 +530,6 @@ namespace LOICollection::frontend {
         }
     };
 
-    
     struct LetPatternNode : ExprNode {
         SourceLocation loc;
         std::unique_ptr<ExprNode> value;
@@ -585,7 +582,7 @@ namespace LOICollection::frontend {
         std::string op;
 
         std::optional<OperatorOverload> overload;
-        
+
         CompareNode(auto&& l, auto&& r, std::string o)
             : left(std::forward<decltype(l)>(l)),
               right(std::forward<decltype(r)>(r)),
@@ -595,7 +592,7 @@ namespace LOICollection::frontend {
               left(std::forward<decltype(l)>(l)),
               right(std::forward<decltype(r)>(r)),
               op(std::move(o)) {}
-        
+
         [[nodiscard]] Type getType() const override {
             return Type::Compare;
         }
@@ -610,8 +607,8 @@ namespace LOICollection::frontend {
         std::unique_ptr<ExprNode> left;
         std::unique_ptr<ExprNode> right;
         std::string op;
-        
-        LogicalNode(auto&& l, auto&& r, std::string o) 
+
+        LogicalNode(auto&& l, auto&& r, std::string o)
             : left(std::forward<decltype(l)>(l)),
               right(std::forward<decltype(r)>(r)),
               op(std::move(o)) {}
@@ -620,7 +617,7 @@ namespace LOICollection::frontend {
               left(std::forward<decltype(l)>(l)),
               right(std::forward<decltype(r)>(r)),
               op(std::move(o)) {}
-        
+
         [[nodiscard]] Type getType() const override {
             return Type::Logical;
         }
@@ -678,7 +675,7 @@ namespace LOICollection::frontend {
               args(std::forward<decltype(a)>(a)),
               namespaces(std::move(ns)),
               name(std::move(n)) {}
-        
+
         [[nodiscard]] Type getType() const override {
             return Type::Function;
         }
@@ -700,7 +697,7 @@ namespace LOICollection::frontend {
             : loc(location),
               args(std::forward<decltype(a)>(a)),
               name(std::move(n)) {}
-        
+
         [[nodiscard]] Type getType() const override {
             return Type::Macro;
         }
@@ -727,7 +724,7 @@ namespace LOICollection::frontend {
               left(std::forward<decltype(l)>(l)),
               right(std::forward<decltype(r)>(r)),
               op(std::move(o)) {}
-        
+
         [[nodiscard]] Type getType() const override {
             return Type::Arithmetic;
         }
@@ -743,7 +740,7 @@ namespace LOICollection::frontend {
         std::string op;
 
         std::optional<OperatorOverload> overload;
-        
+
         UnaryNode(auto&& expr, std::string o)
             : operand(std::forward<decltype(expr)>(expr)),
               op(std::move(o)) {}
@@ -751,7 +748,7 @@ namespace LOICollection::frontend {
             : loc(location),
               operand(std::forward<decltype(expr)>(expr)),
               op(std::move(o)) {}
-        
+
         [[nodiscard]] Type getType() const override {
             return Type::Unary;
         }

@@ -120,7 +120,7 @@ let form = new CustomForm("wallet.main", {tr("wallet.gui.title")}) {
 
 `import` 路径**相对导入语句所在的文件**解析（入口文件即其所在目录）；`std/` 标准库模块互相引用也因此稳定，无论入口脚本放在哪里。
 
-脚本顶部可以使用 `import` 引入其他 `.lcui` 文件的顶层定义（`class` / `func` / `using` / `component` / `enum`），实现跨文件复用。内置脚本的公共界面词汇表（分页按钮、保存/取消文案等）就抽取在 `generic.lcui` 中：
+脚本顶部可以使用 `import` 引入其他 `.lcui` 文件的顶层定义（`class` / `func` / `using` / `component` / `enum` / `const`），实现跨文件复用。内置脚本的公共界面词汇表（分页按钮、保存/取消文案等）与表单类型常量（以 `const` 声明）都抽取在 `generic.lcui` 中：
 
 ```lcui
 import "generic.lcui";
@@ -146,8 +146,8 @@ import "generic.lcui" { PageControls, closeButton };
 | 路径解析 | `import` 路径相对于**发起导入的文件**所在目录解析；`std/` 模块之间互相引用同样遵循此规则 |
 | 合并顺序 | 导入图按依赖优先（拓扑序）展开，每个文件的定义只合并一次；菱形导入（A、B 都导入 C）合法，C 只出现一次 |
 | 选择性导入 | `import "path" { a, b };` 只合并列出的定义；同一文件被多处导入时按所有导入点的**符号并集**合并；不带列表仍为全量导入（完全向后兼容） |
-| 定义冲突 | 不同文件中同名 `class` / `func` / `using` / `component` / `enum` 会报错，错误信息包含两处定义的文件与行号 |
-| 仅限定义 | 被导入的文件只能包含 `class` / `func` / `using` / `component` / `enum` / `import`，不能包含可执行语句（避免导入产生副作用）；入口文件不受此限制 |
+| 定义冲突 | 不同文件中同名 `class` / `func` / `using` / `component` / `enum` / `const` 会报错，错误信息包含两处定义的文件与行号 |
+| 仅限定义 | 被导入的文件只能包含 `class` / `func` / `using` / `component` / `enum` / `const` / `import`，不能包含可执行语句（避免导入产生副作用）；入口文件不受此限制 |
 | 循环导入 | 循环导入（如 A → B → A）会报错，并给出完整环路径 |
 | 文件缺失 | 导入的文件不存在或不可读时报错 |
 
@@ -198,7 +198,24 @@ let a = 1;          // 可变变量，动态类型
 let count: int = 1; // 可变变量，带类型标注
 ```
 
-`let` 声明的变量可随时重新赋值，类型仍可动态变化。`const` 不是语句级关键字，它只用于 `trait` / `impl` 中的关联常量（例如 `const G = 9.8;`）。该约束只作用于局部变量与全局变量的绑定，函数参数、类字段与 `optional`/`variant` 成员仍使用原有的结构化声明语法。
+`let` 声明的变量可随时重新赋值，类型仍可动态变化。该约束只作用于局部变量与全局变量的绑定，函数参数、类字段与 `optional`/`variant` 成员仍使用原有的结构化声明语法。
+
+### 常量声明（const）
+
+`const` 声明编译期常量，可以出现在脚本顶层、函数体或任意块内，作用域与 `let` 一致（函数级）。顶层 `const` 属于顶层定义，可以被 `import` 合并、按名导入，并参与跨文件重名冲突检查；被导入文件里的顶层 `let` 仍然会被拒绝。常量在编译期求值后内联到每个引用点，运行时不占用帧槽或全局表，且不能重新赋值：
+
+```lcui
+const FORM_CUSTOM = 1;
+const FORM_MESSAGE: int = FORM_CUSTOM + 1;
+const LABELS = ["a", "b"];
+
+func label() -> string {
+    const PREFIX = "id:";
+    return PREFIX + LABELS[0];
+}
+```
+
+初始化必须是常量表达式：字面量、数组字面量、已声明的常量引用，以及由它们构成的四则运算、取负与字符串拼接。函数调用、`new`、读取普通变量等带运行时行为的写法都会报错。`const` 必须提供初始化值，同一作用域内重复定义也会报错；函数体内可以定义同名常量遮蔽脚本顶层的常量。类型标注可选，写法与 `let` 一致。`trait` / `impl` 里的 `const` 仍表示关联常量，见「类与继承」。
 
 ### 动态变量
 
@@ -1474,7 +1491,8 @@ let form = new CustomForm("example.shop", {tr("example.shop.title")}) {
 - 类、命名函数、`using` 与组件只能出现在脚本顶层，不能嵌套定义。
 - 声明式 UI 块只能用于表单类（`CustomForm` / `MessageBox` / `PaginatedForm` / `ScriptForm`）；`on:` 命名参数只在块内可用。
 - 组件调用只能作为声明式 UI 块内的语句；组件递归（直接或间接）会报编译错误。
-- 被导入的文件只能包含顶层定义（`class` / `func` / `using` / `component` / `enum` / `import`）；不同文件中的同名定义会冲突报错。
+- 被导入的文件只能包含顶层定义（`class` / `func` / `using` / `component` / `enum` / `const` / `import`）；不同文件中的同名定义会冲突报错。
+- `const` 必须提供常量表达式作为初始值，且不能重新赋值；非常量表达式与同一作用域内的重复定义都会报错。
 - 每次脚本执行都受执行预算约束（默认 1,000,000 条指令 / 256 层调用帧），超限会终止执行；可按脚本在 `permission.json` 的 `budget` 中调整，见[执行预算与调用深度](#执行预算与调用深度)。
 - `return` 只能在函数内使用；`break`/`continue` 只能在循环内使用。
 - 类型声明（`let x: int = 0;`）必须同时提供初始值；没有默认值的类字段必须在构造函数中赋值。

@@ -285,3 +285,57 @@ TEST(ScriptLoaderTest, DuplicateEnumNameReportsConflict) {
     EXPECT_FALSE(loaded.has_value());
     EXPECT_NE(diagnostics.getErrorMessage().find("conflicts with"), std::string::npos);
 }
+
+TEST(ScriptLoaderTest, AcceptsTopLevelConstInImportedFile) {
+    FileMap files = {
+        {"/lib.lcui", "const FORM_CUSTOM = 1;\nfunc bump(x: int) -> int { return x + FORM_CUSTOM; }"},
+        {"/main.lcui", "import \"lib.lcui\";\nbump(4)"},
+    };
+
+    EXPECT_EQ(evalFiles(files, "/main.lcui"), "5");
+}
+
+TEST(ScriptLoaderTest, SelectiveImportConst) {
+    FileMap files = {
+        {"/lib.lcui", "const KEEP = 3;\nconst DROP = 9;\nfunc id(x: int) -> int { return x; }"},
+        {"/main.lcui", "import \"lib.lcui\" { KEEP, id };\nid(KEEP)"},
+    };
+
+    EXPECT_EQ(evalFiles(files, "/main.lcui"), "3");
+}
+
+TEST(ScriptLoaderTest, SelectiveImportExcludedConstIsUndefined) {
+    FileMap files = {
+        {"/lib.lcui", "const KEEP = 3;\nconst DROP = 9;\n"},
+        {"/main.lcui", "import \"lib.lcui\" { KEEP };\nDROP"},
+    };
+
+    EXPECT_THROW(evalFiles(files, "/main.lcui"), std::runtime_error);
+}
+
+TEST(ScriptLoaderTest, DuplicateConstNameReportsConflict) {
+    FileMap files = {
+        {"/a.lcui", "const Kind = 1;\n"},
+        {"/b.lcui", "const Kind = 2;\n"},
+        {"/main.lcui", "import \"a.lcui\";\nimport \"b.lcui\";\n1"},
+    };
+
+    DiagnosticEngine diagnostics;
+    auto loaded = ScriptLoader::load("/main.lcui", "/", readerFor(files), diagnostics);
+
+    EXPECT_FALSE(loaded.has_value());
+    EXPECT_NE(diagnostics.getErrorMessage().find("conflicts with"), std::string::npos);
+}
+
+TEST(ScriptLoaderTest, ImportedFileStillRejectsTopLevelLetAlongsideConst) {
+    FileMap files = {
+        {"/lib.lcui", "const ALLOWED = 1;\nlet sideEffect = 2;\n"},
+        {"/main.lcui", "import \"lib.lcui\";\nALLOWED"},
+    };
+
+    DiagnosticEngine diagnostics;
+    auto loaded = ScriptLoader::load("/main.lcui", "/", readerFor(files), diagnostics);
+
+    EXPECT_FALSE(loaded.has_value());
+    EXPECT_NE(diagnostics.getErrorMessage().find("top-level definitions"), std::string::npos);
+}
