@@ -38,7 +38,7 @@ namespace LOICollection::frontend::ir {
         return *instance;
     }
 
-    std::shared_ptr<ChunkCache> ChunkCacheRegistry::forChunk(const MirChunk* chunk) {
+    std::shared_ptr<ChunkCache> ChunkCacheRegistry::forChunk(const Chunk* chunk) {
         std::lock_guard<std::mutex> guard(this->mMutex);
 
         auto& cache = this->mCaches[chunk];
@@ -48,7 +48,7 @@ namespace LOICollection::frontend::ir {
         return cache;
     }
 
-    void ChunkCacheRegistry::release(const MirChunk* chunk) {
+    void ChunkCacheRegistry::release(const Chunk* chunk) {
         std::lock_guard<std::mutex> guard(this->mMutex);
         this->mCaches.erase(chunk);
     }

@@ -33,7 +33,7 @@ namespace LOICollection::frontend::ir {
     using namespace detail;
 
     bool VM::invokeClosureMethod(ExecArgs& s, const std::string& methodName, int argCount) {
-        const MirInstr& instr = s.instr;
+        const Instr& instr = s.instr;
         Frame& frame = s.frame;
 
         const ValueNode::ValueType& receiver = this->regOf(frame, instr.src1 + instr.imm);
@@ -96,12 +96,12 @@ namespace LOICollection::frontend::ir {
 
     void VM::execMethodDispatch(ExecArgs& s) {
         const auto& instr = s.instr;
-        const MirChunk& cur = s.cur;
-        const MirChunk& chunk = s.chunk;
+        const Chunk& cur = s.cur;
+        const Chunk& chunk = s.chunk;
         Frame& frame = s.frame;
 
         switch (instr.op) {
-            case MirOp::CALL_METHOD: {
+            case Op::CALL_METHOD: {
                 const auto& meta = chunk.methods[instr.operand];
 
                 const ValueNode::ValueType& receiver = this->regOf(frame, instr.src1 + instr.imm);
@@ -132,7 +132,7 @@ namespace LOICollection::frontend::ir {
 
                 this->placeArgs(argsBase, meta.argCount);
             } break;
-            case MirOp::CALL_METHOD_VIRTUAL: {
+            case Op::CALL_METHOD_VIRTUAL: {
                 const auto& meta = cur.virtualCalls[instr.operand];
 
                 const ValueNode::ValueType& receiver = this->regOf(frame, instr.src1 + instr.imm);
@@ -190,7 +190,7 @@ namespace LOICollection::frontend::ir {
 
                 this->placeArgs(argsBase, method.argCount);
             } break;
-            case MirOp::CALL_METHOD_BY_NAME: {
+            case Op::CALL_METHOD_BY_NAME: {
                 const auto& meta = cur.byNameCalls[instr.operand];
 
                 const ValueNode::ValueType& receiver = this->regOf(frame, instr.src1 + instr.imm);
@@ -248,7 +248,7 @@ namespace LOICollection::frontend::ir {
 
                 this->placeArgs(argsBase, method.argCount);
             } break;
-            case MirOp::CALL_SUPER_CTOR: {
+            case Op::CALL_SUPER_CTOR: {
                 const auto& meta = cur.superCalls[instr.operand];
 
                 const ValueNode::ValueType& receiver = this->regOf(frame, instr.src1 + instr.imm);
@@ -289,12 +289,12 @@ namespace LOICollection::frontend::ir {
 
     void VM::execNativeCall(ExecArgs& s) {
         const auto& instr = s.instr;
-        const MirChunk& chunk = s.chunk;
+        const Chunk& chunk = s.chunk;
         Frame& frame = s.frame;
 
         try {
             switch (instr.op) {
-                case MirOp::CALL_NATIVE_METHOD: {
+                case Op::CALL_NATIVE_METHOD: {
                     if (const auto violation = this->mBudget->accountNativeCall();
                         violation != sandbox::SandboxBudget::Violation::None) {
                         this->failBudget(violation, "Native call budget exhausted");
@@ -376,11 +376,11 @@ namespace LOICollection::frontend::ir {
 
     void VM::execFunctionCall(ExecArgs& s) {
         const auto& instr = s.instr;
-        const MirChunk& chunk = s.chunk;
+        const Chunk& chunk = s.chunk;
         Frame& frame = s.frame;
 
         switch (instr.op) {
-            case MirOp::CALL_FUNC: {
+            case Op::CALL_FUNC: {
                 const auto& meta = chunk.methods[instr.operand];
 
                 const size_t argsBase = frame.localsBase + static_cast<size_t>(instr.src1);
@@ -394,7 +394,7 @@ namespace LOICollection::frontend::ir {
 
                 this->placeArgs(argsBase, meta.argCount);
             } break;
-            case MirOp::CALL_LAMBDA: {
+            case Op::CALL_LAMBDA: {
                 const ValueNode::ValueType& funcValue = this->regOf(frame, instr.src2);
                 if (!std::holds_alternative<FunctionRefPtr>(funcValue)) {
                     this->diagnostics.addError(this->currentLoc, "Attempted to call a non-function value");
@@ -452,12 +452,12 @@ namespace LOICollection::frontend::ir {
 
     void VM::execHostCall(ExecArgs& s) {
         const auto& instr = s.instr;
-        const MirChunk& cur = s.cur;
+        const Chunk& cur = s.cur;
         Frame& frame = s.frame;
 
         try {
             switch (instr.op) {
-                case MirOp::CALL: {
+                case Op::CALL: {
                     if (const auto violation = this->mBudget->accountNativeCall();
                         violation != sandbox::SandboxBudget::Violation::None) {
                         this->failBudget(violation, "Native call budget exhausted");
@@ -492,7 +492,7 @@ namespace LOICollection::frontend::ir {
 
                     this->storeNativeResult(frame, instr.dst, result.value());
                 } break;
-                case MirOp::CALL_MACRO: {
+                case Op::CALL_MACRO: {
                     if (const auto violation = this->mBudget->accountNativeCall();
                         violation != sandbox::SandboxBudget::Violation::None) {
                         this->failBudget(violation, "Native call budget exhausted");

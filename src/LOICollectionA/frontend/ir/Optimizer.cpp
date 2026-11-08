@@ -14,7 +14,7 @@
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 
 namespace LOICollection::frontend::ir {
-    Optimizer::Stats Optimizer::optimize(MirChunk& chunk) {
+    Optimizer::Stats Optimizer::optimize(Chunk& chunk) {
         Stats total;
 
         Stats mainStats = this->optimizeChunk(chunk);
@@ -30,7 +30,7 @@ namespace LOICollection::frontend::ir {
         return total;
     }
 
-    Optimizer::Stats Optimizer::optimizeChunk(MirChunk& chunk) {
+    Optimizer::Stats Optimizer::optimizeChunk(Chunk& chunk) {
         Stats total;
 
         if (this->enabled(Pass::Inline)) {
@@ -73,7 +73,7 @@ namespace LOICollection::frontend::ir {
         return total;
     }
 
-    Optimizer::Stats Optimizer::optimizeChunkOnce(MirChunk& chunk) {
+    Optimizer::Stats Optimizer::optimizeChunkOnce(Chunk& chunk) {
         if (chunk.code.empty())
             return {};
 

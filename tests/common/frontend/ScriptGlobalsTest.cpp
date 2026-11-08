@@ -10,7 +10,7 @@ namespace {
     struct ScriptContext {
         std::shared_ptr<GlobalsTable> globals = std::make_shared<GlobalsTable>();
 
-        void load(const std::shared_ptr<ir::MirChunk>& chunk) {
+        void load(const std::shared_ptr<ir::Chunk>& chunk) {
             if (this->loaded.contains(chunk.get()))
                 return;
 
@@ -24,7 +24,7 @@ namespace {
             this->loaded.insert(chunk.get());
         }
 
-        FunctionRefPtr detach(const std::shared_ptr<ir::MirChunk>& chunk, const std::string& name) {
+        FunctionRefPtr detach(const std::shared_ptr<ir::Chunk>& chunk, const std::string& name) {
             this->load(chunk);
 
             auto it = this->globals->find(name);
@@ -34,7 +34,7 @@ namespace {
             return std::get<FunctionRefPtr>(it->second);
         }
 
-        std::set<const ir::MirChunk*> loaded;
+        std::set<const ir::Chunk*> loaded;
     };
 }
 

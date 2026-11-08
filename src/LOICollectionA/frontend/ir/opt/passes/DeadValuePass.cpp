@@ -20,17 +20,17 @@ namespace LOICollection::frontend::ir::opt {
         
         
         
-        auto isDeadValueSafe = [](MirOp op) {
+        auto isDeadValueSafe = [](Op op) {
             switch (op) {
-                case MirOp::LOAD_CONST:
-                case MirOp::LOAD_SLOT:
-                case MirOp::MOVE:
+                case Op::LOAD_CONST:
+                case Op::LOAD_SLOT:
+                case Op::MOVE:
                     return true;
                 default:
                     break;
             }
             if (isPureBinary(op))
-                return op != MirOp::DIV && op != MirOp::MOD && op != MirOp::POW;
+                return op != Op::DIV && op != Op::MOD && op != Op::POW;
             if (isPureUnary(op))
                 return true;
             return false;
@@ -39,7 +39,7 @@ namespace LOICollection::frontend::ir::opt {
         std::unordered_set<int> read;
         std::unordered_set<int> pinned;
 
-        for (const MirInstr& instr : mChunk.code) {
+        for (const Instr& instr : mChunk.code) {
             if (instr.src1 >= 0)
                 read.insert(instr.src1);
             if (instr.src2 >= 0)
@@ -60,13 +60,13 @@ namespace LOICollection::frontend::ir::opt {
                     read.insert(instr.src1 + i);
             }
 
-            if (instr.op == MirOp::STORE_SLOT || instr.op == MirOp::LOAD_SLOT)
+            if (instr.op == Op::STORE_SLOT || instr.op == Op::LOAD_SLOT)
                 pinned.insert(instr.operand);
 
-            if (instr.op == MirOp::HALT)
+            if (instr.op == Op::HALT)
                 pinned.insert(0);
 
-            if (instr.op == MirOp::PANIC && instr.src1 >= 0)
+            if (instr.op == Op::PANIC && instr.src1 >= 0)
                 read.insert(instr.src1);
 
             
@@ -74,7 +74,7 @@ namespace LOICollection::frontend::ir::opt {
             
             
             
-            if (instr.op == MirOp::MAKE_LAMBDA) {
+            if (instr.op == Op::MAKE_LAMBDA) {
                 const auto& meta = mChunk.lambdas[instr.operand];
                 for (const auto& capture : meta.captures)
                     if (capture.sourceSlot >= 0)
@@ -82,14 +82,14 @@ namespace LOICollection::frontend::ir::opt {
             }
         }
 
-        std::vector<MirInstr> out;
+        std::vector<Instr> out;
         out.reserve(mChunk.code.size());
         std::vector<int> oldToNew(mChunk.code.size(), -1);
         std::vector<int> origin;
         size_t eliminated = 0;
 
         for (size_t i = 0; i < mChunk.code.size(); ++i) {
-            const MirInstr& instr = mChunk.code[i];
+            const Instr& instr = mChunk.code[i];
 
             if (isDeadValueSafe(instr.op) && instr.dst >= 0 &&
                 read.find(instr.dst) == read.end() &&

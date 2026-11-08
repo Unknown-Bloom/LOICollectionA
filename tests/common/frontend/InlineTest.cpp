@@ -9,7 +9,7 @@
 using namespace LOICollection::frontend;
 
 namespace {
-    std::shared_ptr<ir::MirChunk> compileRaw(const std::string& input) {
+    std::shared_ptr<ir::Chunk> compileRaw(const std::string& input) {
         DiagnosticEngine diagnostics;
 
         Lexer lexer(input, diagnostics);
@@ -27,18 +27,18 @@ namespace {
         }
 
         ir::Compiler compiler(diagnostics);
-        auto mir = std::make_shared<ir::MirChunk>(compiler.compile(*ast));
+        auto mir = std::make_shared<ir::Chunk>(compiler.compile(*ast));
         if (diagnostics.hasErrors())
             throw std::runtime_error(diagnostics.getErrorMessage());
 
         return mir;
     }
 
-    int countCalls(const ir::MirChunk& chunk) {
+    int countCalls(const ir::Chunk& chunk) {
         int count = 0;
         for (const auto& instr : chunk.code)
-            if (instr.op == ir::MirOp::CALL_METHOD ||
-                instr.op == ir::MirOp::CALL_METHOD_VIRTUAL)
+            if (instr.op == ir::Op::CALL_METHOD ||
+                instr.op == ir::Op::CALL_METHOD_VIRTUAL)
                 ++count;
         for (const auto& body : chunk.methodBodies)
             count += countCalls(*body);

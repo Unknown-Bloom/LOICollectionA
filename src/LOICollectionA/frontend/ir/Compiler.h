@@ -14,7 +14,7 @@ namespace LOICollection::frontend::ir {
     public:
         LOICOLLECTION_A_API Compiler(DiagnosticEngine& diag);
 
-        LOICOLLECTION_A_NDAPI MirChunk compile(ASTNode& root);
+        LOICOLLECTION_A_NDAPI Chunk compile(ASTNode& root);
         LOICOLLECTION_A_NDAPI hir::Program buildHir(ASTNode& root);
         LOICOLLECTION_A_NDAPI mir::Module buildMir(const hir::Program& program);
         LOICOLLECTION_A_NDAPI Chunk lowerLir(const hir::Program& program, const mir::Module& module);

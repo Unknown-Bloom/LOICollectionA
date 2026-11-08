@@ -14,7 +14,7 @@
 #include "LOICollectionA/frontend/ir/VM.h"
 
 namespace LOICollection::frontend {
-    inline std::shared_ptr<ir::MirChunk> compile(const std::string& input, DiagnosticEngine& diagnostics) {
+    inline std::shared_ptr<ir::Chunk> compile(const std::string& input, DiagnosticEngine& diagnostics) {
         Lexer lexer(input, diagnostics);
         Parser parser(lexer, diagnostics);
 
@@ -35,7 +35,7 @@ namespace LOICollection::frontend {
         }
 
         ir::Compiler compiler(diagnostics);
-        auto mir = std::make_shared<ir::MirChunk>(compiler.compile(*ast));
+        auto mir = std::make_shared<ir::Chunk>(compiler.compile(*ast));
         if (diagnostics.hasErrors())
             return nullptr;
 
@@ -71,7 +71,7 @@ namespace LOICollection::frontend {
         ir::Compiler compiler(diagnostics);
         ir::VM vm(diagnostics);
 
-        auto mir = std::make_shared<ir::MirChunk>(compiler.compile(*ast));
+        auto mir = std::make_shared<ir::Chunk>(compiler.compile(*ast));
         if (diagnostics.hasErrors())
             throw std::runtime_error(diagnostics.getErrorMessage());
 

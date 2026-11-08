@@ -3,7 +3,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "LOICollectionA/frontend/ir/Mir.h"
+#include "LOICollectionA/frontend/ir/Lir.h"
 
 #include "LOICollectionA/frontend/ir/opt/OptContext.h"
 #include "LOICollectionA/frontend/ir/opt/analysis/JumpTargetAnalysis.h"
@@ -11,7 +11,7 @@
 namespace LOICollection::frontend::ir::opt {
     class ConstantFoldPass {
     public:
-        ConstantFoldPass(MirChunk& chunk, OptContext& ctx, const JumpTargetAnalysis& jumps)
+        ConstantFoldPass(Chunk& chunk, OptContext& ctx, const JumpTargetAnalysis& jumps)
         : mChunk(chunk),
           mCtx(ctx),
           mJumps(jumps) {}
@@ -31,30 +31,30 @@ namespace LOICollection::frontend::ir::opt {
 
         Step fold(int oldIdx);
 
-        Step foldBinary(const MirInstr& instr);
-        Step foldUnary(const MirInstr& instr);
-        Step foldComparison(const MirInstr& instr);
-        Step foldOptional(const MirInstr& instr);
-        Step foldLoadSlot(const MirInstr& instr);
-        Step foldStoreSlot(const MirInstr& instr);
-        Step foldLoadVar(const MirInstr& instr);
-        Step foldStoreVar(const MirInstr& instr);
-        Step foldMakeArray(const MirInstr& instr);
-        Step foldLoadIndex(const MirInstr& instr);
-        Step foldStoreIndex(const MirInstr& instr);
-        Step foldCall(const MirInstr& instr);
-        Step foldNativeMethod(const MirInstr& instr);
-        Step foldBranch(const MirInstr& instr);
+        Step foldBinary(const Instr& instr);
+        Step foldUnary(const Instr& instr);
+        Step foldComparison(const Instr& instr);
+        Step foldOptional(const Instr& instr);
+        Step foldLoadSlot(const Instr& instr);
+        Step foldStoreSlot(const Instr& instr);
+        Step foldLoadVar(const Instr& instr);
+        Step foldStoreVar(const Instr& instr);
+        Step foldMakeArray(const Instr& instr);
+        Step foldLoadIndex(const Instr& instr);
+        Step foldStoreIndex(const Instr& instr);
+        Step foldCall(const Instr& instr);
+        Step foldNativeMethod(const Instr& instr);
+        Step foldBranch(const Instr& instr);
 
         Step emitConst(int dst, const ValueNode::ValueType& value, const SourceLocation& loc);
         Step emitMove(int dst, int src, const SourceLocation& loc);
-        Step emitOriginal(const MirInstr& instr);
-        Step emitOriginalAfterForget(const MirInstr& instr);
+        Step emitOriginal(const Instr& instr);
+        Step emitOriginalAfterForget(const Instr& instr);
 
         bool knownReg(int reg, Known& out) const;
         void forgetDst(int dst);
 
-        MirChunk& mChunk;
+        Chunk& mChunk;
         OptContext& mCtx;
         const JumpTargetAnalysis& mJumps;
 

@@ -33,7 +33,7 @@ namespace LOICollection::frontend::ir {
     using namespace detail;
 
     void VM::storeVariable(
-        const MirChunk& chunk,
+        const Chunk& chunk,
         Frame& frame,
         const std::string& name,
         const ValueNode::ValueType& val
@@ -125,10 +125,10 @@ namespace LOICollection::frontend::ir {
         const bool isNone = std::holds_alternative<std::monostate>(value);
 
         switch (instr.op) {
-            case MirOp::IS_NONE:
+            case Op::IS_NONE:
                 this->setReg(frame, instr.dst, ValueNode::ValueType{ isNone });
                 break;
-            case MirOp::UNWRAP:
+            case Op::UNWRAP:
                 if (isNone) {
                     this->diagnostics.addError(this->currentLoc, "Optional value is empty");
                     break;
@@ -136,10 +136,10 @@ namespace LOICollection::frontend::ir {
 
                 this->setReg(frame, instr.dst, std::move(value));
                 break;
-            case MirOp::TYPE_OF:
+            case Op::TYPE_OF:
                 this->setReg(frame, instr.dst, ValueNode::ValueType{ VM::typeNameOf(value) });
                 break;
-            case MirOp::HAS_VALUE:
+            case Op::HAS_VALUE:
                 this->setReg(frame, instr.dst, ValueNode::ValueType{ !isNone });
                 break;
             default: break;
@@ -151,11 +151,11 @@ namespace LOICollection::frontend::ir {
         Frame& frame = s.frame;
 
         switch (instr.op) {
-            case MirOp::LOAD_SLOT: {
+            case Op::LOAD_SLOT: {
                 auto value = this->regOf(frame, instr.operand);
                 this->setReg(frame, instr.dst, std::move(value));
             } break;
-            case MirOp::STORE_SLOT: {
+            case Op::STORE_SLOT: {
                 auto value = this->regOf(frame, instr.src1);
                 this->setReg(frame, instr.operand, std::move(value));
             } break;
@@ -166,10 +166,10 @@ namespace LOICollection::frontend::ir {
     void VM::execVariable(ExecArgs& s) {
         const auto& instr = s.instr;
         Frame& frame = s.frame;
-        const MirChunk& cur = s.cur;
-        const MirChunk& chunk = s.chunk;
+        const Chunk& cur = s.cur;
+        const Chunk& chunk = s.chunk;
         switch (instr.op) {
-            case MirOp::LOAD_VAR: {
+            case Op::LOAD_VAR: {
                 const auto& name = std::get<std::string>(cur.constants[instr.operand]);
 
                 if (frame.hasThis) {
@@ -224,7 +224,7 @@ namespace LOICollection::frontend::ir {
 
                 this->setReg(frame, instr.dst, globalIt->second);
             } break;
-            case MirOp::STORE_VAR: {
+            case Op::STORE_VAR: {
                 const auto& name = std::get<std::string>(cur.constants[instr.operand]);
 
                 this->storeVariable(chunk, frame, name, this->regOf(frame, instr.src1));

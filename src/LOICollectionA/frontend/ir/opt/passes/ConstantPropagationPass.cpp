@@ -33,7 +33,7 @@ namespace LOICollection::frontend::ir::opt::detail {
         }
     }
 
-    bool leadsToSelf(const ControlFlowGraph::Block& block, const std::vector<MirInstr>& code) {
+    bool leadsToSelf(const ControlFlowGraph::Block& block, const std::vector<Instr>& code) {
         if (block.end <= block.begin)
             return false;
 
@@ -48,14 +48,14 @@ namespace LOICollection::frontend::ir::opt::detail {
 namespace LOICollection::frontend::ir::opt {
     using namespace detail;
 
-    void ConstantPropagationPass::step(const MirInstr& instr, State& state) const {
+    void ConstantPropagationPass::step(const Instr& instr, State& state) const {
         if (canWriteVariables(instr.op)) {
             state.slots.clear();
             state.names.clear();
         }
 
         switch (instr.op) {
-            case MirOp::LOAD_CONST: {
+            case Op::LOAD_CONST: {
                 const auto& value = mChunk.constants[instr.operand];
                 if (instr.dst < 0)
                     return;
@@ -67,7 +67,7 @@ namespace LOICollection::frontend::ir::opt {
                 return;
             }
 
-            case MirOp::MOVE: {
+            case Op::MOVE: {
                 if (instr.dst < 0)
                     return;
 
@@ -79,7 +79,7 @@ namespace LOICollection::frontend::ir::opt {
                 return;
             }
 
-            case MirOp::LOAD_SLOT: {
+            case Op::LOAD_SLOT: {
                 const auto it = state.slots.find(instr.operand);
                 if (it == state.slots.end())
                     state.regs.erase(instr.dst);
@@ -88,7 +88,7 @@ namespace LOICollection::frontend::ir::opt {
                 return;
             }
 
-            case MirOp::LOAD_VAR: {
+            case Op::LOAD_VAR: {
                 const auto* name = std::get_if<std::string>(&mChunk.constants[instr.operand]);
                 const auto it = name ? state.names.find(*name) : state.names.end();
 
@@ -99,7 +99,7 @@ namespace LOICollection::frontend::ir::opt {
                 return;
             }
 
-            case MirOp::STORE_SLOT: {
+            case Op::STORE_SLOT: {
                 const auto it = state.regs.find(instr.src1);
                 if (it == state.regs.end())
                     state.slots.erase(instr.operand);
@@ -108,7 +108,7 @@ namespace LOICollection::frontend::ir::opt {
                 return;
             }
 
-            case MirOp::STORE_VAR: {
+            case Op::STORE_VAR: {
                 const auto* name = std::get_if<std::string>(&mChunk.constants[instr.operand]);
                 if (!name)
                     return;
@@ -213,14 +213,14 @@ namespace LOICollection::frontend::ir::opt {
             State state = states[index].in;
 
             for (int i = block.begin; i < block.end; ++i) {
-                MirInstr& instr = mChunk.code[i];
+                Instr& instr = mChunk.code[i];
                 const ValueNode::ValueType* known = nullptr;
 
-                if (instr.op == MirOp::LOAD_SLOT) {
+                if (instr.op == Op::LOAD_SLOT) {
                     const auto it = state.slots.find(instr.operand);
                     if (it != state.slots.end())
                         known = &it->second;
-                } else if (instr.op == MirOp::LOAD_VAR) {
+                } else if (instr.op == Op::LOAD_VAR) {
                     const auto* name = std::get_if<std::string>(&mChunk.constants[instr.operand]);
                     const auto it = name ? state.names.find(*name) : state.names.end();
 
@@ -229,7 +229,7 @@ namespace LOICollection::frontend::ir::opt {
                 }
 
                 if (known) {
-                    instr.op = MirOp::LOAD_CONST;
+                    instr.op = Op::LOAD_CONST;
                     instr.operand = addConstant(mChunk, *known);
                     instr.src1 = -1;
                     ++folded;

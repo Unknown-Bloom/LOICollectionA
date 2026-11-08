@@ -4,7 +4,7 @@
 
 #include "LOICollectionA/frontend/Callback.h"
 #include "LOICollectionA/frontend/ir/Abi.h"
-#include "LOICollectionA/frontend/ir/Mir.h"
+#include "LOICollectionA/frontend/ir/Lir.h"
 #include "LOICollectionA/utils/core/Sha256.h"
 
 using namespace LOICollection::frontend;
@@ -12,7 +12,7 @@ using LOICollection::frontend::ir::abiFingerprint;
 using LOICollection::frontend::ir::ClassMeta;
 using LOICollection::frontend::ir::layoutFingerprint;
 using LOICollection::frontend::ir::MethodMeta;
-using LOICollection::frontend::ir::MirChunk;
+using LOICollection::frontend::ir::Chunk;
 using LOICollection::utils::Sha256;
 
 TEST(AbiTest, FingerprintIsStableAndThirtyTwoBytes) {
@@ -71,7 +71,7 @@ TEST(AbiTest, RegisteringANativeClassChangesTheFingerprint) {
 }
 
 TEST(AbiTest, LayoutFingerprintTracksTheClassTable) {
-    MirChunk chunk;
+    Chunk chunk;
 
     ClassMeta node;
     node.name = "Node";
@@ -93,7 +93,7 @@ TEST(AbiTest, LayoutFingerprintTracksTheClassTable) {
 }
 
 TEST(AbiTest, LayoutFingerprintCoversMethodsAndBodies) {
-    MirChunk chunk;
+    Chunk chunk;
     chunk.slotCount = 4;
     chunk.methods.push_back(MethodMeta{ "run", 1, -1, 0 });
 
@@ -103,7 +103,7 @@ TEST(AbiTest, LayoutFingerprintCoversMethodsAndBodies) {
     const std::string widened = layoutFingerprint(chunk);
     EXPECT_NE(before, widened);
 
-    chunk.methodBodies.push_back(std::make_unique<MirChunk>());
+    chunk.methodBodies.push_back(std::make_unique<Chunk>());
     chunk.methodBodies.back()->slotCount = 9;
     EXPECT_NE(widened, layoutFingerprint(chunk));
 }

@@ -1,16 +1,16 @@
 #pragma once
 
-#include "LOICollectionA/frontend/ir/Mir.h"
+#include "LOICollectionA/frontend/ir/Lir.h"
 
 namespace LOICollection::frontend::ir::opt {
     class DeadValuePass {
     public:
-        explicit DeadValuePass(MirChunk& chunk)
+        explicit DeadValuePass(Chunk& chunk)
         : mChunk(chunk) {}
 
         size_t run();
 
     private:
-        MirChunk& mChunk;
+        Chunk& mChunk;
     };
 }

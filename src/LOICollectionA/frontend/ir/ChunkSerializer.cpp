@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <cstring>
 
-#include "LOICollectionA/frontend/ir/MirSerializer.h"
+#include "LOICollectionA/frontend/ir/ChunkSerializer.h"
 
 #include "LOICollectionA/frontend/ir/Abi.h"
 
@@ -326,11 +326,11 @@ namespace LOICollection::frontend::ir::detail {
         return true;
     }
 
-    bool writeChunk(Writer& writer, const MirChunk& chunk);
+    bool writeChunk(Writer& writer, const Chunk& chunk);
 
-    bool readChunk(Reader& reader, MirChunk& chunk, size_t depth = 0);
+    bool readChunk(Reader& reader, Chunk& chunk, size_t depth = 0);
 
-    void writeInstruction(Writer& writer, const MirInstr& instr) {
+    void writeInstruction(Writer& writer, const Instr& instr) {
         writer.u8(static_cast<uint8_t>(instr.op));
         writer.i32(instr.operand);
         writer.i32(instr.dst);
@@ -341,12 +341,12 @@ namespace LOICollection::frontend::ir::detail {
         writeTypeInfo(writer, instr.type);
     }
 
-    bool readInstruction(Reader& reader, MirInstr& instr) {
+    bool readInstruction(Reader& reader, Instr& instr) {
         uint8_t op = 0;
-        if (!reader.u8(op) || op >= static_cast<uint8_t>(MirOp::COUNT))
+        if (!reader.u8(op) || op >= static_cast<uint8_t>(Op::COUNT))
             return false;
 
-        instr.op = static_cast<MirOp>(op);
+        instr.op = static_cast<Op>(op);
         if (!reader.i32(instr.operand) || !reader.i32(instr.dst)
             || !reader.i32(instr.src1) || !reader.i32(instr.src2)
             || !reader.i32(instr.src3) || !reader.i32(instr.imm))
@@ -355,10 +355,10 @@ namespace LOICollection::frontend::ir::detail {
         return readTypeInfo(reader, instr.type);
     }
 
-    void writeDebugInfo(Writer& writer, const MirChunk& chunk) {
-        std::vector<const MirChunk*> pending{&chunk};
+    void writeDebugInfo(Writer& writer, const Chunk& chunk) {
+        std::vector<const Chunk*> pending{&chunk};
         while (!pending.empty()) {
-            const MirChunk* current = pending.back();
+            const Chunk* current = pending.back();
             pending.pop_back();
 
             for (const auto& instr : current->code) {
@@ -373,7 +373,7 @@ namespace LOICollection::frontend::ir::detail {
         }
     }
 
-    bool readDebugInfo(Reader& reader, MirChunk& chunk, size_t depth = 0) {
+    bool readDebugInfo(Reader& reader, Chunk& chunk, size_t depth = 0) {
         if (depth > kMaxDepth)
             return false;
 
@@ -395,11 +395,11 @@ namespace LOICollection::frontend::ir::detail {
         return true;
     }
 
-    size_t countInstructions(const MirChunk& chunk) {
+    size_t countInstructions(const Chunk& chunk) {
         size_t total = 0;
-        std::vector<const MirChunk*> pending{&chunk};
+        std::vector<const Chunk*> pending{&chunk};
         while (!pending.empty()) {
-            const MirChunk* current = pending.back();
+            const Chunk* current = pending.back();
             pending.pop_back();
 
             total += current->code.size();
@@ -634,8 +634,8 @@ namespace LOICollection::frontend::ir::detail {
             });
     }
 
-    bool writeChunkFlat(Writer& writer, const MirChunk& chunk) {
-        writeVector<MirInstr>(writer, chunk.code, [](Writer& w, const MirInstr& instr) {
+    bool writeChunkFlat(Writer& writer, const Chunk& chunk) {
+        writeVector<Instr>(writer, chunk.code, [](Writer& w, const Instr& instr) {
             writeInstruction(w, instr);
         });
         if (!writeValues(writer, chunk.constants))
@@ -681,11 +681,11 @@ namespace LOICollection::frontend::ir::detail {
         return true;
     }
 
-    bool writeChunk(Writer& writer, const MirChunk& chunk) {
-        std::vector<const MirChunk*> pending;
+    bool writeChunk(Writer& writer, const Chunk& chunk) {
+        std::vector<const Chunk*> pending;
         pending.push_back(&chunk);
         while (!pending.empty()) {
-            const MirChunk* current = pending.back();
+            const Chunk* current = pending.back();
             pending.pop_back();
 
             if (!writeChunkFlat(writer, *current))
@@ -701,7 +701,7 @@ namespace LOICollection::frontend::ir::detail {
         return true;
     }
 
-    void refreshChunkMetadata(MirChunk& chunk) {
+    void refreshChunkMetadata(Chunk& chunk) {
         for (auto& cls : chunk.classes) {
             cls.ancestorMask = 0;
             for (int ancestor : cls.ancestorIndices)
@@ -728,13 +728,13 @@ namespace LOICollection::frontend::ir::detail {
         return static_cast<std::int64_t>(base) + count <= static_cast<std::int64_t>(slotCount);
     }
 
-    bool isNameConstant(const MirChunk& chunk, int index) {
+    bool isNameConstant(const Chunk& chunk, int index) {
         return index >= 0 && static_cast<std::size_t>(index) < chunk.constants.size()
             && std::holds_alternative<std::string>(chunk.constants[static_cast<std::size_t>(index)]);
     }
 
-    bool validateInstruction(const MirChunk& chunk, const MirChunk& metadata, std::size_t ip) {
-        const MirInstr& instr = chunk.code[ip];
+    bool validateInstruction(const Chunk& chunk, const Chunk& metadata, std::size_t ip) {
+        const Instr& instr = chunk.code[ip];
         const int slots = chunk.slotCount;
 
         const auto hasConstant = [&chunk](int index) {
@@ -751,24 +751,24 @@ namespace LOICollection::frontend::ir::detail {
         };
 
         switch (instr.op) {
-            case MirOp::LOAD_CONST:
+            case Op::LOAD_CONST:
                 return hasConstant(instr.operand);
 
-            case MirOp::LOAD_VAR:
-            case MirOp::STORE_VAR:
-            case MirOp::LOAD_FIELD:
-            case MirOp::STORE_FIELD:
-            case MirOp::INSTANCEOF:
+            case Op::LOAD_VAR:
+            case Op::STORE_VAR:
+            case Op::LOAD_FIELD:
+            case Op::STORE_FIELD:
+            case Op::INSTANCEOF:
                 return isNameConstant(chunk, instr.operand);
 
-            case MirOp::MAKE_ARRAY:
+            case Op::MAKE_ARRAY:
                 return hasArgs(instr.src1, instr.operand);
 
-            case MirOp::MAKE_LAMBDA:
+            case Op::MAKE_LAMBDA:
                 return instr.operand >= 0
                     && static_cast<std::size_t>(instr.operand) < chunk.lambdas.size();
 
-            case MirOp::MAKE_ENUM: {
+            case Op::MAKE_ENUM: {
                 if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= metadata.enums.size())
                     return false;
 
@@ -776,7 +776,7 @@ namespace LOICollection::frontend::ir::detail {
                 return instr.imm >= 0 && static_cast<std::size_t>(instr.imm) < meta.variantNames.size();
             }
 
-            case MirOp::NEW: {
+            case Op::NEW: {
                 if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= metadata.classes.size())
                     return false;
 
@@ -790,22 +790,22 @@ namespace LOICollection::frontend::ir::detail {
                 return hasArgs(instr.src1, metadata.methods[static_cast<std::size_t>(cls.constructorIndex)].argCount);
             }
 
-            case MirOp::NEW_NATIVE:
+            case Op::NEW_NATIVE:
                 return instr.operand >= 0
                     && static_cast<std::size_t>(instr.operand) < metadata.nativeCalls.size()
                     && hasArgs(instr.src1, metadata.nativeCalls[static_cast<std::size_t>(instr.operand)].argCount);
 
-            case MirOp::CALL:
+            case Op::CALL:
                 return instr.operand >= 0
                     && static_cast<std::size_t>(instr.operand) < chunk.functions.size()
                     && hasArgs(instr.src1, instr.imm);
 
-            case MirOp::CALL_MACRO:
+            case Op::CALL_MACRO:
                 return instr.operand >= 0
                     && static_cast<std::size_t>(instr.operand) < chunk.macros.size()
                     && hasArgs(instr.src1, instr.imm);
 
-            case MirOp::CALL_METHOD: {
+            case Op::CALL_METHOD: {
                 if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= metadata.methods.size())
                     return false;
 
@@ -813,7 +813,7 @@ namespace LOICollection::frontend::ir::detail {
                     && hasArgs(instr.src1, metadata.methods[static_cast<std::size_t>(instr.operand)].argCount);
             }
 
-            case MirOp::CALL_METHOD_VIRTUAL: {
+            case Op::CALL_METHOD_VIRTUAL: {
                 if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= chunk.virtualCalls.size())
                     return false;
 
@@ -821,7 +821,7 @@ namespace LOICollection::frontend::ir::detail {
                     && hasArgs(instr.src1, chunk.virtualCalls[static_cast<std::size_t>(instr.operand)].argCount);
             }
 
-            case MirOp::CALL_METHOD_BY_NAME: {
+            case Op::CALL_METHOD_BY_NAME: {
                 if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= chunk.byNameCalls.size())
                     return false;
 
@@ -829,14 +829,14 @@ namespace LOICollection::frontend::ir::detail {
                     && hasArgs(instr.src1, chunk.byNameCalls[static_cast<std::size_t>(instr.operand)].argCount);
             }
 
-            case MirOp::CALL_NATIVE_METHOD: {
+            case Op::CALL_NATIVE_METHOD: {
                 if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= metadata.nativeCalls.size())
                     return false;
 
                 return hasArgs(instr.src1, metadata.nativeCalls[static_cast<std::size_t>(instr.operand)].argCount);
             }
 
-            case MirOp::CALL_SUPER_CTOR: {
+            case Op::CALL_SUPER_CTOR: {
                 if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= chunk.superCalls.size())
                     return false;
 
@@ -844,27 +844,27 @@ namespace LOICollection::frontend::ir::detail {
                     && hasArgs(instr.src1, chunk.superCalls[static_cast<std::size_t>(instr.operand)].argCount);
             }
 
-            case MirOp::CALL_FUNC: {
+            case Op::CALL_FUNC: {
                 if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= metadata.methods.size())
                     return false;
 
                 return hasArgs(instr.src1, metadata.methods[static_cast<std::size_t>(instr.operand)].argCount);
             }
 
-            case MirOp::CALL_LAMBDA:
+            case Op::CALL_LAMBDA:
                 return hasArgs(instr.src1, instr.imm);
 
-            case MirOp::JMP:
-            case MirOp::JMP_IF_FALSE:
-            case MirOp::JMP_IF_TRUE:
+            case Op::JMP:
+            case Op::JMP_IF_FALSE:
+            case Op::JMP_IF_TRUE:
                 return hasTarget(instr.operand);
 
-            case MirOp::JMP_IF_CMP_FALSE:
+            case Op::JMP_IF_CMP_FALSE:
                 return hasTarget(instr.operand)
-                    && instr.imm >= static_cast<int>(MirOp::CMP_EQ)
-                    && instr.imm <= static_cast<int>(MirOp::CMP_LE);
+                    && instr.imm >= static_cast<int>(Op::CMP_EQ)
+                    && instr.imm <= static_cast<int>(Op::CMP_LE);
 
-            case MirOp::JMP_IF_TAG_NE:
+            case Op::JMP_IF_TAG_NE:
                 return hasTarget(instr.operand)
                     && instr.src2 >= 0
                     && static_cast<std::size_t>(instr.src2) < metadata.enums.size()
@@ -875,7 +875,7 @@ namespace LOICollection::frontend::ir::detail {
         }
     }
 
-    bool validateChunk(const MirChunk& chunk, const MirChunk& metadata) {
+    bool validateChunk(const Chunk& chunk, const Chunk& metadata) {
         if (chunk.slotCount < 0 || static_cast<std::size_t>(chunk.slotCount) > kMaxSlotCount)
             return false;
 
@@ -997,11 +997,11 @@ namespace LOICollection::frontend::ir::detail {
         return true;
     }
 
-    bool readChunk(Reader& reader, MirChunk& chunk, size_t depth) {
+    bool readChunk(Reader& reader, Chunk& chunk, size_t depth) {
         if (depth > kMaxDepth || !reader.consumeChunk())
             return false;
 
-        if (!(readVector<MirInstr>(reader, chunk.code, [](Reader& r, MirInstr& instr) -> bool {
+        if (!(readVector<Instr>(reader, chunk.code, [](Reader& r, Instr& instr) -> bool {
             return readInstruction(r, instr);
         })
             && readValues(reader, chunk.constants)
@@ -1049,7 +1049,7 @@ namespace LOICollection::frontend::ir::detail {
 
         chunk.methodBodies.clear();
         for (uint32_t i = 0; i < bodyCount; ++i) {
-            auto body = std::make_unique<MirChunk>();
+            auto body = std::make_unique<Chunk>();
             if (!readChunk(reader, *body, depth + 1))
                 return false;
 
@@ -1059,7 +1059,7 @@ namespace LOICollection::frontend::ir::detail {
         return true;
     }
 
-    bool validateTree(const MirChunk& root, const MirChunk& chunk) {
+    bool validateTree(const Chunk& root, const Chunk& chunk) {
         if (!validateChunk(chunk, root))
             return false;
 
@@ -1074,8 +1074,8 @@ namespace LOICollection::frontend::ir::detail {
 namespace LOICollection::frontend::ir {
     using namespace detail;
 
-    std::optional<std::string> MirSerializer::serialize(
-        const MirChunk& chunk, const Header& header, std::string* bodyChecksum
+    std::optional<std::string> ChunkSerializer::serialize(
+        const Chunk& chunk, const Header& header, std::string* bodyChecksum
     ) {
         if (header.abiFingerprint.size() != kDigestSize)
             return std::nullopt;
@@ -1113,7 +1113,7 @@ namespace LOICollection::frontend::ir {
         return writer.take();
     }
 
-    std::optional<MirChunk> MirSerializer::deserialize(
+    std::optional<Chunk> ChunkSerializer::deserialize(
         const std::string& blob, const Header& expected, std::string* bodyChecksum
     ) {
         Reader reader(blob);
@@ -1178,7 +1178,7 @@ namespace LOICollection::frontend::ir {
         if (!reader.raw(layout.data(), layout.size()))
             return std::nullopt;
 
-        MirChunk chunk;
+        Chunk chunk;
         if (!readChunk(reader, chunk) || !reader.done())
             return std::nullopt;
 
@@ -1193,7 +1193,7 @@ namespace LOICollection::frontend::ir {
         return chunk;
     }
 
-    std::optional<MirSerializer::Header> MirSerializer::peekHeader(const std::string& blob) {
+    std::optional<ChunkSerializer::Header> ChunkSerializer::peekHeader(const std::string& blob) {
         Reader reader(blob);
 
         char magic[sizeof(MAGIC)] = {};
@@ -1240,8 +1240,8 @@ namespace LOICollection::frontend::ir {
         return header;
     }
 
-    std::optional<std::string> MirSerializer::serializeDebugInfo(
-        const MirChunk& chunk, const std::string& bodyChecksum
+    std::optional<std::string> ChunkSerializer::serializeDebugInfo(
+        const Chunk& chunk, const std::string& bodyChecksum
     ) {
         if (bodyChecksum.size() != kDigestSize)
             return std::nullopt;
@@ -1257,8 +1257,8 @@ namespace LOICollection::frontend::ir {
         return writer.take();
     }
 
-    bool MirSerializer::attachDebugInfo(
-        MirChunk& chunk, const std::string& debugBlob, const std::string& bodyChecksum
+    bool ChunkSerializer::attachDebugInfo(
+        Chunk& chunk, const std::string& debugBlob, const std::string& bodyChecksum
     ) {
         Reader reader(debugBlob);
 

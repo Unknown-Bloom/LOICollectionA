@@ -200,7 +200,7 @@ func smooth(average, reviews, globalAverage, prior) {
         }
 
         frontend::ir::Compiler compiler(diagnostics);
-        auto chunk = std::make_shared<frontend::ir::MirChunk>(compiler.compile(*ast));
+        auto chunk = std::make_shared<frontend::ir::Chunk>(compiler.compile(*ast));
         if (diagnostics.hasErrors()) {
             compiled->error = diagnostics.getErrorMessage();
             return compiled;

@@ -3,7 +3,7 @@
 #include "LOICollectionA/frontend/ir/opt/passes/DeadStorePass.h"
 
 namespace LOICollection::frontend::ir::opt::detail {
-    bool closesBlock(MirOp op) {
+    bool closesBlock(Op op) {
         return isJump(op) || isTerminator(op) || canWriteVariables(op);
     }
 }
@@ -23,22 +23,22 @@ namespace LOICollection::frontend::ir::opt {
                 continue;
             }
 
-            const MirInstr instr = mCtx.foldedCode[j];
+            const Instr instr = mCtx.foldedCode[j];
 
             switch (instr.op) {
-                case MirOp::LOAD_SLOT:
+                case Op::LOAD_SLOT:
                     mPending.erase(VariableKey{ instr.operand });
                     break;
 
-                case MirOp::LOAD_VAR:
+                case Op::LOAD_VAR:
                     mPending.erase(VariableKey{ std::get<std::string>(mChunk.constants[instr.operand]) });
                     break;
 
-                case MirOp::STORE_SLOT:
+                case Op::STORE_SLOT:
                     this->recordStore(VariableKey{ instr.operand }, static_cast<int>(j), instr.operand);
                     break;
 
-                case MirOp::STORE_VAR:
+                case Op::STORE_VAR:
                     this->recordStore(
                         VariableKey{ std::get<std::string>(mChunk.constants[instr.operand]) },
                         static_cast<int>(j),
@@ -46,7 +46,7 @@ namespace LOICollection::frontend::ir::opt {
                     );
                     break;
 
-                case MirOp::MAKE_LAMBDA: {
+                case Op::MAKE_LAMBDA: {
                     const auto& meta = mChunk.lambdas[instr.operand];
                     for (const auto& capture : meta.captures) {
                         if (capture.sourceSlot >= 0)
@@ -81,11 +81,11 @@ namespace LOICollection::frontend::ir::opt {
     }
 
     void DeadStorePass::killStore(int at) {
-        MirInstr& dead = mCtx.foldedCode[at];
+        Instr& dead = mCtx.foldedCode[at];
 
         switch (dead.op) {
-            case MirOp::STORE_SLOT:
-            case MirOp::STORE_VAR:
+            case Op::STORE_SLOT:
+            case Op::STORE_VAR:
                 mCtx.dropped[at] = true;
                 break;
 

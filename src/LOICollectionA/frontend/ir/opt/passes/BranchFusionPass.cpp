@@ -5,14 +5,14 @@
 #include "LOICollectionA/frontend/ir/opt/passes/BranchFusionPass.h"
 
 namespace LOICollection::frontend::ir::opt::detail {
-    bool isComparison(MirOp op) {
+    bool isComparison(Op op) {
         switch (op) {
-            case MirOp::CMP_EQ:
-            case MirOp::CMP_NE:
-            case MirOp::CMP_GT:
-            case MirOp::CMP_LT:
-            case MirOp::CMP_GE:
-            case MirOp::CMP_LE:
+            case Op::CMP_EQ:
+            case Op::CMP_NE:
+            case Op::CMP_GT:
+            case Op::CMP_LT:
+            case Op::CMP_GE:
+            case Op::CMP_LE:
                 return true;
             default:
                 return false;
@@ -42,7 +42,7 @@ namespace LOICollection::frontend::ir::opt {
             read(instr.src2);
             read(instr.src3);
 
-            if (instr.op == MirOp::LOAD_SLOT)
+            if (instr.op == Op::LOAD_SLOT)
                 read(instr.operand);
         }
 
@@ -50,11 +50,11 @@ namespace LOICollection::frontend::ir::opt {
         std::size_t fused = 0;
 
         for (std::size_t i = 1; i < this->mChunk.code.size(); ++i) {
-            MirInstr& branch = this->mChunk.code[i];
-            if (branch.op != MirOp::JMP_IF_FALSE || this->mJumps.isTarget(static_cast<int>(i)))
+            Instr& branch = this->mChunk.code[i];
+            if (branch.op != Op::JMP_IF_FALSE || this->mJumps.isTarget(static_cast<int>(i)))
                 continue;
 
-            MirInstr& compare = this->mChunk.code[i - 1];
+            Instr& compare = this->mChunk.code[i - 1];
             if (!isComparison(compare.op) || compare.dst < 0 || compare.dst != branch.src1)
                 continue;
 
@@ -62,7 +62,7 @@ namespace LOICollection::frontend::ir::opt {
             if (result >= reads.size() || reads[result] != 1)
                 continue;
 
-            branch.op = MirOp::JMP_IF_CMP_FALSE;
+            branch.op = Op::JMP_IF_CMP_FALSE;
             branch.src1 = compare.src1;
             branch.src2 = compare.src2;
             branch.imm = static_cast<int>(compare.op);
@@ -87,7 +87,7 @@ namespace LOICollection::frontend::ir::opt {
             if (!dropped[i])
                 remap[i] = next++;
 
-        std::vector<MirInstr> code;
+        std::vector<Instr> code;
         std::vector<int> origin;
         code.reserve(static_cast<std::size_t>(next));
         origin.reserve(static_cast<std::size_t>(next));
@@ -101,7 +101,7 @@ namespace LOICollection::frontend::ir::opt {
         }
 
         for (std::size_t i = 0; i < code.size(); ++i) {
-            MirInstr& instr = code[i];
+            Instr& instr = code[i];
             if (!isJump(instr.op))
                 continue;
 

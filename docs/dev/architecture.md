@@ -195,7 +195,7 @@ ConnectionPool               # SQLite 连接池（WAL 模式）
 
 ## 脚本引擎 VM
 
-LCUI 脚本在 `frontend/ir/` 中依次经过类型 IR（`ty/`）、HIR（`hir/`）与 MIR（`mir/`），最终降级为 LIR（`Lir.h`，低层寄存器指令与元数据），由 `VM` 直接解释执行；`MirChunk` 是 LIR 的兼容别名。对象访问与字段缓存围绕以下两点设计：
+LCUI 脚本在 `frontend/ir/` 中依次经过类型 IR（`ty/`）、HIR（`hir/`）与 MIR（`mir/`），最终降级为 LIR（`Lir.h`，低层寄存器指令与元数据），由 `VM` 直接解释执行；`Chunk` 是 LIR 的容器。对象访问与字段缓存围绕以下两点设计：
 
 ### 对象模型与字段布局
 
@@ -230,4 +230,4 @@ LCUI 脚本在 `frontend/ir/` 中依次经过类型 IR（`ty/`）、HIR（`hir/`
 
 ### 字节码包（`.lcp`）
 
-`MirSerializer` 写出的包由 `abiFingerprint`（原生导出面）、源码/导入哈希、`layoutFingerprint`（本包类表）与 LIR 主体组成。`layoutFingerprint` 在写入时从内存中的 chunk 计算、读取时从解码结果重算，两者不一致即拒绝加载——它捕获的是「写端/读端不同步」这类自洽但语义错误的包（例如某个类表字段被漏写）。版本不符或校验失败时，加载器回退到源码重新编译并覆写包。
+`ChunkSerializer` 写出的包由 `abiFingerprint`（原生导出面）、源码/导入哈希、`layoutFingerprint`（本包类表）与 LIR 主体组成。`layoutFingerprint` 在写入时从内存中的 chunk 计算、读取时从解码结果重算，两者不一致即拒绝加载——它捕获的是「写端/读端不同步」这类自洽但语义错误的包（例如某个类表字段被漏写）。版本不符或校验失败时，加载器回退到源码重新编译并覆写包。

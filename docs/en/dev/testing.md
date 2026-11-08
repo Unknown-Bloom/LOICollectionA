@@ -57,7 +57,7 @@ tests/
 │   ├─ coro/                     # coroutines: TimerManager tests, MockExecutor (an Executor stub with controllable time)
 │   ├─ data/                     # data layer: BlockStore, ConnectionPool, JsonStorage, Payload, WriteBatch
 │   ├─ frontend/                 # LCUI frontend: lexer / parser / semantics / optimizer / VM / serializer / LSP / sandbox budgets
-│   │                            #   plus the support headers CommonTest.h, MirTestSupport.h and FuzzTest.cpp
+│   │                            #   plus the support headers CommonTest.h, ChunkTestSupport.h and FuzzTest.cpp
 │   └─ utils/
 │       ├─ I18nUtilsTest.cpp     # internationalisation utilities
 │       └─ core/                 # MathUtils, SystemUtils, Sha256
@@ -141,8 +141,8 @@ Responsibilities per directory:
 
 | Header | Provides | Purpose |
 | --- | --- | --- |
-| `tests/common/frontend/CommonTest.h` | `compile(input, diagnostics)`, `eval(input, ctx)` | Compiles LCUI source all the way to MIR, or evaluates it directly, for language behaviour tests |
-| `tests/common/frontend/MirTestSupport.h` | `makeCountdownLoopChunk()`, `makeNestedLoopChunk()`, `makeStraightLineChunk()`, `makeConditionalFallthroughChunk()`, `makeUnconditionalJumpChunk()`, `makeSelfJumpChunk()` | Builds MIR chunks for optimizer and control-flow analysis tests |
+| `tests/common/frontend/CommonTest.h` | `compile(input, diagnostics)`, `eval(input, ctx)` | Compiles LCUI source all the way to LIR, or evaluates it directly, for language behaviour tests |
+| `tests/common/frontend/ChunkTestSupport.h` | `makeCountdownLoopChunk()`, `makeNestedLoopChunk()`, `makeStraightLineChunk()`, `makeConditionalFallthroughChunk()`, `makeUnconditionalJumpChunk()`, `makeSelfJumpChunk()` | Builds LIR chunks for optimizer and control-flow analysis tests |
 | `tests/common/coro/MockExecutor.h` | `MockExecutor` (with `advanceTime(delta)` to move time by hand) | Lets code that depends on `ll::coro::Executor` (such as `TimerManager`) run deterministically in tests |
 | `tests/server/TestSimulatedPlayer.h` | `TestSimulatedPlayer` (`create()` / `destroy()` / `getPlayer()`) | Gives a server-side test a real player |
 

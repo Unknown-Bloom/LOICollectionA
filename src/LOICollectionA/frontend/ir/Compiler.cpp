@@ -13,7 +13,7 @@
 namespace LOICollection::frontend::ir {
     Compiler::Compiler(DiagnosticEngine& diag) : diagnostics(diag) {}
 
-    MirChunk Compiler::compile(ASTNode& root) {
+    Chunk Compiler::compile(ASTNode& root) {
         hir::Program program = this->buildHir(root);
         if (this->diagnostics.hasErrors())
             return {};

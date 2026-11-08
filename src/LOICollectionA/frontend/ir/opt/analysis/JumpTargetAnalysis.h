@@ -4,14 +4,14 @@
 #include <unordered_set>
 #include <vector>
 
-#include "LOICollectionA/frontend/ir/Mir.h"
+#include "LOICollectionA/frontend/ir/Lir.h"
 
 #include "LOICollectionA/frontend/ir/opt/analysis/OpTraits.h"
 
 namespace LOICollection::frontend::ir::opt {
     class JumpTargetAnalysis {
     public:
-        explicit JumpTargetAnalysis(const std::vector<MirInstr>& code);
+        explicit JumpTargetAnalysis(const std::vector<Instr>& code);
 
         bool isTarget(int index) const { return mTargets.contains(index); }
 

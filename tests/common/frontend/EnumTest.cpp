@@ -8,8 +8,8 @@
 #include "common/frontend/CommonTest.h"
 
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
-#include "LOICollectionA/frontend/ir/Mir.h"
-#include "LOICollectionA/frontend/ir/MirSerializer.h"
+#include "LOICollectionA/frontend/ir/Lir.h"
+#include "LOICollectionA/frontend/ir/ChunkSerializer.h"
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 #include "LOICollectionA/frontend/ir/VM.h"
 #include "LOICollectionA/utils/core/Sha256.h"
@@ -26,15 +26,15 @@ namespace {
         }
     )";
 
-    MirSerializer::Header headerFor(const std::string& source) {
-        MirSerializer::Header header;
+    ChunkSerializer::Header headerFor(const std::string& source) {
+        ChunkSerializer::Header header;
         header.scriptId = "enumtest";
         header.abiFingerprint = std::string(32, 'A');
         header.sourceHash = Sha256::compute(source);
         return header;
     }
 
-    std::shared_ptr<MirChunk> compileEnum(const std::string& source, DiagnosticEngine& diagnostics) {
+    std::shared_ptr<Chunk> compileEnum(const std::string& source, DiagnosticEngine& diagnostics) {
         return compile(source, diagnostics);
     }
 }
@@ -86,10 +86,10 @@ TEST(EnumTest, SerializationRoundTripsEnumMeta) {
     EXPECT_EQ(chunk->enums[0].variantNames, (std::vector<std::string>{ "Some", "Nothing" }));
     EXPECT_EQ(chunk->enums[0].variantArity, (std::vector<std::uint8_t>{ 1, 0 }));
 
-    auto blob = MirSerializer::serialize(*chunk, headerFor(source));
+    auto blob = ChunkSerializer::serialize(*chunk, headerFor(source));
     ASSERT_TRUE(blob.has_value());
 
-    auto restored = MirSerializer::deserialize(blob.value(), headerFor(source));
+    auto restored = ChunkSerializer::deserialize(blob.value(), headerFor(source));
     ASSERT_TRUE(restored.has_value());
 
     EXPECT_EQ(restored->enums.size(), 1u);
@@ -97,7 +97,7 @@ TEST(EnumTest, SerializationRoundTripsEnumMeta) {
     EXPECT_EQ(restored->enums[0].variantNames, (std::vector<std::string>{ "Some", "Nothing" }));
     EXPECT_EQ(restored->enums[0].variantArity, (std::vector<std::uint8_t>{ 1, 0 }));
 
-    auto restoredPtr = std::make_shared<MirChunk>(std::move(restored.value()));
+    auto restoredPtr = std::make_shared<Chunk>(std::move(restored.value()));
     DiagnosticEngine runDiag;
     ir::VM vm(runDiag);
     auto result = vm.run(restoredPtr, {});

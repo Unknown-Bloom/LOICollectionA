@@ -17,7 +17,7 @@
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
 #include "LOICollectionA/frontend/ir/ChunkCache.h"
 #include "LOICollectionA/frontend/ir/CycleCollector.h"
-#include "LOICollectionA/frontend/ir/Mir.h"
+#include "LOICollectionA/frontend/ir/Lir.h"
 #include "LOICollectionA/frontend/sandbox/SandboxBudget.h"
 #include "LOICollectionA/frontend/sandbox/SandboxReport.h"
 
@@ -39,7 +39,7 @@ namespace LOICollection::frontend::ir {
               globals(std::move(globalsTable)) {}
 
         LOICOLLECTION_A_NDAPI ValueNode::ValueType run(
-            const std::shared_ptr<const MirChunk>& chunk,
+            const std::shared_ptr<const Chunk>& chunk,
             const Context& ctx
         );
 
@@ -112,17 +112,17 @@ namespace LOICollection::frontend::ir {
 
         LOICOLLECTION_A_NDAPI static std::string valueToString(const ValueNode::ValueType& val);
         LOICOLLECTION_A_NDAPI static std::string typeNameOf(const ValueNode::ValueType& val);
-        LOICOLLECTION_A_NDAPI static ValueNode::ValueType applyArithmetic(const ValueNode::ValueType& left, const ValueNode::ValueType& right, MirOp op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
+        LOICOLLECTION_A_NDAPI static ValueNode::ValueType applyArithmetic(const ValueNode::ValueType& left, const ValueNode::ValueType& right, Op op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
         LOICOLLECTION_A_NDAPI static ValueNode::ValueType applyArithmetic(const ValueNode::ValueType& left, const ValueNode::ValueType& right, const std::string& op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
-        LOICOLLECTION_A_NDAPI static ValueNode::ValueType applyUnary(const ValueNode::ValueType& operand, MirOp op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
+        LOICOLLECTION_A_NDAPI static ValueNode::ValueType applyUnary(const ValueNode::ValueType& operand, Op op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
         LOICOLLECTION_A_NDAPI static ValueNode::ValueType applyUnary(const ValueNode::ValueType& operand, const std::string& op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
         LOICOLLECTION_A_NDAPI static bool valueToBool(const ValueNode::ValueType& val);
-        LOICOLLECTION_A_NDAPI static bool applyComparison(const ValueNode::ValueType& left, const ValueNode::ValueType& right, MirOp op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
+        LOICOLLECTION_A_NDAPI static bool applyComparison(const ValueNode::ValueType& left, const ValueNode::ValueType& right, Op op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
         LOICOLLECTION_A_NDAPI static bool applyComparison(const ValueNode::ValueType& left, const ValueNode::ValueType& right, const std::string& op, DiagnosticEngine& diagnostics, const SourceLocation& loc = {});
 
     private:
         struct Frame {
-            std::reference_wrapper<const MirChunk> chunk;
+            std::reference_wrapper<const Chunk> chunk;
 
             size_t ip = 0;
             size_t localsBase = 0;
@@ -138,7 +138,7 @@ namespace LOICollection::frontend::ir {
 
             std::size_t budgetStringBytes = 0;
 
-            explicit Frame(const MirChunk& chunkRef)
+            explicit Frame(const Chunk& chunkRef)
                 : chunk(chunkRef), localsSize(chunkRef.slotCount) {}
         };
 
@@ -156,22 +156,22 @@ namespace LOICollection::frontend::ir {
         std::shared_ptr<GlobalsTable> globals;
 
         std::shared_ptr<ChunkCache> mCache = std::make_shared<ChunkCache>();
-        const MirChunk* mCacheChunk = nullptr;
+        const Chunk* mCacheChunk = nullptr;
 
         struct FieldCacheEntry {
-            const MirInstr* instr = nullptr;
+            const Instr* instr = nullptr;
             const FieldLayout* layout = nullptr;
             int slot = -1;
         };
 
         struct ByNameCacheEntry {
-            const MirInstr* instr = nullptr;
+            const Instr* instr = nullptr;
             int classIndex = -1;
             int ordinal = -1;
         };
 
         struct HostCallCacheEntry {
-            const MirInstr* instr = nullptr;
+            const Instr* instr = nullptr;
             std::string namespaces;
             std::string function;
         };
@@ -186,23 +186,23 @@ namespace LOICollection::frontend::ir {
 
         std::shared_ptr<CycleCollector> mHeap = std::make_shared<CycleCollector>();
 
-        [[nodiscard]] const FieldLayoutPtr& classLayout(const MirChunk& chunk, int classIndex);
+        [[nodiscard]] const FieldLayoutPtr& classLayout(const Chunk& chunk, int classIndex);
 
         template <std::size_t Size>
-        [[nodiscard]] static std::size_t inlineCacheSlot(const MirInstr* instr) {
+        [[nodiscard]] static std::size_t inlineCacheSlot(const Instr* instr) {
             return (reinterpret_cast<std::uintptr_t>(instr) >> 4) & (Size - 1);
         }
 
-        [[nodiscard]] int resolveFieldSlot(Object& obj, const std::string& name, const MirInstr& instr);
+        [[nodiscard]] int resolveFieldSlot(Object& obj, const std::string& name, const Instr& instr);
 
         ValueNode::ValueType execute(
-            const std::shared_ptr<const MirChunk>& owner,
+            const std::shared_ptr<const Chunk>& owner,
             const CallbackTypePlaces& placeholders
         );
 
         template <bool Managed>
         ValueNode::ValueType executeLoop(
-            const std::shared_ptr<const MirChunk>& owner,
+            const std::shared_ptr<const Chunk>& owner,
             const CallbackTypePlaces& placeholders
         );
 
@@ -218,7 +218,7 @@ namespace LOICollection::frontend::ir {
         void releaseLocalStrings();
 
         void storeVariable(
-            const MirChunk& chunk,
+            const Chunk& chunk,
             Frame& frame,
             const std::string& name,
             const ValueNode::ValueType& val
@@ -226,7 +226,7 @@ namespace LOICollection::frontend::ir {
 
         bool pushFrame(Frame&& frame);
 
-        [[nodiscard]] bool isDerived(const MirChunk& chunk, int derivedClassIndex, int baseClassIndex) const;
+        [[nodiscard]] bool isDerived(const Chunk& chunk, int derivedClassIndex, int baseClassIndex) const;
 
         [[nodiscard]] static ValueNode::ValueType cloneValue(const ValueNode::ValueType& val, std::size_t depth = 0);
 
@@ -251,11 +251,11 @@ namespace LOICollection::frontend::ir {
         size_t mSliceRemaining = 0;
 
         struct ExecArgs {
-            const std::shared_ptr<const MirChunk>& owner;
-            const MirChunk& chunk;
-            const MirChunk& cur;
+            const std::shared_ptr<const Chunk>& owner;
+            const Chunk& chunk;
+            const Chunk& cur;
             Frame& frame;
-            const MirInstr& instr;
+            const Instr& instr;
             const CallbackTypePlaces& placeholders;
         };
 

@@ -3,7 +3,7 @@
 #include <string>
 
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
-#include "LOICollectionA/frontend/ir/Mir.h"
+#include "LOICollectionA/frontend/ir/Lir.h"
 
 #include "common/frontend/CommonTest.h"
 
@@ -11,7 +11,7 @@ using namespace LOICollection::frontend;
 using namespace LOICollection::frontend::ir;
 
 namespace ref_store_analysis_test_support {
-    const MirInstr* findStore(const MirChunk& chunk, MirOp op) {
+    const Instr* findStore(const Chunk& chunk, Op op) {
         for (const auto& instr : chunk.code)
             if (instr.op == op)
                 return &instr;
@@ -19,8 +19,8 @@ namespace ref_store_analysis_test_support {
         return nullptr;
     }
 
-    bool scalarFlag(const MirInstr& instr) {
-        return (instr.imm & static_cast<int>(MirFlag::ScalarStore)) != 0;
+    bool scalarFlag(const Instr& instr) {
+        return (instr.imm & static_cast<int>(Flag::ScalarStore)) != 0;
     }
 }
 
@@ -37,9 +37,9 @@ TEST(RefStoreAnalysisTest, MarksFieldStoresOfScalarValues) {
     );
     ASSERT_TRUE(chunk) << diagnostics.getErrorMessage();
 
-    const MirInstr* store = ref_store_analysis_test_support::findStore(*chunk, MirOp::STORE_FIELD_SLOT);
+    const Instr* store = ref_store_analysis_test_support::findStore(*chunk, Op::STORE_FIELD_SLOT);
     if (!store)
-        store = ref_store_analysis_test_support::findStore(*chunk, MirOp::STORE_FIELD);
+        store = ref_store_analysis_test_support::findStore(*chunk, Op::STORE_FIELD);
 
     ASSERT_NE(store, nullptr);
     EXPECT_TRUE(ref_store_analysis_test_support::scalarFlag(*store));
@@ -60,9 +60,9 @@ TEST(RefStoreAnalysisTest, LeavesReferenceStoresUnmarked) {
     );
     ASSERT_TRUE(chunk) << diagnostics.getErrorMessage();
 
-    const MirInstr* store = ref_store_analysis_test_support::findStore(*chunk, MirOp::STORE_FIELD_SLOT);
+    const Instr* store = ref_store_analysis_test_support::findStore(*chunk, Op::STORE_FIELD_SLOT);
     if (!store)
-        store = ref_store_analysis_test_support::findStore(*chunk, MirOp::STORE_FIELD);
+        store = ref_store_analysis_test_support::findStore(*chunk, Op::STORE_FIELD);
 
     ASSERT_NE(store, nullptr);
     EXPECT_FALSE(ref_store_analysis_test_support::scalarFlag(*store));
@@ -78,7 +78,7 @@ TEST(RefStoreAnalysisTest, MarksIndexStoresOfScalarValues) {
     );
     ASSERT_TRUE(chunk) << diagnostics.getErrorMessage();
 
-    const MirInstr* store = ref_store_analysis_test_support::findStore(*chunk, MirOp::STORE_INDEX);
+    const Instr* store = ref_store_analysis_test_support::findStore(*chunk, Op::STORE_INDEX);
     ASSERT_NE(store, nullptr);
     EXPECT_TRUE(ref_store_analysis_test_support::scalarFlag(*store));
 }

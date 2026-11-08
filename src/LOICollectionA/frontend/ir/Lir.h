@@ -249,9 +249,4 @@ namespace LOICollection::frontend::ir {
     using lir::Op;
     using lir::SuperCallMeta;
     using lir::VirtualCallMeta;
-
-    using MirChunk = lir::Chunk;
-    using MirInstr = lir::Instr;
-    using MirFlag = lir::Flag;
-    using MirOp = lir::Op;
 }

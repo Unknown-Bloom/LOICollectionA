@@ -13,7 +13,7 @@
 #include "LOICollectionA/frontend/SemanticAnalyzer.h"
 
 #include "LOICollectionA/frontend/ir/Compiler.h"
-#include "LOICollectionA/frontend/ir/MirSerializer.h"
+#include "LOICollectionA/frontend/ir/ChunkSerializer.h"
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 
 namespace LOICollection::frontend {
@@ -126,7 +126,7 @@ namespace LOICollection::frontend {
             analyzer.analyze(program);
         }
 
-        std::shared_ptr<ir::MirChunk> runCompile(const std::string& source, DiagnosticEngine& diagnostics) {
+        std::shared_ptr<ir::Chunk> runCompile(const std::string& source, DiagnosticEngine& diagnostics) {
             Lexer lexer(source, diagnostics);
             Parser parser(lexer, diagnostics);
 
@@ -146,7 +146,7 @@ namespace LOICollection::frontend {
             }
 
             ir::Compiler compiler(diagnostics);
-            auto chunk = std::make_shared<ir::MirChunk>(compiler.compile(*ast));
+            auto chunk = std::make_shared<ir::Chunk>(compiler.compile(*ast));
             if (diagnostics.hasErrors())
                 return nullptr;
 
@@ -156,8 +156,8 @@ namespace LOICollection::frontend {
             return chunk;
         }
 
-        ir::MirSerializer::Header fuzzHeader() {
-            return ir::MirSerializer::Header{ "fuzz", std::string(32, 'A'), std::nullopt, {} };
+        ir::ChunkSerializer::Header fuzzHeader() {
+            return ir::ChunkSerializer::Header{ "fuzz", std::string(32, 'A'), std::nullopt, {} };
         }
 
         void runSerialization(const std::string& source, Rng& rng) {
@@ -169,10 +169,10 @@ namespace LOICollection::frontend {
             const auto header = fuzzHeader();
             std::string checksum;
 
-            const auto blob = ir::MirSerializer::serialize(*chunk, header, &checksum);
+            const auto blob = ir::ChunkSerializer::serialize(*chunk, header, &checksum);
             ASSERT_TRUE(blob.has_value());
 
-            const auto restored = ir::MirSerializer::deserialize(*blob, header);
+            const auto restored = ir::ChunkSerializer::deserialize(*blob, header);
             ASSERT_TRUE(restored.has_value());
 
             std::string mutated = *blob;
@@ -182,12 +182,12 @@ namespace LOICollection::frontend {
             }
 
             if (mutated != *blob) {
-                EXPECT_FALSE(ir::MirSerializer::deserialize(mutated, header).has_value());
+                EXPECT_FALSE(ir::ChunkSerializer::deserialize(mutated, header).has_value());
             }
 
             for (std::size_t i = 0; i < 8; ++i) {
                 std::string garbage(i + 1, static_cast<char>(rng.next()));
-                EXPECT_FALSE(ir::MirSerializer::deserialize(garbage, header).has_value());
+                EXPECT_FALSE(ir::ChunkSerializer::deserialize(garbage, header).has_value());
             }
         }
 

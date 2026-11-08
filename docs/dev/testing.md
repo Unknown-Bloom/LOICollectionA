@@ -58,7 +58,7 @@ tests/
 │   ├─ coro/                     # 协程：TimerManager 测试、MockExecutor（可控时间的 Executor 桩）
 │   ├─ data/                     # 数据层：BlockStore、ConnectionPool、JsonStorage、Payload、WriteBatch
 │   ├─ frontend/                 # LCUI 前端：词法 / 语法 / 语义 / 优化 / VM / 序列化 / LSP / 沙箱预算
-│   │                            #   以及测试支撑头 CommonTest.h、MirTestSupport.h、FuzzTest.cpp
+│   │                            #   以及测试支撑头 CommonTest.h、ChunkTestSupport.h、FuzzTest.cpp
 │   └─ utils/
 │       ├─ I18nUtilsTest.cpp     # 国际化工具
 │       └─ core/                 # MathUtils、SystemUtils、Sha256
@@ -142,8 +142,8 @@ tests/
 
 | 头文件 | 提供 | 用途 |
 | --- | --- | --- |
-| `tests/common/frontend/CommonTest.h` | `compile(input, diagnostics)`、`eval(input, ctx)` | 把 LCUI 源码一路编译成 MIR / 直接求值，用于语言行为测试 |
-| `tests/common/frontend/MirTestSupport.h` | `makeCountdownLoopChunk()`、`makeNestedLoopChunk()`、`makeStraightLineChunk()`、`makeConditionalFallthroughChunk()`、`makeUnconditionalJumpChunk()`、`makeSelfJumpChunk()` | 构造 MIR 块，用于优化器与控制流分析测试 |
+| `tests/common/frontend/CommonTest.h` | `compile(input, diagnostics)`、`eval(input, ctx)` | 把 LCUI 源码一路编译成 LIR / 直接求值，用于语言行为测试 |
+| `tests/common/frontend/ChunkTestSupport.h` | `makeCountdownLoopChunk()`、`makeNestedLoopChunk()`、`makeStraightLineChunk()`、`makeConditionalFallthroughChunk()`、`makeUnconditionalJumpChunk()`、`makeSelfJumpChunk()` | 构造 LIR 块，用于优化器与控制流分析测试 |
 | `tests/common/coro/MockExecutor.h` | `MockExecutor`（`advanceTime(delta)` 手动推进时间） | 让依赖 `ll::coro::Executor` 的代码（如 `TimerManager`）在测试里确定性地跑 |
 | `tests/server/TestSimulatedPlayer.h` | `TestSimulatedPlayer`（`create()` / `destroy()` / `getPlayer()`） | 在服务端测试里获得一个真实玩家 |
 

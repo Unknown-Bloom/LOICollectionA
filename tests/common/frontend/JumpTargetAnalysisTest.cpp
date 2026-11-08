@@ -4,58 +4,58 @@
 
 #include "LOICollectionA/frontend/ir/opt/analysis/JumpTargetAnalysis.h"
 
-#include "common/frontend/MirTestSupport.h"
+#include "common/frontend/ChunkTestSupport.h"
 
 using namespace LOICollection::frontend::ir;
 using namespace LOICollection::frontend::ir::opt;
 
 namespace jump_target_test_support {
-    MirChunk makeSharedTargetChunk() {
-        MirChunk chunk;
-        chunk.emit(MirOp::LOAD_CONST, 0);
-        chunk.emit(MirOp::JMP_IF_FALSE, 3);
-        chunk.emit(MirOp::LOAD_CONST, 1);
-        chunk.emit(MirOp::JMP, 1);
-        chunk.emit(MirOp::LOAD_CONST, 2);
-        chunk.emit(MirOp::RETURN);
+    Chunk makeSharedTargetChunk() {
+        Chunk chunk;
+        chunk.emit(Op::LOAD_CONST, 0);
+        chunk.emit(Op::JMP_IF_FALSE, 3);
+        chunk.emit(Op::LOAD_CONST, 1);
+        chunk.emit(Op::JMP, 1);
+        chunk.emit(Op::LOAD_CONST, 2);
+        chunk.emit(Op::RETURN);
         return chunk;
     }
 
-    MirChunk makeForwardOutOfRangeChunk() {
-        MirChunk chunk;
-        chunk.emit(MirOp::JMP, 100);
-        chunk.emit(MirOp::RETURN);
+    Chunk makeForwardOutOfRangeChunk() {
+        Chunk chunk;
+        chunk.emit(Op::JMP, 100);
+        chunk.emit(Op::RETURN);
         return chunk;
     }
 
-    MirChunk makeBackwardOutOfRangeChunk() {
-        MirChunk chunk;
-        chunk.emit(MirOp::JMP, -5);
-        chunk.emit(MirOp::RETURN);
+    Chunk makeBackwardOutOfRangeChunk() {
+        Chunk chunk;
+        chunk.emit(Op::JMP, -5);
+        chunk.emit(Op::RETURN);
         return chunk;
     }
 
-    MirChunk makeJumpToFinalIndexChunk() {
-        MirChunk chunk;
-        chunk.emit(MirOp::LOAD_CONST, 0);
-        chunk.emit(MirOp::JMP_IF_FALSE, 1);
-        chunk.emit(MirOp::LOAD_CONST, 1);
-        chunk.emit(MirOp::RETURN);
+    Chunk makeJumpToFinalIndexChunk() {
+        Chunk chunk;
+        chunk.emit(Op::LOAD_CONST, 0);
+        chunk.emit(Op::JMP_IF_FALSE, 1);
+        chunk.emit(Op::LOAD_CONST, 1);
+        chunk.emit(Op::RETURN);
         return chunk;
     }
 
-    MirChunk makeJumpPastEndChunk() {
-        MirChunk chunk;
-        chunk.emit(MirOp::LOAD_CONST, 0);
-        chunk.emit(MirOp::JMP_IF_FALSE, 2);
-        chunk.emit(MirOp::LOAD_CONST, 1);
-        chunk.emit(MirOp::RETURN);
+    Chunk makeJumpPastEndChunk() {
+        Chunk chunk;
+        chunk.emit(Op::LOAD_CONST, 0);
+        chunk.emit(Op::JMP_IF_FALSE, 2);
+        chunk.emit(Op::LOAD_CONST, 1);
+        chunk.emit(Op::RETURN);
         return chunk;
     }
 }
 
 TEST(JumpTargetAnalysisTest, RecordsConditionalAndUnconditionalTargets) {
-    auto chunk = LOICollection::tests::mir::makeCountdownLoopChunk();
+    auto chunk = LOICollection::tests::lir::makeCountdownLoopChunk();
     JumpTargetAnalysis jumps{ chunk.code };
 
     EXPECT_TRUE(jumps.isTarget(2));
@@ -67,7 +67,7 @@ TEST(JumpTargetAnalysisTest, RecordsConditionalAndUnconditionalTargets) {
 }
 
 TEST(JumpTargetAnalysisTest, SourcesAreListedInInstructionOrder) {
-    auto chunk = LOICollection::tests::mir::makeCountdownLoopChunk();
+    auto chunk = LOICollection::tests::lir::makeCountdownLoopChunk();
     JumpTargetAnalysis jumps{ chunk.code };
 
     const std::vector<int>* toHeader = jumps.sourcesOf(2);
@@ -80,7 +80,7 @@ TEST(JumpTargetAnalysisTest, SourcesAreListedInInstructionOrder) {
 }
 
 TEST(JumpTargetAnalysisTest, NonTargetsHaveNoSourceList) {
-    auto chunk = LOICollection::tests::mir::makeCountdownLoopChunk();
+    auto chunk = LOICollection::tests::lir::makeCountdownLoopChunk();
     JumpTargetAnalysis jumps{ chunk.code };
 
     EXPECT_EQ(jumps.sourcesOf(0), nullptr);
@@ -132,7 +132,7 @@ TEST(JumpTargetAnalysisTest, JumpPastEndIsIgnored) {
 }
 
 TEST(JumpTargetAnalysisTest, SelfJumpTargetsItself) {
-    auto chunk = LOICollection::tests::mir::makeSelfJumpChunk();
+    auto chunk = LOICollection::tests::lir::makeSelfJumpChunk();
     JumpTargetAnalysis jumps{ chunk.code };
 
     EXPECT_TRUE(jumps.isTarget(1));

@@ -5,12 +5,12 @@
 
 #include "LOICollectionA/frontend/ir/opt/analysis/LoopAnalysis.h"
 
-#include "common/frontend/MirTestSupport.h"
+#include "common/frontend/ChunkTestSupport.h"
 
 using namespace LOICollection::frontend::ir::opt;
 
 TEST(LoopAnalysisTest, CountdownLoopHasHeaderBodyExitAndEntry) {
-    auto chunk = LOICollection::tests::mir::makeCountdownLoopChunk();
+    auto chunk = LOICollection::tests::lir::makeCountdownLoopChunk();
     ControlFlowGraph cfg{ chunk.code };
 
     const std::vector<NaturalLoop> loops = findNaturalLoops(cfg);
@@ -24,7 +24,7 @@ TEST(LoopAnalysisTest, CountdownLoopHasHeaderBodyExitAndEntry) {
 }
 
 TEST(LoopAnalysisTest, ContainsReportsMembership) {
-    auto chunk = LOICollection::tests::mir::makeCountdownLoopChunk();
+    auto chunk = LOICollection::tests::lir::makeCountdownLoopChunk();
     ControlFlowGraph cfg{ chunk.code };
 
     const std::vector<NaturalLoop> loops = findNaturalLoops(cfg);
@@ -38,7 +38,7 @@ TEST(LoopAnalysisTest, ContainsReportsMembership) {
 }
 
 TEST(LoopAnalysisTest, NestedLoopsAreReportedOuterFirst) {
-    auto chunk = LOICollection::tests::mir::makeNestedLoopChunk();
+    auto chunk = LOICollection::tests::lir::makeNestedLoopChunk();
     ControlFlowGraph cfg{ chunk.code };
 
     const std::vector<NaturalLoop> loops = findNaturalLoops(cfg);
@@ -57,7 +57,7 @@ TEST(LoopAnalysisTest, NestedLoopsAreReportedOuterFirst) {
 }
 
 TEST(LoopAnalysisTest, InnerLoopIsContainedInOuterLoop) {
-    auto chunk = LOICollection::tests::mir::makeNestedLoopChunk();
+    auto chunk = LOICollection::tests::lir::makeNestedLoopChunk();
     ControlFlowGraph cfg{ chunk.code };
 
     const std::vector<NaturalLoop> loops = findNaturalLoops(cfg);
@@ -71,21 +71,21 @@ TEST(LoopAnalysisTest, InnerLoopIsContainedInOuterLoop) {
 }
 
 TEST(LoopAnalysisTest, StraightLineCodeHasNoLoops) {
-    auto chunk = LOICollection::tests::mir::makeStraightLineChunk();
+    auto chunk = LOICollection::tests::lir::makeStraightLineChunk();
     ControlFlowGraph cfg{ chunk.code };
 
     EXPECT_TRUE(findNaturalLoops(cfg).empty());
 }
 
 TEST(LoopAnalysisTest, SelfJumpIsNotReportedAsALoop) {
-    auto chunk = LOICollection::tests::mir::makeSelfJumpChunk();
+    auto chunk = LOICollection::tests::lir::makeSelfJumpChunk();
     ControlFlowGraph cfg{ chunk.code };
 
     EXPECT_TRUE(findNaturalLoops(cfg).empty());
 }
 
 TEST(LoopAnalysisTest, EveryLoopBlockReachesItsHeader) {
-    auto chunk = LOICollection::tests::mir::makeNestedLoopChunk();
+    auto chunk = LOICollection::tests::lir::makeNestedLoopChunk();
     ControlFlowGraph cfg{ chunk.code };
 
     for (const NaturalLoop& loop : findNaturalLoops(cfg)) {

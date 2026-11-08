@@ -5,13 +5,13 @@
 
 #include "LOICollectionA/frontend/ir/opt/analysis/ControlFlowGraph.h"
 
-#include "common/frontend/MirTestSupport.h"
+#include "common/frontend/ChunkTestSupport.h"
 
 using namespace LOICollection::frontend::ir;
 using namespace LOICollection::frontend::ir::opt;
 
 TEST(ControlFlowGraphTest, CountdownLoopSplitsIntoFiveBlocks) {
-    auto chunk = LOICollection::tests::mir::makeCountdownLoopChunk();
+    auto chunk = LOICollection::tests::lir::makeCountdownLoopChunk();
     ControlFlowGraph cfg{ chunk.code };
 
     ASSERT_EQ(cfg.size(), 5);
@@ -29,7 +29,7 @@ TEST(ControlFlowGraphTest, CountdownLoopSplitsIntoFiveBlocks) {
 }
 
 TEST(ControlFlowGraphTest, CountdownLoopLinksBranchesAndBackEdge) {
-    auto chunk = LOICollection::tests::mir::makeCountdownLoopChunk();
+    auto chunk = LOICollection::tests::lir::makeCountdownLoopChunk();
     ControlFlowGraph cfg{ chunk.code };
 
     EXPECT_EQ(cfg.blocks()[0].successors, std::vector<int>({ 1 }));
@@ -49,7 +49,7 @@ TEST(ControlFlowGraphTest, CountdownLoopLinksBranchesAndBackEdge) {
 }
 
 TEST(ControlFlowGraphTest, BlockOfMapsEveryInstructionIndex) {
-    auto chunk = LOICollection::tests::mir::makeCountdownLoopChunk();
+    auto chunk = LOICollection::tests::lir::makeCountdownLoopChunk();
     ControlFlowGraph cfg{ chunk.code };
 
     EXPECT_EQ(cfg.blockOf(0), 0);
@@ -63,7 +63,7 @@ TEST(ControlFlowGraphTest, BlockOfMapsEveryInstructionIndex) {
 }
 
 TEST(ControlFlowGraphTest, BlockOfRejectsOutOfRangeIndices) {
-    auto chunk = LOICollection::tests::mir::makeCountdownLoopChunk();
+    auto chunk = LOICollection::tests::lir::makeCountdownLoopChunk();
     ControlFlowGraph cfg{ chunk.code };
 
     EXPECT_EQ(cfg.blockOf(-1), -1);
@@ -72,7 +72,7 @@ TEST(ControlFlowGraphTest, BlockOfRejectsOutOfRangeIndices) {
 }
 
 TEST(ControlFlowGraphTest, StraightLineCodeIsOneBlockPlusTrailingEmptyBlock) {
-    auto chunk = LOICollection::tests::mir::makeStraightLineChunk();
+    auto chunk = LOICollection::tests::lir::makeStraightLineChunk();
     ControlFlowGraph cfg{ chunk.code };
 
     ASSERT_EQ(cfg.size(), 2);
@@ -94,7 +94,7 @@ TEST(ControlFlowGraphTest, StraightLineCodeIsOneBlockPlusTrailingEmptyBlock) {
 }
 
 TEST(ControlFlowGraphTest, ConditionalJumpLinksTargetAndFallthrough) {
-    auto chunk = LOICollection::tests::mir::makeConditionalFallthroughChunk();
+    auto chunk = LOICollection::tests::lir::makeConditionalFallthroughChunk();
     ControlFlowGraph cfg{ chunk.code };
 
     ASSERT_EQ(cfg.size(), 3);
@@ -109,9 +109,9 @@ TEST(ControlFlowGraphTest, ConditionalJumpLinksTargetAndFallthrough) {
 }
 
 TEST(ControlFlowGraphTest, CodeWithoutTerminatorOrJumpIsOneBlock) {
-    std::vector<MirInstr> code(2);
-    code[0].op = MirOp::LOAD_CONST;
-    code[1].op = MirOp::LOAD_CONST;
+    std::vector<Instr> code(2);
+    code[0].op = Op::LOAD_CONST;
+    code[1].op = Op::LOAD_CONST;
 
     ControlFlowGraph cfg{ code };
 
@@ -124,7 +124,7 @@ TEST(ControlFlowGraphTest, CodeWithoutTerminatorOrJumpIsOneBlock) {
 }
 
 TEST(ControlFlowGraphTest, EmptyCodeProducesOneEmptyBlock) {
-    const std::vector<MirInstr> code;
+    const std::vector<Instr> code;
     ControlFlowGraph cfg{ code };
 
     ASSERT_EQ(cfg.size(), 1);
@@ -135,7 +135,7 @@ TEST(ControlFlowGraphTest, EmptyCodeProducesOneEmptyBlock) {
 }
 
 TEST(ControlFlowGraphTest, UnconditionalJumpHasNoFallthroughSuccessor) {
-    auto chunk = LOICollection::tests::mir::makeUnconditionalJumpChunk();
+    auto chunk = LOICollection::tests::lir::makeUnconditionalJumpChunk();
     ControlFlowGraph cfg{ chunk.code };
 
     ASSERT_EQ(cfg.size(), 4);
@@ -150,7 +150,7 @@ TEST(ControlFlowGraphTest, UnconditionalJumpHasNoFallthroughSuccessor) {
 }
 
 TEST(ControlFlowGraphTest, SelfJumpDoesNotCreateSelfEdge) {
-    auto chunk = LOICollection::tests::mir::makeSelfJumpChunk();
+    auto chunk = LOICollection::tests::lir::makeSelfJumpChunk();
     ControlFlowGraph cfg{ chunk.code };
 
     ASSERT_EQ(cfg.size(), 3);
@@ -162,7 +162,7 @@ TEST(ControlFlowGraphTest, SelfJumpDoesNotCreateSelfEdge) {
 }
 
 TEST(ControlFlowGraphTest, PredecessorListsMirrorSuccessors) {
-    auto chunk = LOICollection::tests::mir::makeNestedLoopChunk();
+    auto chunk = LOICollection::tests::lir::makeNestedLoopChunk();
     ControlFlowGraph cfg{ chunk.code };
 
     for (int block = 0; block < cfg.size(); ++block) {

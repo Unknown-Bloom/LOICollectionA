@@ -3,7 +3,7 @@
 #include <string>
 
 #include "LOICollectionA/frontend/DiagnosticEngine.h"
-#include "LOICollectionA/frontend/ir/Mir.h"
+#include "LOICollectionA/frontend/ir/Lir.h"
 
 #include "common/frontend/CommonTest.h"
 
@@ -12,7 +12,7 @@ using namespace LOICollection::frontend::ir;
 
 namespace branch_fusion_test_support {
     template <class Visitor>
-    void forEachChunk(const MirChunk& chunk, Visitor&& visit) {
+    void forEachChunk(const Chunk& chunk, Visitor&& visit) {
         visit(chunk);
 
         for (const auto& body : chunk.methodBodies)
@@ -20,9 +20,9 @@ namespace branch_fusion_test_support {
                 forEachChunk(*body, visit);
     }
 
-    bool hasOp(const MirChunk& chunk, MirOp op) {
+    bool hasOp(const Chunk& chunk, Op op) {
         bool found = false;
-        forEachChunk(chunk, [&found, op](const MirChunk& current) {
+        forEachChunk(chunk, [&found, op](const Chunk& current) {
             for (const auto& instr : current.code)
                 if (instr.op == op)
                     found = true;
@@ -45,8 +45,8 @@ TEST(BranchFusionTest, FusesLoopConditions) {
     );
     ASSERT_TRUE(chunk) << diagnostics.getErrorMessage();
 
-    EXPECT_TRUE(branch_fusion_test_support::hasOp(*chunk, MirOp::JMP_IF_CMP_FALSE));
-    EXPECT_FALSE(branch_fusion_test_support::hasOp(*chunk, MirOp::CMP_LT));
+    EXPECT_TRUE(branch_fusion_test_support::hasOp(*chunk, Op::JMP_IF_CMP_FALSE));
+    EXPECT_FALSE(branch_fusion_test_support::hasOp(*chunk, Op::CMP_LT));
 }
 
 TEST(BranchFusionTest, KeepsComparisonsThatAreUsedAsValues) {
@@ -62,8 +62,8 @@ TEST(BranchFusionTest, KeepsComparisonsThatAreUsedAsValues) {
     );
     ASSERT_TRUE(chunk) << diagnostics.getErrorMessage();
 
-    EXPECT_TRUE(branch_fusion_test_support::hasOp(*chunk, MirOp::CMP_LT));
-    EXPECT_FALSE(branch_fusion_test_support::hasOp(*chunk, MirOp::JMP_IF_CMP_FALSE));
+    EXPECT_TRUE(branch_fusion_test_support::hasOp(*chunk, Op::CMP_LT));
+    EXPECT_FALSE(branch_fusion_test_support::hasOp(*chunk, Op::JMP_IF_CMP_FALSE));
 }
 
 TEST(BranchFusionTest, KeepsBehavior) {

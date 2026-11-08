@@ -4,7 +4,7 @@
 #include <variant>
 #include <vector>
 
-#include "LOICollectionA/frontend/ir/Mir.h"
+#include "LOICollectionA/frontend/ir/Lir.h"
 
 namespace LOICollection::frontend::ir::opt {
     inline bool isScalarValue(const ValueNode::ValueType& value) {
@@ -17,11 +17,11 @@ namespace LOICollection::frontend::ir::opt {
 
     bool foldPureMath(const std::string& name, const std::vector<ValueNode::ValueType>& args, ValueNode::ValueType& out);
 
-    int addConstant(MirChunk& chunk, const ValueNode::ValueType& value);
+    int addConstant(Chunk& chunk, const ValueNode::ValueType& value);
 
     int emitLoadConst(
-        MirChunk& chunk,
-        std::vector<MirInstr>& out,
+        Chunk& chunk,
+        std::vector<Instr>& out,
         const ValueNode::ValueType& value,
         const SourceLocation& loc = {}
     );

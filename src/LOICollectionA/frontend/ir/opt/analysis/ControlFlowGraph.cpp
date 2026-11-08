@@ -5,7 +5,7 @@
 #include "LOICollectionA/frontend/ir/opt/analysis/ControlFlowGraph.h"
 
 namespace LOICollection::frontend::ir::opt::detail {
-    int jumpTarget(const MirInstr& instr, int at) {
+    int jumpTarget(const Instr& instr, int at) {
         return at + 1 + instr.operand;
     }
 }
@@ -13,7 +13,7 @@ namespace LOICollection::frontend::ir::opt::detail {
 namespace LOICollection::frontend::ir::opt {
     using namespace detail;
 
-    std::vector<int> ControlFlowGraph::leaders(const std::vector<MirInstr>& code) {
+    std::vector<int> ControlFlowGraph::leaders(const std::vector<Instr>& code) {
         const int size = static_cast<int>(code.size());
 
         std::vector<bool> isLeader(size + 1, false);
@@ -41,7 +41,7 @@ namespace LOICollection::frontend::ir::opt {
         return out;
     }
 
-    ControlFlowGraph::ControlFlowGraph(const std::vector<MirInstr>& code) {
+    ControlFlowGraph::ControlFlowGraph(const std::vector<Instr>& code) {
         mBlockOfIndex.assign(code.size() + 1, 0);
 
         const std::vector<int> starts = leaders(code);
@@ -71,7 +71,7 @@ namespace LOICollection::frontend::ir::opt {
         return mBlockOfIndex[index];
     }
 
-    void ControlFlowGraph::link(const std::vector<MirInstr>& code) {
+    void ControlFlowGraph::link(const std::vector<Instr>& code) {
         for (size_t b = 0; b < mBlocks.size(); ++b) {
             Block& block = mBlocks[b];
 
@@ -79,7 +79,7 @@ namespace LOICollection::frontend::ir::opt {
                 continue;
 
             const int last = block.end - 1;
-            const MirInstr& term = code[last];
+            const Instr& term = code[last];
 
             auto addEdge = [&](int target) {
                 const int successor = this->blockOf(target);
@@ -99,7 +99,7 @@ namespace LOICollection::frontend::ir::opt {
                 else
                     addEdge(last + 1);
 
-                if (term.op != MirOp::JMP)
+                if (term.op != Op::JMP)
                     addEdge(last + 1);
             } else if (!isTerminator(term.op)) {
                 addEdge(last + 1);

@@ -36,7 +36,7 @@ namespace LOICollection::frontend::ir::opt {
             if (jumps.isTarget(static_cast<int>(ip)))
                 std::fill(scalar.begin(), scalar.end(), false);
 
-            MirInstr& instr = this->mChunk.code[ip];
+            Instr& instr = this->mChunk.code[ip];
 
             const auto writes = [&scalar](int reg, bool isScalar) {
                 if (reg >= 0 && static_cast<std::size_t>(reg) < scalar.size())
@@ -44,66 +44,66 @@ namespace LOICollection::frontend::ir::opt {
             };
 
             switch (instr.op) {
-                case MirOp::LOAD_CONST: {
+                case Op::LOAD_CONST: {
                     const std::size_t index = static_cast<std::size_t>(instr.operand);
                     writes(instr.dst, instr.operand >= 0
                         && index < this->mChunk.constants.size()
                         && isScalarConstant(this->mChunk.constants[index]));
                 } break;
-                case MirOp::MOVE:
+                case Op::MOVE:
                     writes(instr.dst, reads(instr.src1));
                     break;
-                case MirOp::LOAD_SLOT:
+                case Op::LOAD_SLOT:
                     writes(instr.dst, reads(instr.operand));
                     break;
-                case MirOp::STORE_SLOT:
+                case Op::STORE_SLOT:
                     writes(instr.operand, reads(instr.src1));
                     break;
-                case MirOp::LOAD_VAR:
-                case MirOp::LOAD_FIELD:
-                case MirOp::LOAD_FIELD_SLOT:
-                case MirOp::LOAD_INDEX:
-                case MirOp::LOAD_THIS:
-                case MirOp::UNWRAP:
+                case Op::LOAD_VAR:
+                case Op::LOAD_FIELD:
+                case Op::LOAD_FIELD_SLOT:
+                case Op::LOAD_INDEX:
+                case Op::LOAD_THIS:
+                case Op::UNWRAP:
                     writes(instr.dst, false);
                     break;
-                case MirOp::NEW:
-                case MirOp::NEW_NATIVE:
-                case MirOp::CALL:
-                case MirOp::CALL_MACRO:
-                case MirOp::CALL_METHOD:
-                case MirOp::CALL_METHOD_VIRTUAL:
-                case MirOp::CALL_METHOD_BY_NAME:
-                case MirOp::CALL_FUNC:
-                case MirOp::CALL_NATIVE_METHOD:
-                case MirOp::CALL_LAMBDA:
-                case MirOp::CALL_SUPER_CTOR:
+                case Op::NEW:
+                case Op::NEW_NATIVE:
+                case Op::CALL:
+                case Op::CALL_MACRO:
+                case Op::CALL_METHOD:
+                case Op::CALL_METHOD_VIRTUAL:
+                case Op::CALL_METHOD_BY_NAME:
+                case Op::CALL_FUNC:
+                case Op::CALL_NATIVE_METHOD:
+                case Op::CALL_LAMBDA:
+                case Op::CALL_SUPER_CTOR:
                     writes(instr.dst, false);
                     break;
-                case MirOp::ADD:
-                case MirOp::SUB:
-                case MirOp::MUL:
-                case MirOp::DIV:
-                case MirOp::MOD:
-                case MirOp::POW:
-                case MirOp::CMP_EQ:
-                case MirOp::CMP_NE:
-                case MirOp::CMP_GT:
-                case MirOp::CMP_LT:
-                case MirOp::CMP_GE:
-                case MirOp::CMP_LE:
-                case MirOp::LOGIC_AND:
-                case MirOp::LOGIC_OR:
-                case MirOp::NEG:
-                case MirOp::NOT:
-                case MirOp::TYPE_OF:
-                case MirOp::HAS_VALUE:
-                case MirOp::IS_NONE:
-                case MirOp::LOAD_LEN:
-                case MirOp::INSTANCEOF:
+                case Op::ADD:
+                case Op::SUB:
+                case Op::MUL:
+                case Op::DIV:
+                case Op::MOD:
+                case Op::POW:
+                case Op::CMP_EQ:
+                case Op::CMP_NE:
+                case Op::CMP_GT:
+                case Op::CMP_LT:
+                case Op::CMP_GE:
+                case Op::CMP_LE:
+                case Op::LOGIC_AND:
+                case Op::LOGIC_OR:
+                case Op::NEG:
+                case Op::NOT:
+                case Op::TYPE_OF:
+                case Op::HAS_VALUE:
+                case Op::IS_NONE:
+                case Op::LOAD_LEN:
+                case Op::INSTANCEOF:
                     writes(instr.dst, true);
                     break;
-                case MirOp::MAKE_ENUM:
+                case Op::MAKE_ENUM:
                     
                     
                     reads(instr.src1);
@@ -111,30 +111,30 @@ namespace LOICollection::frontend::ir::opt {
                     reads(instr.src3);
                     writes(instr.dst, false);
                     break;
-                case MirOp::TAG_OF:
+                case Op::TAG_OF:
                     writes(instr.dst, true);
                     break;
-                case MirOp::LOAD_ENUM_PAYLOAD:
+                case Op::LOAD_ENUM_PAYLOAD:
                     writes(instr.dst, false);
                     break;
-                case MirOp::STORE_FIELD:
-                case MirOp::STORE_FIELD_SLOT: {
+                case Op::STORE_FIELD:
+                case Op::STORE_FIELD_SLOT: {
                     if (reads(instr.src2))
-                        instr.imm |= static_cast<int>(MirFlag::ScalarStore);
+                        instr.imm |= static_cast<int>(Flag::ScalarStore);
                     else
                         refStores = true;
                 } break;
-                case MirOp::STORE_INDEX: {
+                case Op::STORE_INDEX: {
                     if (reads(instr.src3))
-                        instr.imm |= static_cast<int>(MirFlag::ScalarStore);
+                        instr.imm |= static_cast<int>(Flag::ScalarStore);
                     else
                         refStores = true;
                 } break;
-                case MirOp::MAKE_LAMBDA:
+                case Op::MAKE_LAMBDA:
                     writes(instr.dst, false);
                     refStores = true;
                     break;
-                case MirOp::MAKE_ARRAY: {
+                case Op::MAKE_ARRAY: {
                     writes(instr.dst, false);
 
                     bool allScalar = instr.operand >= 0 && instr.src1 >= 0;

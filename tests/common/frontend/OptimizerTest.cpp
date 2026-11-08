@@ -10,14 +10,14 @@
 #include "LOICollectionA/frontend/ir/Compiler.h"
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 #include "LOICollectionA/frontend/ir/VM.h"
-#include "LOICollectionA/frontend/ir/Mir.h"
+#include "LOICollectionA/frontend/ir/Lir.h"
 
 using namespace LOICollection::frontend;
 using namespace LOICollection::frontend::ir;
 
 namespace {
     struct CompiledProgram {
-        std::shared_ptr<MirChunk> chunk;
+        std::shared_ptr<Chunk> chunk;
         DiagnosticEngine diagnostics;
         Optimizer::Stats stats;
     };
@@ -35,7 +35,7 @@ namespace {
         }
 
         Compiler compiler(out.diagnostics);
-        auto mir = std::make_shared<MirChunk>(compiler.compile(*ast));
+        auto mir = std::make_shared<Chunk>(compiler.compile(*ast));
 
         Optimizer optimizer;
         optimizer.setEnabledPasses(mask);
@@ -45,14 +45,14 @@ namespace {
         return out;
     }
 
-    bool containsOp(const MirChunk& chunk, MirOp op) {
+    bool containsOp(const Chunk& chunk, Op op) {
         for (const auto& instr : chunk.code)
             if (instr.op == op)
                 return true;
         return false;
     }
 
-    int countOp(const MirChunk& chunk, MirOp op) {
+    int countOp(const Chunk& chunk, Op op) {
         int total = 0;
         for (const auto& instr : chunk.code)
             if (instr.op == op)
@@ -60,21 +60,21 @@ namespace {
         return total;
     }
 
-    int countOpEverywhere(const MirChunk& chunk, MirOp op) {
+    int countOpEverywhere(const Chunk& chunk, Op op) {
         int total = countOp(chunk, op);
         for (const auto& body : chunk.methodBodies)
             total += countOp(*body, op);
         return total;
     }
 
-    bool containsOpMir(const MirChunk& chunk, MirOp op) {
+    bool containsOpMir(const Chunk& chunk, Op op) {
         for (const auto& instr : chunk.code)
             if (instr.op == op)
                 return true;
         return false;
     }
 
-    int countOpMir(const MirChunk& chunk, MirOp op) {
+    int countOpMir(const Chunk& chunk, Op op) {
         int total = 0;
         for (const auto& instr : chunk.code)
             if (instr.op == op)
@@ -89,8 +89,8 @@ TEST(OptimizerTest, ConstantFolding) {
     EXPECT_FALSE(program.diagnostics.hasErrors());
     EXPECT_GE(program.stats.folded, 2u);
 
-    EXPECT_FALSE(containsOp(*program.chunk, MirOp::ADD));
-    EXPECT_FALSE(containsOp(*program.chunk, MirOp::MUL));
+    EXPECT_FALSE(containsOp(*program.chunk, Op::ADD));
+    EXPECT_FALSE(containsOp(*program.chunk, Op::MUL));
 
     VM vm(program.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "7");
@@ -186,7 +186,7 @@ TEST(OptimizerTest, FoldsConstantArrayLiteral) {
     EXPECT_FALSE(program.diagnostics.hasErrors());
     EXPECT_GE(program.stats.folded, 1u);
 
-    EXPECT_FALSE(containsOp(*program.chunk, MirOp::MAKE_ARRAY));
+    EXPECT_FALSE(containsOp(*program.chunk, Op::MAKE_ARRAY));
 
     VM vm(program.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "[1, 2, 3]");
@@ -235,19 +235,19 @@ TEST(OptimizerTest, NestedConstantArrayIsClonedDeeply) {
 }
 
 TEST(OptimizerTest, FoldsTypeIntrospectionOpcodes) {
-    ir::MirChunk chunk;
+    ir::Chunk chunk;
     chunk.slotCount = 6;
     chunk.constants.push_back(42);
     chunk.constants.push_back(std::monostate{});
 
     chunk.code = {
-        { MirOp::LOAD_CONST, 0, 0 },
-        { MirOp::TYPE_OF, 0, 1, 0 },
-        { MirOp::LOAD_CONST, 1, 2 },
-        { MirOp::HAS_VALUE, 0, 3, 2 },
-        { MirOp::LOAD_CONST, 0, 4 },
-        { MirOp::UNWRAP, 0, 5, 4 },
-        { MirOp::HALT, 0 }
+        { Op::LOAD_CONST, 0, 0 },
+        { Op::TYPE_OF, 0, 1, 0 },
+        { Op::LOAD_CONST, 1, 2 },
+        { Op::HAS_VALUE, 0, 3, 2 },
+        { Op::LOAD_CONST, 0, 4 },
+        { Op::UNWRAP, 0, 5, 4 },
+        { Op::HALT, 0 }
     };
 
     Optimizer optimizer;
@@ -255,36 +255,36 @@ TEST(OptimizerTest, FoldsTypeIntrospectionOpcodes) {
 
     EXPECT_GE(stats.folded, 3u);
 
-    EXPECT_FALSE(containsOpMir(chunk, MirOp::TYPE_OF));
-    EXPECT_FALSE(containsOpMir(chunk, MirOp::HAS_VALUE));
-    EXPECT_FALSE(containsOpMir(chunk, MirOp::UNWRAP));
+    EXPECT_FALSE(containsOpMir(chunk, Op::TYPE_OF));
+    EXPECT_FALSE(containsOpMir(chunk, Op::HAS_VALUE));
+    EXPECT_FALSE(containsOpMir(chunk, Op::UNWRAP));
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(std::move(chunk)), {})), "42");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<Chunk>(std::move(chunk)), {})), "42");
     EXPECT_FALSE(diag.hasErrors());
 }
 
 TEST(OptimizerTest, DoesNotFoldUnwrapOfEmptyOptional) {
-    ir::MirChunk chunk;
+    ir::Chunk chunk;
     chunk.slotCount = 2;
     chunk.constants.push_back(std::monostate{});
 
     chunk.code = {
-        { MirOp::LOAD_CONST, 0, 0 },
-        { MirOp::UNWRAP, 0, 1, 0 },
-        { MirOp::HALT, 0 }
+        { Op::LOAD_CONST, 0, 0 },
+        { Op::UNWRAP, 0, 1, 0 },
+        { Op::HALT, 0 }
     };
 
     Optimizer optimizer;
     auto stats = optimizer.optimize(chunk);
 
     EXPECT_EQ(stats.folded, 0u);
-    EXPECT_TRUE(containsOpMir(chunk, MirOp::UNWRAP));
+    EXPECT_TRUE(containsOpMir(chunk, Op::UNWRAP));
 
     DiagnosticEngine diag;
     VM vm(diag);
-    [[maybe_unused]] auto result = vm.run(std::make_shared<MirChunk>(std::move(chunk)), {});
+    [[maybe_unused]] auto result = vm.run(std::make_shared<Chunk>(std::move(chunk)), {});
     EXPECT_TRUE(diag.hasErrors());
     EXPECT_NE(diag.getErrorMessage().find("Optional value is empty"), std::string::npos);
 }
@@ -353,8 +353,8 @@ TEST(OptimizerTest, PropagatesStoredScalarIntoArithmetic) {
     EXPECT_FALSE(program.diagnostics.hasErrors());
     EXPECT_GE(program.stats.folded, 2u);
 
-    EXPECT_FALSE(containsOp(*program.chunk, MirOp::LOAD_VAR));
-    EXPECT_FALSE(containsOp(*program.chunk, MirOp::ADD));
+    EXPECT_FALSE(containsOp(*program.chunk, Op::LOAD_VAR));
+    EXPECT_FALSE(containsOp(*program.chunk, Op::ADD));
 
     VM vm(program.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "4");
@@ -366,7 +366,7 @@ TEST(OptimizerTest, PropagatesStoredStringConstants) {
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
     EXPECT_GE(program.stats.folded, 2u);
-    EXPECT_FALSE(containsOp(*program.chunk, MirOp::LOAD_VAR));
+    EXPECT_FALSE(containsOp(*program.chunk, Op::LOAD_VAR));
 
     VM vm(program.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "abc");
@@ -377,7 +377,7 @@ TEST(OptimizerTest, PropagationTracksLatestAssignment) {
     auto program = compileAndOptimize("let x = 1; x = 2; x");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
-    EXPECT_FALSE(containsOp(*program.chunk, MirOp::LOAD_VAR));
+    EXPECT_FALSE(containsOp(*program.chunk, Op::LOAD_VAR));
 
     VM vm(program.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "2");
@@ -388,7 +388,7 @@ TEST(OptimizerTest, PropagationDropsSlotForNonScalarValues) {
     auto program = compileAndOptimize("let x = [1, 2]; x = [3, 4]; x");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
-    EXPECT_TRUE(containsOp(*program.chunk, MirOp::LOAD_VAR));
+    EXPECT_TRUE(containsOp(*program.chunk, Op::LOAD_VAR));
 
     VM vm(program.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "[3, 4]");
@@ -415,72 +415,72 @@ TEST(OptimizerTest, PropagationInvalidatedAtBranchMerge) {
 
     bool bodyKeepsLoad = false;
     for (const auto& body : untaken.chunk->methodBodies)
-        if (containsOp(*body, MirOp::LOAD_SLOT))
+        if (containsOp(*body, Op::LOAD_SLOT))
             bodyKeepsLoad = true;
 
     EXPECT_TRUE(bodyKeepsLoad);
 }
 
 TEST(OptimizerTest, PropagationInvalidatedByCalls) {
-    ir::MirChunk chunk;
+    ir::Chunk chunk;
     chunk.slotCount = 3;
     chunk.constants.push_back(3);
     chunk.constants.push_back(std::string("x"));
     chunk.constants.push_back(std::string("hook"));
 
     chunk.code = {
-        { MirOp::LOAD_CONST, 0, 0 },
-        { MirOp::STORE_VAR, 1, 1, 0 },
-        { MirOp::CALL, 2, 2, 2 },
-        { MirOp::LOAD_VAR, 1, 3, 1 },
-        { MirOp::HALT, 0 }
+        { Op::LOAD_CONST, 0, 0 },
+        { Op::STORE_VAR, 1, 1, 0 },
+        { Op::CALL, 2, 2, 2 },
+        { Op::LOAD_VAR, 1, 3, 1 },
+        { Op::HALT, 0 }
     };
 
     Optimizer optimizer;
     optimizer.optimize(chunk);
 
-    EXPECT_TRUE(containsOpMir(chunk, MirOp::LOAD_VAR));
+    EXPECT_TRUE(containsOpMir(chunk, Op::LOAD_VAR));
     EXPECT_EQ(chunk.code.size(), 5u);
 }
 
 namespace {
-    std::size_t optimizeInvalidationProbe(MirOp op) {
-        ir::MirChunk chunk;
+    std::size_t optimizeInvalidationProbe(Op op) {
+        ir::Chunk chunk;
         chunk.slotCount = 3;
         chunk.constants.push_back(3);
         chunk.constants.push_back(std::string("x"));
         chunk.constants.push_back(std::string("hook"));
 
         chunk.code = {
-            { MirOp::LOAD_CONST, 0, 0 },
-            { MirOp::STORE_VAR, 1, 1, 0 },
+            { Op::LOAD_CONST, 0, 0 },
+            { Op::STORE_VAR, 1, 1, 0 },
             { op, 2, 2, 2 },
-            { MirOp::LOAD_VAR, 1, 3, 1 },
-            { MirOp::HALT, 0 }
+            { Op::LOAD_VAR, 1, 3, 1 },
+            { Op::HALT, 0 }
         };
 
         Optimizer optimizer;
         optimizer.optimize(chunk);
 
-        EXPECT_TRUE(containsOpMir(chunk, MirOp::LOAD_VAR));
+        EXPECT_TRUE(containsOpMir(chunk, Op::LOAD_VAR));
 
         return chunk.code.size();
     }
 }
 
 TEST(OptimizerTest, PropagationInvalidatedByByNameMethodCalls) {
-    EXPECT_EQ(optimizeInvalidationProbe(MirOp::CALL_METHOD_BY_NAME), 5u);
+    EXPECT_EQ(optimizeInvalidationProbe(Op::CALL_METHOD_BY_NAME), 5u);
 }
 
 TEST(OptimizerTest, PropagationInvalidatedByNativeMethodCalls) {
-    EXPECT_EQ(optimizeInvalidationProbe(MirOp::CALL_NATIVE_METHOD), 5u);
+    EXPECT_EQ(optimizeInvalidationProbe(Op::CALL_NATIVE_METHOD), 5u);
 }
 
 TEST(OptimizerTest, NegatedWhileConditionPreservesNot) {
     auto program = compileAndOptimize("let i = 0; while (!(i >= 2)) [ i = i + 1; ]; i");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
-    EXPECT_TRUE(containsOp(*program.chunk, MirOp::NOT));
+    EXPECT_TRUE(containsOp(*program.chunk, Op::NOT));
 
     VM vm(program.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "2");
@@ -494,10 +494,10 @@ TEST(OptimizerTest, FixedPointExposesPropagationAfterBranchRemoval) {
     EXPECT_GE(program.stats.folded, 3u);
     EXPECT_GE(program.stats.removed, 3u);
 
-    EXPECT_FALSE(containsOp(*program.chunk, MirOp::LOAD_VAR));
-    EXPECT_FALSE(containsOp(*program.chunk, MirOp::CMP_EQ));
-    EXPECT_FALSE(containsOp(*program.chunk, MirOp::JMP));
-    EXPECT_FALSE(containsOp(*program.chunk, MirOp::JMP_IF_FALSE));
+    EXPECT_FALSE(containsOp(*program.chunk, Op::LOAD_VAR));
+    EXPECT_FALSE(containsOp(*program.chunk, Op::CMP_EQ));
+    EXPECT_FALSE(containsOp(*program.chunk, Op::JMP));
+    EXPECT_FALSE(containsOp(*program.chunk, Op::JMP_IF_FALSE));
 
     VM vm(program.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "10");
@@ -505,35 +505,35 @@ TEST(OptimizerTest, FixedPointExposesPropagationAfterBranchRemoval) {
 }
 
 TEST(OptimizerTest, EliminatesAlgebraicIdentities) {
-    ir::MirChunk chunk;
+    ir::Chunk chunk;
     chunk.slotCount = 5;
     chunk.constants.push_back(42);
     chunk.constants.push_back(0);
     chunk.constants.push_back(1);
 
     chunk.code = {
-        { MirOp::LOAD_CONST, 0, 0 },
-        { MirOp::LOAD_CONST, 1, 1 },
-        { MirOp::ADD, 0, 2, 0, 1 },
-        { MirOp::LOAD_CONST, 2, 3 },
-        { MirOp::MUL, 0, 4, 2, 3 },
-        { MirOp::HALT, 0 }
+        { Op::LOAD_CONST, 0, 0 },
+        { Op::LOAD_CONST, 1, 1 },
+        { Op::ADD, 0, 2, 0, 1 },
+        { Op::LOAD_CONST, 2, 3 },
+        { Op::MUL, 0, 4, 2, 3 },
+        { Op::HALT, 0 }
     };
 
     Optimizer optimizer;
     auto stats = optimizer.optimize(chunk);
 
     EXPECT_EQ(stats.folded, 2u);
-    EXPECT_FALSE(containsOpMir(chunk, MirOp::ADD));
+    EXPECT_FALSE(containsOpMir(chunk, Op::ADD));
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(std::move(chunk)), {})), "42");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<Chunk>(std::move(chunk)), {})), "42");
     EXPECT_FALSE(diag.hasErrors());
 }
 
 TEST(OptimizerTest, EliminatesFloatMulDivPowIdentities) {
-    ir::MirChunk chunk;
+    ir::Chunk chunk;
     chunk.slotCount = 7;
     chunk.constants.push_back(2.5f);
     chunk.constants.push_back(1);
@@ -541,14 +541,14 @@ TEST(OptimizerTest, EliminatesFloatMulDivPowIdentities) {
     chunk.constants.push_back(1);
 
     chunk.code = {
-        { MirOp::LOAD_CONST, 0, 0 },
-        { MirOp::LOAD_CONST, 1, 1 },
-        { MirOp::MUL, 0, 2, 0, 1 },
-        { MirOp::LOAD_CONST, 2, 3 },
-        { MirOp::DIV, 0, 4, 2, 3 },
-        { MirOp::LOAD_CONST, 3, 5 },
-        { MirOp::POW, 0, 6, 4, 5 },
-        { MirOp::HALT, 0 }
+        { Op::LOAD_CONST, 0, 0 },
+        { Op::LOAD_CONST, 1, 1 },
+        { Op::MUL, 0, 2, 0, 1 },
+        { Op::LOAD_CONST, 2, 3 },
+        { Op::DIV, 0, 4, 2, 3 },
+        { Op::LOAD_CONST, 3, 5 },
+        { Op::POW, 0, 6, 4, 5 },
+        { Op::HALT, 0 }
     };
 
     Optimizer optimizer;
@@ -558,32 +558,32 @@ TEST(OptimizerTest, EliminatesFloatMulDivPowIdentities) {
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(std::move(chunk)), {})), "2.5");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<Chunk>(std::move(chunk)), {})), "2.5");
     EXPECT_FALSE(diag.hasErrors());
 }
 
 TEST(OptimizerTest, FloatAddZeroIsNotIdentityFolded) {
-    ir::MirChunk chunk;
+    ir::Chunk chunk;
     chunk.slotCount = 3;
     chunk.constants.push_back(-0.0f);
     chunk.constants.push_back(0.0f);
 
     chunk.code = {
-        { MirOp::LOAD_CONST, 0, 0 },
-        { MirOp::LOAD_CONST, 1, 1 },
-        { MirOp::ADD, 0, 2, 0, 1 },
-        { MirOp::HALT, 0 }
+        { Op::LOAD_CONST, 0, 0 },
+        { Op::LOAD_CONST, 1, 1 },
+        { Op::ADD, 0, 2, 0, 1 },
+        { Op::HALT, 0 }
     };
 
     Optimizer optimizer;
     auto stats = optimizer.optimize(chunk);
 
     EXPECT_GE(stats.folded, 1u);
-    EXPECT_FALSE(containsOpMir(chunk, MirOp::ADD));
+    EXPECT_FALSE(containsOpMir(chunk, Op::ADD));
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(std::move(chunk)), {})), "-0");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<Chunk>(std::move(chunk)), {})), "-0");
     EXPECT_FALSE(diag.hasErrors());
 }
 
@@ -592,8 +592,8 @@ TEST(OptimizerTest, PropagatesSignedZeroCorrectly) {
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
     EXPECT_GE(program.stats.folded, 1u);
-    EXPECT_FALSE(containsOp(*program.chunk, MirOp::NEG));
-    EXPECT_FALSE(containsOp(*program.chunk, MirOp::LOAD_VAR));
+    EXPECT_FALSE(containsOp(*program.chunk, Op::NEG));
+    EXPECT_FALSE(containsOp(*program.chunk, Op::LOAD_VAR));
 
     VM vm(program.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "-0");
@@ -604,8 +604,8 @@ TEST(OptimizerTest, FoldsFloatAddZeroWithCorrectSignedZero) {
     auto program = compileAndOptimize("let x = -0.0; let y = x + 0.0; y");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
-    EXPECT_FALSE(containsOp(*program.chunk, MirOp::ADD));
-    EXPECT_FALSE(containsOp(*program.chunk, MirOp::LOAD_VAR));
+    EXPECT_FALSE(containsOp(*program.chunk, Op::ADD));
+    EXPECT_FALSE(containsOp(*program.chunk, Op::LOAD_VAR));
 
     VM vm(program.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "0");
@@ -613,47 +613,47 @@ TEST(OptimizerTest, FoldsFloatAddZeroWithCorrectSignedZero) {
 }
 
 TEST(OptimizerTest, FoldsIsNoneOpcode) {
-    ir::MirChunk chunk;
+    ir::Chunk chunk;
     chunk.slotCount = 4;
     chunk.constants.push_back(std::monostate{});
     chunk.constants.push_back(42);
 
     chunk.code = {
-        { MirOp::LOAD_CONST, 0, 0 },
-        { MirOp::IS_NONE, 0, 1, 0 },
-        { MirOp::LOAD_CONST, 1, 2 },
-        { MirOp::IS_NONE, 0, 3, 2 },
-        { MirOp::HALT, 0 }
+        { Op::LOAD_CONST, 0, 0 },
+        { Op::IS_NONE, 0, 1, 0 },
+        { Op::LOAD_CONST, 1, 2 },
+        { Op::IS_NONE, 0, 3, 2 },
+        { Op::HALT, 0 }
     };
 
     Optimizer optimizer;
     auto stats = optimizer.optimize(chunk);
 
     EXPECT_EQ(stats.folded, 2u);
-    EXPECT_FALSE(containsOpMir(chunk, MirOp::IS_NONE));
+    EXPECT_FALSE(containsOpMir(chunk, Op::IS_NONE));
 }
 
 TEST(OptimizerTest, ReusesScalarConstantsWhenFolding) {
-    ir::MirChunk chunk;
+    ir::Chunk chunk;
     chunk.slotCount = 3;
     chunk.constants.push_back(5);
     chunk.constants.push_back(0);
 
     chunk.code = {
-        { MirOp::LOAD_CONST, 0, 0 },
-        { MirOp::LOAD_CONST, 1, 1 },
-        { MirOp::ADD, 0, 2, 0, 1 },
-        { MirOp::HALT, 0 }
+        { Op::LOAD_CONST, 0, 0 },
+        { Op::LOAD_CONST, 1, 1 },
+        { Op::ADD, 0, 2, 0, 1 },
+        { Op::HALT, 0 }
     };
 
     Optimizer optimizer;
     optimizer.optimize(chunk);
 
-    EXPECT_FALSE(containsOpMir(chunk, MirOp::ADD));
+    EXPECT_FALSE(containsOpMir(chunk, Op::ADD));
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(std::move(chunk)), {})), "5");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<Chunk>(std::move(chunk)), {})), "5");
     EXPECT_FALSE(diag.hasErrors());
 }
 
@@ -676,7 +676,7 @@ TEST(OptimizerTest, CoalesceKeepsDuplicatedOperand) {
 }
 
 namespace {
-    std::string runChunk(const std::shared_ptr<MirChunk>& chunk, DiagnosticEngine& diag) {
+    std::string runChunk(const std::shared_ptr<Chunk>& chunk, DiagnosticEngine& diag) {
         VM vm(diag);
         return VM::valueToString(vm.run(chunk, {}));
     }
@@ -690,8 +690,8 @@ TEST(OptimizerTest, PassMaskTurnsOffConstantFolding) {
 
     EXPECT_GT(full.stats.folded, 0u);
     EXPECT_EQ(noFold.stats.folded, 0u);
-    EXPECT_FALSE(containsOp(*full.chunk, MirOp::ADD));
-    EXPECT_TRUE(containsOp(*noFold.chunk, MirOp::ADD));
+    EXPECT_FALSE(containsOp(*full.chunk, Op::ADD));
+    EXPECT_TRUE(containsOp(*noFold.chunk, Op::ADD));
     EXPECT_GT(noFold.chunk->code.size(), full.chunk->code.size());
 
     EXPECT_FALSE(full.diagnostics.hasErrors());
@@ -729,7 +729,7 @@ TEST(OptimizerTest, RemovesStoreOverwrittenBeforeAnyRead) {
     auto program = compileAndOptimize("let x = 1; x = 2; x");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
-    EXPECT_EQ(countOp(*program.chunk, MirOp::STORE_VAR) + countOp(*program.chunk, MirOp::STORE_SLOT), 1);
+    EXPECT_EQ(countOp(*program.chunk, Op::STORE_VAR) + countOp(*program.chunk, Op::STORE_SLOT), 1);
 
     VM vm(program.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "2");
@@ -737,72 +737,72 @@ TEST(OptimizerTest, RemovesStoreOverwrittenBeforeAnyRead) {
 }
 
 TEST(OptimizerTest, RemovesDeadSlotStoreInStraightLineCode) {
-    ir::MirChunk chunk;
+    ir::Chunk chunk;
     chunk.slotCount = 4;
     chunk.constants.push_back(1);
     chunk.constants.push_back(2);
 
     chunk.code = {
-        { MirOp::LOAD_CONST, 0, 1 },
-        { MirOp::STORE_SLOT, 0, -1, 1 },
-        { MirOp::LOAD_CONST, 1, 2 },
-        { MirOp::STORE_SLOT, 0, -1, 2 },
-        { MirOp::LOAD_SLOT, 0, 3, -1 },
-        { MirOp::HALT, 0 }
+        { Op::LOAD_CONST, 0, 1 },
+        { Op::STORE_SLOT, 0, -1, 1 },
+        { Op::LOAD_CONST, 1, 2 },
+        { Op::STORE_SLOT, 0, -1, 2 },
+        { Op::LOAD_SLOT, 0, 3, -1 },
+        { Op::HALT, 0 }
     };
 
     Optimizer optimizer;
     optimizer.optimize(chunk);
 
-    EXPECT_EQ(countOpMir(chunk, MirOp::STORE_SLOT), 1);
+    EXPECT_EQ(countOpMir(chunk, Op::STORE_SLOT), 1);
 
     DiagnosticEngine diag;
     VM vm(diag);
-    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<MirChunk>(std::move(chunk)), {})), "2");
+    EXPECT_EQ(VM::valueToString(vm.run(std::make_shared<Chunk>(std::move(chunk)), {})), "2");
     EXPECT_FALSE(diag.hasErrors());
 }
 
 TEST(OptimizerTest, KeepsSlotStoreThatAReadObserves) {
-    ir::MirChunk chunk;
+    ir::Chunk chunk;
     chunk.slotCount = 2;
 
     chunk.code = {
-        { MirOp::LOAD_SLOT, 1, 0, 1 },
-        { MirOp::STORE_SLOT, 0, -1, 0 },
-        { MirOp::LOAD_SLOT, 0, 1, 0 },
-        { MirOp::LOAD_SLOT, 1, 2, 1 },
-        { MirOp::STORE_SLOT, 0, -1, 1 },
-        { MirOp::LOAD_SLOT, 0, 3, 0 },
-        { MirOp::HALT, 0 }
+        { Op::LOAD_SLOT, 1, 0, 1 },
+        { Op::STORE_SLOT, 0, -1, 0 },
+        { Op::LOAD_SLOT, 0, 1, 0 },
+        { Op::LOAD_SLOT, 1, 2, 1 },
+        { Op::STORE_SLOT, 0, -1, 1 },
+        { Op::LOAD_SLOT, 0, 3, 0 },
+        { Op::HALT, 0 }
     };
 
     Optimizer optimizer;
     optimizer.optimize(chunk);
 
-    EXPECT_EQ(countOpMir(chunk, MirOp::STORE_SLOT), 2);
+    EXPECT_EQ(countOpMir(chunk, Op::STORE_SLOT), 2);
 }
 
 TEST(OptimizerTest, KeepsStoreThatPrecedesACall) {
-    ir::MirChunk chunk;
+    ir::Chunk chunk;
     chunk.slotCount = 1;
     chunk.constants.push_back(1);
     chunk.constants.push_back(2);
     chunk.constants.push_back(std::string("hook"));
 
     chunk.code = {
-        { MirOp::LOAD_CONST, 0, 0 },
-        { MirOp::STORE_SLOT, 0, -1, 0 },
-        { MirOp::CALL, 2, 1, 2 },
-        { MirOp::LOAD_CONST, 1, 1 },
-        { MirOp::STORE_SLOT, 0, -1, 1 },
-        { MirOp::LOAD_SLOT, 0, 2, 0 },
-        { MirOp::HALT, 0 }
+        { Op::LOAD_CONST, 0, 0 },
+        { Op::STORE_SLOT, 0, -1, 0 },
+        { Op::CALL, 2, 1, 2 },
+        { Op::LOAD_CONST, 1, 1 },
+        { Op::STORE_SLOT, 0, -1, 1 },
+        { Op::LOAD_SLOT, 0, 2, 0 },
+        { Op::HALT, 0 }
     };
 
     Optimizer optimizer;
     optimizer.optimize(chunk);
 
-    EXPECT_EQ(countOpMir(chunk, MirOp::STORE_SLOT), 2);
+    EXPECT_EQ(countOpMir(chunk, Op::STORE_SLOT), 2);
 }
 
 TEST(OptimizerTest, PassMaskTurnsOffDeadStoreElimination) {
@@ -814,8 +814,8 @@ TEST(OptimizerTest, PassMaskTurnsOffDeadStoreElimination) {
         static_cast<unsigned>(Optimizer::Pass::ConstantFold) | static_cast<unsigned>(Optimizer::Pass::DeadCode));
 
     EXPECT_LT(
-        countOp(*full.chunk, MirOp::STORE_VAR) + countOp(*full.chunk, MirOp::STORE_SLOT),
-        countOp(*noDeadStore.chunk, MirOp::STORE_VAR) + countOp(*noDeadStore.chunk, MirOp::STORE_SLOT));
+        countOp(*full.chunk, Op::STORE_VAR) + countOp(*full.chunk, Op::STORE_SLOT),
+        countOp(*noDeadStore.chunk, Op::STORE_VAR) + countOp(*noDeadStore.chunk, Op::STORE_SLOT));
 
     EXPECT_FALSE(full.diagnostics.hasErrors());
     EXPECT_FALSE(noDeadStore.diagnostics.hasErrors());
@@ -826,8 +826,8 @@ TEST(OptimizerTest, RejectedFoldKeepsItsOperandsOnTheStack) {
     auto program = compileAndOptimize("10.0 % 3.0");
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
-    EXPECT_EQ(countOp(*program.chunk, MirOp::MOD), 1);
-    EXPECT_GE(countOp(*program.chunk, MirOp::LOAD_CONST), 2);
+    EXPECT_EQ(countOp(*program.chunk, Op::MOD), 1);
+    EXPECT_GE(countOp(*program.chunk, Op::LOAD_CONST), 2);
 
     VM vm(program.diagnostics);
     [[maybe_unused]] auto result = vm.run(program.chunk, {});
@@ -849,8 +849,8 @@ TEST(OptimizerTest, EliminatesRepeatedSubexpression) {
     EXPECT_FALSE(withCse.diagnostics.hasErrors());
     EXPECT_FALSE(withoutCse.diagnostics.hasErrors());
 
-    EXPECT_LT(countOpEverywhere(*withCse.chunk, MirOp::ADD),
-        countOpEverywhere(*withoutCse.chunk, MirOp::ADD));
+    EXPECT_LT(countOpEverywhere(*withCse.chunk, Op::ADD),
+        countOpEverywhere(*withoutCse.chunk, Op::ADD));
 
     VM vm(withCse.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(withCse.chunk, {})), "30");
@@ -965,9 +965,9 @@ TEST(OptimizerTest, EliminatesDeadPureArithmeticValue) {
     EXPECT_FALSE(withDeadValue.diagnostics.hasErrors());
     EXPECT_FALSE(withoutDeadValue.diagnostics.hasErrors());
 
-    EXPECT_EQ(countOpEverywhere(*withDeadValue.chunk, MirOp::MUL), 0);
+    EXPECT_EQ(countOpEverywhere(*withDeadValue.chunk, Op::MUL), 0);
 
-    EXPECT_GT(countOpEverywhere(*withoutDeadValue.chunk, MirOp::MUL), 0);
+    EXPECT_GT(countOpEverywhere(*withoutDeadValue.chunk, Op::MUL), 0);
 
     VM vm(withDeadValue.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(withDeadValue.chunk, {})), "10");
@@ -977,49 +977,49 @@ TEST(OptimizerTest, EliminatesDeadPureArithmeticValue) {
 }
 
 TEST(OptimizerTest, EliminatesDeadArithmeticValueInChunk) {
-    ir::MirChunk chunk;
+    ir::Chunk chunk;
     chunk.slotCount = 4;
     chunk.constants.push_back(7);
     chunk.constants.push_back(3);
 
     chunk.code = {
-        { MirOp::LOAD_SLOT, 0, 1, 0 },
-        { MirOp::LOAD_CONST, 0, 2 },
-        { MirOp::MUL, 0, 3, 1, 2 },
-        { MirOp::LOAD_CONST, 1, 2 },
-        { MirOp::ADD, 0, 4, 3, 2 },
-        { MirOp::LOAD_SLOT, 0, 0, 0 },
-        { MirOp::HALT, 0 }
+        { Op::LOAD_SLOT, 0, 1, 0 },
+        { Op::LOAD_CONST, 0, 2 },
+        { Op::MUL, 0, 3, 1, 2 },
+        { Op::LOAD_CONST, 1, 2 },
+        { Op::ADD, 0, 4, 3, 2 },
+        { Op::LOAD_SLOT, 0, 0, 0 },
+        { Op::HALT, 0 }
     };
 
     Optimizer optimizer;
     optimizer.optimize(chunk);
 
-    EXPECT_FALSE(containsOpMir(chunk, MirOp::MUL));
-    EXPECT_FALSE(containsOpMir(chunk, MirOp::ADD));
-    EXPECT_TRUE(containsOpMir(chunk, MirOp::LOAD_SLOT));
+    EXPECT_FALSE(containsOpMir(chunk, Op::MUL));
+    EXPECT_FALSE(containsOpMir(chunk, Op::ADD));
+    EXPECT_TRUE(containsOpMir(chunk, Op::LOAD_SLOT));
 }
 
 TEST(OptimizerTest, KeepsLiveArithmeticValue) {
-    ir::MirChunk chunk;
+    ir::Chunk chunk;
     chunk.slotCount = 4;
 
     chunk.code = {
-        { MirOp::LOAD_SLOT, 1, 1, 1 },
-        { MirOp::LOAD_SLOT, 2, 2, 2 },
-        { MirOp::MUL, 0, 0, 1, 2 },
-        { MirOp::HALT, 0 }
+        { Op::LOAD_SLOT, 1, 1, 1 },
+        { Op::LOAD_SLOT, 2, 2, 2 },
+        { Op::MUL, 0, 0, 1, 2 },
+        { Op::HALT, 0 }
     };
 
     Optimizer optimizer;
     optimizer.optimize(chunk);
 
-    EXPECT_TRUE(containsOpMir(chunk, MirOp::MUL));
+    EXPECT_TRUE(containsOpMir(chunk, Op::MUL));
 }
 
 TEST(OptimizerTest, PropagatesConstantsAcrossJoinBlocks) {
     const auto makeChunk = [] {
-        auto chunk = std::make_unique<MirChunk>();
+        auto chunk = std::make_unique<Chunk>();
         chunk->slotCount = 4;
         chunk->constants.push_back(true);
         chunk->constants.push_back(std::string("flag"));
@@ -1027,16 +1027,16 @@ TEST(OptimizerTest, PropagatesConstantsAcrossJoinBlocks) {
         chunk->constants.push_back(20);
 
         chunk->code = {
-            { MirOp::LOAD_SLOT, 0, 1 },
-            { MirOp::JMP_IF_FALSE, 3, -1, 1 },
-            { MirOp::LOAD_CONST, 2, 2 },
-            { MirOp::STORE_VAR, 1, -1, 2 },
-            { MirOp::JMP, 2 },
-            { MirOp::LOAD_CONST, 2, 2 },
-            { MirOp::STORE_VAR, 1, -1, 2 },
-            { MirOp::LOAD_VAR, 1, 3 },
-            { MirOp::MOVE, 0, 0, 3 },
-            { MirOp::HALT, 0 },
+            { Op::LOAD_SLOT, 0, 1 },
+            { Op::JMP_IF_FALSE, 3, -1, 1 },
+            { Op::LOAD_CONST, 2, 2 },
+            { Op::STORE_VAR, 1, -1, 2 },
+            { Op::JMP, 2 },
+            { Op::LOAD_CONST, 2, 2 },
+            { Op::STORE_VAR, 1, -1, 2 },
+            { Op::LOAD_VAR, 1, 3 },
+            { Op::MOVE, 0, 0, 3 },
+            { Op::HALT, 0 },
         };
 
         return chunk;
@@ -1046,11 +1046,11 @@ TEST(OptimizerTest, PropagatesConstantsAcrossJoinBlocks) {
     Optimizer on;
     on.optimize(*withPropagation);
 
-    EXPECT_FALSE(containsOpMir(*withPropagation, MirOp::LOAD_VAR));
+    EXPECT_FALSE(containsOpMir(*withPropagation, Op::LOAD_VAR));
 
     DiagnosticEngine diagnostics;
     VM vm(diagnostics);
-    EXPECT_EQ(VM::valueToString(vm.run(std::shared_ptr<MirChunk>(withPropagation.release()), {})), "10");
+    EXPECT_EQ(VM::valueToString(vm.run(std::shared_ptr<Chunk>(withPropagation.release()), {})), "10");
     EXPECT_FALSE(diagnostics.hasErrors());
 
     auto withoutPropagation = makeChunk();
@@ -1058,7 +1058,7 @@ TEST(OptimizerTest, PropagatesConstantsAcrossJoinBlocks) {
     off.setEnabledPasses(Optimizer::allPasses & ~static_cast<unsigned>(Optimizer::Pass::Propagation));
     off.optimize(*withoutPropagation);
 
-    EXPECT_TRUE(containsOpMir(*withoutPropagation, MirOp::LOAD_VAR));
+    EXPECT_TRUE(containsOpMir(*withoutPropagation, Op::LOAD_VAR));
 }
 
 TEST(OptimizerTest, ReducesNumericIdentitiesWithUnknownOperands) {
@@ -1074,8 +1074,8 @@ TEST(OptimizerTest, ReducesNumericIdentitiesWithUnknownOperands) {
     auto program = compileAndOptimize(source, mask);
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
-    EXPECT_EQ(countOpEverywhere(*program.chunk, MirOp::ADD), 0);
-    EXPECT_EQ(countOpEverywhere(*program.chunk, MirOp::MUL), 0);
+    EXPECT_EQ(countOpEverywhere(*program.chunk, Op::ADD), 0);
+    EXPECT_EQ(countOpEverywhere(*program.chunk, Op::MUL), 0);
 
     VM vm(program.diagnostics);
     EXPECT_EQ(VM::valueToString(vm.run(program.chunk, {})), "7");
@@ -1125,7 +1125,7 @@ TEST(OptimizerTest, ConstantsAreInlinedWithoutGlobalStorage) {
     auto program = compileAndOptimize(source, Optimizer::allPasses);
 
     EXPECT_FALSE(program.diagnostics.hasErrors());
-    EXPECT_TRUE(containsOp(*program.chunk, MirOp::LOAD_CONST));
+    EXPECT_TRUE(containsOp(*program.chunk, Op::LOAD_CONST));
     for (const auto& constant : program.chunk->constants) {
         if (!std::holds_alternative<std::string>(constant))
             continue;

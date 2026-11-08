@@ -29,7 +29,7 @@
 
 namespace LOICollection::LOICollectionAPI {
     struct CallbackUtils::Impl {
-        LRUKCache<std::string, frontend::ir::MirChunk> mCache;
+        LRUKCache<std::string, frontend::ir::Chunk> mCache;
 
         std::shared_ptr<ll::io::Logger> logger;
 
@@ -152,7 +152,7 @@ namespace LOICollection::LOICollectionAPI {
             return str;
         }
 
-        auto mir = std::make_shared<frontend::ir::MirChunk>(mCompiler.compile(*mAst));
+        auto mir = std::make_shared<frontend::ir::Chunk>(mCompiler.compile(*mAst));
         if (diagnostics.hasErrors()) {
             this->mImpl->logger->error("CallbackUtils: {}", diagnostics.getErrorMessage());
             return str;
@@ -218,7 +218,7 @@ namespace LOICollection::LOICollectionAPI {
             return str;
         }
 
-        auto mir = std::make_shared<frontend::ir::MirChunk>(mCompiler.compile(*mAst));
+        auto mir = std::make_shared<frontend::ir::Chunk>(mCompiler.compile(*mAst));
         if (diagnostics.hasErrors()) {
             this->mImpl->logger->error("CallbackUtils: {}", diagnostics.getErrorMessage());
             return str;

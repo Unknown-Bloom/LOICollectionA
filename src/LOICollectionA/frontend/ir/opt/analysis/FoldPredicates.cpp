@@ -100,7 +100,7 @@ namespace LOICollection::frontend::ir::opt {
         return false;
     }
 
-    int addConstant(MirChunk& chunk, const ValueNode::ValueType& value) {
+    int addConstant(Chunk& chunk, const ValueNode::ValueType& value) {
         if (isScalarValue(value)) {
             for (size_t i = 0; i < chunk.constants.size(); ++i) {
                 if (sameScalar(chunk.constants[i], value))
@@ -113,12 +113,12 @@ namespace LOICollection::frontend::ir::opt {
     }
 
     int emitLoadConst(
-        MirChunk& chunk,
-        std::vector<MirInstr>& out,
+        Chunk& chunk,
+        std::vector<Instr>& out,
         const ValueNode::ValueType& value,
         const SourceLocation& loc
     ) {
-        out.push_back({ MirOp::LOAD_CONST, addConstant(chunk, value), -1, -1, -1, -1, 0, {}, loc });
+        out.push_back({ Op::LOAD_CONST, addConstant(chunk, value), -1, -1, -1, -1, 0, {}, loc });
         return static_cast<int>(out.size()) - 1;
     }
 }

@@ -20,7 +20,7 @@ namespace LOICollection::frontend::ir::detail {
     }
 
     
-    static void absorbChunkBody(std::string& out, const MirChunk& chunk) {
+    static void absorbChunkBody(std::string& out, const Chunk& chunk) {
         absorbNumber(out, chunk.slotCount);
         absorbNumber(out, chunk.classes.size());
 
@@ -73,12 +73,12 @@ namespace LOICollection::frontend::ir::detail {
     }
 
     
-    void absorbChunk(std::string& out, const MirChunk& root) {
-        std::vector<const MirChunk*> worklist;
+    void absorbChunk(std::string& out, const Chunk& root) {
+        std::vector<const Chunk*> worklist;
         worklist.push_back(&root);
 
         while (!worklist.empty()) {
-            const MirChunk& chunk = *worklist.back();
+            const Chunk& chunk = *worklist.back();
             worklist.pop_back();
 
             absorbChunkBody(out, chunk);
@@ -103,7 +103,7 @@ namespace LOICollection::frontend::ir {
         );
     }
 
-    std::string layoutFingerprint(const MirChunk& chunk) {
+    std::string layoutFingerprint(const Chunk& chunk) {
         std::string shape;
         absorbChunk(shape, chunk);
 

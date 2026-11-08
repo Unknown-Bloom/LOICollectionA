@@ -12,8 +12,8 @@
 
 #include "LOICollectionA/frontend/ir/Abi.h"
 #include "LOICollectionA/frontend/ir/Compiler.h"
-#include "LOICollectionA/frontend/ir/Mir.h"
-#include "LOICollectionA/frontend/ir/MirSerializer.h"
+#include "LOICollectionA/frontend/ir/Lir.h"
+#include "LOICollectionA/frontend/ir/ChunkSerializer.h"
 #include "LOICollectionA/frontend/ir/Optimizer.h"
 #include "LOICollectionA/frontend/ir/VM.h"
 
@@ -25,7 +25,7 @@ using LOICollection::frontend::ir::layoutFingerprint;
 using LOICollection::utils::Sha256;
 
 namespace {
-    std::shared_ptr<MirChunk> compileScript(const std::string& source) {
+    std::shared_ptr<Chunk> compileScript(const std::string& source) {
         DiagnosticEngine diagnostics;
 
         Lexer lexer(source, diagnostics);
@@ -40,7 +40,7 @@ namespace {
         if (diagnostics.hasErrors())
             return nullptr;
 
-        auto chunk = std::make_shared<MirChunk>(Compiler(diagnostics).compile(*ast));
+        auto chunk = std::make_shared<Chunk>(Compiler(diagnostics).compile(*ast));
         if (diagnostics.hasErrors())
             return nullptr;
 
@@ -50,7 +50,7 @@ namespace {
         return chunk;
     }
 
-    std::string runChunk(const std::shared_ptr<MirChunk>& chunk) {
+    std::string runChunk(const std::shared_ptr<Chunk>& chunk) {
         DiagnosticEngine diagnostics;
 
         ir::VM vm(diagnostics);
@@ -70,11 +70,11 @@ namespace {
         result
     )";
 
-    MirSerializer::Header headerFor(
+    ChunkSerializer::Header headerFor(
         const std::string& source,
         const std::vector<std::string>& imports = {}
     ) {
-        MirSerializer::Header header;
+        ChunkSerializer::Header header;
         header.scriptId = "test";
         header.abiFingerprint = std::string(32, 'A');
         header.sourceHash = Sha256::compute(source);
@@ -85,23 +85,23 @@ namespace {
         return header;
     }
 
-    std::unique_ptr<MirChunk> nestedChunk(int depth) {
-        auto root = std::make_unique<MirChunk>();
+    std::unique_ptr<Chunk> nestedChunk(int depth) {
+        auto root = std::make_unique<Chunk>();
         root->slotCount = 0;
 
-        MirChunk* tail = root.get();
+        Chunk* tail = root.get();
         for (int i = 0; i < depth; ++i) {
-            tail->methodBodies.push_back(std::make_unique<MirChunk>());
+            tail->methodBodies.push_back(std::make_unique<Chunk>());
             tail = tail->methodBodies.back().get();
         }
 
         return root;
     }
 
-    int nestingDepth(const MirChunk& chunk) {
+    int nestingDepth(const Chunk& chunk) {
         int depth = 0;
 
-        const MirChunk* cursor = &chunk;
+        const Chunk* cursor = &chunk;
         while (!cursor->methodBodies.empty()) {
             cursor = cursor->methodBodies.front().get();
             ++depth;
@@ -123,20 +123,20 @@ namespace {
     }
 }
 
-TEST(MirSerializerTest, RoundTripPreservesBehavior) {
+TEST(ChunkSerializerTest, RoundTripPreservesBehavior) {
     auto chunk = compileScript(kSource);
     ASSERT_NE(chunk, nullptr);
 
-    auto blob = MirSerializer::serialize(*chunk, headerFor(kSource));
+    auto blob = ChunkSerializer::serialize(*chunk, headerFor(kSource));
     ASSERT_TRUE(blob.has_value());
 
-    auto restored = MirSerializer::deserialize(blob.value(), headerFor(kSource));
+    auto restored = ChunkSerializer::deserialize(blob.value(), headerFor(kSource));
     ASSERT_TRUE(restored.has_value());
 
-    EXPECT_EQ(runChunk(std::make_shared<MirChunk>(std::move(*restored))), "42");
+    EXPECT_EQ(runChunk(std::make_shared<Chunk>(std::move(*restored))), "42");
 }
 
-TEST(MirSerializerTest, RoundTripPreservesTheLayoutFingerprint) {
+TEST(ChunkSerializerTest, RoundTripPreservesTheLayoutFingerprint) {
     const std::string source = R"(
         class Node {
             public:
@@ -150,20 +150,20 @@ TEST(MirSerializerTest, RoundTripPreservesTheLayoutFingerprint) {
     auto chunk = compileScript(source);
     ASSERT_NE(chunk, nullptr);
 
-    auto blob = MirSerializer::serialize(*chunk, headerFor(source));
+    auto blob = ChunkSerializer::serialize(*chunk, headerFor(source));
     ASSERT_TRUE(blob.has_value());
 
-    auto restored = MirSerializer::deserialize(blob.value(), headerFor(source));
+    auto restored = ChunkSerializer::deserialize(blob.value(), headerFor(source));
     ASSERT_TRUE(restored.has_value());
 
     EXPECT_EQ(layoutFingerprint(*restored), layoutFingerprint(*chunk));
 }
 
-TEST(MirSerializerTest, RejectsAForgedLayoutDigest) {
+TEST(ChunkSerializerTest, RejectsAForgedLayoutDigest) {
     auto chunk = compileScript(kSource);
     ASSERT_NE(chunk, nullptr);
 
-    auto serialized = MirSerializer::serialize(*chunk, headerFor(kSource));
+    auto serialized = ChunkSerializer::serialize(*chunk, headerFor(kSource));
     ASSERT_TRUE(serialized.has_value());
 
     constexpr std::size_t kHeaderSize = 4 + 4 + 4 + 4 + 32 + 1 + 32 + 4;
@@ -180,28 +180,28 @@ TEST(MirSerializerTest, RejectsAForgedLayoutDigest) {
     blob.replace(kChecksumAt, kDigestSize, Sha256::compute(body));
     blob.replace(kBodyAt, body.size(), body);
 
-    EXPECT_FALSE(MirSerializer::deserialize(blob, headerFor(kSource)).has_value());
+    EXPECT_FALSE(ChunkSerializer::deserialize(blob, headerFor(kSource)).has_value());
 }
 
-TEST(MirSerializerTest, RoundTripPreservesEveryTypeKind) {
+TEST(ChunkSerializerTest, RoundTripPreservesEveryTypeKind) {
     const std::vector<TypeKind> kinds = {
         TypeKind::Unknown, TypeKind::Int, TypeKind::Float, TypeKind::String, TypeKind::Bool,
         TypeKind::Object, TypeKind::Function, TypeKind::Void, TypeKind::Array, TypeKind::Variant,
         TypeKind::Optional, TypeKind::Generic, TypeKind::Trait, TypeKind::None
     };
 
-    MirChunk chunk;
+    Chunk chunk;
     for (const TypeKind kind : kinds) {
-        MirInstr instr;
-        instr.op = MirOp::HALT;
+        Instr instr;
+        instr.op = Op::HALT;
         instr.type.kind = kind;
         chunk.code.push_back(instr);
     }
 
-    auto blob = MirSerializer::serialize(chunk, headerFor(kSource));
+    auto blob = ChunkSerializer::serialize(chunk, headerFor(kSource));
     ASSERT_TRUE(blob.has_value());
 
-    auto restored = MirSerializer::deserialize(blob.value(), headerFor(kSource));
+    auto restored = ChunkSerializer::deserialize(blob.value(), headerFor(kSource));
     ASSERT_TRUE(restored.has_value());
     ASSERT_EQ(restored->code.size(), kinds.size());
 
@@ -209,25 +209,25 @@ TEST(MirSerializerTest, RoundTripPreservesEveryTypeKind) {
         EXPECT_EQ(restored->code.at(i).type.kind, kinds.at(i)) << "kind index " << i;
 }
 
-TEST(MirSerializerTest, RoundTripPreservesNestedTypeInfo) {
-    MirChunk chunk;
+TEST(ChunkSerializerTest, RoundTripPreservesNestedTypeInfo) {
+    Chunk chunk;
     chunk.code.resize(2);
 
-    chunk.code[0].op = MirOp::HALT;
+    chunk.code[0].op = Op::HALT;
     chunk.code[0].type.kind = TypeKind::Variant;
     chunk.code[0].type.className = "ProbeClass";
     chunk.code[0].type.typeVar = "T";
     chunk.code[0].type.variantOptions.push_back(TypeInfo{ TypeKind::Int });
     chunk.code[0].type.variantOptions.push_back(TypeInfo{ TypeKind::None });
 
-    chunk.code[1].op = MirOp::RETURN;
+    chunk.code[1].op = Op::RETURN;
     chunk.code[1].type.kind = TypeKind::Optional;
     chunk.code[1].type.optionalInner = std::make_shared<TypeInfo>(TypeInfo{ TypeKind::Trait });
 
-    auto blob = MirSerializer::serialize(chunk, headerFor(kSource));
+    auto blob = ChunkSerializer::serialize(chunk, headerFor(kSource));
     ASSERT_TRUE(blob.has_value());
 
-    auto restored = MirSerializer::deserialize(blob.value(), headerFor(kSource));
+    auto restored = ChunkSerializer::deserialize(blob.value(), headerFor(kSource));
     ASSERT_TRUE(restored.has_value());
     ASSERT_EQ(restored->code.size(), 2u);
 
@@ -245,45 +245,45 @@ TEST(MirSerializerTest, RoundTripPreservesNestedTypeInfo) {
     EXPECT_EQ(optional.optionalInner->kind, TypeKind::Trait);
 }
 
-TEST(MirSerializerTest, RoundTripIsStableAcrossCycles) {
+TEST(ChunkSerializerTest, RoundTripIsStableAcrossCycles) {
     auto chunk = compileScript(kSource);
     ASSERT_NE(chunk, nullptr);
 
-    auto first = MirSerializer::serialize(*chunk, headerFor(kSource));
+    auto first = ChunkSerializer::serialize(*chunk, headerFor(kSource));
     ASSERT_TRUE(first.has_value());
 
-    auto restored = MirSerializer::deserialize(first.value(), headerFor(kSource));
+    auto restored = ChunkSerializer::deserialize(first.value(), headerFor(kSource));
     ASSERT_TRUE(restored.has_value());
 
-    auto second = MirSerializer::serialize(*restored, headerFor(kSource));
+    auto second = ChunkSerializer::serialize(*restored, headerFor(kSource));
     ASSERT_TRUE(second.has_value());
 
     EXPECT_EQ(first.value(), second.value());
 }
 
-TEST(MirSerializerTest, RoundTripWithImportHashes) {
+TEST(ChunkSerializerTest, RoundTripWithImportHashes) {
     auto chunk = compileScript(kSource);
     ASSERT_NE(chunk, nullptr);
 
     const std::string libSource = "func base() -> int {\n    return 1;\n}";
     auto header = headerFor(kSource, { libSource });
 
-    auto blob = MirSerializer::serialize(*chunk, header);
+    auto blob = ChunkSerializer::serialize(*chunk, header);
     ASSERT_TRUE(blob.has_value());
 
-    auto restored = MirSerializer::deserialize(blob.value(), header);
+    auto restored = ChunkSerializer::deserialize(blob.value(), header);
     ASSERT_TRUE(restored.has_value());
 }
 
-TEST(MirSerializerTest, PeekHeaderRecoversMetadata) {
+TEST(ChunkSerializerTest, PeekHeaderRecoversMetadata) {
     auto chunk = compileScript(kSource);
     ASSERT_NE(chunk, nullptr);
 
     auto header = headerFor(kSource);
-    auto blob = MirSerializer::serialize(*chunk, header);
+    auto blob = ChunkSerializer::serialize(*chunk, header);
     ASSERT_TRUE(blob.has_value());
 
-    auto peeked = MirSerializer::peekHeader(blob.value());
+    auto peeked = ChunkSerializer::peekHeader(blob.value());
     ASSERT_TRUE(peeked.has_value());
 
     EXPECT_EQ(peeked->scriptId, header.scriptId);
@@ -291,132 +291,132 @@ TEST(MirSerializerTest, PeekHeaderRecoversMetadata) {
     EXPECT_EQ(peeked->sourceHash, header.sourceHash);
 }
 
-TEST(MirSerializerTest, RejectsChangedSourceHash) {
+TEST(ChunkSerializerTest, RejectsChangedSourceHash) {
     auto chunk = compileScript(kSource);
     ASSERT_NE(chunk, nullptr);
 
-    auto blob = MirSerializer::serialize(*chunk, headerFor(kSource));
+    auto blob = ChunkSerializer::serialize(*chunk, headerFor(kSource));
     ASSERT_TRUE(blob.has_value());
 
     auto stale = headerFor(kSource + "\n");
-    EXPECT_FALSE(MirSerializer::deserialize(blob.value(), stale).has_value());
+    EXPECT_FALSE(ChunkSerializer::deserialize(blob.value(), stale).has_value());
 }
 
-TEST(MirSerializerTest, RejectsChangedImportHash) {
+TEST(ChunkSerializerTest, RejectsChangedImportHash) {
     auto chunk = compileScript(kSource);
     ASSERT_NE(chunk, nullptr);
 
     const std::string libSource = "func base() -> int {\n    return 1;\n}";
-    auto blob = MirSerializer::serialize(*chunk, headerFor(kSource, { libSource }));
+    auto blob = ChunkSerializer::serialize(*chunk, headerFor(kSource, { libSource }));
     ASSERT_TRUE(blob.has_value());
 
     auto stale = headerFor(kSource, { libSource + "\n" });
-    EXPECT_FALSE(MirSerializer::deserialize(blob.value(), stale).has_value());
+    EXPECT_FALSE(ChunkSerializer::deserialize(blob.value(), stale).has_value());
 }
 
-TEST(MirSerializerTest, RejectsImportCountMismatch) {
+TEST(ChunkSerializerTest, RejectsImportCountMismatch) {
     auto chunk = compileScript(kSource);
     ASSERT_NE(chunk, nullptr);
 
     const std::string libSource = "func base() -> int {\n    return 1;\n}";
-    auto blob = MirSerializer::serialize(*chunk, headerFor(kSource, { libSource }));
+    auto blob = ChunkSerializer::serialize(*chunk, headerFor(kSource, { libSource }));
     ASSERT_TRUE(blob.has_value());
 
     auto stale = headerFor(kSource, { libSource, libSource });
-    EXPECT_FALSE(MirSerializer::deserialize(blob.value(), stale).has_value());
+    EXPECT_FALSE(ChunkSerializer::deserialize(blob.value(), stale).has_value());
 }
 
-TEST(MirSerializerTest, RejectsCorruptedBlob) {
+TEST(ChunkSerializerTest, RejectsCorruptedBlob) {
     auto chunk = compileScript(kSource);
     ASSERT_NE(chunk, nullptr);
 
-    auto blob = MirSerializer::serialize(*chunk, headerFor(kSource));
+    auto blob = ChunkSerializer::serialize(*chunk, headerFor(kSource));
     ASSERT_TRUE(blob.has_value());
 
     const auto& header = headerFor(kSource);
 
-    EXPECT_FALSE(MirSerializer::deserialize("not a cache blob", header).has_value());
+    EXPECT_FALSE(ChunkSerializer::deserialize("not a cache blob", header).has_value());
 
     auto truncated = blob.value().substr(0, blob.value().size() - 1);
-    EXPECT_FALSE(MirSerializer::deserialize(truncated, header).has_value());
+    EXPECT_FALSE(ChunkSerializer::deserialize(truncated, header).has_value());
 
     auto damaged = blob.value();
     damaged[damaged.size() / 2] = static_cast<char>(damaged[damaged.size() / 2] ^ 0x40);
-    EXPECT_FALSE(MirSerializer::deserialize(damaged, header).has_value());
+    EXPECT_FALSE(ChunkSerializer::deserialize(damaged, header).has_value());
 }
 
-TEST(MirSerializerTest, DebugInfoRoundTrip) {
+TEST(ChunkSerializerTest, DebugInfoRoundTrip) {
     auto chunk = compileScript(kSource);
     ASSERT_NE(chunk, nullptr);
 
     std::string bodyChecksum;
-    auto blob = MirSerializer::serialize(*chunk, headerFor(kSource), &bodyChecksum);
+    auto blob = ChunkSerializer::serialize(*chunk, headerFor(kSource), &bodyChecksum);
     ASSERT_TRUE(blob.has_value());
 
-    auto debugBlob = MirSerializer::serializeDebugInfo(*chunk, bodyChecksum);
+    auto debugBlob = ChunkSerializer::serializeDebugInfo(*chunk, bodyChecksum);
     ASSERT_TRUE(debugBlob.has_value());
 
-    auto restored = MirSerializer::deserialize(blob.value(), headerFor(kSource));
+    auto restored = ChunkSerializer::deserialize(blob.value(), headerFor(kSource));
     ASSERT_TRUE(restored.has_value());
 
-    EXPECT_TRUE(MirSerializer::attachDebugInfo(*restored, debugBlob.value(), bodyChecksum));
+    EXPECT_TRUE(ChunkSerializer::attachDebugInfo(*restored, debugBlob.value(), bodyChecksum));
 }
 
-TEST(MirSerializerTest, DebugInfoRejectsMismatchedChecksum) {
+TEST(ChunkSerializerTest, DebugInfoRejectsMismatchedChecksum) {
     auto chunk = compileScript(kSource);
     ASSERT_NE(chunk, nullptr);
 
     std::string bodyChecksum;
-    auto blob = MirSerializer::serialize(*chunk, headerFor(kSource), &bodyChecksum);
+    auto blob = ChunkSerializer::serialize(*chunk, headerFor(kSource), &bodyChecksum);
     ASSERT_TRUE(blob.has_value());
 
-    auto debugBlob = MirSerializer::serializeDebugInfo(*chunk, bodyChecksum);
+    auto debugBlob = ChunkSerializer::serializeDebugInfo(*chunk, bodyChecksum);
     ASSERT_TRUE(debugBlob.has_value());
 
-    auto restored = MirSerializer::deserialize(blob.value(), headerFor(kSource));
+    auto restored = ChunkSerializer::deserialize(blob.value(), headerFor(kSource));
     ASSERT_TRUE(restored.has_value());
 
     const std::string wrongChecksum(32, 'B');
-    EXPECT_FALSE(MirSerializer::attachDebugInfo(*restored, debugBlob.value(), wrongChecksum));
+    EXPECT_FALSE(ChunkSerializer::attachDebugInfo(*restored, debugBlob.value(), wrongChecksum));
 }
 
-TEST(MirSerializerTest, AcceptsNestedMethodBodies) {
+TEST(ChunkSerializerTest, AcceptsNestedMethodBodies) {
     auto chunk = nestedChunk(8);
 
-    auto blob = MirSerializer::serialize(*chunk, headerFor(kSource));
+    auto blob = ChunkSerializer::serialize(*chunk, headerFor(kSource));
     ASSERT_TRUE(blob.has_value());
 
-    auto restored = MirSerializer::deserialize(blob.value(), headerFor(kSource));
+    auto restored = ChunkSerializer::deserialize(blob.value(), headerFor(kSource));
     ASSERT_TRUE(restored.has_value());
 
     EXPECT_EQ(nestingDepth(*restored), 8);
 }
 
-TEST(MirSerializerTest, RejectsExcessiveNesting) {
+TEST(ChunkSerializerTest, RejectsExcessiveNesting) {
     auto chunk = nestedChunk(4096);
 
-    auto blob = MirSerializer::serialize(*chunk, headerFor(kSource));
+    auto blob = ChunkSerializer::serialize(*chunk, headerFor(kSource));
     ASSERT_TRUE(blob.has_value());
 
-    EXPECT_FALSE(MirSerializer::deserialize(blob.value(), headerFor(kSource)).has_value());
+    EXPECT_FALSE(ChunkSerializer::deserialize(blob.value(), headerFor(kSource)).has_value());
 }
 
-TEST(MirSerializerTest, RejectsExcessiveConstantNesting) {
-    MirChunk chunk;
+TEST(ChunkSerializerTest, RejectsExcessiveConstantNesting) {
+    Chunk chunk;
     chunk.slotCount = 0;
     chunk.constants.push_back(nestedArray(4096));
 
-    auto blob = MirSerializer::serialize(chunk, headerFor(kSource));
+    auto blob = ChunkSerializer::serialize(chunk, headerFor(kSource));
     ASSERT_TRUE(blob.has_value());
 
-    EXPECT_FALSE(MirSerializer::deserialize(blob.value(), headerFor(kSource)).has_value());
+    EXPECT_FALSE(ChunkSerializer::deserialize(blob.value(), headerFor(kSource)).has_value());
 
-    MirChunk usable;
+    Chunk usable;
     usable.slotCount = 0;
     usable.constants.push_back(nestedArray(8));
 
-    auto usableBlob = MirSerializer::serialize(usable, headerFor(kSource));
+    auto usableBlob = ChunkSerializer::serialize(usable, headerFor(kSource));
     ASSERT_TRUE(usableBlob.has_value());
 
-    EXPECT_TRUE(MirSerializer::deserialize(usableBlob.value(), headerFor(kSource)).has_value());
+    EXPECT_TRUE(ChunkSerializer::deserialize(usableBlob.value(), headerFor(kSource)).has_value());
 }

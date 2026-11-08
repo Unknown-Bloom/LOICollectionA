@@ -69,7 +69,7 @@ namespace LOICollection::frontend::ir {
 
     using namespace detail;
 
-    bool VM::isDerived(const MirChunk& chunk, int derivedClassIndex, int baseClassIndex) const {
+    bool VM::isDerived(const Chunk& chunk, int derivedClassIndex, int baseClassIndex) const {
         if (derivedClassIndex == baseClassIndex) return true;
         if (derivedClassIndex < 0 || derivedClassIndex >= static_cast<int>(chunk.classes.size())) return false;
 
@@ -83,7 +83,7 @@ namespace LOICollection::frontend::ir {
         });
     }
 
-    const FieldLayoutPtr& VM::classLayout(const MirChunk& chunk, int classIndex) {
+    const FieldLayoutPtr& VM::classLayout(const Chunk& chunk, int classIndex) {
         auto it = this->mCache->classLayouts.find(classIndex);
         if (it != this->mCache->classLayouts.end())
             return it->second;
@@ -170,7 +170,7 @@ namespace LOICollection::frontend::ir {
     }
 
     ValueNode::ValueType VM::run(
-        const std::shared_ptr<const MirChunk>& chunk,
+        const std::shared_ptr<const Chunk>& chunk,
         const Context& ctx
     ) {
         if (!chunk) {
@@ -225,7 +225,7 @@ namespace LOICollection::frontend::ir {
     }
 
     ValueNode::ValueType VM::execute(
-        const std::shared_ptr<const MirChunk>& owner,
+        const std::shared_ptr<const Chunk>& owner,
         const CallbackTypePlaces& placeholders
     ) {
         if (!owner) {
@@ -288,10 +288,10 @@ namespace LOICollection::frontend::ir {
 
     template <bool Managed>
     ValueNode::ValueType VM::executeLoop(
-        const std::shared_ptr<const MirChunk>& owner,
+        const std::shared_ptr<const Chunk>& owner,
         const CallbackTypePlaces& placeholders
     ) {
-        const MirChunk& chunk = *owner;
+        const Chunk& chunk = *owner;
 
         while (true) {
             if (this->diagnostics.hasErrors()) {
@@ -314,7 +314,7 @@ namespace LOICollection::frontend::ir {
                 this->heap().step(1024);
 
             Frame& frame = this->frames.back();
-            const MirChunk& cur = frame.chunk.get();
+            const Chunk& cur = frame.chunk.get();
 
             if (frame.ip >= cur.code.size()) {
                 this->diagnostics.addError(this->currentLoc, "Invalid instruction pointer");
@@ -325,28 +325,28 @@ namespace LOICollection::frontend::ir {
             this->currentLoc = instr.loc;
             ExecArgs s{ owner, chunk, cur, frame, instr, placeholders };
             switch (instr.op) {
-                case MirOp::LOAD_CONST: this->execLoadConst(s); break;
-                case MirOp::MOVE: this->execMove(s); break;
-                case MirOp::UNWRAP: case MirOp::TYPE_OF: case MirOp::HAS_VALUE: case MirOp::IS_NONE: this->execOptional(s); break;
-                case MirOp::LOAD_SLOT: case MirOp::STORE_SLOT: this->execLocalSlot(s); break;
-                case MirOp::LOAD_VAR: case MirOp::STORE_VAR: this->execVariable(s); break;
-                case MirOp::LOAD_FIELD: case MirOp::STORE_FIELD: case MirOp::LOAD_FIELD_SLOT: case MirOp::STORE_FIELD_SLOT: case MirOp::BIND_THIS: case MirOp::LOAD_LEN: this->execFieldAccess(s); break;
-                case MirOp::MAKE_ARRAY: case MirOp::LOAD_INDEX: case MirOp::STORE_INDEX: this->execArray(s); break;
-                case MirOp::MAKE_LAMBDA: case MirOp::LOAD_THIS: this->execClosure(s); break;
-                case MirOp::INSTANCEOF: this->execInstanceof(s); break;
-                case MirOp::MAKE_ENUM: case MirOp::TAG_OF: case MirOp::LOAD_ENUM_PAYLOAD: this->execEnum(s); break;
-                case MirOp::NEW: case MirOp::NEW_NATIVE: this->execObjectCreate(s); break;
-                case MirOp::CALL_METHOD: case MirOp::CALL_METHOD_VIRTUAL: case MirOp::CALL_METHOD_BY_NAME: case MirOp::CALL_SUPER_CTOR: this->execMethodDispatch(s); break;
-                case MirOp::CALL_NATIVE_METHOD: this->execNativeCall(s); break;
-                case MirOp::CALL_FUNC: case MirOp::CALL_LAMBDA: this->execFunctionCall(s); break;
-                case MirOp::ADD: case MirOp::SUB: case MirOp::MUL: case MirOp::DIV: case MirOp::MOD: case MirOp::POW:
+                case Op::LOAD_CONST: this->execLoadConst(s); break;
+                case Op::MOVE: this->execMove(s); break;
+                case Op::UNWRAP: case Op::TYPE_OF: case Op::HAS_VALUE: case Op::IS_NONE: this->execOptional(s); break;
+                case Op::LOAD_SLOT: case Op::STORE_SLOT: this->execLocalSlot(s); break;
+                case Op::LOAD_VAR: case Op::STORE_VAR: this->execVariable(s); break;
+                case Op::LOAD_FIELD: case Op::STORE_FIELD: case Op::LOAD_FIELD_SLOT: case Op::STORE_FIELD_SLOT: case Op::BIND_THIS: case Op::LOAD_LEN: this->execFieldAccess(s); break;
+                case Op::MAKE_ARRAY: case Op::LOAD_INDEX: case Op::STORE_INDEX: this->execArray(s); break;
+                case Op::MAKE_LAMBDA: case Op::LOAD_THIS: this->execClosure(s); break;
+                case Op::INSTANCEOF: this->execInstanceof(s); break;
+                case Op::MAKE_ENUM: case Op::TAG_OF: case Op::LOAD_ENUM_PAYLOAD: this->execEnum(s); break;
+                case Op::NEW: case Op::NEW_NATIVE: this->execObjectCreate(s); break;
+                case Op::CALL_METHOD: case Op::CALL_METHOD_VIRTUAL: case Op::CALL_METHOD_BY_NAME: case Op::CALL_SUPER_CTOR: this->execMethodDispatch(s); break;
+                case Op::CALL_NATIVE_METHOD: this->execNativeCall(s); break;
+                case Op::CALL_FUNC: case Op::CALL_LAMBDA: this->execFunctionCall(s); break;
+                case Op::ADD: case Op::SUB: case Op::MUL: case Op::DIV: case Op::MOD: case Op::POW:
                     this->execArithmetic(s); break;
-                case MirOp::CMP_EQ: case MirOp::CMP_NE: case MirOp::CMP_GT: case MirOp::CMP_LT: case MirOp::CMP_GE: case MirOp::CMP_LE:
+                case Op::CMP_EQ: case Op::CMP_NE: case Op::CMP_GT: case Op::CMP_LT: case Op::CMP_GE: case Op::CMP_LE:
                     this->execComparison(s); break;
-                case MirOp::LOGIC_AND: case MirOp::LOGIC_OR: case MirOp::NEG: case MirOp::NOT: this->execLogic(s); break;
-                case MirOp::CALL: case MirOp::CALL_MACRO: this->execHostCall(s); break;
-                case MirOp::JMP_IF_FALSE: case MirOp::JMP_IF_TRUE: case MirOp::JMP: case MirOp::JMP_IF_CMP_FALSE: case MirOp::JMP_IF_TAG_NE: this->execBranch(s); break;
-                case MirOp::RETURN: {
+                case Op::LOGIC_AND: case Op::LOGIC_OR: case Op::NEG: case Op::NOT: this->execLogic(s); break;
+                case Op::CALL: case Op::CALL_MACRO: this->execHostCall(s); break;
+                case Op::JMP_IF_FALSE: case Op::JMP_IF_TRUE: case Op::JMP: case Op::JMP_IF_CMP_FALSE: case Op::JMP_IF_TAG_NE: this->execBranch(s); break;
+                case Op::RETURN: {
                     auto result = instr.src1 >= 0
                         ? this->regOf(frame, instr.src1)
                         : ValueNode::ValueType(std::string(""));
@@ -369,10 +369,10 @@ namespace LOICollection::frontend::ir {
 
                     break;
                 }
-                case MirOp::HALT:
+                case Op::HALT:
                     mOutcome = RunOutcome::Completed;
                     return this->regOf(this->frames.back(), 0);
-                case MirOp::PANIC: {
+                case Op::PANIC: {
                     std::string message = "panic";
                     if (instr.src1 >= 0) {
                         const ValueNode::ValueType& value = this->regOf(frame, instr.src1);
@@ -484,7 +484,7 @@ namespace LOICollection::frontend::ir {
 
     void VM::execLoadConst(ExecArgs& s) {
         const auto& instr = s.instr;
-        const MirChunk& cur = s.cur;
+        const Chunk& cur = s.cur;
         Frame& frame = s.frame;
 
         const auto& value = cur.constants[instr.operand];
@@ -530,24 +530,24 @@ namespace LOICollection::frontend::ir {
         const auto& instr = s.instr;
         Frame& frame = s.frame;
         switch (instr.op) {
-            case MirOp::JMP_IF_FALSE: {
+            case Op::JMP_IF_FALSE: {
                 if (!VM::valueToBool(this->regOf(frame, instr.src1)))
                     frame.ip += instr.operand;
             } break;
-            case MirOp::JMP_IF_TRUE: {
+            case Op::JMP_IF_TRUE: {
                 if (VM::valueToBool(this->regOf(frame, instr.src1)))
                     frame.ip += instr.operand;
             } break;
-            case MirOp::JMP: {
+            case Op::JMP: {
                 frame.ip += instr.operand;
             } break;
-            case MirOp::JMP_IF_CMP_FALSE: {
+            case Op::JMP_IF_CMP_FALSE: {
                 if (!VM::applyComparison(
                         this->regOf(frame, instr.src1), this->regOf(frame, instr.src2),
-                        static_cast<MirOp>(instr.imm), this->diagnostics, this->currentLoc))
+                        static_cast<Op>(instr.imm), this->diagnostics, this->currentLoc))
                     frame.ip += instr.operand;
             } break;
-            case MirOp::JMP_IF_TAG_NE: {
+            case Op::JMP_IF_TAG_NE: {
                 const auto& value = this->regOf(frame, instr.src1);
                 const auto* ev = std::get_if<EnumValue>(&value);
 

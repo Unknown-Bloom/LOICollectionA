@@ -28,7 +28,7 @@
 #include "LOICollectionA/frontend/ir/VM.h"
 #include "LOICollectionA/frontend/ir/Compiler.h"
 #include "LOICollectionA/frontend/ir/Optimizer.h"
-#include "LOICollectionA/frontend/ir/MirSerializer.h"
+#include "LOICollectionA/frontend/ir/ChunkSerializer.h"
 #include "LOICollectionA/frontend/ir/Abi.h"
 
 #include "LOICollectionA/utils/core/Sha256.h"
@@ -93,7 +93,7 @@ namespace LOICollection::form {
     using namespace detail;
 
     struct GUIManager::Impl {
-        std::unordered_map<std::string, std::shared_ptr<frontend::ir::MirChunk>> cache;
+        std::unordered_map<std::string, std::shared_ptr<frontend::ir::Chunk>> cache;
         std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<frontend::GlobalsTable>>> globals;
 
         std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<CustomFormClass::CustomFormHandle>>> forms;
@@ -167,13 +167,13 @@ namespace LOICollection::form {
     ll::Expected<void> GUIManager::load(const std::string& id, const std::string& path) {
         frontend::DiagnosticEngine diagnostics;
 
-        using Serializer = frontend::ir::MirSerializer;
+        using Serializer = frontend::ir::ChunkSerializer;
 
         Serializer::Header header;
         header.scriptId = id;
         header.abiFingerprint = frontend::ir::abiFingerprint();
 
-        std::shared_ptr<frontend::ir::MirChunk> compiled;
+        std::shared_ptr<frontend::ir::Chunk> compiled;
         bool hasSource = false;
 
         if (auto content = this->readFile(path); content.has_value()) {
@@ -202,7 +202,7 @@ namespace LOICollection::form {
                 return ll::makeStringError(diagnostics.getWarningMessage());
 
             frontend::ir::Compiler mCompiler(diagnostics);
-            compiled = std::make_shared<frontend::ir::MirChunk>(mCompiler.compile(*result->program));
+            compiled = std::make_shared<frontend::ir::Chunk>(mCompiler.compile(*result->program));
             if (diagnostics.hasErrors())
                 return ll::makeStringError(diagnostics.getErrorMessage());
 
@@ -224,7 +224,7 @@ namespace LOICollection::form {
 
                 if (auto old = this->mImpl->cache.find(id); old != this->mImpl->cache.end())
                     frontend::ir::ChunkCacheRegistry::getInstance().release(old->second.get());
-                this->mImpl->cache.insert_or_assign(id, std::make_shared<frontend::ir::MirChunk>(std::move(*chunk)));
+                this->mImpl->cache.insert_or_assign(id, std::make_shared<frontend::ir::Chunk>(std::move(*chunk)));
                 this->mImpl->globals.insert_or_assign(id, std::unordered_map<std::string, std::shared_ptr<frontend::GlobalsTable>>{});
                 frontend::runtime::ProcScheduler::getInstance().cancelScript(id);
                 frontend::runtime::ScriptVMRegistry::getInstance().releaseScript(id);
@@ -276,7 +276,7 @@ namespace LOICollection::form {
     }
 
     ll::Expected<void> GUIManager::runFormScript(
-        const std::shared_ptr<const frontend::ir::MirChunk>& cached,
+        const std::shared_ptr<const frontend::ir::Chunk>& cached,
         const frontend::Context& context,
         const std::string& id,
         std::shared_ptr<frontend::GlobalsTable> globals

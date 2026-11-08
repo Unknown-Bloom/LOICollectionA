@@ -5,12 +5,12 @@
 #include <unordered_map>
 #include <vector>
 
-#include "LOICollectionA/frontend/ir/Mir.h"
+#include "LOICollectionA/frontend/ir/Lir.h"
 
 namespace LOICollection::frontend::ir::opt {
     class ConstantPropagationPass {
     public:
-        explicit ConstantPropagationPass(MirChunk& chunk)
+        explicit ConstantPropagationPass(Chunk& chunk)
         : mChunk(chunk) {}
 
         size_t run();
@@ -28,10 +28,10 @@ namespace LOICollection::frontend::ir::opt {
         };
 
         void transfer(int begin, int end, State& state) const;
-        void step(const MirInstr& instr, State& state) const;
+        void step(const Instr& instr, State& state) const;
 
         State merge(const std::vector<const State*>& inputs) const;
 
-        MirChunk& mChunk;
+        Chunk& mChunk;
     };
 }

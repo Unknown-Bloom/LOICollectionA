@@ -1,7 +1,7 @@
 #include "LOICollectionA/frontend/ir/opt/analysis/JumpTargetAnalysis.h"
 
 namespace LOICollection::frontend::ir::opt {
-    JumpTargetAnalysis::JumpTargetAnalysis(const std::vector<MirInstr>& code) {
+    JumpTargetAnalysis::JumpTargetAnalysis(const std::vector<Instr>& code) {
         for (size_t i = 0; i < code.size(); ++i) {
             if (!isJump(code[i].op))
                 continue;

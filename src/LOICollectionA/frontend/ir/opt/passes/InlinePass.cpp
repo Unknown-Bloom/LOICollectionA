@@ -3,55 +3,55 @@
 #include "LOICollectionA/frontend/ir/opt/passes/InlinePass.h"
 
 namespace LOICollection::frontend::ir::opt::detail {
-    bool transfersControl(MirOp op) {
+    bool transfersControl(Op op) {
         switch (op) {
-            case MirOp::CALL:
-            case MirOp::CALL_METHOD:
-            case MirOp::CALL_METHOD_VIRTUAL:
-            case MirOp::CALL_METHOD_BY_NAME:
-            case MirOp::CALL_FUNC:
-            case MirOp::CALL_NATIVE_METHOD:
-            case MirOp::CALL_LAMBDA:
-            case MirOp::CALL_SUPER_CTOR:
-            case MirOp::CALL_MACRO:
-            case MirOp::MAKE_LAMBDA:
-            case MirOp::BIND_THIS:
-            case MirOp::NEW_NATIVE:
-            case MirOp::JMP:
-            case MirOp::JMP_IF_FALSE:
-            case MirOp::JMP_IF_TRUE:
-            case MirOp::JMP_IF_TAG_NE:
+            case Op::CALL:
+            case Op::CALL_METHOD:
+            case Op::CALL_METHOD_VIRTUAL:
+            case Op::CALL_METHOD_BY_NAME:
+            case Op::CALL_FUNC:
+            case Op::CALL_NATIVE_METHOD:
+            case Op::CALL_LAMBDA:
+            case Op::CALL_SUPER_CTOR:
+            case Op::CALL_MACRO:
+            case Op::MAKE_LAMBDA:
+            case Op::BIND_THIS:
+            case Op::NEW_NATIVE:
+            case Op::JMP:
+            case Op::JMP_IF_FALSE:
+            case Op::JMP_IF_TRUE:
+            case Op::JMP_IF_TAG_NE:
                 return true;
             default:
                 return false;
         }
     }
 
-    bool isBranch(MirOp op) {
-        return op == MirOp::JMP || op == MirOp::JMP_IF_FALSE || op == MirOp::JMP_IF_TRUE
-            || op == MirOp::JMP_IF_TAG_NE;
+    bool isBranch(Op op) {
+        return op == Op::JMP || op == Op::JMP_IF_FALSE || op == Op::JMP_IF_TRUE
+            || op == Op::JMP_IF_TAG_NE;
     }
 
-    bool usesConstantPool(MirOp op) {
-        return op == MirOp::LOAD_CONST || op == MirOp::LOAD_FIELD ||
-               op == MirOp::STORE_FIELD || op == MirOp::INSTANCEOF ||
-               op == MirOp::LOAD_VAR || op == MirOp::STORE_VAR;
+    bool usesConstantPool(Op op) {
+        return op == Op::LOAD_CONST || op == Op::LOAD_FIELD ||
+               op == Op::STORE_FIELD || op == Op::INSTANCEOF ||
+               op == Op::LOAD_VAR || op == Op::STORE_VAR;
     }
 }
 
 namespace LOICollection::frontend::ir::opt {
     using namespace detail;
 
-    InlinePass::InlinePass(MirChunk& chunk) : mChunk(chunk) {}
+    InlinePass::InlinePass(Chunk& chunk) : mChunk(chunk) {}
 
-    void InlinePass::remap(MirInstr& instr, int base) {
+    void InlinePass::remap(Instr& instr, int base) {
         if (instr.dst >= 0) instr.dst += base;
         if (instr.src1 >= 0) instr.src1 += base;
         if (instr.src2 >= 0) instr.src2 += base;
         if (instr.src3 >= 0) instr.src3 += base;
     }
 
-    int InlinePass::importConstant(const MirChunk& body, int operand) {
+    int InlinePass::importConstant(const Chunk& body, int operand) {
         if (operand < 0 || operand >= static_cast<int>(body.constants.size()))
             return operand;
 
@@ -102,8 +102,8 @@ namespace LOICollection::frontend::ir::opt {
         return true;
     }
 
-    std::optional<InlinePass::ResolvedCall> InlinePass::resolveTarget(const MirInstr& call) const {
-        if (call.op == MirOp::CALL_METHOD) {
+    std::optional<InlinePass::ResolvedCall> InlinePass::resolveTarget(const Instr& call) const {
+        if (call.op == Op::CALL_METHOD) {
             if (call.operand < 0 || call.operand >= static_cast<int>(mChunk.methods.size()))
                 return std::nullopt;
 
@@ -115,7 +115,7 @@ namespace LOICollection::frontend::ir::opt {
             return ResolvedCall{ method.bodyIndex, method.argCount };
         }
 
-        if (call.op == MirOp::CALL_METHOD_VIRTUAL) {
+        if (call.op == Op::CALL_METHOD_VIRTUAL) {
             if (call.operand < 0 ||
                 call.operand >= static_cast<int>(mChunk.virtualCalls.size()))
                 return std::nullopt;
@@ -147,14 +147,14 @@ namespace LOICollection::frontend::ir::opt {
         return std::nullopt;
     }
 
-    bool InlinePass::inlinable(const MirChunk& body) const {
+    bool InlinePass::inlinable(const Chunk& body) const {
         
-        for (const MirInstr& instr : body.code) {
-            const MirOp op = instr.op;
-            if (op == MirOp::RETURN)
+        for (const Instr& instr : body.code) {
+            const Op op = instr.op;
+            if (op == Op::RETURN)
                 return true;
-            if (transfersControl(op) || op == MirOp::HALT || op == MirOp::PANIC ||
-                op == MirOp::LOAD_VAR || op == MirOp::STORE_VAR)
+            if (transfersControl(op) || op == Op::HALT || op == Op::PANIC ||
+                op == Op::LOAD_VAR || op == Op::STORE_VAR)
                 return false;
         }
 
@@ -164,11 +164,11 @@ namespace LOICollection::frontend::ir::opt {
     std::size_t InlinePass::run(int maxBodySize) {
         const int size = static_cast<int>(mChunk.code.size());
 
-        std::vector<MirInstr> code;
+        std::vector<Instr> code;
         std::vector<int> oldIndex;
         std::vector<int> newIndex(size, -1);
 
-        auto emit = [&code, &oldIndex](const MirInstr& instr, int origin) -> void {
+        auto emit = [&code, &oldIndex](const Instr& instr, int origin) -> void {
             code.push_back(instr);
             oldIndex.push_back(origin);
         };
@@ -177,7 +177,7 @@ namespace LOICollection::frontend::ir::opt {
         std::size_t inlined = 0;
 
         for (int i = 0; i < size; ++i) {
-            const MirInstr& call = mChunk.code[i];
+            const Instr& call = mChunk.code[i];
 
             const auto target = this->resolveTarget(call);
             if (target && target->bodyIndex >= 0 &&
@@ -186,32 +186,32 @@ namespace LOICollection::frontend::ir::opt {
                 this->inlinable(*mChunk.methodBodies[target->bodyIndex])) {
                 newIndex[i] = static_cast<int>(code.size());
 
-                const MirChunk& body = *mChunk.methodBodies[target->bodyIndex];
+                const Chunk& body = *mChunk.methodBodies[target->bodyIndex];
                 const int base = slotBase;
                 const int receiver = call.src1 + call.imm;
 
                 for (int a = 0; a < target->argCount; ++a)
-                    emit({ MirOp::MOVE, 0, base + a, call.src1 + a, -1, -1, 0, {}, call.loc }, -1);
+                    emit({ Op::MOVE, 0, base + a, call.src1 + a, -1, -1, 0, {}, call.loc }, -1);
 
                 const std::size_t bodySize = body.code.size();
 
                 std::size_t retIdx = bodySize;
                 for (std::size_t r = 0; r < bodySize; ++r) {
-                    if (body.code[r].op == MirOp::RETURN) {
+                    if (body.code[r].op == Op::RETURN) {
                         retIdx = r;
                         break;
                     }
                 }
 
                 for (std::size_t b = 0; b < retIdx; ++b) {
-                    MirInstr instr = body.code[b];
-                    if (instr.op == MirOp::LOAD_THIS) {
-                        emit({ MirOp::MOVE, 0, instr.dst + base, receiver, -1, -1, 0, {}, instr.loc }, -1);
+                    Instr instr = body.code[b];
+                    if (instr.op == Op::LOAD_THIS) {
+                        emit({ Op::MOVE, 0, instr.dst + base, receiver, -1, -1, 0, {}, instr.loc }, -1);
                         continue;
                     }
                     if (usesConstantPool(instr.op))
                         instr.operand = this->importConstant(body, instr.operand);
-                    if (instr.op == MirOp::LOAD_SLOT || instr.op == MirOp::STORE_SLOT)
+                    if (instr.op == Op::LOAD_SLOT || instr.op == Op::STORE_SLOT)
                         instr.operand += base;
                     remap(instr, base);
                     emit(instr, -1);
@@ -220,7 +220,7 @@ namespace LOICollection::frontend::ir::opt {
                 if (retIdx < bodySize) {
                     const int retSrc = body.code[retIdx].src1;
                     if (call.dst >= 0 && retSrc >= 0)
-                        emit({ MirOp::MOVE, 0, call.dst, retSrc + base, -1, -1, 0, {}, call.loc }, -1);
+                        emit({ Op::MOVE, 0, call.dst, retSrc + base, -1, -1, 0, {}, call.loc }, -1);
                 }
 
                 slotBase = base + body.slotCount;
@@ -233,7 +233,7 @@ namespace LOICollection::frontend::ir::opt {
         }
 
         for (std::size_t n = 0; n < code.size(); ++n) {
-            MirInstr& instr = code[n];
+            Instr& instr = code[n];
             if (!isBranch(instr.op) || oldIndex[n] < 0)
                 continue;
 

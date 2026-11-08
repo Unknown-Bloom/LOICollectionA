@@ -83,7 +83,7 @@ namespace {
             throw std::runtime_error(diagnostics.getErrorMessage());
 
         ir::Compiler compiler(diagnostics);
-        auto mir = std::make_shared<ir::MirChunk>(compiler.compile(*loaded->program));
+        auto mir = std::make_shared<ir::Chunk>(compiler.compile(*loaded->program));
         if (diagnostics.hasErrors())
             throw std::runtime_error(diagnostics.getErrorMessage());
 

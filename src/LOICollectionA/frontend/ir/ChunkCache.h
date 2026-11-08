@@ -11,7 +11,7 @@
 #include "LOICollectionA/frontend/AST.h"
 #include "LOICollectionA/frontend/Callback.h"
 
-#include "LOICollectionA/frontend/ir/Mir.h"
+#include "LOICollectionA/frontend/ir/Lir.h"
 
 namespace LOICollection::frontend::ir {
     LOICOLLECTION_A_NDAPI std::uint64_t chunkGeneration();
@@ -29,15 +29,15 @@ namespace LOICollection::frontend::ir {
     public:
         LOICOLLECTION_A_NDAPI static ChunkCacheRegistry& getInstance();
 
-        LOICOLLECTION_A_NDAPI std::shared_ptr<ChunkCache> forChunk(const MirChunk* chunk);
+        LOICOLLECTION_A_NDAPI std::shared_ptr<ChunkCache> forChunk(const Chunk* chunk);
 
-        LOICOLLECTION_A_API void release(const MirChunk* chunk);
+        LOICOLLECTION_A_API void release(const Chunk* chunk);
         LOICOLLECTION_A_API void releaseAll();
 
     private:
         ChunkCacheRegistry() = default;
 
         std::mutex mMutex;
-        std::unordered_map<const MirChunk*, std::shared_ptr<ChunkCache>> mCaches;
+        std::unordered_map<const Chunk*, std::shared_ptr<ChunkCache>> mCaches;
     };
 }

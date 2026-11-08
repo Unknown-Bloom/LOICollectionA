@@ -9,21 +9,21 @@
 namespace LOICollection::frontend::ir::opt::detail {
 
     bool isInvariant(
-        const MirInstr& instr,
+        const Instr& instr,
         const std::unordered_set<int>& invariantRegs,
         const std::unordered_map<int, int>& loopWrites
     ) {
-        if (instr.op == MirOp::LOAD_CONST)
+        if (instr.op == Op::LOAD_CONST)
             return true;
 
-        if (instr.op == MirOp::LOAD_SLOT)
+        if (instr.op == Op::LOAD_SLOT)
             return loopWrites.count(instr.operand) == 0;
 
-        if (instr.op == MirOp::MOVE)
+        if (instr.op == Op::MOVE)
             return invariantRegs.count(instr.src1) > 0;
 
         if (isPureBinary(instr.op)) {
-            if (instr.op == MirOp::DIV || instr.op == MirOp::MOD || instr.op == MirOp::POW)
+            if (instr.op == Op::DIV || instr.op == Op::MOD || instr.op == Op::POW)
                 return false;
             return invariantRegs.count(instr.src1) > 0 && invariantRegs.count(instr.src2) > 0;
         }
@@ -88,10 +88,10 @@ namespace LOICollection::frontend::ir::opt {
         for (const int block : loop.blocks) {
             const auto& b = cfg.blocks()[block];
             for (int i = b.begin; i < b.end; ++i) {
-                const MirInstr& instr = mChunk.code[i];
+                const Instr& instr = mChunk.code[i];
                 if (instr.dst >= 0)
                     ++loopWrites[instr.dst];
-                if (instr.op == MirOp::STORE_SLOT)
+                if (instr.op == Op::STORE_SLOT)
                     ++loopWrites[instr.operand];
                 if (instr.src1 >= 0 && instr.imm > 0 && canWriteVariables(instr.op))
                     for (int arg = 0; arg < instr.imm; ++arg)
@@ -182,12 +182,12 @@ namespace LOICollection::frontend::ir::opt {
         }
         std::sort(candidates.begin(), candidates.end());
 
-        std::vector<MirInstr> invariant;
+        std::vector<Instr> invariant;
         std::vector<int> hoistOrigIdx;
         std::unordered_set<int> invariantRegs;
 
         for (const int idx : candidates) {
-            const MirInstr& instr = mChunk.code[idx];
+            const Instr& instr = mChunk.code[idx];
 
             if (!isInvariant(instr, invariantRegs, loopWrites))
                 continue;
@@ -204,7 +204,7 @@ namespace LOICollection::frontend::ir::opt {
         if (invariant.empty())
             return 0;
 
-        const int insertAt = mChunk.code[entry.end - 1].op == MirOp::JMP
+        const int insertAt = mChunk.code[entry.end - 1].op == Op::JMP
             ? entry.end - 1 : entry.end;
 
         std::vector<Edit> edits;
@@ -217,10 +217,10 @@ namespace LOICollection::frontend::ir::opt {
         return 1;
     }
 
-    void LICMPass::apply(std::vector<MirInstr>& code, const std::vector<Edit>& edits) {
+    void LICMPass::apply(std::vector<Instr>& code, const std::vector<Edit>& edits) {
         const int last = static_cast<int>(code.size()) - 1;
 
-        std::vector<MirInstr> rewritten;
+        std::vector<Instr> rewritten;
         std::vector<int> oldToNew(code.size(), -1);
         std::vector<int> origin;
         std::vector<std::vector<int>> placed(edits.size());
@@ -232,7 +232,7 @@ namespace LOICollection::frontend::ir::opt {
                 if (edits[e].at != static_cast<int>(i))
                     continue;
 
-                for (const MirInstr& instr : edits[e].insert) {
+                for (const Instr& instr : edits[e].insert) {
                     placed[e].push_back(static_cast<int>(rewritten.size()));
                     rewritten.push_back(instr);
                     origin.push_back(-1);

@@ -18,7 +18,7 @@
 
 namespace LOICollection::frontend::ir {
 
-    int VM::resolveFieldSlot(Object& obj, const std::string& name, const MirInstr& instr) {
+    int VM::resolveFieldSlot(Object& obj, const std::string& name, const Instr& instr) {
         if (!obj.layout)
             obj.adoptLayout();
 
@@ -36,10 +36,10 @@ namespace LOICollection::frontend::ir {
 
     void VM::execFieldAccess(ExecArgs& s) {
         const auto& instr = s.instr;
-        const MirChunk& cur = s.cur;
+        const Chunk& cur = s.cur;
         Frame& frame = s.frame;
         switch (instr.op) {
-            case MirOp::LOAD_FIELD: {
+            case Op::LOAD_FIELD: {
                 const auto& name = std::get<std::string>(cur.constants[instr.operand]);
                 const ValueNode::ValueType& objValue = this->regOf(frame, instr.src1);
 
@@ -67,7 +67,7 @@ namespace LOICollection::frontend::ir {
 
                 this->setReg(frame, instr.dst, *field);
             } break;
-            case MirOp::STORE_FIELD: {
+            case Op::STORE_FIELD: {
                 const auto& name = std::get<std::string>(cur.constants[instr.operand]);
                 const ValueNode::ValueType& objValue = this->regOf(frame, instr.src1);
 
@@ -100,7 +100,7 @@ namespace LOICollection::frontend::ir {
                     obj->slots[static_cast<size_t>(slot)] = this->regOf(frame, instr.src2);
                 }
 
-                if ((instr.imm & static_cast<int>(MirFlag::ScalarStore)) == 0
+                if ((instr.imm & static_cast<int>(Flag::ScalarStore)) == 0
                     && CycleCollector::holdsReference(this->regOf(frame, instr.src2))) {
                     this->heap().noteReferenceStore();
                     this->heap().track(obj);
@@ -109,7 +109,7 @@ namespace LOICollection::frontend::ir {
                         this->heap().barrier(slot >= 0 ? &previous : nullptr, this->regOf(frame, instr.src2));
                 }
             } break;
-            case MirOp::LOAD_FIELD_SLOT: {
+            case Op::LOAD_FIELD_SLOT: {
                 const ValueNode::ValueType& objValue = this->regOf(frame, instr.src1);
 
                 if (!std::holds_alternative<ObjectRef>(objValue)) {
@@ -128,7 +128,7 @@ namespace LOICollection::frontend::ir {
 
                 this->setReg(frame, instr.dst, obj->slots[static_cast<size_t>(instr.operand)]);
             } break;
-            case MirOp::STORE_FIELD_SLOT: {
+            case Op::STORE_FIELD_SLOT: {
                 const ValueNode::ValueType& objValue = this->regOf(frame, instr.src1);
 
                 if (!std::holds_alternative<ObjectRef>(objValue)) {
@@ -161,7 +161,7 @@ namespace LOICollection::frontend::ir {
 
                 obj->slots[static_cast<size_t>(instr.operand)] = this->regOf(frame, instr.src2);
 
-                if ((instr.imm & static_cast<int>(MirFlag::ScalarStore)) == 0
+                if ((instr.imm & static_cast<int>(Flag::ScalarStore)) == 0
                     && CycleCollector::holdsReference(obj->slots[static_cast<size_t>(instr.operand)])) {
                     this->heap().noteReferenceStore();
                     this->heap().track(obj);
@@ -170,7 +170,7 @@ namespace LOICollection::frontend::ir {
                         this->heap().barrier(&previous, obj->slots[static_cast<size_t>(instr.operand)]);
                 }
             } break;
-            case MirOp::BIND_THIS: {
+            case Op::BIND_THIS: {
                 const ValueNode::ValueType& selfValue = this->regOf(frame, instr.src2);
                 const ValueNode::ValueType& slot = this->regOf(frame, instr.src1);
 
@@ -193,7 +193,7 @@ namespace LOICollection::frontend::ir {
                         captured = std::monostate{};
                 }
             } break;
-            case MirOp::LOAD_LEN: {
+            case Op::LOAD_LEN: {
                 const ValueNode::ValueType& iterable = this->regOf(frame, instr.src1);
 
                 if (std::holds_alternative<ArrayRef>(iterable)) {
@@ -223,7 +223,7 @@ namespace LOICollection::frontend::ir {
         const auto& instr = s.instr;
         Frame& frame = s.frame;
         switch (instr.op) {
-            case MirOp::MAKE_ARRAY: {
+            case Op::MAKE_ARRAY: {
                 const int count = instr.operand;
                 if (count < 0) {
                     this->diagnostics.addError(this->currentLoc, "Invalid array literal size");
@@ -262,7 +262,7 @@ namespace LOICollection::frontend::ir {
 
                 this->setReg(frame, instr.dst, arr);
             } break;
-            case MirOp::LOAD_INDEX: {
+            case Op::LOAD_INDEX: {
                 const ValueNode::ValueType& indexValue = this->regOf(frame, instr.src2);
                 const ValueNode::ValueType& targetValue = this->regOf(frame, instr.src1);
 
@@ -307,7 +307,7 @@ namespace LOICollection::frontend::ir {
 
                 this->setReg(frame, instr.dst, arr->elements[index]);
             } break;
-            case MirOp::STORE_INDEX: {
+            case Op::STORE_INDEX: {
                 const ValueNode::ValueType& targetValue = this->regOf(frame, instr.src1);
 
                 if (!std::holds_alternative<ArrayRef>(targetValue)) {
@@ -373,7 +373,7 @@ namespace LOICollection::frontend::ir {
                     arr->elements[index] = value;
                 }
 
-                if ((instr.imm & static_cast<int>(MirFlag::ScalarStore)) == 0
+                if ((instr.imm & static_cast<int>(Flag::ScalarStore)) == 0
                     && CycleCollector::holdsReference(value)) {
                     this->heap().noteReferenceStore();
                     this->heap().track(arr);
@@ -389,10 +389,10 @@ namespace LOICollection::frontend::ir {
     void VM::execClosure(ExecArgs& s) {
         const auto& instr = s.instr;
         Frame& frame = s.frame;
-        const MirChunk& cur = s.cur;
+        const Chunk& cur = s.cur;
         const auto& owner = s.owner;
         switch (instr.op) {
-            case MirOp::MAKE_LAMBDA: {
+            case Op::MAKE_LAMBDA: {
                 const auto& meta = cur.lambdas[instr.operand];
 
                 auto func = std::make_shared<FunctionRef>();
@@ -439,7 +439,7 @@ namespace LOICollection::frontend::ir {
 
                 this->setReg(frame, instr.dst, func);
             } break;
-            case MirOp::LOAD_THIS: {
+            case Op::LOAD_THIS: {
                 if (!frame.hasThis) {
                     this->diagnostics.addError(this->currentLoc, "'this' is not available in the current context");
                     break;
@@ -453,11 +453,11 @@ namespace LOICollection::frontend::ir {
 
     void VM::execInstanceof(ExecArgs& s) {
         const auto& instr = s.instr;
-        const MirChunk& cur = s.cur;
-        const MirChunk& chunk = s.chunk;
+        const Chunk& cur = s.cur;
+        const Chunk& chunk = s.chunk;
         Frame& frame = s.frame;
         switch (instr.op) {
-            case MirOp::INSTANCEOF: {
+            case Op::INSTANCEOF: {
                 const auto& name = std::get<std::string>(cur.constants[instr.operand]);
                 const ValueNode::ValueType& value = this->regOf(frame, instr.src1);
 
@@ -490,10 +490,10 @@ namespace LOICollection::frontend::ir {
 
     void VM::execObjectCreate(ExecArgs& s) {
         const auto& instr = s.instr;
-        const MirChunk& chunk = s.chunk;
+        const Chunk& chunk = s.chunk;
         Frame& frame = s.frame;
         switch (instr.op) {
-            case MirOp::NEW: {
+            case Op::NEW: {
                 auto violation = this->mBudget->accountObject();
                 if (violation != sandbox::SandboxBudget::Violation::None) {
                     if (this->heap().collect() == 0) {
@@ -565,7 +565,7 @@ namespace LOICollection::frontend::ir {
                     this->placeArgs(argsBase, ctor.argCount);
                 }
             } break;
-            case MirOp::NEW_NATIVE: {
+            case Op::NEW_NATIVE: {
                 const auto& meta = chunk.nativeCalls[instr.operand];
 
                 auto result = ClassCall::getInstance().createCached(
@@ -587,11 +587,11 @@ namespace LOICollection::frontend::ir {
 
     void VM::execEnum(ExecArgs& s) {
         const auto& instr = s.instr;
-        const MirChunk& chunk = s.chunk;
+        const Chunk& chunk = s.chunk;
         Frame& frame = s.frame;
 
         switch (instr.op) {
-            case MirOp::MAKE_ENUM: {
+            case Op::MAKE_ENUM: {
                 if (instr.operand < 0 || static_cast<size_t>(instr.operand) >= chunk.enums.size()) {
                     this->diagnostics.addError(this->currentLoc, "Unknown enum id");
                     break;
@@ -637,7 +637,7 @@ namespace LOICollection::frontend::ir {
 
                 this->setReg(frame, instr.dst, std::move(value));
             } break;
-            case MirOp::TAG_OF: {
+            case Op::TAG_OF: {
                 const auto& value = this->regOf(frame, instr.src1);
                 int tag = -1;
 
@@ -646,7 +646,7 @@ namespace LOICollection::frontend::ir {
 
                 this->setReg(frame, instr.dst, tag);
             } break;
-            case MirOp::LOAD_ENUM_PAYLOAD: {
+            case Op::LOAD_ENUM_PAYLOAD: {
                 const auto& value = this->regOf(frame, instr.src1);
                 const auto* ev = std::get_if<EnumValue>(&value);
 

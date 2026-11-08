@@ -16,9 +16,9 @@
 #include "LOICollectionA/frontend/ir/opt/passes/ConstantFoldPass.h"
 
 namespace LOICollection::frontend::ir::opt::detail {
-    bool alwaysJumps(MirOp op, const ValueNode::ValueType& value) {
+    bool alwaysJumps(Op op, const ValueNode::ValueType& value) {
         const bool truthy = VM::valueToBool(value);
-        return (op == MirOp::JMP_IF_FALSE) ? !truthy : truthy;
+        return (op == Op::JMP_IF_FALSE) ? !truthy : truthy;
     }
 
     bool valuesEqual(const ValueNode::ValueType& left, const ValueNode::ValueType& right) {
@@ -69,21 +69,21 @@ namespace LOICollection::frontend::ir::opt::detail {
         return false;
     }
 
-    bool identityEligible(MirOp op, const ValueNode::ValueType& identity) {
+    bool identityEligible(Op op, const ValueNode::ValueType& identity) {
         switch (op) {
-            case MirOp::ADD:
-            case MirOp::SUB:
+            case Op::ADD:
+            case Op::SUB:
                 return isZero(identity);
-            case MirOp::MUL:
-            case MirOp::DIV:
-            case MirOp::POW:
+            case Op::MUL:
+            case Op::DIV:
+            case Op::POW:
                 return isOne(identity);
             default:
                 return false;
         }
     }
 
-    bool numericResult(const MirInstr& instr) {
+    bool numericResult(const Instr& instr) {
         return instr.type.kind == TypeKind::Int || instr.type.kind == TypeKind::Float;
     }
 }
@@ -114,16 +114,16 @@ namespace LOICollection::frontend::ir::opt {
     }
 
     ConstantFoldPass::Step ConstantFoldPass::fold(int oldIdx) {
-        const MirInstr& instr = mChunk.code[oldIdx];
+        const Instr& instr = mChunk.code[oldIdx];
 
         switch (instr.op) {
-            case MirOp::LOAD_CONST: {
+            case Op::LOAD_CONST: {
                 const int at = mCtx.emit(instr);
                 mRegValues[instr.dst] = { mChunk.constants[instr.operand], at, isImmutable(mChunk.constants[instr.operand]) };
                 return { at };
             }
 
-            case MirOp::MOVE: {
+            case Op::MOVE: {
                 const int at = mCtx.emit(instr);
                 if (auto it = mRegValues.find(instr.src1); it != mRegValues.end())
                     mRegValues[instr.dst] = it->second;
@@ -132,66 +132,66 @@ namespace LOICollection::frontend::ir::opt {
                 return { at };
             }
 
-            case MirOp::ADD: case MirOp::SUB: case MirOp::MUL: case MirOp::DIV:
-            case MirOp::MOD: case MirOp::POW:
+            case Op::ADD: case Op::SUB: case Op::MUL: case Op::DIV:
+            case Op::MOD: case Op::POW:
                 return foldBinary(instr);
 
-            case MirOp::CMP_EQ: case MirOp::CMP_NE: case MirOp::CMP_GT: case MirOp::CMP_LT:
-            case MirOp::CMP_GE: case MirOp::CMP_LE:
-            case MirOp::LOGIC_AND: case MirOp::LOGIC_OR:
+            case Op::CMP_EQ: case Op::CMP_NE: case Op::CMP_GT: case Op::CMP_LT:
+            case Op::CMP_GE: case Op::CMP_LE:
+            case Op::LOGIC_AND: case Op::LOGIC_OR:
                 return foldComparison(instr);
 
-            case MirOp::NEG: case MirOp::NOT:
+            case Op::NEG: case Op::NOT:
                 return foldUnary(instr);
 
-            case MirOp::UNWRAP: case MirOp::TYPE_OF: case MirOp::HAS_VALUE: case MirOp::IS_NONE:
+            case Op::UNWRAP: case Op::TYPE_OF: case Op::HAS_VALUE: case Op::IS_NONE:
                 return foldOptional(instr);
 
-            case MirOp::LOAD_SLOT: return foldLoadSlot(instr);
-            case MirOp::STORE_SLOT: return foldStoreSlot(instr);
-            case MirOp::LOAD_VAR: return foldLoadVar(instr);
-            case MirOp::STORE_VAR: return foldStoreVar(instr);
+            case Op::LOAD_SLOT: return foldLoadSlot(instr);
+            case Op::STORE_SLOT: return foldStoreSlot(instr);
+            case Op::LOAD_VAR: return foldLoadVar(instr);
+            case Op::STORE_VAR: return foldStoreVar(instr);
 
-            case MirOp::MAKE_ARRAY: return foldMakeArray(instr);
-            case MirOp::LOAD_INDEX: return foldLoadIndex(instr);
-            case MirOp::STORE_INDEX: return foldStoreIndex(instr);
+            case Op::MAKE_ARRAY: return foldMakeArray(instr);
+            case Op::LOAD_INDEX: return foldLoadIndex(instr);
+            case Op::STORE_INDEX: return foldStoreIndex(instr);
 
-            case MirOp::CALL: return foldCall(instr);
-            case MirOp::CALL_NATIVE_METHOD: return foldNativeMethod(instr);
+            case Op::CALL: return foldCall(instr);
+            case Op::CALL_NATIVE_METHOD: return foldNativeMethod(instr);
 
-            case MirOp::JMP_IF_FALSE:
-            case MirOp::JMP_IF_TRUE:
+            case Op::JMP_IF_FALSE:
+            case Op::JMP_IF_TRUE:
                 return foldBranch(instr);
 
-            case MirOp::JMP:
-            case MirOp::RETURN:
-            case MirOp::HALT:
-            case MirOp::PANIC:
+            case Op::JMP:
+            case Op::RETURN:
+            case Op::HALT:
+            case Op::PANIC:
                 return emitOriginal(instr);
 
-            case MirOp::MAKE_LAMBDA:
-            case MirOp::LOAD_THIS:
-            case MirOp::LOAD_FIELD:
-            case MirOp::LOAD_FIELD_SLOT:
-            case MirOp::LOAD_LEN:
-            case MirOp::INSTANCEOF:
+            case Op::MAKE_LAMBDA:
+            case Op::LOAD_THIS:
+            case Op::LOAD_FIELD:
+            case Op::LOAD_FIELD_SLOT:
+            case Op::LOAD_LEN:
+            case Op::INSTANCEOF:
                 this->forgetDst(instr.dst);
                 return emitOriginal(instr);
 
-            case MirOp::STORE_FIELD:
-            case MirOp::STORE_FIELD_SLOT:
-            case MirOp::BIND_THIS:
+            case Op::STORE_FIELD:
+            case Op::STORE_FIELD_SLOT:
+            case Op::BIND_THIS:
                 return emitOriginal(instr);
 
-            case MirOp::NEW:
-            case MirOp::NEW_NATIVE:
-            case MirOp::CALL_MACRO:
-            case MirOp::CALL_FUNC:
-            case MirOp::CALL_LAMBDA:
-            case MirOp::CALL_METHOD:
-            case MirOp::CALL_METHOD_VIRTUAL:
-            case MirOp::CALL_METHOD_BY_NAME:
-            case MirOp::CALL_SUPER_CTOR:
+            case Op::NEW:
+            case Op::NEW_NATIVE:
+            case Op::CALL_MACRO:
+            case Op::CALL_FUNC:
+            case Op::CALL_LAMBDA:
+            case Op::CALL_METHOD:
+            case Op::CALL_METHOD_VIRTUAL:
+            case Op::CALL_METHOD_BY_NAME:
+            case Op::CALL_SUPER_CTOR:
                 this->forgetDst(instr.dst);
                 return emitOriginal(instr);
 
@@ -200,7 +200,7 @@ namespace LOICollection::frontend::ir::opt {
         }
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::foldBinary(const MirInstr& instr) {
+    ConstantFoldPass::Step ConstantFoldPass::foldBinary(const Instr& instr) {
         Known left, right;
         const bool lk = knownReg(instr.src1, left);
         const bool rk = knownReg(instr.src2, right);
@@ -221,7 +221,7 @@ namespace LOICollection::frontend::ir::opt {
             return emitMove(instr.dst, instr.src1, instr.loc);
         }
 
-        const bool commutative = instr.op == MirOp::ADD || instr.op == MirOp::MUL;
+        const bool commutative = instr.op == Op::ADD || instr.op == Op::MUL;
         if (commutative && lk && numericResult(instr) && identityEligible(instr.op, left.value)) {
             ++mCtx.stats.folded;
             return emitMove(instr.dst, instr.src2, instr.loc);
@@ -231,18 +231,18 @@ namespace LOICollection::frontend::ir::opt {
         return emitOriginal(instr);
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::foldUnary(const MirInstr& instr) {
+    ConstantFoldPass::Step ConstantFoldPass::foldUnary(const Instr& instr) {
         Known operand;
         if (!knownReg(instr.src1, operand))
             return emitOriginalAfterForget(instr);
 
-        if (instr.op == MirOp::NOT) {
+        if (instr.op == Op::NOT) {
             ++mCtx.stats.folded;
             return emitConst(instr.dst, !VM::valueToBool(operand.value), instr.loc);
         }
 
         DiagnosticEngine diag;
-        ValueNode::ValueType result = VM::applyUnary(operand.value, MirOp::NEG, diag, instr.loc);
+        ValueNode::ValueType result = VM::applyUnary(operand.value, Op::NEG, diag, instr.loc);
 
         if (diag.hasErrors())
             return emitOriginalAfterForget(instr);
@@ -251,7 +251,7 @@ namespace LOICollection::frontend::ir::opt {
         return emitConst(instr.dst, result, instr.loc);
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::foldComparison(const MirInstr& instr) {
+    ConstantFoldPass::Step ConstantFoldPass::foldComparison(const Instr& instr) {
         Known left, right;
         const bool lk = knownReg(instr.src1, left);
         const bool rk = knownReg(instr.src2, right);
@@ -260,9 +260,9 @@ namespace LOICollection::frontend::ir::opt {
             return emitOriginalAfterForget(instr);
 
         bool result;
-        if (instr.op == MirOp::LOGIC_AND)
+        if (instr.op == Op::LOGIC_AND)
             result = VM::valueToBool(left.value) && VM::valueToBool(right.value);
-        else if (instr.op == MirOp::LOGIC_OR)
+        else if (instr.op == Op::LOGIC_OR)
             result = VM::valueToBool(left.value) || VM::valueToBool(right.value);
         else {
             DiagnosticEngine diag;
@@ -275,25 +275,25 @@ namespace LOICollection::frontend::ir::opt {
         return emitConst(instr.dst, result, instr.loc);
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::foldOptional(const MirInstr& instr) {
+    ConstantFoldPass::Step ConstantFoldPass::foldOptional(const Instr& instr) {
         Known operand;
         if (!knownReg(instr.src1, operand))
             return emitOriginalAfterForget(instr);
 
         ValueNode::ValueType out;
         switch (instr.op) {
-            case MirOp::UNWRAP:
+            case Op::UNWRAP:
                 if (std::holds_alternative<std::monostate>(operand.value))
                     return emitOriginalAfterForget(instr);
                 out = operand.value;
                 break;
-            case MirOp::TYPE_OF:
+            case Op::TYPE_OF:
                 out = VM::typeNameOf(operand.value);
                 break;
-            case MirOp::HAS_VALUE:
+            case Op::HAS_VALUE:
                 out = !std::holds_alternative<std::monostate>(operand.value);
                 break;
-            case MirOp::IS_NONE:
+            case Op::IS_NONE:
                 out = std::holds_alternative<std::monostate>(operand.value);
                 break;
             default:
@@ -304,7 +304,7 @@ namespace LOICollection::frontend::ir::opt {
         return emitConst(instr.dst, out, instr.loc);
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::foldLoadSlot(const MirInstr& instr) {
+    ConstantFoldPass::Step ConstantFoldPass::foldLoadSlot(const Instr& instr) {
         if (auto it = mSlotValues.find(instr.operand); it != mSlotValues.end() && it->second.removable) {
             ++mCtx.stats.folded;
             const Step step = emitConst(instr.dst, it->second.value, instr.loc);
@@ -316,7 +316,7 @@ namespace LOICollection::frontend::ir::opt {
         return emitOriginal(instr);
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::foldStoreSlot(const MirInstr& instr) {
+    ConstantFoldPass::Step ConstantFoldPass::foldStoreSlot(const Instr& instr) {
         const int at = mCtx.emit(instr);
 
         Known value;
@@ -328,7 +328,7 @@ namespace LOICollection::frontend::ir::opt {
         return { at };
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::foldLoadVar(const MirInstr& instr) {
+    ConstantFoldPass::Step ConstantFoldPass::foldLoadVar(const Instr& instr) {
         const std::string& name = std::get<std::string>(mChunk.constants[instr.operand]);
 
         if (auto it = mNameValues.find(name); it != mNameValues.end() && it->second.removable) {
@@ -342,7 +342,7 @@ namespace LOICollection::frontend::ir::opt {
         return emitOriginal(instr);
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::foldStoreVar(const MirInstr& instr) {
+    ConstantFoldPass::Step ConstantFoldPass::foldStoreVar(const Instr& instr) {
         const int at = mCtx.emit(instr);
 
         const std::string& name = std::get<std::string>(mChunk.constants[instr.operand]);
@@ -355,7 +355,7 @@ namespace LOICollection::frontend::ir::opt {
         return { at };
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::foldMakeArray(const MirInstr& instr) {
+    ConstantFoldPass::Step ConstantFoldPass::foldMakeArray(const Instr& instr) {
         const int count = instr.operand;
         if (count < 0) {
             this->forgetDst(instr.dst);
@@ -379,7 +379,7 @@ namespace LOICollection::frontend::ir::opt {
         return emitConst(instr.dst, arr, instr.loc);
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::foldLoadIndex(const MirInstr& instr) {
+    ConstantFoldPass::Step ConstantFoldPass::foldLoadIndex(const Instr& instr) {
         Known target, index;
         if (!knownReg(instr.src1, target) || !knownReg(instr.src2, index))
             return emitOriginalAfterForget(instr);
@@ -401,11 +401,11 @@ namespace LOICollection::frontend::ir::opt {
         return emitConst(instr.dst, arr->elements[idx], instr.loc);
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::foldStoreIndex(const MirInstr& instr) {
+    ConstantFoldPass::Step ConstantFoldPass::foldStoreIndex(const Instr& instr) {
         return emitOriginal(instr);
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::foldCall(const MirInstr& instr) {
+    ConstantFoldPass::Step ConstantFoldPass::foldCall(const Instr& instr) {
         const FuncMeta* meta = instr.operand >= 0 && instr.operand < static_cast<int>(mChunk.functions.size())
             ? &mChunk.functions[instr.operand]
             : nullptr;
@@ -437,7 +437,7 @@ namespace LOICollection::frontend::ir::opt {
         return emitOriginal(instr);
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::foldNativeMethod(const MirInstr& instr) {
+    ConstantFoldPass::Step ConstantFoldPass::foldNativeMethod(const Instr& instr) {
         if (instr.operand < 0 || instr.operand >= static_cast<int>(mChunk.nativeCalls.size())) {
             this->forgetDst(instr.dst);
             return emitOriginal(instr);
@@ -582,8 +582,8 @@ namespace LOICollection::frontend::ir::opt {
         return emitOriginal(instr);
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::foldBranch(const MirInstr& instr) {
-        if (instr.op == MirOp::JMP)
+    ConstantFoldPass::Step ConstantFoldPass::foldBranch(const Instr& instr) {
+        if (instr.op == Op::JMP)
             return emitOriginal(instr);
 
         Known cond;
@@ -592,7 +592,7 @@ namespace LOICollection::frontend::ir::opt {
 
         if (alwaysJumps(instr.op, cond.value)) {
             ++mCtx.stats.folded;
-            return { mCtx.emit({ MirOp::JMP, instr.operand, -1, -1, -1, -1, 0, {}, instr.loc }) };
+            return { mCtx.emit({ Op::JMP, instr.operand, -1, -1, -1, -1, 0, {}, instr.loc }) };
         }
 
         ++mCtx.stats.folded;
@@ -609,7 +609,7 @@ namespace LOICollection::frontend::ir::opt {
     }
 
     ConstantFoldPass::Step ConstantFoldPass::emitMove(int dst, int src, const SourceLocation& loc) {
-        const int at = mCtx.emit({ MirOp::MOVE, 0, dst, src, -1, -1, 0, {}, loc });
+        const int at = mCtx.emit({ Op::MOVE, 0, dst, src, -1, -1, 0, {}, loc });
         if (auto it = mRegValues.find(src); it != mRegValues.end())
             mRegValues[dst] = it->second;
         else
@@ -617,11 +617,11 @@ namespace LOICollection::frontend::ir::opt {
         return { at };
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::emitOriginal(const MirInstr& instr) {
+    ConstantFoldPass::Step ConstantFoldPass::emitOriginal(const Instr& instr) {
         return { mCtx.emit(instr) };
     }
 
-    ConstantFoldPass::Step ConstantFoldPass::emitOriginalAfterForget(const MirInstr& instr) {
+    ConstantFoldPass::Step ConstantFoldPass::emitOriginalAfterForget(const Instr& instr) {
         this->forgetDst(instr.dst);
         return { mCtx.emit(instr) };
     }

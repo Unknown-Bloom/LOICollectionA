@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "LOICollectionA/frontend/ir/Mir.h"
+#include "LOICollectionA/frontend/ir/Lir.h"
 
 namespace LOICollection::frontend::ir::opt {
     class ControlFlowGraph {
@@ -14,7 +14,7 @@ namespace LOICollection::frontend::ir::opt {
             std::vector<int> predecessors;
         };
 
-        explicit ControlFlowGraph(const std::vector<MirInstr>& code);
+        explicit ControlFlowGraph(const std::vector<Instr>& code);
 
         const std::vector<Block>& blocks() const { return mBlocks; }
 
@@ -23,9 +23,9 @@ namespace LOICollection::frontend::ir::opt {
         int size() const { return static_cast<int>(mBlocks.size()); }
 
     private:
-        static std::vector<int> leaders(const std::vector<MirInstr>& code);
+        static std::vector<int> leaders(const std::vector<Instr>& code);
 
-        void link(const std::vector<MirInstr>& code);
+        void link(const std::vector<Instr>& code);
 
         std::vector<Block> mBlocks;
         std::vector<int> mBlockOfIndex;
