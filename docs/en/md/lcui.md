@@ -13,6 +13,7 @@ The complete processing flow of a script is:
 ScriptLoader (import resolution and merging) -> Lexer (lexical analysis) -> Parser (syntax analysis) -> SemanticAnalyzer (semantic analysis) -> Compiler (HIR -> MIR -> LIR compilation) -> Optimizer (optimization) -> VM (execution)
 ```
 
+- Inside `Compiler`, the AST is lowered through HIR and MIR to LIR; HIR handles name resolution and structured control flow, MIR handles control-flow lowering and CFG verification, and the VM executes only the final LIR.
 - When the plugin starts or after the `/xxx reload` command is executed, `GUIManager::load` reads the `.lcui` file, first resolves the `import` graph (see "Multi-file Imports"), and then completes the compilation flow above; besides being cached in memory, the compiled bytecode is also written to disk as a `.lcp` file (see "Bytecode Package").
 - When a player opens a GUI, `GUIManager::open(id, formId, type[, ctx])` executes the cached script for that player; forms created in the script with `new CustomForm(...)`, `new PaginatedForm(...)`, etc. are registered with `GUIManager`, and then the form corresponding to `formId` is switched to.
 

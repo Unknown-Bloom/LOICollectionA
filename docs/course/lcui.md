@@ -1346,6 +1346,9 @@ if (depth < bestDepth || (depth == bestDepth && score > bestScore)) {
 
 ## 第三部分：理解 `Compiler`（`编译器`），以及为什么选择 `访问者模式` 而不是 `模式匹配`
 
+> [!NOTE]
+> 本部分及后续涉及 `BytecodeChunk` / `Compiler::visit` 的代码，来自 1.14.0 / 1.15.0 的单层编译器，用于讲解设计推演。当前实现已拆分为 HIR → MIR → LIR，最终产物类型为 `Chunk`，接口与目录结构请以 [架构概览](../dev/architecture.md) 和 [LCUI 脚本语法](../md/lcui.md) 为准。
+
 第三部分换个视角：从一棵树说起。
 
 在编译器眼里，`1 + 2 * 3` 不是一行算式，而是一棵树：

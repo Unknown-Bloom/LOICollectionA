@@ -13,6 +13,7 @@
 ScriptLoader（导入解析与合并） -> Lexer（词法分析） -> Parser（语法分析） -> SemanticAnalyzer（语义分析） -> Compiler（HIR -> MIR -> LIR 编译） -> Optimizer（优化） -> VM（执行）
 ```
 
+- `Compiler` 内部依次把 AST 降为 HIR、MIR 与 LIR；HIR 负责名字解析与结构化控制流，MIR 负责控制流降级与 CFG 验证，VM 只执行最终的 LIR。
 - 插件启动时或执行 `/xxx reload` 命令后，`GUIManager::load` 会读取 `.lcui` 文件，先解析 `import` 导入图（见「多文件导入」），再完成上述编译流程；编译产物除缓存在内存外，还会以 `.lcp` 字节码文件落盘（见「字节码产物」）。
 - 玩家打开 GUI 时，`GUIManager::open(id, formId, type[, ctx])` 会针对该玩家执行缓存的脚本；脚本中 `new CustomForm(...)`、`new PaginatedForm(...)` 等创建的表单会注册到 `GUIManager`，随后切换到 `formId` 对应的表单。
 

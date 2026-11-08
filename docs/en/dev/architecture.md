@@ -197,7 +197,20 @@ Every method returns `ll::Expected<T>` so errors compose via `and_then` / `trans
 
 ## Scripting VM
 
-LCUI scripts pass through the type IR (`ty/`), HIR (`hir/`), and MIR (`mir/`) in `frontend/ir/`, then lower to LIR (`Lir.h`, low-level register instructions and metadata), which `VM` interprets directly; `Chunk` is the LIR container. Object access and field caching are designed around two ideas:
+LCUI scripts pass through the type IR (`ty/`), HIR (`hir/`), and MIR (`mir/`) in `frontend/ir/`, then lower to LIR (`Lir.h`, low-level register instructions and metadata), which `VM` interprets directly; `Chunk` is the LIR container.
+
+### Frontend IR Layers
+
+| Layer | Main types | Responsibility |
+| --- | --- | --- |
+| Type IR | `ty::TypeContext`, `ty::Ty`, `AdtDef`, `EnumDef`, `FnSig` | Type hash-consing; provides stable type handles for HIR/MIR/LIR |
+| HIR | `hir::Program`, `hir::Body`, `hir::Expr`, `hir::Stmt` | Name resolution, locals, lambda captures, constant folding; `for-in`, `match`, `if let`, `?.`, `??`, `?` are desugared here while control flow stays structured |
+| MIR | `mir::Module`, `mir::Body`, `mir::Block`, `Statement`, `Terminator` | Lowers control flow to basic blocks plus terminators; `MirVerifier` checks the CFG, local definitions and types, and `MirPass` removes unreachable blocks |
+| LIR | `lir::Chunk`, `lir::Instr`, `lir::Op` | Register allocation, block flattening, jump patching, constant pool and call metadata; `LirVerifier` checks register ranges, jump targets and metadata consistency, and `VM` executes it directly |
+
+`Compiler::compile` runs `HirBuilder`, `HirVerifier`, `MirBuilder`, `MirVerifier`/`MirPass`, `LirLowering`, and `LirVerifier` in order. If any verifier fails, the error is reported through `DiagnosticEngine` and an empty `Chunk` is returned, so inconsistent bytecode never reaches the VM. `buildHir`, `buildMir`, and `lowerLir` remain available as diagnostic and test entry points.
+
+The canonical LIR names are `lir::Chunk` / `lir::Instr` / `lir::Op` / `lir::Flag`; the `ir` namespace provides using declarations with the same names, and no compatibility aliases or legacy serializer names from the single-layer IR remain. Object access and field caching are designed around two ideas:
 
 ### Object Model and Field Layout
 

@@ -195,7 +195,20 @@ ConnectionPool               # SQLite 连接池（WAL 模式）
 
 ## 脚本引擎 VM
 
-LCUI 脚本在 `frontend/ir/` 中依次经过类型 IR（`ty/`）、HIR（`hir/`）与 MIR（`mir/`），最终降级为 LIR（`Lir.h`，低层寄存器指令与元数据），由 `VM` 直接解释执行；`Chunk` 是 LIR 的容器。对象访问与字段缓存围绕以下两点设计：
+LCUI 脚本在 `frontend/ir/` 中依次经过类型 IR（`ty/`）、HIR（`hir/`）与 MIR（`mir/`），最终降级为 LIR（`Lir.h`，低层寄存器指令与元数据），由 `VM` 直接解释执行；`Chunk` 是 LIR 的容器。
+
+### 前端 IR 分层
+
+| 层 | 主要类型 | 职责 |
+| --- | --- | --- |
+| 类型 IR | `ty::TypeContext`、`ty::Ty`、`AdtDef`、`EnumDef`、`FnSig` | 类型 hash-consing；为 HIR/MIR/LIR 提供稳定的类型句柄 |
+| HIR | `hir::Program`、`hir::Body`、`hir::Expr`、`hir::Stmt` | 名字解析、局部变量、lambda 捕获、常量折叠；`for-in`、`match`、`if let`、`?.`、`??`、`?` 在这里脱糖，控制流仍是结构化语句 |
+| MIR | `mir::Module`、`mir::Body`、`mir::Block`、`Statement`、`Terminator` | 控制流降级为 basic block + terminator；`MirVerifier` 检查 CFG、局部定义与类型，`MirPass` 删除不可达块 |
+| LIR | `lir::Chunk`、`lir::Instr`、`lir::Op` | 寄存器分配、块展平、跳转回填、常量池与调用元数据；`LirVerifier` 检查寄存器范围、跳转目标与元数据一致性，`VM` 直接执行 |
+
+`Compiler::compile` 依次调用 `HirBuilder`、`HirVerifier`、`MirBuilder`、`MirVerifier`/`MirPass`、`LirLowering`、`LirVerifier`；任一 verifier 失败都会通过 `DiagnosticEngine` 报告内部错误并返回空 `Chunk`，不会把不一致的字节码交给 VM。`buildHir`、`buildMir` 与 `lowerLir` 保留为诊断和测试入口。
+
+LIR 的规范名字是 `lir::Chunk` / `lir::Instr` / `lir::Op` / `lir::Flag`；`ir` 命名空间提供同名 using，不再保留旧单层 IR 的兼容别名与旧序列化器名字。对象访问与字段缓存围绕以下两点设计：
 
 ### 对象模型与字段布局
 
