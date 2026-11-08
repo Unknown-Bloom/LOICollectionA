@@ -10,7 +10,7 @@
 脚本的完整处理流程为：
 
 ```text
-ScriptLoader（导入解析与合并） -> Lexer（词法分析） -> Parser（语法分析） -> SemanticAnalyzer（语义分析） -> Compiler（字节码编译） -> Optimizer（优化） -> VM（执行）
+ScriptLoader（导入解析与合并） -> Lexer（词法分析） -> Parser（语法分析） -> SemanticAnalyzer（语义分析） -> Compiler（HIR -> MIR -> LIR 编译） -> Optimizer（优化） -> VM（执行）
 ```
 
 - 插件启动时或执行 `/xxx reload` 命令后，`GUIManager::load` 会读取 `.lcui` 文件，先解析 `import` 导入图（见「多文件导入」），再完成上述编译流程；编译产物除缓存在内存外，还会以 `.lcp` 字节码文件落盘（见「字节码产物」）。

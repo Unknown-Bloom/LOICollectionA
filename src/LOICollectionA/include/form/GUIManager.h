@@ -38,8 +38,8 @@ namespace LOICollection::frontend {
     struct Context;
 }
 
-namespace LOICollection::frontend::ir {
-    struct MirChunk;
+namespace LOICollection::frontend::ir::lir {
+    struct Chunk;
 }
 
 namespace LOICollection::form {
@@ -114,7 +114,7 @@ namespace LOICollection::form {
         LOICOLLECTION_A_NDAPI std::shared_ptr<frontend::GlobalsTable> scriptGlobals(const std::string& id, Player& player);
 
         LOICOLLECTION_A_NDAPI ll::Expected<void> runFormScript(
-            const std::shared_ptr<const frontend::ir::MirChunk>& cached,
+            const std::shared_ptr<const frontend::ir::lir::Chunk>& cached,
             const frontend::Context& context,
             const std::string& id,
             std::shared_ptr<frontend::GlobalsTable> globals

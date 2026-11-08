@@ -10,7 +10,7 @@
 The complete processing flow of a script is:
 
 ```text
-ScriptLoader (import resolution and merging) -> Lexer (lexical analysis) -> Parser (syntax analysis) -> SemanticAnalyzer (semantic analysis) -> Compiler (bytecode compilation) -> Optimizer (optimization) -> VM (execution)
+ScriptLoader (import resolution and merging) -> Lexer (lexical analysis) -> Parser (syntax analysis) -> SemanticAnalyzer (semantic analysis) -> Compiler (HIR -> MIR -> LIR compilation) -> Optimizer (optimization) -> VM (execution)
 ```
 
 - When the plugin starts or after the `/xxx reload` command is executed, `GUIManager::load` reads the `.lcui` file, first resolves the `import` graph (see "Multi-file Imports"), and then completes the compilation flow above; besides being cached in memory, the compiled bytecode is also written to disk as a `.lcp` file (see "Bytecode Package").

@@ -3,18 +3,18 @@
 #include "LOICollectionA/frontend/ir/ChunkCache.h"
 
 namespace LOICollection::frontend::ir {
-    namespace {
+    namespace detail {
         std::atomic<std::uint64_t> generation{ 1 };
     }
 
     std::uint64_t chunkGeneration() {
-        return generation.load(std::memory_order_acquire);
+        return detail::generation.load(std::memory_order_acquire);
     }
 
-    MirChunk::~MirChunk() {
-        std::vector<std::unique_ptr<MirChunk>> pending;
+    lir::Chunk::~Chunk() {
+        std::vector<std::unique_ptr<Chunk>> pending;
 
-        auto drain = [&pending](MirChunk* node) -> void {
+        auto drain = [&pending](Chunk* node) -> void {
             while (!node->methodBodies.empty()) {
                 pending.push_back(std::move(node->methodBodies.back()));
                 node->methodBodies.pop_back();
@@ -29,10 +29,8 @@ namespace LOICollection::frontend::ir {
             drain(owned.get());
         }
 
-        
-        
         ChunkCacheRegistry::getInstance().release(this);
-        generation.fetch_add(1, std::memory_order_release);
+        detail::generation.fetch_add(1, std::memory_order_release);
     }
 
     ChunkCacheRegistry& ChunkCacheRegistry::getInstance() {

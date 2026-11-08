@@ -22,8 +22,8 @@ namespace LOICollection::frontend {
     struct FunctionRef;
     using FunctionRefPtr = std::shared_ptr<FunctionRef>;
 
-    namespace ir {
-        struct MirChunk;
+    namespace ir::lir {
+        struct Chunk;
     }
 
     enum class TypeKind {
@@ -1441,7 +1441,7 @@ namespace LOICollection::frontend {
     };
 
     struct FunctionRef {
-        std::shared_ptr<const ir::MirChunk> owner;
+        std::shared_ptr<const ir::lir::Chunk> owner;
 
         int bodyIndex = -1;
         int argCount = 0;

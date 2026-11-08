@@ -197,7 +197,7 @@ Every method returns `ll::Expected<T>` so errors compose via `and_then` / `trans
 
 ## Scripting VM
 
-LCUI scripts are compiled in `frontend/ir/` into three-address MIR and executed directly by `VM`. Object access and field caching are designed around two ideas:
+LCUI scripts pass through the type IR (`ty/`), HIR (`hir/`), and MIR (`mir/`) in `frontend/ir/`, then lower to LIR (`Lir.h`, low-level register instructions and metadata), which `VM` interprets directly; `MirChunk` is a compatibility alias for LIR. Object access and field caching are designed around two ideas:
 
 ### Object Model and Field Layout
 
@@ -232,4 +232,4 @@ The optimizer repeatedly runs `ConstantPropagation -> ConstantFold -> DeadStore 
 
 ### Bytecode Package (`.lcp`)
 
-A package written by `MirSerializer` consists of `abiFingerprint` (the native export surface), source/import hashes, `layoutFingerprint` (the class table of this package), and the MIR body. `layoutFingerprint` is computed from the in-memory chunk when writing and recomputed from the decoded result when reading; a mismatch rejects the package — it catches self-consistent but semantically wrong packages caused by writer/reader drift (e.g. a class-table field not being written). On a version mismatch or checksum failure, the loader falls back to recompiling the source and overwrites the package.
+A package written by `MirSerializer` consists of `abiFingerprint` (the native export surface), source/import hashes, `layoutFingerprint` (the class table of this package), and the LIR body. `layoutFingerprint` is computed from the in-memory chunk when writing and recomputed from the decoded result when reading; a mismatch rejects the package — it catches self-consistent but semantically wrong packages caused by writer/reader drift (e.g. a class-table field not being written). On a version mismatch or checksum failure, the loader falls back to recompiling the source and overwrites the package.

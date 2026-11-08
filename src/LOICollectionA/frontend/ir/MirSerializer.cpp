@@ -733,7 +733,7 @@ namespace LOICollection::frontend::ir::detail {
             && std::holds_alternative<std::string>(chunk.constants[static_cast<std::size_t>(index)]);
     }
 
-    bool validateInstruction(const MirChunk& chunk, std::size_t ip) {
+    bool validateInstruction(const MirChunk& chunk, const MirChunk& metadata, std::size_t ip) {
         const MirInstr& instr = chunk.code[ip];
         const int slots = chunk.slotCount;
 
@@ -769,31 +769,31 @@ namespace LOICollection::frontend::ir::detail {
                     && static_cast<std::size_t>(instr.operand) < chunk.lambdas.size();
 
             case MirOp::MAKE_ENUM: {
-                if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= chunk.enums.size())
+                if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= metadata.enums.size())
                     return false;
 
-                const auto& meta = chunk.enums[static_cast<std::size_t>(instr.operand)];
+                const auto& meta = metadata.enums[static_cast<std::size_t>(instr.operand)];
                 return instr.imm >= 0 && static_cast<std::size_t>(instr.imm) < meta.variantNames.size();
             }
 
             case MirOp::NEW: {
-                if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= chunk.classes.size())
+                if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= metadata.classes.size())
                     return false;
 
-                const auto& cls = chunk.classes[static_cast<std::size_t>(instr.operand)];
+                const auto& cls = metadata.classes[static_cast<std::size_t>(instr.operand)];
                 if (cls.constructorIndex < 0)
                     return true;
 
-                if (static_cast<std::size_t>(cls.constructorIndex) >= chunk.methods.size())
+                if (static_cast<std::size_t>(cls.constructorIndex) >= metadata.methods.size())
                     return false;
 
-                return hasArgs(instr.src1, chunk.methods[static_cast<std::size_t>(cls.constructorIndex)].argCount);
+                return hasArgs(instr.src1, metadata.methods[static_cast<std::size_t>(cls.constructorIndex)].argCount);
             }
 
             case MirOp::NEW_NATIVE:
                 return instr.operand >= 0
-                    && static_cast<std::size_t>(instr.operand) < chunk.nativeCalls.size()
-                    && hasArgs(instr.src1, chunk.nativeCalls[static_cast<std::size_t>(instr.operand)].argCount);
+                    && static_cast<std::size_t>(instr.operand) < metadata.nativeCalls.size()
+                    && hasArgs(instr.src1, metadata.nativeCalls[static_cast<std::size_t>(instr.operand)].argCount);
 
             case MirOp::CALL:
                 return instr.operand >= 0
@@ -806,11 +806,11 @@ namespace LOICollection::frontend::ir::detail {
                     && hasArgs(instr.src1, instr.imm);
 
             case MirOp::CALL_METHOD: {
-                if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= chunk.methods.size())
+                if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= metadata.methods.size())
                     return false;
 
                 return hasArgs(instr.src1, instr.imm)
-                    && hasArgs(instr.src1, chunk.methods[static_cast<std::size_t>(instr.operand)].argCount);
+                    && hasArgs(instr.src1, metadata.methods[static_cast<std::size_t>(instr.operand)].argCount);
             }
 
             case MirOp::CALL_METHOD_VIRTUAL: {
@@ -830,10 +830,10 @@ namespace LOICollection::frontend::ir::detail {
             }
 
             case MirOp::CALL_NATIVE_METHOD: {
-                if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= chunk.nativeCalls.size())
+                if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= metadata.nativeCalls.size())
                     return false;
 
-                return hasArgs(instr.src1, chunk.nativeCalls[static_cast<std::size_t>(instr.operand)].argCount);
+                return hasArgs(instr.src1, metadata.nativeCalls[static_cast<std::size_t>(instr.operand)].argCount);
             }
 
             case MirOp::CALL_SUPER_CTOR: {
@@ -845,10 +845,10 @@ namespace LOICollection::frontend::ir::detail {
             }
 
             case MirOp::CALL_FUNC: {
-                if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= chunk.methods.size())
+                if (instr.operand < 0 || static_cast<std::size_t>(instr.operand) >= metadata.methods.size())
                     return false;
 
-                return hasArgs(instr.src1, chunk.methods[static_cast<std::size_t>(instr.operand)].argCount);
+                return hasArgs(instr.src1, metadata.methods[static_cast<std::size_t>(instr.operand)].argCount);
             }
 
             case MirOp::CALL_LAMBDA:
@@ -867,7 +867,7 @@ namespace LOICollection::frontend::ir::detail {
             case MirOp::JMP_IF_TAG_NE:
                 return hasTarget(instr.operand)
                     && instr.src2 >= 0
-                    && static_cast<std::size_t>(instr.src2) < chunk.enums.size()
+                    && static_cast<std::size_t>(instr.src2) < metadata.enums.size()
                     && instr.imm >= 0;
 
             default:
@@ -875,7 +875,7 @@ namespace LOICollection::frontend::ir::detail {
         }
     }
 
-    bool validateChunk(const MirChunk& chunk) {
+    bool validateChunk(const MirChunk& chunk, const MirChunk& metadata) {
         if (chunk.slotCount < 0 || static_cast<std::size_t>(chunk.slotCount) > kMaxSlotCount)
             return false;
 
@@ -911,15 +911,15 @@ namespace LOICollection::frontend::ir::detail {
                 || cls.staticMethods.size() != cls.staticMethodSignatures.size())
                 return false;
 
-            if (cls.constructorIndex < -1 || cls.constructorIndex >= static_cast<int>(chunk.methods.size()))
+            if (cls.constructorIndex < -1 || cls.constructorIndex >= static_cast<int>(metadata.methods.size()))
                 return false;
 
             for (const int index : cls.methods)
-                if (index < 0 || index >= static_cast<int>(chunk.methods.size()))
+                if (index < 0 || index >= static_cast<int>(metadata.methods.size()))
                     return false;
 
             for (const int index : cls.staticMethods)
-                if (index < 0 || index >= static_cast<int>(chunk.methods.size()))
+                if (index < 0 || index >= static_cast<int>(metadata.methods.size()))
                     return false;
 
             for (const int ancestor : cls.ancestorIndices)
@@ -934,19 +934,19 @@ namespace LOICollection::frontend::ir::detail {
             if (!validArgCount(meta.argCount))
                 return false;
 
-            if (meta.bodyIndex < 0 || static_cast<std::size_t>(meta.bodyIndex) >= chunk.methodBodies.size())
+            if (meta.bodyIndex < 0 || static_cast<std::size_t>(meta.bodyIndex) >= metadata.methodBodies.size())
                 return false;
 
-            const auto& body = chunk.methodBodies[static_cast<std::size_t>(meta.bodyIndex)];
+            const auto& body = metadata.methodBodies[static_cast<std::size_t>(meta.bodyIndex)];
             if (!body || meta.argCount > body->slotCount)
                 return false;
         }
 
         for (const auto& meta : chunk.virtualCalls) {
-            if (meta.classIndex < 0 || static_cast<std::size_t>(meta.classIndex) >= chunk.classes.size())
+            if (meta.classIndex < 0 || static_cast<std::size_t>(meta.classIndex) >= metadata.classes.size())
                 return false;
 
-            const auto& cls = chunk.classes[static_cast<std::size_t>(meta.classIndex)];
+            const auto& cls = metadata.classes[static_cast<std::size_t>(meta.classIndex)];
             if (meta.ordinal < 0 || static_cast<std::size_t>(meta.ordinal) >= cls.methods.size())
                 return false;
 
@@ -959,12 +959,12 @@ namespace LOICollection::frontend::ir::detail {
                 return false;
 
             if (meta.constructorIndex >= 0
-                && static_cast<std::size_t>(meta.constructorIndex) >= chunk.methods.size())
+                && static_cast<std::size_t>(meta.constructorIndex) >= metadata.methods.size())
                 return false;
         }
 
         for (const auto& meta : chunk.lambdas) {
-            if (meta.bodyIndex < 0 || static_cast<std::size_t>(meta.bodyIndex) >= chunk.methodBodies.size())
+            if (meta.bodyIndex < 0 || static_cast<std::size_t>(meta.bodyIndex) >= metadata.methodBodies.size())
                 return false;
 
             if (!validArgCount(meta.argCount))
@@ -974,7 +974,7 @@ namespace LOICollection::frontend::ir::detail {
                 || static_cast<std::size_t>(meta.captureCount) != meta.captures.size())
                 return false;
 
-            const auto& body = chunk.methodBodies[static_cast<std::size_t>(meta.bodyIndex)];
+            const auto& body = metadata.methodBodies[static_cast<std::size_t>(meta.bodyIndex)];
             if (!body || meta.argCount > body->slotCount)
                 return false;
 
@@ -991,7 +991,7 @@ namespace LOICollection::frontend::ir::detail {
         }
 
         for (std::size_t ip = 0; ip < chunk.code.size(); ++ip)
-            if (!validateInstruction(chunk, ip))
+            if (!validateInstruction(chunk, metadata, ip))
                 return false;
 
         return true;
@@ -1056,7 +1056,18 @@ namespace LOICollection::frontend::ir::detail {
             chunk.methodBodies.push_back(std::move(body));
         }
 
-        return validateChunk(chunk);
+        return true;
+    }
+
+    bool validateTree(const MirChunk& root, const MirChunk& chunk) {
+        if (!validateChunk(chunk, root))
+            return false;
+
+        for (const auto& body : chunk.methodBodies)
+            if (body && !validateTree(root, *body))
+                return false;
+
+        return true;
     }
 }
 
@@ -1169,6 +1180,9 @@ namespace LOICollection::frontend::ir {
 
         MirChunk chunk;
         if (!readChunk(reader, chunk) || !reader.done())
+            return std::nullopt;
+
+        if (!detail::validateTree(chunk, chunk))
             return std::nullopt;
 
         if (layoutFingerprint(chunk) != layout)
