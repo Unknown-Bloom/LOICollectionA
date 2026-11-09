@@ -114,6 +114,8 @@ namespace LOICollection::frontend {
                 {"string", TypeKind::String},
                 {"bool", TypeKind::Bool},
                 {"void", TypeKind::Void},
+                {"array", TypeKind::Array},
+                {"function", TypeKind::Function},
             };
             return table;
         }

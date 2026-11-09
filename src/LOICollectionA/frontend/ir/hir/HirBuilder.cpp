@@ -1708,7 +1708,7 @@ namespace LOICollection::frontend::ir::hir {
                 this->current->exprs[tested].flag2 = true;
 
                 Expr expr;
-                expr.kind = node.op == "==" ? ExprKind::HasValue : ExprKind::IsNone;
+                expr.kind = node.op == "==" ? ExprKind::IsNone : ExprKind::HasValue;
                 expr.type = this->program.types->primitive(ty::TyKind::Bool);
                 expr.loc = node.loc;
                 expr.args.push_back(tested);

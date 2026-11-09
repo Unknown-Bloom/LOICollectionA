@@ -508,16 +508,6 @@ namespace LOICollection::frontend {
                     std::to_string(argCount));
             }
 
-            for (size_t j = 0; j < argCount && j < node.paramTypes.size(); ++j) {
-                if (!this->isAssignableTo(node.paramTypes[j], argTypes[j])) {
-                    diagnostics.addError(node.loc,
-                        "Type mismatch for enum variant '" + node.name +
-                        "' payload slot " + std::to_string(j) + ": expected " +
-                        typeToString(node.paramTypes[j]) + ", got " +
-                        typeToString(argTypes[j]));
-                }
-            }
-
             TypeInfo result;
             result.kind = TypeKind::Enum;
             result.className = info.enumName;
