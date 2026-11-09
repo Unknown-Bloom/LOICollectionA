@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -13,7 +14,12 @@
 #include "LOICollectionA/frontend/ir/hir/HirBuilder.h"
 
 namespace LOICollection::frontend::ir::hir::detail {
-    ty::Ty lowerTypeExpr(ty::TypeContext& types, const TypeExpr& expr) {
+    ty::Ty lowerTypeExpr(
+        ty::TypeContext& types, const TypeExpr& expr,
+        const std::unordered_set<std::string>& params = {}) {
+        if (params.contains(expr.name))
+            return types.param(expr.name);
+
         if (expr.name == "int")
             return types.primitive(ty::TyKind::Int);
         if (expr.name == "float")
@@ -29,26 +35,26 @@ namespace LOICollection::frontend::ir::hir::detail {
 
         if (expr.name == "ref" && !expr.args.empty()) {
             ty::TyData data;
-            data.kind = types.kind(lowerTypeExpr(types, expr.args[0]));
+            data.kind = types.kind(lowerTypeExpr(types, expr.args[0], params));
             data.ownership = Ownership::Borrowed;
             return types.intern(std::move(data));
         }
 
         if (expr.name == "optional" && !expr.args.empty())
-            return types.optional(lowerTypeExpr(types, expr.args[0]));
+            return types.optional(lowerTypeExpr(types, expr.args[0], params));
 
         if (expr.name == "variant") {
             std::vector<ty::Ty> options;
             options.reserve(expr.args.size());
             for (const TypeExpr& arg : expr.args)
-                options.push_back(lowerTypeExpr(types, arg));
+                options.push_back(lowerTypeExpr(types, arg, params));
             return types.variant(std::move(options));
         }
 
         std::vector<ty::Ty> args;
         args.reserve(expr.args.size());
         for (const TypeExpr& arg : expr.args)
-            args.push_back(lowerTypeExpr(types, arg));
+            args.push_back(lowerTypeExpr(types, arg, params));
 
         return types.adt(expr.name, std::move(args));
     }
@@ -634,6 +640,10 @@ namespace LOICollection::frontend::ir::hir {
         entry.name = node.name;
         entry.enumIndex = static_cast<int>(this->program.enums.size());
 
+        std::unordered_set<std::string> typeParams;
+        for (const TypeParam& param : node.typeParams)
+            typeParams.insert(param.name);
+
         for (std::size_t tag = 0; tag < node.variants.size(); ++tag) {
             const ::LOICollection::frontend::EnumVariant& variant = node.variants[tag];
 
@@ -641,7 +651,7 @@ namespace LOICollection::frontend::ir::hir {
             compiled.name = variant.name;
             compiled.payload.reserve(variant.fieldTypes.size());
             for (const TypeExpr& field : variant.fieldTypes)
-                compiled.payload.push_back(lowerTypeExpr(*this->program.types, field));
+                compiled.payload.push_back(lowerTypeExpr(*this->program.types, field, typeParams));
 
             this->program.enumVariants.emplace(variant.name,
                 std::make_pair(entry.enumIndex, static_cast<int>(tag)));

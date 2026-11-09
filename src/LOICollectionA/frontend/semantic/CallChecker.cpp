@@ -64,9 +64,20 @@ namespace LOICollection::frontend {
                 }
 
                 std::vector<TypeInfo> argTypes = checkArgs();
+                std::vector<TypeInfo> explicitTypes;
+                for (const auto& typeArg : node.typeArgs)
+                    explicitTypes.push_back(this->resolveTypeExpr(typeArg, node.loc, true));
+
+                TypeInfo classType;
+                if (scope.hasClass() && &scope.classRef() == &clsOpt->get()) {
+                    classType = this->selfType(clsOpt->get());
+                } else {
+                    classType.kind = TypeKind::Object;
+                    classType.className = clsOpt->get().name;
+                }
 
                 auto staticMethod = this->findStaticMethod(
-                    clsOpt->get(), node.methodName, argTypes, scope
+                    clsOpt->get(), node.methodName, argTypes, scope, classType, explicitTypes
                 );
                 if (!staticMethod) {
                     diagnostics.addError(node.loc,
@@ -82,16 +93,18 @@ namespace LOICollection::frontend {
                 node.methodOrdinal = this->staticMethodOrdinal(
                     clsOpt->get().name, this->methodSignature(method)
                 );
-                node.paramTypes = method.paramTypes;
+                node.paramTypes.clear();
+                for (const auto& paramType : method.paramTypes)
+                    node.paramTypes.push_back(this->substituteType(paramType, staticMethod->subst));
 
                 for (size_t j = 0; j < argCount; ++j) {
-                    if (method.paramTypes[j].kind == TypeKind::Optional &&
+                    if (node.paramTypes[j].kind == TypeKind::Optional &&
                         argTypes[j].kind == TypeKind::Optional) {
                         node.args[j]->preserveOptional = true;
                     }
                 }
 
-                return method.returnType;
+                return this->substituteType(method.returnType, staticMethod->subst);
             }
 
             if (isNativeClass(var.name)) {
@@ -101,6 +114,10 @@ namespace LOICollection::frontend {
                         var.name + "." + node.methodName + "')");
                     return {};
                 }
+
+                if (!node.typeArgs.empty())
+                    diagnostics.addError(node.loc,
+                        "Native class '" + var.name + "' does not accept type arguments");
 
                 std::vector<TypeInfo> argTypes = checkArgs();
 
@@ -144,6 +161,10 @@ namespace LOICollection::frontend {
         }
 
         if (targetType.kind == TypeKind::Array || targetType.kind == TypeKind::String) {
+            if (!node.typeArgs.empty())
+                diagnostics.addError(node.loc,
+                    "Method '" + node.methodName + "' does not accept type arguments");
+
             const std::string& className = targetType.kind == TypeKind::Array ? "Array" : "String";
             std::vector<CallbackTypeArgs> signatures =
                 ClassCall::getInstance().getValueMethodSignatures(className, node.methodName);
@@ -163,6 +184,10 @@ namespace LOICollection::frontend {
         }
 
         if (targetType.kind == TypeKind::Trait) {
+            if (!node.typeArgs.empty())
+                diagnostics.addError(node.loc,
+                    "Method '" + node.methodName + "' does not accept type arguments");
+
             auto traitIt = this->traits.find(targetType.className);
             if (traitIt == this->traits.end()) {
                 diagnostics.addError(node.loc, "Unknown trait: " + targetType.className);
@@ -187,6 +212,10 @@ namespace LOICollection::frontend {
         }
 
         if (targetType.kind == TypeKind::Generic) {
+            if (!node.typeArgs.empty())
+                diagnostics.addError(node.loc,
+                    "Method '" + node.methodName + "' does not accept type arguments");
+
             auto boundIt = this->activeTypeParamBounds.find(targetType.typeVar);
             if (boundIt != this->activeTypeParamBounds.end()) {
                 for (const auto& traitName : boundIt->second) {
@@ -272,12 +301,25 @@ namespace LOICollection::frontend {
 
         ClassNode& cls = clsOpt->get();
 
-        auto subst = this->substituteParamTypes(cls, targetType);
+        std::vector<TypeInfo> explicitTypes;
+        for (const auto& typeArg : node.typeArgs)
+            explicitTypes.push_back(this->resolveTypeExpr(typeArg, node.loc, true));
 
-        std::vector<std::pair<std::reference_wrapper<ClassNode>, std::reference_wrapper<MethodDecl>>> candidates;
+        struct Cand {
+            std::reference_wrapper<ClassNode> owner;
+            std::reference_wrapper<MethodDecl> method;
+            TypeSubst subst;
+        };
+
+        std::vector<Cand> candidates;
+        bool boundFailure = false;
+        bool explicitMismatch = false;
+
         std::optional<std::reference_wrapper<ClassNode>> walk = std::ref(cls);
         for (size_t step = 0; step <= this->classes.size() && walk; ++step) {
             ClassNode& current = walk->get();
+            const TypeSubst ownerSubst = this->substitutionFor(current, targetType);
+
             for (auto& method : current.methods) {
                 if (method.isConstructor || method.name != node.methodName)
                     continue;
@@ -290,17 +332,39 @@ namespace LOICollection::frontend {
                     continue;
                 }
 
+                TypeSubst subst = ownerSubst;
+                if (!explicitTypes.empty()) {
+                    if (method.typeParams.size() != explicitTypes.size()) {
+                        explicitMismatch = true;
+                        continue;
+                    }
+
+                    for (size_t index = 0; index < method.typeParams.size(); ++index)
+                        subst[method.typeParams[index].name] = explicitTypes[index];
+                }
+
+                if (!method.typeParams.empty() &&
+                    !this->inferTypeArgs(method.typeParams, method.paramTypes, argTypes, subst))
+                    continue;
+
                 bool match = true;
                 for (size_t j = 0; j < argCount; ++j) {
-                    const TypeInfo& param = this->substituteType(method.paramTypes[j], subst);
+                    const TypeInfo param = this->substituteType(method.paramTypes[j], subst);
                     if (!this->isAssignableTo(param, argTypes[j])) {
                         match = false;
                         break;
                     }
                 }
 
-                if (match)
-                    candidates.emplace_back(std::ref(current), std::ref(method));
+                if (!match)
+                    continue;
+
+                if (!this->typeParamBoundsSatisfied(method.typeParams, subst)) {
+                    boundFailure = true;
+                    continue;
+                }
+
+                candidates.push_back({ std::ref(current), std::ref(method), std::move(subst) });
             }
 
             if (current.baseClassName.empty())
@@ -314,9 +378,19 @@ namespace LOICollection::frontend {
         }
 
         if (candidates.empty()) {
-            diagnostics.addError(node.loc,
-                "No matching method '" + node.methodName + "' with " +
-                std::to_string(argCount) + " argument(s) in class '" + cls.name + "'");
+            if (boundFailure) {
+                diagnostics.addError(node.loc,
+                    "Type bound not satisfied for generic method '" + node.methodName + "'");
+            } else if (explicitMismatch) {
+                diagnostics.addError(node.loc,
+                    "No matching generic method '" + node.methodName + "' for " +
+                    std::to_string(explicitTypes.size()) + " explicit type argument(s) in class '" +
+                    cls.name + "'");
+            } else {
+                diagnostics.addError(node.loc,
+                    "No matching method '" + node.methodName + "' with " +
+                    std::to_string(argCount) + " argument(s) in class '" + cls.name + "'");
+            }
             return {};
         }
 
@@ -343,36 +417,37 @@ namespace LOICollection::frontend {
             return std::numeric_limits<int>::max();
         };
 
-        auto best = candidates[0];
-        int bestDepth = depthOf(best.first.get());
-        size_t bestScore = knownParamCount(best.second.get());
+        size_t best = 0;
+        int bestDepth = depthOf(candidates[0].owner.get());
+        size_t bestScore = knownParamCount(candidates[0].method.get());
 
         for (size_t i = 1; i < candidates.size(); ++i) {
-            int depth = depthOf(candidates[i].first.get());
-            size_t score = knownParamCount(candidates[i].second.get());
+            int depth = depthOf(candidates[i].owner.get());
+            size_t score = knownParamCount(candidates[i].method.get());
 
             if (depth < bestDepth || (depth == bestDepth && score > bestScore)) {
-                best = candidates[i];
+                best = i;
                 bestDepth = depth;
                 bestScore = score;
             }
         }
 
-        MethodDecl& method = best.second.get();
+        MethodDecl& method = candidates[best].method.get();
 
         node.className = cls.name;
         node.methodOrdinal = this->methodOrdinal(cls.name, this->methodSignature(method));
-        node.paramTypes = method.paramTypes;
+        node.paramTypes.clear();
+        for (const auto& paramType : method.paramTypes)
+            node.paramTypes.push_back(this->substituteType(paramType, candidates[best].subst));
 
         for (size_t j = 0; j < argCount; ++j) {
-            const TypeInfo& param = this->substituteType(method.paramTypes[j], subst);
-            if (param.kind == TypeKind::Optional &&
+            if (node.paramTypes[j].kind == TypeKind::Optional &&
                 argTypes[j].kind == TypeKind::Optional) {
                 node.args[j]->preserveOptional = true;
             }
         }
 
-        return this->substituteType(method.returnType, subst);
+        return this->substituteType(method.returnType, candidates[best].subst);
     }
 
     TypeInfo SemanticAnalyzer::checkFuncCall(FuncCallNode& node, MethodScope& scope) {
@@ -388,8 +463,43 @@ namespace LOICollection::frontend {
             const EnumVariantInfo& info = variantIt->second;
             node.isEnumConstruction = true;
             node.paramTypes.clear();
-            for (const auto& fieldType : info.fieldTypes)
-                node.paramTypes.push_back(this->resolveTypeExpr(fieldType, node.loc, false));
+
+            auto enumIt = this->enumNodes.find(info.enumName);
+            const std::vector<TypeParam>* typeParams = enumIt == this->enumNodes.end()
+                ? nullptr
+                : &enumIt->second.get().typeParams;
+
+            TypeSubst subst;
+            std::vector<TypeInfo> explicitTypes;
+            for (const auto& typeArg : node.typeArgs)
+                explicitTypes.push_back(this->resolveTypeExpr(typeArg, node.loc, true));
+
+            if (typeParams) {
+                if (!explicitTypes.empty()) {
+                    if (explicitTypes.size() != typeParams->size()) {
+                        diagnostics.addError(node.loc,
+                            typeParams->empty()
+                                ? "Enum '" + info.enumName + "' does not accept type arguments"
+                                : "Enum '" + info.enumName + "' expects " +
+                                  std::to_string(typeParams->size()) +
+                                  " type argument(s), got " + std::to_string(explicitTypes.size()));
+                    } else {
+                        for (size_t index = 0; index < typeParams->size(); ++index)
+                            subst[(*typeParams)[index].name] = explicitTypes[index];
+                    }
+                }
+
+                for (const auto& param : *typeParams)
+                    subst.try_emplace(param.name, TypeInfo{ TypeKind::Unknown });
+
+                static_cast<void>(this->inferTypeArgs(
+                    *typeParams, info.payloadTypes, argTypes, subst));
+                static_cast<void>(this->checkTypeParamBounds(
+                    *typeParams, subst, node.loc, "enum '" + info.enumName + "'"));
+            }
+
+            for (const TypeInfo& payloadType : info.payloadTypes)
+                node.paramTypes.push_back(this->substituteType(payloadType, subst));
 
             if (static_cast<int>(argCount) != info.arity) {
                 diagnostics.addError(node.loc,
@@ -398,11 +508,35 @@ namespace LOICollection::frontend {
                     std::to_string(argCount));
             }
 
+            for (size_t j = 0; j < argCount && j < node.paramTypes.size(); ++j) {
+                if (!this->isAssignableTo(node.paramTypes[j], argTypes[j])) {
+                    diagnostics.addError(node.loc,
+                        "Type mismatch for enum variant '" + node.name +
+                        "' payload slot " + std::to_string(j) + ": expected " +
+                        typeToString(node.paramTypes[j]) + ", got " +
+                        typeToString(argTypes[j]));
+                }
+            }
+
             TypeInfo result;
             result.kind = TypeKind::Enum;
             result.className = info.enumName;
+
+            if (typeParams) {
+                for (const auto& param : *typeParams) {
+                    auto bound = subst.find(param.name);
+                    result.typeArgs.push_back(bound == subst.end()
+                        ? TypeInfo{ TypeKind::Unknown }
+                        : bound->second);
+                }
+            }
+
             return result;
         }
+
+        std::vector<TypeInfo> explicitTypes;
+        for (const auto& typeArg : node.typeArgs)
+            explicitTypes.push_back(this->resolveTypeExpr(typeArg, node.loc, true));
 
         if (node.isFormReceiverCall && !this->formReceivers.empty()) {
             const std::string& receiverClass = this->formReceivers.back();
@@ -423,23 +557,26 @@ namespace LOICollection::frontend {
         if (it == functionsByName.end() || it->second.empty()) {
             if (scope.hasMethod() && scope.methodRef().isStatic && scope.hasClass()) {
                 if (auto staticMethod = this->findStaticMethod(
-                        scope.classRef(), node.name, argTypes, scope)) {
+                        scope.classRef(), node.name, argTypes, scope,
+                        this->selfType(scope.classRef()), explicitTypes)) {
                     MethodDecl& method = staticMethod->method.get();
                     node.isStaticCall = true;
                     node.staticClassName = scope.classRef().name;
                     node.methodOrdinal = this->staticMethodOrdinal(
                         scope.classRef().name, this->methodSignature(method)
                     );
-                    node.paramTypes = method.paramTypes;
+                    node.paramTypes.clear();
+                    for (const auto& paramType : method.paramTypes)
+                        node.paramTypes.push_back(this->substituteType(paramType, staticMethod->subst));
 
                     for (size_t j = 0; j < argCount; ++j) {
-                        if (method.paramTypes[j].kind == TypeKind::Optional &&
+                        if (node.paramTypes[j].kind == TypeKind::Optional &&
                             argTypes[j].kind == TypeKind::Optional) {
                             node.args[j]->preserveOptional = true;
                         }
                     }
 
-                    return method.returnType;
+                    return this->substituteType(method.returnType, staticMethod->subst);
                 }
             }
 
@@ -450,6 +587,12 @@ namespace LOICollection::frontend {
                     variableType.kind != TypeKind::Function) {
                     diagnostics.addError(node.loc,
                         "Value '" + node.name + "' is not callable");
+                    return {};
+                }
+
+                if (!explicitTypes.empty()) {
+                    diagnostics.addError(node.loc,
+                        "Value '" + node.name + "' does not accept type arguments");
                     return {};
                 }
 
@@ -467,54 +610,60 @@ namespace LOICollection::frontend {
 
         struct Cand {
             size_t index;
-            std::unordered_map<std::string, TypeInfo> subst;
+            TypeSubst subst;
         };
         std::vector<Cand> candidates;
-        std::vector<std::string> boundFailures;
+        bool boundFailure = false;
+        bool explicitMismatch = false;
 
         for (size_t i = 0; i < it->second.size(); ++i) {
             const auto& decl = it->second[i].get().decl;
             if (decl.params.size() != argCount)
                 continue;
 
-            bool match = true;
-            std::unordered_map<std::string, TypeInfo> subst;
-            if (!decl.typeParams.empty()) {
-                subst = this->inferTypeParams(decl, argTypes);
-                for (size_t j = 0; j < argCount; ++j) {
-                    if (!this->isAssignableTo(
-                            this->substituteType(decl.paramTypes[j], subst), argTypes[j])) {
-                        match = false;
-                        break;
-                    }
+            TypeSubst subst;
+            if (!explicitTypes.empty()) {
+                if (decl.typeParams.size() != explicitTypes.size()) {
+                    explicitMismatch = true;
+                    continue;
                 }
-                if (match && !this->boundsSatisfied(decl.typeParams, subst))
+
+                for (size_t index = 0; index < decl.typeParams.size(); ++index)
+                    subst[decl.typeParams[index].name] = explicitTypes[index];
+            }
+
+            if (!decl.typeParams.empty() &&
+                !this->inferTypeArgs(decl.typeParams, decl.paramTypes, argTypes, subst))
+                continue;
+
+            bool match = true;
+            for (size_t j = 0; j < argCount; ++j) {
+                if (!this->isAssignableTo(
+                        this->substituteType(decl.paramTypes[j], subst), argTypes[j])) {
                     match = false;
-            } else {
-                for (size_t j = 0; j < argCount; ++j) {
-                    if (!this->isAssignableTo(decl.paramTypes[j], argTypes[j])) {
-                        match = false;
-                        break;
-                    }
+                    break;
                 }
             }
 
             if (!match)
                 continue;
 
-            if (decl.typeParams.empty()) {
-                candidates.push_back({ i, {} });
-            } else if (this->boundsSatisfied(decl.typeParams, subst)) {
-                candidates.push_back({ i, subst });
-            } else {
-                boundFailures.push_back(decl.name);
+            if (!this->typeParamBoundsSatisfied(decl.typeParams, subst)) {
+                boundFailure = true;
+                continue;
             }
+
+            candidates.push_back({ i, std::move(subst) });
         }
 
         if (candidates.empty()) {
-            if (!boundFailures.empty()) {
+            if (boundFailure) {
                 diagnostics.addError(node.loc,
                     "Type bound not satisfied for generic function '" + node.name + "'");
+            } else if (explicitMismatch) {
+                diagnostics.addError(node.loc,
+                    "No matching generic function '" + node.name + "' for " +
+                    std::to_string(explicitTypes.size()) + " explicit type argument(s)");
             } else {
                 diagnostics.addError(node.loc,
                     "No matching function '" + node.name + "' with " +
@@ -538,10 +687,12 @@ namespace LOICollection::frontend {
 
         node.resolvedName = node.name;
         node.functionOrdinal = static_cast<int>(bestIndex);
-        node.paramTypes = decl.paramTypes;
+        node.paramTypes.clear();
+        for (const auto& paramType : decl.paramTypes)
+            node.paramTypes.push_back(this->substituteType(paramType, candidates[best].subst));
 
         for (size_t j = 0; j < argCount; ++j) {
-            if (decl.paramTypes[j].kind == TypeKind::Optional &&
+            if (node.paramTypes[j].kind == TypeKind::Optional &&
                 argTypes[j].kind == TypeKind::Optional) {
                 node.args[j]->preserveOptional = true;
             }
@@ -564,6 +715,10 @@ namespace LOICollection::frontend {
         auto clsOpt = findClass(node.className);
         if (!clsOpt) {
             if (isNativeClass(node.className)) {
+                if (!node.typeArgs.empty())
+                    diagnostics.addError(node.loc,
+                        "Native class '" + node.className + "' does not accept type arguments");
+
                 std::vector<CallbackTypeArgs> signatures =
                     ClassCall::getInstance().getConstructorSignatures(node.className);
 
@@ -599,42 +754,53 @@ namespace LOICollection::frontend {
         TypeInfo type;
         type.kind = TypeKind::Object;
         type.className = cls.name;
-        for (const auto& typeArg : node.typeArgs)
-            type.typeArgs.push_back(this->resolveTypeExpr(typeArg, node.loc, true));
+        TypeSubst subst;
 
-        std::unordered_map<std::string, TypeInfo> subst;
+        if (!node.typeArgs.empty()) {
+            if (node.typeArgs.size() != cls.typeParams.size()) {
+                diagnostics.addError(node.loc,
+                    cls.typeParams.empty()
+                        ? "Class '" + cls.name + "' does not accept type arguments"
+                        : "Class '" + cls.name + "' expects " +
+                          std::to_string(cls.typeParams.size()) +
+                          " type argument(s), got " + std::to_string(node.typeArgs.size()));
+                return type;
+            }
+
+            for (const auto& typeArg : node.typeArgs)
+                type.typeArgs.push_back(this->resolveTypeExpr(typeArg, node.loc, true));
+        }
+
+        for (size_t i = 0; i < cls.typeParams.size(); ++i) {
+            subst[cls.typeParams[i].name] = i < type.typeArgs.size()
+                ? type.typeArgs[i]
+                : TypeInfo{ TypeKind::Unknown };
+        }
+
         if (type.typeArgs.empty() && !cls.typeParams.empty() && ctor &&
             ctor->params.size() == argCount) {
-            for (const auto& tp : cls.typeParams)
-                subst[tp.name] = {};
-            for (size_t j = 0; j < argCount; ++j) {
-                const TypeInfo& pt = ctor->paramTypes[j];
-                if (pt.kind != TypeKind::Generic)
-                    continue;
-                auto it = subst.find(pt.typeVar);
-                if (it == subst.end())
-                    continue;
-                if (it->second.kind == TypeKind::Unknown)
-                    it->second = argTypes[j];
-                else if (it->second != argTypes[j])
-                    it->second = {};
+            for (size_t j = 0; j < argCount; ++j)
+                static_cast<void>(this->unifyType(ctor->paramTypes[j], argTypes[j], subst));
+
+            type.typeArgs.clear();
+            for (const auto& param : cls.typeParams) {
+                auto it = subst.find(param.name);
+                type.typeArgs.push_back(it == subst.end()
+                    ? TypeInfo{ TypeKind::Unknown }
+                    : it->second);
             }
-            for (const auto& tp : cls.typeParams)
-                type.typeArgs.push_back(subst[tp.name]);
         }
 
-        if (cls.typeParams.size() != type.typeArgs.size()) {
-            if (cls.typeParams.empty()) {
-                diagnostics.addError(node.loc, "Class '" + cls.name + "' does not accept type arguments");
-            } else {
+        if (!cls.typeParams.empty()) {
+            if (type.typeArgs.size() != cls.typeParams.size()) {
                 diagnostics.addError(node.loc,
                     "Class '" + cls.name + "' must provide all type arguments");
+                return type;
             }
-            return type;
-        }
 
-        for (size_t i = 0; i < cls.typeParams.size(); ++i)
-            subst[cls.typeParams[i].name] = type.typeArgs[i];
+            static_cast<void>(this->checkTypeParamBounds(
+                cls.typeParams, subst, node.loc, "class '" + cls.name + "'"));
+        }
 
         if (!ctor) {
             if (argCount != 0)
@@ -642,8 +808,6 @@ namespace LOICollection::frontend {
 
             return type;
         }
-
-        node.paramTypes = ctor->paramTypes;
 
         if (ctor->params.size() != argCount) {
             diagnostics.addError(node.loc,
@@ -654,8 +818,11 @@ namespace LOICollection::frontend {
             return type;
         }
 
+        node.paramTypes.clear();
         for (size_t j = 0; j < argCount; ++j) {
-            const TypeInfo& param = this->substituteType(ctor->paramTypes[j], subst);
+            const TypeInfo param = this->substituteType(ctor->paramTypes[j], subst);
+            node.paramTypes.push_back(param);
+
             if (!this->isAssignableTo(param, argTypes[j])) {
                 diagnostics.addError(node.loc,
                     "Type mismatch for constructor parameter '" + ctor->params[j].name +
@@ -729,7 +896,20 @@ namespace LOICollection::frontend {
                 break;
             }
         }
-        node.paramTypes = ctor.paramTypes;
+
+        TypeInfo classType;
+        if (auto baseIt = this->classBaseTypes.find(cls.name); baseIt != this->classBaseTypes.end())
+            classType = baseIt->second;
+
+        if (classType.kind != TypeKind::Object) {
+            classType.kind = TypeKind::Object;
+            classType.className = cls.baseClassName;
+        }
+
+        const TypeSubst subst = this->substitutionFor(ctorOwner, classType);
+        node.paramTypes.clear();
+        for (const auto& paramType : ctor.paramTypes)
+            node.paramTypes.push_back(this->substituteType(paramType, subst));
 
         if (ctor.params.size() != argCount) {
             diagnostics.addError(node.loc,
@@ -740,14 +920,14 @@ namespace LOICollection::frontend {
         }
 
         for (size_t j = 0; j < argCount; ++j) {
-            if (!this->isAssignableTo(ctor.paramTypes[j], argTypes[j])) {
+            if (!this->isAssignableTo(node.paramTypes[j], argTypes[j])) {
                 diagnostics.addError(node.loc,
                     "Type mismatch for base constructor parameter '" + ctor.params[j].name +
-                    "': expected " + typeToString(ctor.paramTypes[j]) +
+                    "': expected " + typeToString(node.paramTypes[j]) +
                     ", got " + typeToString(argTypes[j]));
             }
 
-            if (ctor.paramTypes[j].kind == TypeKind::Optional &&
+            if (node.paramTypes[j].kind == TypeKind::Optional &&
                 argTypes[j].kind == TypeKind::Optional) {
                 node.args[j]->preserveOptional = true;
             }
@@ -882,8 +1062,20 @@ namespace LOICollection::frontend {
                             std::to_string(arm->binders.size()));
                     }
 
-                    for (const auto& fieldType : info.fieldTypes)
-                        binderTypes.push_back(this->resolveTypeExpr(fieldType, arm->loc, false));
+                    TypeSubst enumSubst;
+                    if (auto enumIt = this->enumNodes.find(info.enumName);
+                        enumIt != this->enumNodes.end()) {
+                        const TypeInfo normalized = this->enumTargetType(info, target);
+                        const auto& params = enumIt->second.get().typeParams;
+                        for (size_t index = 0; index < params.size(); ++index) {
+                            enumSubst[params[index].name] = index < normalized.typeArgs.size()
+                                ? normalized.typeArgs[index]
+                                : TypeInfo{ TypeKind::Unknown };
+                        }
+                    }
+
+                    for (const TypeInfo& payloadType : info.payloadTypes)
+                        binderTypes.push_back(this->substituteType(payloadType, enumSubst));
 
                     break;
                 }
@@ -960,11 +1152,27 @@ namespace LOICollection::frontend {
     void SemanticAnalyzer::bindLetPatternTypes(LetPatternNode& node) {
         const auto variantIt = node.isEnumPattern ? this->enumVariant.find(node.variantName) : this->enumVariant.end();
 
-        for (size_t i = 0; i < node.binders.size(); ++i)
+        TypeSubst enumSubst;
+        if (variantIt != this->enumVariant.end()) {
+            if (auto enumIt = this->enumNodes.find(variantIt->second.enumName);
+                enumIt != this->enumNodes.end()) {
+                const TypeInfo valueType = node.value ? node.value->type : TypeInfo{};
+                const TypeInfo normalized = this->enumTargetType(variantIt->second, valueType);
+                const auto& params = enumIt->second.get().typeParams;
+                for (size_t index = 0; index < params.size(); ++index) {
+                    enumSubst[params[index].name] = index < normalized.typeArgs.size()
+                        ? normalized.typeArgs[index]
+                        : TypeInfo{ TypeKind::Unknown };
+                }
+            }
+        }
+
+        for (size_t i = 0; i < node.binders.size(); ++i) {
             this->blockScopes.back()[node.binders[i]] =
-                variantIt != this->enumVariant.end() && i < variantIt->second.fieldTypes.size()
-                    ? this->resolveTypeExpr(variantIt->second.fieldTypes[i], node.loc, false)
+                variantIt != this->enumVariant.end() && i < variantIt->second.payloadTypes.size()
+                    ? this->substituteType(variantIt->second.payloadTypes[i], enumSubst)
                     : TypeInfo{ TypeKind::Unknown };
+        }
     }
 
     std::optional<OperatorOverload> SemanticAnalyzer::resolveOperatorOverload(

@@ -48,9 +48,18 @@ namespace LOICollection::frontend {
                         field->owner.get().name + "'");
                 }
 
+                TypeInfo classType;
+                if (scope.hasClass() && &scope.classRef() == &clsOpt->get()) {
+                    classType = this->selfType(clsOpt->get());
+                } else {
+                    classType = this->resolveClassType(
+                        clsOpt->get(), node.typeArgs, node.loc, true);
+                }
+
+                const TypeSubst subst = this->substitutionFor(field->owner.get(), classType);
                 node.isStaticAccess = true;
                 node.staticClassName = field->owner.get().name;
-                return m.type;
+                return this->substituteType(m.type, subst);
             }
 
             if (isNativeClass(var.name)) {
@@ -60,6 +69,10 @@ namespace LOICollection::frontend {
                         var.name + "." + node.memberName + "')");
                     return {};
                 }
+
+                if (!node.typeArgs.empty())
+                    diagnostics.addError(node.loc,
+                        "Native class '" + var.name + "' does not accept type arguments");
 
                 if (ClassCall::getInstance().hasStaticField(var.name, node.memberName)) {
                     node.isStaticAccess = true;
@@ -195,7 +208,8 @@ namespace LOICollection::frontend {
                     "Cannot access private member '" + m.name + "' of class '" + field->owner.get().name + "'");
             }
 
-            return this->substituteType(m.type, this->substituteParamTypes(cls, targetType));
+            const TypeSubst subst = this->substitutionFor(field->owner.get(), targetType);
+            return this->substituteType(m.type, subst);
         }
 
         diagnostics.addError(node.loc,
@@ -306,13 +320,28 @@ namespace LOICollection::frontend {
 
     std::optional<SemanticAnalyzer::StaticMethodRef> SemanticAnalyzer::findStaticMethod(
         ClassNode& cls, const std::string& name, const std::vector<TypeInfo>& argTypes,
-        const MethodScope& scope
+        const MethodScope& scope, const TypeInfo& classType,
+        const std::vector<TypeInfo>& methodTypeArgs
     ) const {
-        std::vector<std::pair<std::reference_wrapper<ClassNode>, std::reference_wrapper<MethodDecl>>> candidates;
+        struct Cand {
+            std::reference_wrapper<ClassNode> owner;
+            std::reference_wrapper<MethodDecl> method;
+            TypeSubst subst;
+        };
+
+        TypeInfo receiver = classType;
+        if (receiver.kind != TypeKind::Object || receiver.className.empty()) {
+            receiver.kind = TypeKind::Object;
+            receiver.className = cls.name;
+        }
+
+        std::vector<Cand> candidates;
         std::optional<std::reference_wrapper<ClassNode>> walk = std::ref(cls);
 
         for (size_t step = 0; step <= this->classes.size() && walk; ++step) {
             ClassNode& current = walk->get();
+            const TypeSubst ownerSubst = this->substitutionFor(current, receiver);
+
             for (auto& method : current.methods) {
                 if (method.isConstructor || !method.isStatic || method.name != name)
                     continue;
@@ -323,17 +352,32 @@ namespace LOICollection::frontend {
                     continue;
                 }
 
+                TypeSubst subst = ownerSubst;
+                if (!methodTypeArgs.empty()) {
+                    if (method.typeParams.size() != methodTypeArgs.size())
+                        continue;
+
+                    for (size_t index = 0; index < method.typeParams.size(); ++index)
+                        subst[method.typeParams[index].name] = methodTypeArgs[index];
+                }
+
+                if (!method.typeParams.empty() &&
+                    !this->inferTypeArgs(method.typeParams, method.paramTypes, argTypes, subst))
+                    continue;
+
                 bool match = true;
                 for (size_t j = 0; j < argTypes.size(); ++j) {
-                    const TypeInfo& param = method.paramTypes[j];
+                    const TypeInfo param = this->substituteType(method.paramTypes[j], subst);
                     if (!this->isAssignableTo(param, argTypes[j])) {
                         match = false;
                         break;
                     }
                 }
 
-                if (match)
-                    candidates.emplace_back(std::ref(current), std::ref(method));
+                if (!match || !this->typeParamBoundsSatisfied(method.typeParams, subst))
+                    continue;
+
+                candidates.push_back({ std::ref(current), std::ref(method), std::move(subst) });
             }
 
             if (current.baseClassName.empty())
@@ -372,22 +416,23 @@ namespace LOICollection::frontend {
             return std::numeric_limits<int>::max();
         };
 
-        auto best = candidates[0];
-        int bestDepth = depthOf(best.first.get());
-        size_t bestScore = knownParamCount(best.second.get());
+        size_t best = 0;
+        int bestDepth = depthOf(candidates[0].owner.get());
+        size_t bestScore = knownParamCount(candidates[0].method.get());
 
         for (size_t i = 1; i < candidates.size(); ++i) {
-            int depth = depthOf(candidates[i].first.get());
-            size_t score = knownParamCount(candidates[i].second.get());
+            int depth = depthOf(candidates[i].owner.get());
+            size_t score = knownParamCount(candidates[i].method.get());
 
             if (depth < bestDepth || (depth == bestDepth && score > bestScore)) {
-                best = candidates[i];
+                best = i;
                 bestDepth = depth;
                 bestScore = score;
             }
         }
 
-        return StaticMethodRef{ best.second, best.first };
+        return StaticMethodRef{ candidates[best].method, candidates[best].owner,
+            std::move(candidates[best].subst) };
     }
 
     int SemanticAnalyzer::staticMethodOrdinal(const std::string& className, const std::string& signature) const {

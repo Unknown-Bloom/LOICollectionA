@@ -172,6 +172,14 @@ namespace LOICollection::frontend {
                     declareLoopVar(forIn.indexVar, TypeInfo{ TypeKind::Int });
 
                 TypeInfo elementType = protocol ? protocol->elementType : TypeInfo{};
+                if (protocol && !protocol->className.empty()) {
+                    if (auto clsOpt = this->findClass(protocol->className)) {
+                        const TypeSubst subst = this->substitutionFor(
+                            clsOpt->get(), iterableType);
+                        elementType = this->substituteType(elementType, subst);
+                    }
+                }
+
                 if (elementType.kind == TypeKind::Optional && elementType.optionalInner)
                     elementType = *elementType.optionalInner;
                 declareLoopVar(forIn.elementVar, elementType);
@@ -323,7 +331,9 @@ namespace LOICollection::frontend {
                     if (field->member.get().isPrivate && &scope.classRef() != &field->owner.get())
                         return {};
 
-                    return field->member.get().type;
+                    const TypeSubst subst = this->substitutionFor(
+                        field->owner.get(), this->selfType(scope.classRef()));
+                    return this->substituteType(field->member.get().type, subst);
                 }
             }
 
@@ -332,7 +342,9 @@ namespace LOICollection::frontend {
                     if (staticField->member.get().isPrivate && &scope.classRef() != &staticField->owner.get())
                         return {};
 
-                    return staticField->member.get().type;
+                    const TypeSubst subst = this->substitutionFor(
+                        staticField->owner.get(), this->selfType(scope.classRef()));
+                    return this->substituteType(staticField->member.get().type, subst);
                 }
             }
         }

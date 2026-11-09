@@ -101,9 +101,19 @@ namespace LOICollection::frontend::ir::ty::detail {
             case TyKind::Trait:
                 result = "dyn " + data.name;
                 break;
-            case TyKind::Enum:
+            case TyKind::Enum: {
                 result = "enum " + data.name;
+                if (!data.args.empty()) {
+                    result += "<";
+                    for (std::size_t index = 0; index < data.args.size(); ++index) {
+                        if (index != 0)
+                            result += ", ";
+                        result += displayType(context, data.args[index]);
+                    }
+                    result += ">";
+                }
                 break;
+            }
         }
 
         if (data.ownership == Ownership::Borrowed)
@@ -337,6 +347,9 @@ namespace LOICollection::frontend::ir::ty {
                 result.kind = TyKind::Enum;
                 result.ownership = info.ownership;
                 result.name = info.className;
+                result.args.reserve(info.typeArgs.size());
+                for (const TypeInfo& argument : info.typeArgs)
+                    result.args.push_back(this->lower(argument));
                 return this->intern(std::move(result));
             }
             case TypeKind::COUNT:
@@ -405,6 +418,8 @@ namespace LOICollection::frontend::ir::ty {
                 break;
             case TyKind::Enum:
                 info.kind = TypeKind::Enum;
+                for (const Ty argument : data.args)
+                    info.typeArgs.push_back(this->raise(argument));
                 break;
         }
 

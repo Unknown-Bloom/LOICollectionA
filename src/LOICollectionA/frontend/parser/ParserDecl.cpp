@@ -25,6 +25,9 @@ namespace LOICollection::frontend {
         auto usingNode = std::make_unique<UsingNode>(loc, currentToken.value);
         if (!eat(TokenType::TOKEN_IDENT)) return nullptr;
 
+        if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "<")
+            usingNode->typeParams = parseTypeParams();
+
         if (currentToken.type != TokenType::TOKEN_OP || currentToken.value != "=") {
             diagnostics.addError(currentToken.loc,
                 "Expected '=' in using declaration, got " + getTokenName(currentToken.type));
@@ -185,15 +188,17 @@ namespace LOICollection::frontend {
 
         if (currentToken.type == TokenType::TOKEN_EXTENDS) {
             if (!eat(TokenType::TOKEN_EXTENDS)) return nullptr;
-            if (currentToken.type != TokenType::TOKEN_IDENT) {
+
+            auto base = parseTypeExpr();
+            if (!base || base->dyn) {
                 diagnostics.addError(currentToken.loc, "Expected base class name after 'extends'");
                 synchronize({ TokenType::TOKEN_LBRACE, TokenType::TOKEN_RBRACE });
                 skipBalancedBraces();
                 return nullptr;
             }
 
-            cls->baseClassName = currentToken.value;
-            if (!eat(TokenType::TOKEN_IDENT)) return nullptr;
+            cls->baseClassName = base->name;
+            cls->baseTypeArgs = std::move(base->args);
         }
 
         if (!eat(TokenType::TOKEN_LBRACE)) {
@@ -359,7 +364,8 @@ namespace LOICollection::frontend {
                currentToken.type != TokenType::TOKEN_EOF) {
             if (currentToken.type != TokenType::TOKEN_IDENT) {
                 diagnostics.addError(currentToken.loc, "Expected type parameter name");
-                synchronize({ TokenType::TOKEN_COMMA, TokenType::TOKEN_RPAREN, TokenType::TOKEN_LBRACE });
+                synchronize({ TokenType::TOKEN_COMMA, TokenType::TOKEN_RPAREN, TokenType::TOKEN_LBRACE,
+                              TokenType::TOKEN_OP });
                 if (currentToken.type != TokenType::TOKEN_IDENT)
                     break;
                 continue;
@@ -379,12 +385,23 @@ namespace LOICollection::frontend {
 
             while (currentToken.type == TokenType::TOKEN_COLON) {
                 eat(TokenType::TOKEN_COLON);
-                if (currentToken.type != TokenType::TOKEN_IDENT) {
-                    diagnostics.addError(currentToken.loc, "Expected trait name after ':'");
+
+                while (true) {
+                    if (currentToken.type != TokenType::TOKEN_IDENT) {
+                        diagnostics.addError(currentToken.loc, "Expected trait name after ':'");
+                        break;
+                    }
+
+                    param.bounds.push_back(currentToken.value);
+                    eat(TokenType::TOKEN_IDENT);
+
+                    if (currentToken.type == TokenType::TOKEN_PLUS) {
+                        eat(TokenType::TOKEN_PLUS);
+                        continue;
+                    }
+
                     break;
                 }
-                param.bounds.push_back(currentToken.value);
-                eat(TokenType::TOKEN_IDENT);
             }
 
             params.push_back(std::move(param));
@@ -399,6 +416,109 @@ namespace LOICollection::frontend {
             eat(TokenType::TOKEN_OP);
 
         return params;
+    }
+
+    std::vector<TypeExpr> Parser::parseTypeArgs() {
+        std::vector<TypeExpr> args;
+
+        if (currentToken.type != TokenType::TOKEN_OP || currentToken.value != "<")
+            return args;
+        eat(TokenType::TOKEN_OP);
+
+        while ((currentToken.type != TokenType::TOKEN_OP || currentToken.value != ">") &&
+               currentToken.type != TokenType::TOKEN_EOF) {
+            auto argument = parseTypeExpr();
+            if (!argument)
+                break;
+
+            args.push_back(std::move(*argument));
+
+            if (currentToken.type == TokenType::TOKEN_COMMA) {
+                eat(TokenType::TOKEN_COMMA);
+                continue;
+            }
+
+            break;
+        }
+
+        if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == ">") {
+            eat(TokenType::TOKEN_OP);
+        } else if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == ">=") {
+            SourceLocation opLoc = currentToken.loc;
+            eat(TokenType::TOKEN_OP);
+            currentToken = { TokenType::TOKEN_OP, "=", opLoc };
+        } else {
+            diagnostics.addError(currentToken.loc, "Expected '>' to close type arguments");
+        }
+
+        return args;
+    }
+
+    bool Parser::typeArgsAheadFromCurrent(std::initializer_list<TokenType> followers) {
+        if (currentToken.type != TokenType::TOKEN_OP || currentToken.value != "<")
+            return false;
+
+        int depth = 0;
+        for (size_t index = 0; index < 128; ++index) {
+            const Token token = index == 0 ? currentToken : this->peekToken(index - 1);
+
+            if (token.type == TokenType::TOKEN_EOF ||
+                token.type == TokenType::TOKEN_SEMICOLON ||
+                token.type == TokenType::TOKEN_LBRACE ||
+                token.type == TokenType::TOKEN_RBRACE)
+                return false;
+
+            if (token.type == TokenType::TOKEN_OP && token.value == "<") {
+                depth++;
+                continue;
+            }
+
+            if (token.type != TokenType::TOKEN_OP || token.value != ">")
+                continue;
+
+            depth--;
+            if (depth != 0)
+                continue;
+
+            const Token next = this->peekToken(index);
+            return std::ranges::find(followers, next.type) != followers.end();
+        }
+
+        return false;
+    }
+
+    bool Parser::typeArgsAhead(size_t offset, std::initializer_list<TokenType> followers) {
+        const Token opening = this->peekToken(offset);
+        if (opening.type != TokenType::TOKEN_OP || opening.value != "<")
+            return false;
+
+        int depth = 0;
+        for (size_t index = offset; index < offset + 128; ++index) {
+            const Token token = this->peekToken(index);
+
+            if (token.type == TokenType::TOKEN_EOF ||
+                token.type == TokenType::TOKEN_SEMICOLON ||
+                token.type == TokenType::TOKEN_LBRACE ||
+                token.type == TokenType::TOKEN_RBRACE)
+                return false;
+
+            if (token.type == TokenType::TOKEN_OP && token.value == "<") {
+                depth++;
+                continue;
+            }
+
+            if (token.type != TokenType::TOKEN_OP || token.value != ">")
+                continue;
+
+            depth--;
+            if (depth != 0)
+                continue;
+
+            const Token next = this->peekToken(index + 1);
+            return std::ranges::find(followers, next.type) != followers.end();
+        }
+
+        return false;
     }
 
     std::unique_ptr<TraitNode> Parser::parseTrait() {
@@ -718,7 +838,16 @@ namespace LOICollection::frontend {
         method->name = currentToken.value;
         method->isPrivate = isPrivate;
 
-        if (!eat(TokenType::TOKEN_IDENT) || !eat(TokenType::TOKEN_LPAREN)) {
+        if (!eat(TokenType::TOKEN_IDENT)) {
+            synchronize({ TokenType::TOKEN_LBRACE, TokenType::TOKEN_RBRACE });
+            skipBalancedBraces();
+            return nullptr;
+        }
+
+        if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "<")
+            method->typeParams = parseTypeParams();
+
+        if (!eat(TokenType::TOKEN_LPAREN)) {
             synchronize({ TokenType::TOKEN_LBRACE, TokenType::TOKEN_RBRACE });
             skipBalancedBraces();
             return nullptr;
@@ -1002,6 +1131,9 @@ namespace LOICollection::frontend {
 
         auto node = std::make_unique<EnumDeclNode>(loc, currentToken.value);
         if (!eat(TokenType::TOKEN_IDENT)) return nullptr;
+
+        if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "<")
+            node->typeParams = parseTypeParams();
 
         if (!eat(TokenType::TOKEN_LBRACE)) {
             synchronize({ TokenType::TOKEN_RBRACE });

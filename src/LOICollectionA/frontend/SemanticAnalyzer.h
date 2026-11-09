@@ -43,9 +43,12 @@ namespace LOICollection::frontend {
             std::reference_wrapper<ClassNode> owner;
         };
 
+        using TypeSubst = std::unordered_map<std::string, TypeInfo>;
+
         struct StaticMethodRef {
             std::reference_wrapper<MethodDecl> method;
             std::reference_wrapper<ClassNode> owner;
+            TypeSubst subst;
         };
 
         struct ReceiverBinding {
@@ -81,9 +84,13 @@ namespace LOICollection::frontend {
             int arity = 0;
             std::string enumName;
             std::vector<TypeExpr> fieldTypes;
+            std::vector<TypeInfo> payloadTypes;
         };
         std::unordered_map<std::string, int> enumByName;
         std::unordered_map<std::string, EnumVariantInfo> enumVariant;
+        std::unordered_map<std::string, std::reference_wrapper<EnumDeclNode>> enumNodes;
+        std::unordered_map<std::string, std::reference_wrapper<UsingNode>> aliasNodes;
+        std::unordered_map<std::string, TypeInfo> classBaseTypes;
         std::unordered_map<std::string, std::vector<std::reference_wrapper<FunctionDefNode>>> functionsByName;
         std::unordered_map<std::string, TypeInfo> globalTypes;
         std::unordered_map<std::string, TypeInfo> declaredGlobals;
@@ -113,8 +120,32 @@ namespace LOICollection::frontend {
         [[nodiscard]] bool isNumeric(const TypeInfo& type) const;
         [[nodiscard]] bool isNameDefined(const std::string& name, MethodScope& scope) const;
         [[nodiscard]] bool isAssignableTo(const TypeInfo& target, const TypeInfo& from) const;
-        [[nodiscard]] std::unordered_map<std::string, TypeInfo> substituteParamTypes(
-            const ClassNode& cls, const TypeInfo& objType) const;
+
+        [[nodiscard]] TypeInfo selfType(const ClassNode& cls) const;
+        [[nodiscard]] TypeSubst substitutionFor(const ClassNode& owner, const TypeInfo& receiver) const;
+        [[nodiscard]] bool unifyType(const TypeInfo& pattern, const TypeInfo& actual, TypeSubst& subst) const;
+        [[nodiscard]] bool inferTypeArgs(
+            const std::vector<TypeParam>& typeParams,
+            const std::vector<TypeInfo>& patterns,
+            const std::vector<TypeInfo>& actuals,
+            TypeSubst& subst) const;
+        [[nodiscard]] bool typeParamBoundsSatisfied(
+            const std::vector<TypeParam>& typeParams,
+            const TypeSubst& subst) const;
+        [[nodiscard]] bool checkTypeParamBounds(
+            const std::vector<TypeParam>& typeParams,
+            const TypeSubst& subst,
+            SourceLocation loc,
+            const std::string& what) const;
+        [[nodiscard]] bool typeParamBoundSatisfied(const std::string& param, const std::string& traitName) const;
+        [[nodiscard]] bool typeArgumentsCompatible(const TypeInfo& target, const TypeInfo& from) const;
+        [[nodiscard]] TypeInfo resolveClassType(
+            ClassNode& cls, const std::vector<TypeExpr>& args, SourceLocation loc, bool reportError);
+        [[nodiscard]] TypeInfo resolveEnumType(
+            EnumDeclNode& node, const std::vector<TypeExpr>& args, SourceLocation loc, bool reportError);
+        void validateTypeParamBounds(const std::vector<TypeParam>& typeParams, SourceLocation loc);
+        void pushTypeParams(const std::vector<TypeParam>& typeParams);
+        [[nodiscard]] TypeInfo enumTargetType(const EnumVariantInfo& info, const TypeInfo& value) const;
         [[nodiscard]] std::string receiverVariable(MethodCallNode& node) const;
         void reportReceiverCaptures(const std::string& name);
         void requireLet(AssignmentNode& node, const VariableNode& var);
@@ -165,14 +196,9 @@ namespace LOICollection::frontend {
 
         [[nodiscard]] TypeInfo substituteType(
             const TypeInfo& type, const std::unordered_map<std::string, TypeInfo>& subst) const;
-        [[nodiscard]] std::unordered_map<std::string, TypeInfo> inferTypeParams(
-            const MethodDecl& decl, const std::vector<TypeInfo>& argTypes) const;
         [[nodiscard]] bool satisfiesTrait(const TypeInfo& type, const std::string& traitName) const;
 
         [[nodiscard]] bool declaresCallableMethod(const TypeInfo& type) const;
-        [[nodiscard]] bool boundsSatisfied(
-            const std::vector<TypeParam>& typeParams,
-            const std::unordered_map<std::string, TypeInfo>& subst) const;
 
         [[nodiscard]] size_t knownParamCount(const MethodDecl& method) const;
         [[nodiscard]] std::string methodSignature(const MethodDecl& method) const;
@@ -185,7 +211,8 @@ namespace LOICollection::frontend {
         [[nodiscard]] std::optional<ConstructorRef> findConstructor(ClassNode& cls) const;
         [[nodiscard]] std::optional<StaticMethodRef> findStaticMethod(
             ClassNode& cls, const std::string& name, const std::vector<TypeInfo>& argTypes,
-            const MethodScope& scope
+            const MethodScope& scope, const TypeInfo& classType = {},
+            const std::vector<TypeInfo>& methodTypeArgs = {}
         ) const;
         [[nodiscard]] int staticMethodOrdinal(const std::string& className, const std::string& signature) const;
     };

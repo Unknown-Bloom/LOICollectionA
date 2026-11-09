@@ -55,14 +55,6 @@ namespace LOICollection::frontend {
         return typeInfoToString(type);
     }
 
-    std::unordered_map<std::string, TypeInfo> SemanticAnalyzer::substituteParamTypes(
-        const ClassNode& cls, const TypeInfo& objType) const {
-        std::unordered_map<std::string, TypeInfo> subst;
-        for (size_t i = 0; i < cls.typeParams.size() && i < objType.typeArgs.size(); ++i)
-            subst[cls.typeParams[i].name] = objType.typeArgs[i];
-        return subst;
-    }
-
     bool SemanticAnalyzer::isNumeric(const TypeInfo& type) const {
         return type.kind == TypeKind::Int || type.kind == TypeKind::Float;
     }
@@ -92,31 +84,34 @@ namespace LOICollection::frontend {
         return result;
     }
 
-    std::unordered_map<std::string, TypeInfo> SemanticAnalyzer::inferTypeParams(
-        const MethodDecl& decl, const std::vector<TypeInfo>& argTypes) const {
-        std::unordered_map<std::string, TypeInfo> subst;
-        for (const auto& tp : decl.typeParams)
-            subst[tp.name] = {};
+    bool SemanticAnalyzer::satisfiesTrait(const TypeInfo& type, const std::string& traitName) const {
+        if (type.kind == TypeKind::Generic)
+            return this->typeParamBoundSatisfied(type.typeVar, traitName);
 
-        for (size_t j = 0; j < argTypes.size() && j < decl.paramTypes.size(); ++j) {
-            const TypeInfo& param = decl.paramTypes[j];
-            if (param.kind != TypeKind::Generic)
-                continue;
+        if (type.kind == TypeKind::Trait)
+            return type.className == traitName;
 
-            auto it = subst.find(param.typeVar);
-            if (it == subst.end())
-                continue;
+        static const std::unordered_map<std::string, std::vector<TypeKind>> builtinTraits = {
+            { "Add", { TypeKind::Int, TypeKind::Float, TypeKind::String } },
+            { "Sub", { TypeKind::Int, TypeKind::Float } },
+            { "Mul", { TypeKind::Int, TypeKind::Float } },
+            { "Div", { TypeKind::Int, TypeKind::Float } },
+            { "Mod", { TypeKind::Int, TypeKind::Float } },
+            { "Pow", { TypeKind::Int, TypeKind::Float } },
+            { "Neg", { TypeKind::Int, TypeKind::Float } },
+            { "Eq", { TypeKind::Int, TypeKind::Float, TypeKind::String, TypeKind::Bool } },
+            { "Ne", { TypeKind::Int, TypeKind::Float, TypeKind::String, TypeKind::Bool } },
+            { "Lt", { TypeKind::Int, TypeKind::Float, TypeKind::String } },
+            { "Le", { TypeKind::Int, TypeKind::Float, TypeKind::String } },
+            { "Gt", { TypeKind::Int, TypeKind::Float, TypeKind::String } },
+            { "Ge", { TypeKind::Int, TypeKind::Float, TypeKind::String } },
+        };
 
-            if (it->second.kind == TypeKind::Unknown)
-                it->second = withoutOwnership(argTypes[j]);
-            else if (it->second != withoutOwnership(argTypes[j]))
-                it->second = {};
+        if (auto builtin = builtinTraits.find(traitName); builtin != builtinTraits.end()) {
+            if (std::ranges::find(builtin->second, type.kind) != builtin->second.end())
+                return true;
         }
 
-        return subst;
-    }
-
-    bool SemanticAnalyzer::satisfiesTrait(const TypeInfo& type, const std::string& traitName) const {
         auto traitIt = this->traits.find(traitName);
         if (traitIt == this->traits.end())
             return false;
@@ -128,37 +123,25 @@ namespace LOICollection::frontend {
         if (!clsOpt)
             return false;
 
-        ClassNode& cls = clsOpt->get();
-        for (const auto& reqMethod : traitIt->second) {
-            bool found = false;
-            for (const auto& m : cls.methods) {
-                if (m.name != reqMethod.name || m.params.size() != reqMethod.paramCount)
-                    continue;
-                found = true;
-                break;
-            }
-            if (!found)
-                return false;
-        }
-
-        return true;
-    }
-
-    bool SemanticAnalyzer::boundsSatisfied(
-        const std::vector<TypeParam>& typeParams,
-        const std::unordered_map<std::string, TypeInfo>& subst) const {
-        for (const auto& tp : typeParams) {
-            if (tp.bounds.empty())
-                continue;
-
-            auto it = subst.find(tp.name);
-            if (it == subst.end() || it->second.kind == TypeKind::Unknown)
-                continue;
-
-            for (const auto& bound : tp.bounds) {
-                if (!this->satisfiesTrait(it->second, bound))
+        std::optional<std::reference_wrapper<ClassNode>> walk = clsOpt;
+        for (size_t step = 0; step <= this->classes.size() && walk; ++step) {
+            ClassNode& cls = walk->get();
+            for (const auto& reqMethod : traitIt->second) {
+                bool found = false;
+                for (const auto& m : cls.methods) {
+                    if (m.name != reqMethod.name || m.params.size() != reqMethod.paramCount)
+                        continue;
+                    found = true;
+                    break;
+                }
+                if (!found)
                     return false;
             }
+
+            if (cls.baseClassName.empty())
+                break;
+
+            walk = this->findClass(cls.baseClassName);
         }
 
         return true;
@@ -210,16 +193,46 @@ namespace LOICollection::frontend {
         if (sameTypeIgnoringOwnership(target, from))
             return true;
 
+        if (target.kind == TypeKind::Generic)
+            return from.kind == TypeKind::Generic && target.typeVar == from.typeVar;
+
+        if (from.kind == TypeKind::Generic)
+            return true;
+
         if (target.kind == TypeKind::Trait) {
             if (from.kind == TypeKind::Trait)
                 return target.className == from.className;
-            if (from.kind == TypeKind::Object)
+            if (from.kind == TypeKind::Object || from.kind == TypeKind::Generic)
                 return this->satisfiesTrait(from, target.className);
             return false;
         }
 
-        if (target.kind == TypeKind::Object && from.kind == TypeKind::Object)
-            return this->isDerived(from.className, target.className);
+        if (target.kind == TypeKind::Object && from.kind == TypeKind::Object) {
+            if (target.className == from.className)
+                return this->typeArgumentsCompatible(target, from);
+
+            if (!this->isDerived(from.className, target.className))
+                return false;
+
+            auto clsOpt = this->findClass(target.className);
+            if (!clsOpt)
+                return false;
+
+            const TypeSubst subst = this->substitutionFor(clsOpt->get(), from);
+            TypeInfo mapped;
+            mapped.kind = TypeKind::Object;
+            mapped.className = target.className;
+
+            for (const auto& param : clsOpt->get().typeParams) {
+                auto it = subst.find(param.name);
+                mapped.typeArgs.push_back(it == subst.end() ? TypeInfo{ TypeKind::Unknown } : it->second);
+            }
+
+            return this->typeArgumentsCompatible(target, mapped);
+        }
+
+        if (target.kind == TypeKind::Enum && from.kind == TypeKind::Enum)
+            return target.className == from.className && this->typeArgumentsCompatible(target, from);
 
         if (from.kind == TypeKind::Function)
             return this->declaresCallableMethod(target);

@@ -39,6 +39,9 @@ namespace LOICollection::frontend {
         this->impls.clear();
         this->enumByName.clear();
         this->enumVariant.clear();
+        this->enumNodes.clear();
+        this->aliasNodes.clear();
+        this->classBaseTypes.clear();
         this->activeTypeParams.clear();
         this->activeTypeParamBounds.clear();
         this->blockScopes.clear();

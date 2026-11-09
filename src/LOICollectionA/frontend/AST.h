@@ -178,8 +178,19 @@ namespace LOICollection::frontend {
                     return type.typeVar.empty() ? "generic" : type.typeVar;
                 case TypeKind::Trait:
                     return "dyn " + type.className;
-                case TypeKind::Enum:
-                    return "enum " + type.className;
+                case TypeKind::Enum: {
+                    std::string enumeration = "enum " + type.className;
+                    if (!type.typeArgs.empty()) {
+                        enumeration += "<";
+                        for (size_t i = 0; i < type.typeArgs.size(); ++i) {
+                            if (i != 0)
+                                enumeration += ", ";
+                            enumeration += typeInfoToString(type.typeArgs[i]);
+                        }
+                        enumeration += ">";
+                    }
+                    return enumeration;
+                }
                 case TypeKind::COUNT:
                     break;
             }
@@ -660,6 +671,8 @@ namespace LOICollection::frontend {
         std::vector<std::unique_ptr<ExprNode>> args;
         std::string namespaces;
         std::string name;
+        std::vector<TypeExpr> typeArgs;
+        std::vector<TypeExpr> methodTypeArgs;
 
         bool isStaticClassCall = false;
         std::string staticClassName;
@@ -854,6 +867,7 @@ namespace LOICollection::frontend {
         SourceLocation loc;
         std::string name;
         std::string baseClassName;
+        std::vector<TypeExpr> baseTypeArgs;
         std::vector<ClassMember> members;
         std::vector<MethodDecl> methods;
         int constructorIndex = -1;
@@ -929,6 +943,7 @@ namespace LOICollection::frontend {
         SourceLocation loc;
         std::unique_ptr<ExprNode> target;
         std::string memberName;
+        std::vector<TypeExpr> typeArgs;
         bool isStaticAccess = false;
         bool isColonColon = false;
         std::string staticClassName;
@@ -950,6 +965,7 @@ namespace LOICollection::frontend {
         std::unique_ptr<ExprNode> target;
         std::string methodName;
         std::vector<std::unique_ptr<ExprNode>> args;
+        std::vector<TypeExpr> typeArgs;
 
         std::string className;
         int methodOrdinal = -1;
@@ -975,6 +991,7 @@ namespace LOICollection::frontend {
     struct UsingNode : ASTNode {
         SourceLocation loc;
         std::string name;
+        std::vector<TypeParam> typeParams;
         TypeExpr type;
 
         UsingNode(SourceLocation location, std::string n)
@@ -1112,6 +1129,7 @@ namespace LOICollection::frontend {
         SourceLocation loc;
         std::string name;
         std::vector<std::unique_ptr<ExprNode>> args;
+        std::vector<TypeExpr> typeArgs;
 
         std::string resolvedName;
         int functionOrdinal = -1;
@@ -1176,6 +1194,7 @@ namespace LOICollection::frontend {
     struct EnumDeclNode : ASTNode {
         SourceLocation loc;
         std::string name;
+        std::vector<TypeParam> typeParams;
         std::vector<EnumVariant> variants;
 
         EnumDeclNode(SourceLocation location, std::string n)

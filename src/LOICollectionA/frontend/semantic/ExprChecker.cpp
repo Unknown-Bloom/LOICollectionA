@@ -23,6 +23,21 @@ namespace LOICollection::frontend {
     }
 
     TypeInfo SemanticAnalyzer::checkExprImpl(ExprNode& node, MethodScope& scope) {
+        auto requireGenericBound = [this](const TypeInfo& type, const std::string& op,
+                                          const SourceLocation& loc) -> bool {
+            if (type.kind != TypeKind::Generic)
+                return true;
+
+            auto trait = operatorTraitFor(op);
+            if (trait && this->typeParamBoundSatisfied(type.typeVar, *trait))
+                return true;
+
+            this->diagnostics.addError(loc,
+                "Operator '" + op + "' on type parameter '" + type.typeVar +
+                "' requires bound '" + (trait ? *trait : std::string("Add")) + "'");
+            return false;
+        };
+
         switch (node.getType()) {
             case ASTNode::Type::Assignment:
                 return checkAssignment(static_cast<AssignmentNode&>(node), scope);
@@ -31,6 +46,15 @@ namespace LOICollection::frontend {
                 auto& assign = static_cast<CompoundAssignNode&>(node);
                 TypeInfo target = checkExpr(*assign.target, scope);
                 TypeInfo value = checkExpr(*assign.value, scope);
+
+                if (target.kind == TypeKind::Generic && value.kind == TypeKind::Generic) {
+                    if (!requireGenericBound(target, assign.op, assign.loc) ||
+                        !requireGenericBound(value, assign.op, assign.loc))
+                        return {};
+
+                    return target;
+                }
+
                 return arithmeticResult(assign.op, target, value);
             }
 
@@ -130,7 +154,7 @@ namespace LOICollection::frontend {
                         return {};
                     }
 
-                    return { TypeKind::Object, scope.classRef().name };
+                    return this->selfType(scope.classRef());
                 }
 
                 if (!this->formReceivers.empty())
@@ -160,6 +184,10 @@ namespace LOICollection::frontend {
                     diagnostics.addError(superNode.loc, "Class '" + cls.name + "' has no base class");
                     return {};
                 }
+
+                if (auto baseIt = this->classBaseTypes.find(cls.name);
+                    baseIt != this->classBaseTypes.end())
+                    return baseIt->second;
 
                 return { TypeKind::Object, cls.baseClassName };
             }
@@ -261,17 +289,33 @@ namespace LOICollection::frontend {
                     return overload->returnType;
                 }
 
+                if (left.kind == TypeKind::Generic && right.kind == TypeKind::Generic) {
+                    if (!requireGenericBound(left, arith.op, arith.loc) ||
+                        !requireGenericBound(right, arith.op, arith.loc))
+                        return {};
+
+                    return left;
+                }
+
                 return arithmeticResult(arith.op, left, right);
             }
 
             case ASTNode::Type::Compare: {
                 auto& cmp = static_cast<CompareNode&>(node);
                 TypeInfo left = checkExpr(*cmp.left, scope);
-                checkExpr(*cmp.right, scope);
+                TypeInfo right = checkExpr(*cmp.right, scope);
 
                 if (auto overload = resolveOperatorOverload(cmp.op, left)) {
                     cmp.overload = overload;
                     return overload->returnType;
+                }
+
+                if (left.kind == TypeKind::Generic && right.kind == TypeKind::Generic) {
+                    if (!requireGenericBound(left, cmp.op, cmp.loc) ||
+                        !requireGenericBound(right, cmp.op, cmp.loc))
+                        return {};
+
+                    return { TypeKind::Bool };
                 }
 
                 return { TypeKind::Bool };
@@ -305,6 +349,13 @@ namespace LOICollection::frontend {
                         unary.overload = overload;
                         return overload->returnType;
                     }
+
+                    if (operand.kind == TypeKind::Generic) {
+                        if (!requireGenericBound(operand, "neg", unary.loc))
+                            return {};
+
+                        return operand;
+                    }
                 }
 
                 return unary.op == "!" ? TypeInfo{ TypeKind::Bool } : operand;
@@ -319,8 +370,20 @@ namespace LOICollection::frontend {
                     argTypes.push_back(checkExpr(*arg, scope));
 
                 if (auto clsOpt = this->findClass(fn.namespaces)) {
+                    TypeInfo classType;
+                    if (scope.hasClass() && &scope.classRef() == &clsOpt->get()) {
+                        classType = this->selfType(clsOpt->get());
+                    } else {
+                        classType = this->resolveClassType(
+                            clsOpt->get(), fn.typeArgs, fn.loc, true);
+                    }
+
+                    std::vector<TypeInfo> methodTypes;
+                    for (const auto& typeArg : fn.methodTypeArgs)
+                        methodTypes.push_back(this->resolveTypeExpr(typeArg, fn.loc, true));
+
                     auto staticMethod = this->findStaticMethod(
-                        clsOpt->get(), fn.name, argTypes, scope);
+                        clsOpt->get(), fn.name, argTypes, scope, classType, methodTypes);
                     if (!staticMethod) {
                         diagnostics.addError(fn.loc,
                             "No matching static method '" + fn.name + "' with " +
@@ -334,16 +397,23 @@ namespace LOICollection::frontend {
                     fn.staticClassName = fn.namespaces;
                     fn.methodOrdinal = this->staticMethodOrdinal(
                         fn.namespaces, this->methodSignature(method));
-                    fn.paramTypes = method.paramTypes;
+                    fn.paramTypes.clear();
+                    for (const auto& paramType : method.paramTypes)
+                        fn.paramTypes.push_back(this->substituteType(paramType, staticMethod->subst));
+
                     for (size_t j = 0; j < argCount; ++j) {
-                        if (method.paramTypes[j].kind == TypeKind::Optional &&
+                        if (fn.paramTypes[j].kind == TypeKind::Optional &&
                             argTypes[j].kind == TypeKind::Optional)
                             fn.args[j]->preserveOptional = true;
                     }
-                    return method.returnType;
+                    return this->substituteType(method.returnType, staticMethod->subst);
                 }
 
                 if (isNativeClass(fn.namespaces)) {
+                    if (!fn.typeArgs.empty() || !fn.methodTypeArgs.empty())
+                        diagnostics.addError(fn.loc,
+                            "Native class '" + fn.namespaces + "' does not accept type arguments");
+
                     std::vector<CallbackTypeArgs> signatures =
                         ClassCall::getInstance().getStaticMethodSignatures(fn.namespaces, fn.name);
                     for (const auto& signature : signatures) {
@@ -440,9 +510,14 @@ namespace LOICollection::frontend {
                                     "Cannot access private member '" + member.name + "'");
                             }
 
-                            if (member.type.kind != TypeKind::Unknown) {
-                                unify(member.type, rhs, node.loc, "member '" + var.name + "'");
-                                if (member.type.kind == TypeKind::Optional &&
+                            const TypeSubst subst = this->substitutionFor(
+                                field->owner.get(), this->selfType(scope.classRef()));
+                            const TypeInfo memberType = this->substituteType(member.type, subst);
+
+                            if (memberType.kind != TypeKind::Unknown) {
+                                TypeInfo targetType = memberType;
+                                unify(targetType, rhs, node.loc, "member '" + var.name + "'");
+                                if (memberType.kind == TypeKind::Optional &&
                                     rhs.kind == TypeKind::Optional && node.value) {
                                     node.value->preserveOptional = true;
                                 }
@@ -464,9 +539,14 @@ namespace LOICollection::frontend {
                                     "Cannot access private member '" + member.name + "'");
                             }
 
-                            if (member.type.kind != TypeKind::Unknown) {
-                                unify(member.type, rhs, node.loc, "static member '" + var.name + "'");
-                                if (member.type.kind == TypeKind::Optional &&
+                            const TypeSubst subst = this->substitutionFor(
+                                staticField->owner.get(), this->selfType(scope.classRef()));
+                            const TypeInfo memberType = this->substituteType(member.type, subst);
+
+                            if (memberType.kind != TypeKind::Unknown) {
+                                TypeInfo targetType = memberType;
+                                unify(targetType, rhs, node.loc, "static member '" + var.name + "'");
+                                if (memberType.kind == TypeKind::Optional &&
                                     rhs.kind == TypeKind::Optional && node.value) {
                                     node.value->preserveOptional = true;
                                 }
@@ -647,9 +727,20 @@ namespace LOICollection::frontend {
                                 "Cannot access private member '" + m.name + "'");
                         }
 
-                        if (m.type.kind != TypeKind::Unknown) {
-                            unify(m.type, rhs, node.loc, "static member '" + m.name + "'");
-                            if (m.type.kind == TypeKind::Optional &&
+                        TypeInfo classType;
+                        if (scope.hasMethod() && scope.hasClass() && &scope.classRef() == &cls) {
+                            classType = this->selfType(cls);
+                        } else {
+                            classType = this->resolveClassType(cls, member.typeArgs, node.loc, true);
+                        }
+
+                        const TypeSubst subst = this->substitutionFor(field->owner.get(), classType);
+                        const TypeInfo memberType = this->substituteType(m.type, subst);
+
+                        if (memberType.kind != TypeKind::Unknown) {
+                            TypeInfo targetType = memberType;
+                            unify(targetType, rhs, node.loc, "static member '" + m.name + "'");
+                            if (memberType.kind == TypeKind::Optional &&
                                 rhs.kind == TypeKind::Optional && node.value) {
                                 node.value->preserveOptional = true;
                             }
@@ -667,6 +758,11 @@ namespace LOICollection::frontend {
                                 var.name + "." + member.memberName + "')");
                             return rhs;
                         }
+
+                        if (!member.typeArgs.empty())
+                            diagnostics.addError(node.loc,
+                                "Native class '" + var.name + "' does not accept type arguments");
+
                         if (ClassCall::getInstance().hasStaticField(var.name, member.memberName)) {
                             member.isStaticAccess = true;
                             member.staticClassName = var.name;
@@ -716,9 +812,13 @@ namespace LOICollection::frontend {
                         diagnostics.addError(node.loc, "Cannot access private member '" + m.name + "'");
                     }
 
-                    if (m.type.kind != TypeKind::Unknown) {
-                        unify(m.type, rhs, node.loc, "member '" + m.name + "'");
-                        if (m.type.kind == TypeKind::Optional &&
+                    const TypeSubst subst = this->substitutionFor(field->owner.get(), targetType);
+                    const TypeInfo memberType = this->substituteType(m.type, subst);
+
+                    if (memberType.kind != TypeKind::Unknown) {
+                        TypeInfo expected = memberType;
+                        unify(expected, rhs, node.loc, "member '" + m.name + "'");
+                        if (memberType.kind == TypeKind::Optional &&
                             rhs.kind == TypeKind::Optional && node.value) {
                             node.value->preserveOptional = true;
                         }

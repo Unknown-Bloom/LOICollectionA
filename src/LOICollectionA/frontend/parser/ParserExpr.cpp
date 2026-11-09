@@ -361,8 +361,20 @@ namespace LOICollection::frontend {
                     return nullptr;
                 }
 
+                SourceLocation memberLoc = currentToken.loc;
                 std::string member = currentToken.value;
                 if (!eat(TokenType::TOKEN_IDENT)) return nullptr;
+
+                std::vector<TypeExpr> typeArgs;
+                if (currentToken.type == TokenType::TOKEN_OP && currentToken.value == "<" &&
+                    memberLoc.offset + member.size() == currentToken.loc.offset &&
+                    this->typeArgsAheadFromCurrent({ TokenType::TOKEN_LPAREN })) {
+                    typeArgs = this->parseTypeArgs();
+                } else if (currentToken.type == TokenType::TOKEN_NAMESPACE &&
+                           this->typeArgsAhead(0, { TokenType::TOKEN_LPAREN })) {
+                    eat(TokenType::TOKEN_NAMESPACE);
+                    typeArgs = this->parseTypeArgs();
+                }
 
                 if (currentToken.type == TokenType::TOKEN_LPAREN) {
                     if (!eat(TokenType::TOKEN_LPAREN)) return nullptr;
@@ -371,9 +383,11 @@ namespace LOICollection::frontend {
 
                     if (!eat(TokenType::TOKEN_RPAREN)) return nullptr;
 
-                    expr = std::make_unique<MethodCallNode>(
+                    auto call = std::make_unique<MethodCallNode>(
                         loc, std::move(expr), std::move(member), std::move(args)
                     );
+                    call->typeArgs = std::move(typeArgs);
+                    expr = std::move(call);
                 } else {
                     expr = std::make_unique<MemberAccessNode>(
                         loc, std::move(expr), std::move(member)
@@ -593,13 +607,129 @@ namespace LOICollection::frontend {
             }
             case TokenType::TOKEN_IDENT: {
                 SourceLocation loc = currentToken.loc;
+                std::string name = currentToken.value;
+                const size_t nameEnd = loc.offset + name.size();
 
-                if (peek() == TokenType::TOKEN_NAMESPACE)
+                if (peek() == TokenType::TOKEN_NAMESPACE) {
+                    if (peekToken(1).type == TokenType::TOKEN_OP && peekToken(1).value == "<" &&
+                        this->typeArgsAhead(1, { TokenType::TOKEN_LPAREN })) {
+                        eat(TokenType::TOKEN_IDENT);
+                        eat(TokenType::TOKEN_NAMESPACE);
+                        auto typeArgs = this->parseTypeArgs();
+
+                        if (!eat(TokenType::TOKEN_LPAREN)) return nullptr;
+
+                        auto args = parseArgs();
+
+                        if (!eat(TokenType::TOKEN_RPAREN)) return nullptr;
+
+                        auto call = std::make_unique<FuncCallNode>(loc, std::move(name), std::move(args));
+                        call->typeArgs = std::move(typeArgs);
+                        return call;
+                    }
+
+                    if (peekToken(2).type == TokenType::TOKEN_NAMESPACE &&
+                        peekToken(3).type == TokenType::TOKEN_OP && peekToken(3).value == "<" &&
+                        this->typeArgsAhead(3, { TokenType::TOKEN_LPAREN })) {
+                        eat(TokenType::TOKEN_IDENT);
+                        eat(TokenType::TOKEN_NAMESPACE);
+
+                        std::string member = currentToken.value;
+                        eat(TokenType::TOKEN_IDENT);
+                        eat(TokenType::TOKEN_NAMESPACE);
+                        auto methodTypeArgs = this->parseTypeArgs();
+
+                        if (!eat(TokenType::TOKEN_LPAREN)) return nullptr;
+
+                        auto args = parseArgs();
+
+                        if (!eat(TokenType::TOKEN_RPAREN)) return nullptr;
+
+                        auto call = std::make_unique<FunctionNode>(
+                            loc, std::move(args), std::move(name), std::move(member)
+                        );
+                        call->methodTypeArgs = std::move(methodTypeArgs);
+                        return call;
+                    }
+
+                    if (peekToken(2).type == TokenType::TOKEN_OP && peekToken(2).value == "<" &&
+                        this->typeArgsAhead(2, { TokenType::TOKEN_LPAREN })) {
+                        eat(TokenType::TOKEN_IDENT);
+                        eat(TokenType::TOKEN_NAMESPACE);
+
+                        std::string member = currentToken.value;
+                        eat(TokenType::TOKEN_IDENT);
+                        auto methodTypeArgs = this->parseTypeArgs();
+
+                        if (!eat(TokenType::TOKEN_LPAREN)) return nullptr;
+
+                        auto args = parseArgs();
+
+                        if (!eat(TokenType::TOKEN_RPAREN)) return nullptr;
+
+                        auto call = std::make_unique<FunctionNode>(
+                            loc, std::move(args), std::move(name), std::move(member)
+                        );
+                        call->methodTypeArgs = std::move(methodTypeArgs);
+                        return call;
+                    }
+
                     return parseFunction();
+                }
+
+                if (peek() == TokenType::TOKEN_OP && peekToken(0).value == "<" &&
+                    nameEnd == peekToken(0).loc.offset &&
+                    this->typeArgsAhead(0, { TokenType::TOKEN_LPAREN, TokenType::TOKEN_NAMESPACE })) {
+                    eat(TokenType::TOKEN_IDENT);
+                    auto typeArgs = this->parseTypeArgs();
+
+                    if (currentToken.type == TokenType::TOKEN_NAMESPACE) {
+                        eat(TokenType::TOKEN_NAMESPACE);
+
+                        if (currentToken.type != TokenType::TOKEN_IDENT) {
+                            diagnostics.addError(currentToken.loc, "Expected member name after '::'");
+                            return nullptr;
+                        }
+
+                        std::string member = currentToken.value;
+                        eat(TokenType::TOKEN_IDENT);
+
+                        if (currentToken.type == TokenType::TOKEN_LPAREN) {
+                            if (!eat(TokenType::TOKEN_LPAREN)) return nullptr;
+
+                            auto args = parseArgs();
+
+                            if (!eat(TokenType::TOKEN_RPAREN)) return nullptr;
+
+                            auto call = std::make_unique<FunctionNode>(
+                                loc, std::move(args), std::move(name), std::move(member)
+                            );
+                            call->typeArgs = std::move(typeArgs);
+                            return call;
+                        }
+
+                        auto access = std::make_unique<MemberAccessNode>(
+                            loc, std::make_unique<VariableNode>(loc, std::move(name)), std::move(member)
+                        );
+                        access->isColonColon = true;
+                        access->typeArgs = std::move(typeArgs);
+                        return access;
+                    }
+
+                    if (currentToken.type == TokenType::TOKEN_LPAREN) {
+                        if (!eat(TokenType::TOKEN_LPAREN)) return nullptr;
+
+                        auto args = parseArgs();
+
+                        if (!eat(TokenType::TOKEN_RPAREN)) return nullptr;
+
+                        auto call = std::make_unique<FuncCallNode>(loc, std::move(name), std::move(args));
+                        call->typeArgs = std::move(typeArgs);
+                        return call;
+                    }
+                }
 
                 if (peek() == TokenType::TOKEN_LPAREN) {
-                    std::string name = currentToken.value;
-
                     if (!eat(TokenType::TOKEN_IDENT)) return nullptr;
                     if (!eat(TokenType::TOKEN_LPAREN)) return nullptr;
 
@@ -609,8 +739,6 @@ namespace LOICollection::frontend {
 
                     return std::make_unique<FuncCallNode>(loc, std::move(name), std::move(args));
                 }
-
-                std::string name = currentToken.value;
 
                 if (!eat(TokenType::TOKEN_IDENT)) return nullptr;
 

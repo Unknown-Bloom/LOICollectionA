@@ -1,5 +1,6 @@
 #pragma once
 
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <vector>
@@ -45,6 +46,9 @@ namespace LOICollection::frontend {
         std::unique_ptr<ImportNode> parseImport();
         std::unique_ptr<ComponentNode> parseComponent();
         std::unique_ptr<TypeExpr> parseTypeExpr();
+        std::vector<TypeExpr> parseTypeArgs();
+        bool typeArgsAhead(size_t offset, std::initializer_list<TokenType> followers);
+        bool typeArgsAheadFromCurrent(std::initializer_list<TokenType> followers);
         std::unique_ptr<ExprNode> parseFunction();
         std::unique_ptr<MacroNode> parseMacro();
         std::unique_ptr<ClassNode> parseClass();

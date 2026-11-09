@@ -196,6 +196,7 @@ namespace LOICollection::frontend {
 
         const int index = static_cast<int>(enumByName.size());
         enumByName.emplace(node.name, index);
+        enumNodes.emplace(node.name, std::ref(node));
 
         for (size_t tag = 0; tag < node.variants.size(); ++tag) {
             const std::string& variantName = node.variants[tag].name;
@@ -288,6 +289,30 @@ namespace LOICollection::frontend {
                         method.typeParams.push_back(extra);
                 }
 
+                for (size_t index = 0;
+                     index < impl.typeParams.size() && index < cls.typeParams.size(); ++index) {
+                    if (impl.typeParams[index].bounds.empty())
+                        continue;
+
+                    const std::string& name = cls.typeParams[index].name;
+                    TypeParam* target = nullptr;
+                    for (auto& own : method.typeParams)
+                        if (own.name == name)
+                            target = &own;
+
+                    if (!target) {
+                        TypeParam param;
+                        param.name = name;
+                        param.bounds = impl.typeParams[index].bounds;
+                        method.typeParams.push_back(std::move(param));
+                        continue;
+                    }
+
+                    for (const std::string& bound : impl.typeParams[index].bounds)
+                        if (std::ranges::find(target->bounds, bound) == target->bounds.end())
+                            target->bounds.push_back(bound);
+                }
+
                 cls.methods.push_back(std::move(method));
             }
 
@@ -347,6 +372,7 @@ namespace LOICollection::frontend {
             }
 
             this->aliasLocs.emplace(usingNode.name, usingNode.loc);
+            this->aliasNodes.emplace(usingNode.name, std::ref(usingNode));
         }
     }
 
@@ -439,42 +465,44 @@ namespace LOICollection::frontend {
             return result;
         }
 
-        if (!expr.args.empty()) {
-            if (auto clsOpt = this->findClass(expr.name)) {
-                const ClassNode& cls = clsOpt->get();
-                if (cls.typeParams.size() != expr.args.size()) {
-                    if (reportError)
-                        this->diagnostics.addError(loc,
-                            "Class '" + expr.name + "' expects " +
-                            std::to_string(cls.typeParams.size()) +
-                            " type argument(s), got " +
-                            std::to_string(expr.args.size()));
-                    return {};
-                }
-
-                TypeInfo result;
-                result.kind = TypeKind::Object;
-                result.className = expr.name;
-                result.typeArgs.reserve(expr.args.size());
-                for (const auto& arg : expr.args) {
-                    TypeInfo argument = this->resolveTypeExpr(arg, loc, reportError);
-                    if (argument.ownership != Ownership::Value && reportError)
-                        this->diagnostics.addError(loc, "ref<T> is not allowed inside type arguments");
-                    result.typeArgs.push_back(withoutOwnership(argument));
-                }
-                return result;
+        if (auto paramIt = this->activeTypeParams.find(expr.name); paramIt != this->activeTypeParams.end()) {
+            if (!expr.args.empty()) {
+                if (reportError)
+                    this->diagnostics.addError(loc,
+                        "Type parameter '" + expr.name + "' does not accept type arguments");
+                return {};
             }
 
-            if (reportError)
-                this->diagnostics.addError(loc,
-                    "Type '" + expr.name + "' does not accept type arguments");
-            return {};
+            return paramIt->second;
         }
 
         auto aliasIt = this->aliasExprs.find(expr.name);
         if (aliasIt != this->aliasExprs.end()) {
+            auto nodeIt = this->aliasNodes.find(expr.name);
+            const std::vector<TypeParam>* params = nodeIt == this->aliasNodes.end()
+                ? nullptr
+                : &nodeIt->second.get().typeParams;
+
+            if (params && params->empty() && !expr.args.empty()) {
+                if (reportError)
+                    this->diagnostics.addError(loc,
+                        "Type '" + expr.name + "' does not accept type arguments");
+                return {};
+            }
+
+            if (params && !params->empty()) {
+                if (expr.args.size() != params->size()) {
+                    if (reportError)
+                        this->diagnostics.addError(loc,
+                            "Type alias '" + expr.name + "' expects " +
+                            std::to_string(params->size()) + " type argument(s), got " +
+                            std::to_string(expr.args.size()));
+                    return {};
+                }
+            }
+
             if (auto resolvedIt = this->typeAliases.find(expr.name);
-                resolvedIt != this->typeAliases.end()) {
+                params && params->empty() && resolvedIt != this->typeAliases.end()) {
                 return resolvedIt->second;
             }
 
@@ -485,37 +513,79 @@ namespace LOICollection::frontend {
                 return {};
             }
 
+            auto finishAlias = make_scope_guard([this, &expr] {
+                this->resolvingAliases.erase(expr.name);
+            });
+
+            auto savedParams = this->activeTypeParams;
+            auto savedBounds = this->activeTypeParamBounds;
+            auto restoreParams = make_scope_guard([this, &savedParams, &savedBounds] {
+                this->activeTypeParams = savedParams;
+                this->activeTypeParamBounds = savedBounds;
+            });
+
+            TypeSubst aliasSubst;
+            if (params) {
+                for (size_t index = 0; index < params->size(); ++index) {
+                    TypeInfo argument = this->resolveTypeExpr(expr.args[index], loc, reportError);
+                    aliasSubst[(*params)[index].name] = withoutOwnership(argument);
+                    this->activeTypeParams[(*params)[index].name] = withoutOwnership(argument);
+                    this->activeTypeParamBounds[(*params)[index].name] = (*params)[index].bounds;
+                }
+
+                if (reportError)
+                    static_cast<void>(this->checkTypeParamBounds(
+                        *params, aliasSubst, loc, "type alias '" + expr.name + "'"));
+            }
+
             TypeInfo resolved = this->resolveTypeExpr(aliasIt->second, loc, reportError);
-            this->resolvingAliases.erase(expr.name);
-            this->typeAliases[expr.name] = resolved;
+
+            if (params && params->empty())
+                this->typeAliases[expr.name] = resolved;
+
             return resolved;
+        }
+
+        if (auto clsOpt = this->findClass(expr.name))
+            return this->resolveClassType(clsOpt->get(), expr.args, loc, reportError);
+
+        if (auto enumIt = this->enumNodes.find(expr.name); enumIt != this->enumNodes.end())
+            return this->resolveEnumType(enumIt->second.get(), expr.args, loc, reportError);
+
+        if (!expr.args.empty()) {
+            if (reportError)
+                this->diagnostics.addError(loc,
+                    "Type '" + expr.name + "' does not accept type arguments");
+            return {};
         }
 
         return this->typeFromName(expr.name, loc, reportError);
     }
 
     void SemanticAnalyzer::resolveDeclaredTypes() {
-        for (auto clsRef : this->classes) {
+        for (auto clsRef : this->orderedClasses) {
             ClassNode& cls = clsRef.get();
 
-            auto savedParams = std::move(this->activeTypeParams);
-            auto savedBounds = std::move(this->activeTypeParamBounds);
-            for (const auto& tp : cls.typeParams) {
-                for (const auto& bound : tp.bounds)
-                    if (!this->traits.contains(bound))
-                        this->diagnostics.addError(cls.loc,
-                            "Unknown trait bound '" + bound + "' for type parameter '" + tp.name + "'");
-
-                TypeInfo g;
-                g.kind = TypeKind::Generic;
-                g.typeVar = tp.name;
-                this->activeTypeParams[tp.name] = g;
-                this->activeTypeParamBounds[tp.name] = tp.bounds;
-            }
-            auto guard = make_scope_guard([&] {
+            auto savedParams = this->activeTypeParams;
+            auto savedBounds = this->activeTypeParamBounds;
+            auto guard = make_scope_guard([this, savedParams, savedBounds]() mutable {
                 this->activeTypeParams = std::move(savedParams);
                 this->activeTypeParamBounds = std::move(savedBounds);
             });
+
+            this->validateTypeParamBounds(cls.typeParams, cls.loc);
+            this->pushTypeParams(cls.typeParams);
+
+            if (auto baseOpt = this->findClass(cls.baseClassName);
+                !cls.baseClassName.empty() && baseOpt) {
+                this->classBaseTypes[cls.name] = this->resolveClassType(
+                    baseOpt->get(), cls.baseTypeArgs, cls.loc, true);
+            } else {
+                TypeInfo self;
+                self.kind = TypeKind::Object;
+                self.className = cls.name;
+                this->classBaseTypes[cls.name] = std::move(self);
+            }
 
             for (auto& member : cls.members) {
                 if (member.hasTypeExpr)
@@ -543,11 +613,15 @@ namespace LOICollection::frontend {
             }
 
             for (auto& method : cls.methods) {
-                for (const auto& tp : method.typeParams)
-                    for (const auto& bound : tp.bounds)
-                        if (!this->traits.contains(bound))
-                            this->diagnostics.addError(method.loc,
-                                "Unknown trait bound '" + bound + "' for type parameter '" + tp.name + "'");
+                auto methodParams = this->activeTypeParams;
+                auto methodBounds = this->activeTypeParamBounds;
+                auto methodGuard = make_scope_guard([this, methodParams, methodBounds]() mutable {
+                    this->activeTypeParams = std::move(methodParams);
+                    this->activeTypeParamBounds = std::move(methodBounds);
+                });
+
+                this->validateTypeParamBounds(method.typeParams, method.loc);
+                this->pushTypeParams(method.typeParams);
 
                 method.paramTypes.resize(method.params.size());
                 for (size_t i = 0; i < method.params.size(); ++i) {
@@ -570,19 +644,15 @@ namespace LOICollection::frontend {
         for (auto fnRef : this->functions) {
             MethodDecl& decl = fnRef.get().decl;
 
-            for (const auto& tp : decl.typeParams)
-                for (const auto& bound : tp.bounds)
-                    if (!this->traits.contains(bound))
-                        this->diagnostics.addError(decl.loc,
-                            "Unknown trait bound '" + bound + "' for type parameter '" + tp.name + "'");
+            auto savedParams = this->activeTypeParams;
+            auto savedBounds = this->activeTypeParamBounds;
+            auto guard = make_scope_guard([this, savedParams, savedBounds]() mutable {
+                this->activeTypeParams = std::move(savedParams);
+                this->activeTypeParamBounds = std::move(savedBounds);
+            });
 
-            this->activeTypeParams.clear();
-            for (const auto& tp : decl.typeParams) {
-                TypeInfo g;
-                g.kind = TypeKind::Generic;
-                g.typeVar = tp.name;
-                this->activeTypeParams[tp.name] = g;
-            }
+            this->validateTypeParamBounds(decl.typeParams, decl.loc);
+            this->pushTypeParams(decl.typeParams);
 
             decl.paramTypes.resize(decl.params.size());
             for (size_t i = 0; i < decl.params.size(); ++i) {
@@ -598,9 +668,35 @@ namespace LOICollection::frontend {
                 this->diagnostics.addError(decl.loc,
                     "Function '" + decl.name +
                     "' cannot return ref<T>; return an owned value");
-
-            this->activeTypeParams.clear();
         }
+
+        for (auto enumRef : this->enumNodes) {
+            EnumDeclNode& node = enumRef.second.get();
+
+            auto savedParams = this->activeTypeParams;
+            auto savedBounds = this->activeTypeParamBounds;
+            auto guard = make_scope_guard([this, savedParams, savedBounds]() mutable {
+                this->activeTypeParams = std::move(savedParams);
+                this->activeTypeParamBounds = std::move(savedBounds);
+            });
+
+            this->validateTypeParamBounds(node.typeParams, node.loc);
+            this->pushTypeParams(node.typeParams);
+
+            for (const auto& variant : node.variants) {
+                auto it = this->enumVariant.find(variant.name);
+                if (it == this->enumVariant.end() || it->second.enumName != node.name)
+                    continue;
+
+                it->second.payloadTypes.clear();
+                for (const auto& field : variant.fieldTypes)
+                    it->second.payloadTypes.push_back(
+                        this->resolveTypeExpr(field, variant.loc, true));
+            }
+        }
+
+        for (auto aliasRef : this->aliasNodes)
+            this->validateTypeParamBounds(aliasRef.second.get().typeParams, aliasRef.second.get().loc);
     }
 
     void SemanticAnalyzer::validateMemberInitialization() {
