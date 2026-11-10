@@ -210,6 +210,15 @@ LCUI 脚本在 `frontend/ir/` 中依次经过类型 IR（`ty/`）、HIR（`hir/`
 
 LIR 的规范名字是 `lir::Chunk` / `lir::Instr` / `lir::Op` / `lir::Flag`；`ir` 命名空间提供同名 using，不再保留旧单层 IR 的兼容别名与旧序列化器名字。对象访问与字段缓存围绕以下两点设计：
 
+### 泛型与类型擦除
+
+泛型在 `SemanticAnalyzer` 内完成解析与检查，不进入 IR 层：
+
+- 声明的类型参数在作用域内映射为 `TypeKind::Generic`；`Object` / `Enum` 的 `typeArgs` 参与类型同一性并保持**不变**（`Box<int>` 与 `Box<string>` 是不同类型）。
+- 调用点通过结构化统一推断实参，覆盖 `Box<T>`、`optional<T>`、`variant<...>` 等嵌套位置；继承链上的基类实参由 `classBaseTypes` 逐层替换，字段、方法与 `super(...)` 使用同一份替换表。
+- 约束在实例化点检查；`impl<T: Show> Box<T>` 的约束注入合并后的方法，调用时随接收者实参复核。
+- HIR 只接收已解析的 `TypeInfo`：`Generic` 降为 `ty::Param`，枚举载荷中的类型参数同样降为 `ty::Param` 而不是 ADT 名。运行期不做单态化，类型实参被擦除，VM 与 `.lcp` 格式不变；泛型类的静态字段因此按类共享。
+
 ### 对象模型与字段布局
 
 每个 `Object` 持有一个**不可变**的 `FieldLayout`（字段名到 slot 索引的有序映射）。编译期/构造期已知的类字段在布局中占据连续 slot，`slotOf(name)` 为常数时间查找。字段动态写入先落到 `spill` 哈希表作为回退，保证未声明字段仍可存取。

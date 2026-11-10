@@ -212,6 +212,15 @@ LCUI scripts pass through the type IR (`ty/`), HIR (`hir/`), and MIR (`mir/`) in
 
 The canonical LIR names are `lir::Chunk` / `lir::Instr` / `lir::Op` / `lir::Flag`; the `ir` namespace provides using declarations with the same names, and no compatibility aliases or legacy serializer names from the single-layer IR remain. Object access and field caching are designed around two ideas:
 
+### Generics and Type Erasure
+
+Generics are resolved and checked entirely inside `SemanticAnalyzer` and never enter the IR layers:
+
+- Declared type parameters map to `TypeKind::Generic` in scope; `typeArgs` on `Object` / `Enum` participate in type identity and are **invariant** (`Box<int>` and `Box<string>` are distinct types).
+- Call sites infer arguments by structural unification across nested positions such as `Box<T>`, `optional<T>`, and `variant<...>`. Base-class arguments along an inheritance chain are substituted through `classBaseTypes`, and fields, methods, and `super(...)` all use the same substitution table.
+- Bounds are checked at instantiation; the bounds of `impl<T: Show> Box<T>` are injected into the merged methods and re-checked against the receiver's arguments at call sites.
+- HIR only receives resolved `TypeInfo`: `Generic` lowers to `ty::Param`, and type parameters in enum payloads also lower to `ty::Param` instead of an ADT name. There is no runtime monomorphization; type arguments are erased, so the VM and `.lcp` format are unchanged, and static fields of generic classes are shared per class.
+
 ### Object Model and Field Layout
 
 Each `Object` holds an **immutable** `FieldLayout` (an ordered map from field names to slot indices). Class fields known at compile/construction time occupy contiguous slots, so `slotOf(name)` is O(1). Dynamically written fields fall back to a `spill` hash map, keeping undeclared fields accessible.

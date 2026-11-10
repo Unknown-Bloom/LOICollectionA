@@ -360,6 +360,18 @@ a == Some(42);   // true (compares the tag and every payload)
 a == Nothing();  // false
 ```
 
+An enum name may declare type parameters; constructor arguments participate in inference (see "Generics"):
+
+```lcui
+enum Option<T> {
+    Some(T)
+    Nothing
+}
+
+let a: Option<int> = Some(1);
+let b: Option<int> = Nothing<int>();
+```
+
 Variants may carry several payloads; construct them by calling the variant name, and the argument count must match the declaration:
 
 ```lcui
@@ -406,6 +418,14 @@ let b: Count = 3;
 ```
 
 Aliases can be chained (e.g. `using B = A;`), but cannot be self-referencing or defined more than once.
+
+An alias may also declare type parameters; the argument count must match the declaration, and arguments replace the parameters on the right-hand side when expanded:
+
+```lcui
+using Twice<T> = Box<Box<T>>;
+
+let b: Twice<int> = new Box(new Box(1));
+```
 
 ### Arrays
 
@@ -1032,6 +1052,19 @@ id(7);      // Calls the int version
 id("s");    // Calls the string version
 ```
 
+A function name may declare type parameters and constraints; calls may provide them explicitly or let argument types infer them:
+
+```lcui
+func first<T>(a: T, b: T) -> T {
+    return a;
+}
+
+first(1, 2);              // T = int
+first<string>("a", "b");  // explicit T = string
+```
+
+See "Generics" for the complete rules.
+
 Function and class definitions can only appear at the top level of a script; they cannot be nested inside functions or other blocks. `return` can only appear in a function body; a function without an explicit `return` returns the null value.
 
 ### Anonymous Functions (Lambdas)
@@ -1070,6 +1103,8 @@ public:
 let dog = new Animal("dog");
 dog.name;   // "dog"
 ```
+
+A class name may declare type parameters (`class Box<T>`), and generic base classes with arguments are supported (`class Child<T> extends Base<T>`); see "Generics".
 
 ### Fields and Methods
 
@@ -1155,6 +1190,86 @@ Construction rules:
 
 Object `==`/`!=` is also a reference comparison.
 
+### Generics
+
+Classes, functions, class methods, enums, and type aliases may declare type parameters. Type parameters exist only at compile time: semantic analysis performs inference, bound checking, and substitution, then HIR erases them under the existing typing rules, so the VM and the `.lcp` format are unchanged.
+
+#### Declarations
+
+```lcui
+class Box<T> {
+public:
+    value: T;
+
+    Box(v: T) {
+        this.value = v;
+    }
+
+    func get() -> T {
+        return this.value;
+    }
+
+    func map<U>(f) -> U {
+        return f(this.value);
+    }
+}
+
+func id<T>(x: T) -> T {
+    return x;
+}
+
+enum Option<T> {
+    Some(T)
+    Nothing
+}
+
+using Twice<T> = Box<Box<T>>;
+
+class Child<T> extends Box<T> {
+    Child(v: T) {
+        super(v);
+    }
+}
+```
+
+- A type parameter list follows the declared name; separate parameters with commas.
+- Bounds are written as `T: Trait` or `T: TraitA + TraitB` and are checked at **instantiation**.
+- Class methods may declare their own type parameters (`func map<U>`); constructors only use class parameters.
+- `extends` accepts full type arguments (`Base<T>`); base fields, methods, and `super(...)` are substituted along the inheritance chain.
+
+#### Explicit Arguments and Inference
+
+```lcui
+id<int>(5);
+id::<int>(5);
+new Box<int>(1);
+new Box(1);                              // T = int
+new Box(1).map<string>(func (x) { return "v=" + x; });
+new Box(1).map::<string>(func (x) { return "v=" + x; });
+Box<int>::create();                      // class arguments before a static method
+Factory::make<int>(5);                   // type arguments of the static method itself
+```
+
+- `<...>` after a function or method name is parsed as type arguments only when immediately followed by `(`, so it never conflicts with comparisons.
+- Without explicit arguments, `new` infers class parameters structurally from constructor arguments (`Box<T>`, `optional<T>`, `variant<...>`, and nested positions are supported).
+- Type annotations must be fully instantiated: `let b: Box = ...` is an error. Class parameters with no inferable position in a `new` stay undetermined; spell them out explicitly when a concrete type is required.
+- Enum construction arguments participate in inferring the enum's type parameters; payload-free variants such as `Nothing()` may be written as `Nothing<int>()`.
+
+#### Type Rules
+
+- Type arguments are **invariant**: `Box<int>` and `Box<string>` are distinct types and cannot be assigned or passed to each other.
+- A generic derived class substitutes its base arguments: with `class Child<T> extends Base<T>`, `Child<int>` is assignable to `Base<int>` but not to `Base<string>`.
+- `T` is opaque inside a generic body: a concrete value cannot be assigned to `T`; passing `T` to a concrete target keeps the language's dynamic approximation.
+- Arithmetic or comparison between two `Generic` operands requires the matching bound: `+ - * / % ^` need `Add/Sub/Mul/Div/Mod/Pow`, comparisons need `Eq/Ne/Lt/Le/Gt/Ge`, and unary negation needs `Neg`. Mixing a `Generic` with a concrete type keeps dynamic semantics.
+- A `Generic` passed to another generic function with the same bound reuses the current scope's constraints.
+- Bounds on `impl<T: Constraint> Box<T>` travel with the merged methods: instantiations that do not satisfy the bound cannot call them.
+
+#### Runtime Boundaries
+
+- Type arguments are erased in HIR/LIR and are not retained at runtime: `instanceof Box` does not distinguish `Box<int>` from `Box<string>`.
+- Static fields of a generic class are shared per class: `Box<int>::count` and `Box<string>::count` refer to the same static slot.
+- Generic traits, associated types, `where` clauses, and default type parameters are not supported; generic enums do not support `impl` (the target of `impl` must still be a class).
+
 ### Traits and Impls
 
 A `trait` declares a set of method contracts, and `impl` supplies the implementation for a class, so a capability can be attached to a class without going through inheritance:
@@ -1195,6 +1310,7 @@ impl Printable for Card {
     - The first `min(impl parameter count, class parameter count)` parameters **map positionally to the class type parameters**; the names need not match — `U` in `impl<U> ... for Box<T>` is rewritten to `T` during merging, and `U` in method signatures is the same variable as `T` in the class vocabulary.
     - Extra parameters (including `impl<T>` on a non-generic class) are injected into every merged method as **method-level generic variables**, expressing placeholders related to the method but not to the class.
     - Omitting the parameter list (`impl Box`) is also legal (`<T>` is optional).
+- Bounds on `impl<T: Show> Box<T>` travel with the merged methods: only instantiations whose `T` satisfies the bound may call them; see "Generics".
 - Blanket impls (`impl<T> Trait for T`, implementing a trait for every type) are **not supported** and raise an error.
 - A typical use is the iteration protocol: giving a class `length()` and `element(int)` (either in the class body or in an `impl`) makes it usable with `for-in`; see "for-in Loops".
 
@@ -1495,6 +1611,7 @@ The current package format version is v6.
 - A type declaration (`let x: int = 0;`) must also provide an initial value; class fields without a default value must be assigned in the constructor.
 - Ownership and borrowing only affect compile-time checks; runtime values still use reference counting. A moved variable cannot be used again and a borrowed value cannot be moved or reassigned, but the underlying slot keeps its reference until it is overwritten or the frame ends.
 - `None` can only be used in an `optional` context; directly reading, performing arithmetic on, or comparing an empty `optional` raises an error.
+- Generic type annotations must be fully instantiated (`Box` alone is not a type); type arguments are invariant, so `Box<int>` and `Box<string>` are incompatible; they are erased at runtime, and static fields of generic classes are shared per class.
 - `%` only supports integers; division by zero and integer overflow raise errors.
 - Array indices must be `int`; out-of-bounds reads and negative indices raise errors; an index equal to the length appends an element.
 - Unknown escapes (such as `\x`) are kept literally and produce a warning; use the other kind of quote to include a quote character.

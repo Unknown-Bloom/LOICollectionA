@@ -360,6 +360,18 @@ a == Some(42);   // true（按标签与全部载荷比较）
 a == Nothing();  // false
 ```
 
+枚举名后可以声明类型参数，构造实参参与推断（见「泛型」）：
+
+```lcui
+enum Option<T> {
+    Some(T)
+    Nothing
+}
+
+let a: Option<int> = Some(1);
+let b: Option<int> = Nothing<int>();
+```
+
 变体可以携带多个载荷，构造时直接以变体名调用，参数个数必须与声明一致：
 
 ```lcui
@@ -406,6 +418,14 @@ let b: Count = 3;
 ```
 
 别名可以链式引用（`using B = A;`），但不能自引用，也不能重复定义。
+
+别名也可以声明类型参数，实参个数必须与声明一致，并在展开时替换右侧的类型参数：
+
+```lcui
+using Twice<T> = Box<Box<T>>;
+
+let b: Twice<int> = new Box(new Box(1));
+```
 
 ### 数组
 
@@ -1036,6 +1056,19 @@ id(7);      // 调用 int 版本
 id("s");    // 调用 string 版本
 ```
 
+函数名后可以声明类型参数与约束；调用时既可以显式给出，也可以由实参推断：
+
+```lcui
+func first<T>(a: T, b: T) -> T {
+    return a;
+}
+
+first(1, 2);              // T = int
+first<string>("a", "b");  // 显式指定 T = string
+```
+
+完整规则见「泛型」。
+
 函数和类定义只能出现在脚本顶层，不能嵌套在函数或其他块中。`return` 只能出现在函数体内；没有显式 `return` 的函数返回空值。
 
 ### 匿名函数（Lambda）
@@ -1074,6 +1107,8 @@ public:
 let dog = new Animal("dog");
 dog.name;   // "dog"
 ```
+
+类名后可以声明类型参数（`class Box<T>`），也支持带实参的泛型基类（`class Child<T> extends Base<T>`），详见「泛型」。
 
 ### 字段与方法
 
@@ -1159,6 +1194,86 @@ dog instanceof Animal;  // true
 
 对象的 `==`/`!=` 同样为引用比较。
 
+### 泛型（generics）
+
+类、函数、类方法、枚举与类型别名都可以声明类型参数。类型参数只存在于编译期：语义分析阶段完成推断、约束检查与替换，进入 HIR 后按既有类型擦除规则处理，VM 与 `.lcp` 格式不变。
+
+#### 声明
+
+```lcui
+class Box<T> {
+public:
+    value: T;
+
+    Box(v: T) {
+        this.value = v;
+    }
+
+    func get() -> T {
+        return this.value;
+    }
+
+    func map<U>(f) -> U {
+        return f(this.value);
+    }
+}
+
+func id<T>(x: T) -> T {
+    return x;
+}
+
+enum Option<T> {
+    Some(T)
+    Nothing
+}
+
+using Twice<T> = Box<Box<T>>;
+
+class Child<T> extends Box<T> {
+    Child(v: T) {
+        super(v);
+    }
+}
+```
+
+- 类型参数列表紧跟在声明名之后，多个参数用逗号分隔。
+- 约束写作 `T: Trait` 或 `T: TraitA + TraitB`；约束在**实例化**时检查。
+- 类方法可以声明自己的类型参数（`func map<U>`），构造器只使用类参数。
+- `extends` 后可以写完整类型实参（`Base<T>`），基类字段、方法与 `super(...)` 都按继承链替换。
+
+#### 显式实参与推断
+
+```lcui
+id<int>(5);
+id::<int>(5);
+new Box<int>(1);
+new Box(1);                              // T = int
+new Box(1).map<string>(func (x) { return "v=" + x; });
+new Box(1).map::<string>(func (x) { return "v=" + x; });
+Box<int>::create();                      // 静态方法前的类实参
+Factory::make<int>(5);                   // 静态方法自身的类型实参
+```
+
+- 函数/方法名后的 `<...>` 只有在其后紧跟 `(` 时按类型实参解析，因此不会与比较运算冲突。
+- `new` 未给实参时，从构造器参数做结构化推断（支持 `Box<T>`、`optional<T>`、`variant<...>` 等嵌套位置）。
+- 类型标注必须完全实例化：`let b: Box = ...` 会报错；`new` 中没有可推断位置的类实参保持未定，需要具体类型时应显式给出。
+- 枚举构造的实参参与枚举类型参数推断；`Nothing()` 这类无载荷变体可以用 `Nothing<int>()` 显式指定。
+
+#### 类型规则
+
+- 类型实参**不变**：`Box<int>` 与 `Box<string>` 是不同类型，不能互相赋值，也不能互相传参。
+- 泛型派生类按基类实参替换：`class Child<T> extends Base<T>` 的 `Child<int>` 可赋给 `Base<int>`，不能赋给 `Base<string>`。
+- 体内 `T` 是不透明类型：具体值不能赋给 `T`；把 `T` 传给具体目标时沿用语言的动态近似。
+- 两个 `Generic` 操作数做算术/比较时要求对应约束：`+ - * / % ^` 需要 `Add/Sub/Mul/Div/Mod/Pow`，比较需要 `Eq/Ne/Lt/Le/Gt/Ge`，一元负号需要 `Neg`。`Generic` 与具体类型混用保持动态语义。
+- `Generic` 作为实参传给另一个同约束泛型函数时，当前作用域的约束可以复用。
+- `impl<T: Constraint> Box<T>` 的约束会随合并进类的方法一起检查：不满足约束的实例不能调用该方法。
+
+#### 运行期边界
+
+- 类型实参在 HIR/LIR 中擦除，运行期不保留：`instanceof Box` 不区分 `Box<int>` 与 `Box<string>`。
+- 泛型类的静态字段按类共享：`Box<int>::count` 与 `Box<string>::count` 指向同一个静态槽。
+- 泛型 trait、关联类型、`where` 子句与默认类型参数暂不支持；泛型枚举不支持 `impl`（`impl` 目标仍必须是类）。
+
 ### trait 与 impl
 
 `trait` 声明一组方法契约，`impl` 为类提供实现，让"能力"可以脱离继承附加到类上：
@@ -1199,6 +1314,7 @@ impl Printable for Card {
     - 前 `min(impl参数数, 类参数数)` 个**按位置映射到类的类型参数**，名字不必相同——`impl<U> ... for Box<T>` 里的 `U` 在合并时自动改写为 `T`，方法签名里写 `U` 与类词表中的 `T` 是同一个变量。
     - 多出来的参数（含非泛型类上的 `impl<T>`）作为**方法级泛型变量**注入每个合并进来的方法，用于表达「与该方法相关、但与类无关」的类型占位。
     - `impl Box` 省略类型参数同样合法（`<T>` 可写可不写）。
+- `impl<T: Show> Box<T>` 中的约束会随合并的方法一起生效：只有 `T` 满足约束时才能调用这些方法；详见「泛型」。
 - blanket impl（`impl<T> Trait for T`，给所有类型统一实现）**不支持**，会报错。
 - 典型用途是可迭代协议：为类提供 `length()` 与 `element(int)`（写在类内或 `impl` 中均可），该类即可被 `for-in` 遍历，详见「for-in 遍历」。
 
@@ -1499,6 +1615,7 @@ let form = new CustomForm("example.shop", {tr("example.shop.title")}) {
 - 类型声明（`let x: int = 0;`）必须同时提供初始值；没有默认值的类字段必须在构造函数中赋值。
 - 所有权与借用只影响编译期检查，运行时仍使用引用计数；被移动的变量不可再用，借用期间不可移动或重新赋值，但底层槽位会保留引用直到被覆盖或栈帧结束。
 - `None` 只能用于 `optional` 上下文；空 `optional` 直接读取、算术或比较会报错。
+- 泛型类型标注必须完全实例化（`Box` 不能作为类型）；类型实参不变，`Box<int>` 与 `Box<string>` 不兼容；实参在运行期擦除，泛型类的静态字段按类共享。
 - `%` 仅支持整数；除零、整数溢出会报错。
 - 数组索引必须为 `int`，越界读取或负数索引会报错；索引等于长度时表示追加。
 - 字符串未知转义（如 `\x`）保持字面量并产生警告；需要包含引号时也可使用另一种引号包裹。
